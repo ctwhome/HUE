@@ -2,16 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="HUE product specification and interactive UI wireframe">
-  <title>HUE · Product specification prototype</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="HUE functional product prototype using the accepted SvelteKit and shadcn-svelte design contract">
+  <meta name="theme-color" content="#0c0f14">
+  <title>HUE · Functional product prototype</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2395b7a4'/%3E%3Cpath d='M18 16h8v12h12V16h8v32h-8V36H26v12h-8z' fill='%230e1114'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="shadcn.css">
 </head>
 <body>
-  <div class="spec-ribbon" role="status"><strong>SPEC PROTOTYPE</strong><span>All product behavior is TBI · Mock data only</span><a href="../VISION.md">Read vision</a></div>
+  <div class="spec-ribbon" role="status"><strong>FUNCTIONAL SPEC PROTOTYPE</strong><span>HUE design contract · SvelteKit + shadcn-svelte target · mock data only</span><a href="../VISION.md">Vision</a><a href="../docs/04-ui-specification.md">Design contract</a></div>
   <div class="app-shell">
-    <aside class="sidebar" aria-label="Primary navigation">
+    <aside class="sidebar" aria-label="Primary navigation" data-component="AppSidebar">
       <div class="brand"><span class="brand-mark">H</span><div><strong>HUE</strong><small>Personal agent workspace</small></div></div>
       <button class="workspace-switcher" type="button" data-action="project-menu"><span class="project-dot hue"></span><span><small>Current Space</small><strong>HUE Project</strong></span><span aria-hidden="true">⌄</span></button>
       <nav>
@@ -41,7 +43,7 @@
     </aside>
 
     <main class="main-area" id="main-content">
-      <header class="topbar">
+      <header class="topbar" data-component="AppHeader">
         <div><p class="eyebrow" id="screen-eyebrow">HUE / Home</p><h1 id="screen-title">Good afternoon, Curi</h1></div>
         <div class="top-actions"><button class="quiet-button notification-bell" data-screen-target="notifications" aria-label="Open notifications">◉ <span class="notification-count">2</span></button><button class="quiet-button" data-action="command">⌘ K <span>Command</span></button><button class="primary-button" data-screen-target="conversation">＋ New Session</button></div>
       </header>
@@ -135,9 +137,9 @@
   </div>
 
   <div class="project-popover" id="project-popover" hidden><p>Switch project</p><button><span class="project-avatar gold">H</span><span><strong>HUE</strong><small>Documentation prototype</small></span><b>✓</b></button><button><span class="project-avatar green">N</span><span><strong>Notidian</strong><small>2 active tasks</small></span></button><button><span class="project-avatar blue">V</span><span><strong>Valorlist</strong><small>Quiet</small></span></button><button class="new-project">＋ Create or open project</button></div>
-  <dialog id="worker-dialog"><button class="dialog-close" data-action="close-dialog" aria-label="Close">×</button><span class="label-tbi">TBI WORKER DETAIL</span><h2>Developer</h2><p class="dialog-lead">Temporary specialist for one plan step. The user normally chooses the outcome—not this worker.</p><div class="dialog-grid"><div><small>Assigned outcome</small><strong>Implement responsive project navigation</strong></div><div><small>Status</small><strong class="green-text">Working · heartbeat 4s</strong></div><div><small>Selection rationale</small><strong>Multi-file coding + tests</strong></div><div><small>Context</small><strong>5 scoped sources · 38k tokens</strong></div><div><small>Tools</small><strong>File read/write · Git diff · Tests</strong></div><div><small>Isolation</small><strong>Managed worktree</strong></div></div><div class="mock-event-log"><p>14:37:08 <span>tool</span> patched ProjectRail.svelte</p><p>14:37:11 <span>verify</span> syntax check passed</p><p>14:37:14 <span>tool</span> inspecting navigation.test.ts</p></div><div class="dialog-actions"><button class="quiet-button">Steer worker</button><button class="quiet-button">Pause</button><button class="danger-quiet">Terminate</button></div></dialog>
-  <dialog id="command-dialog"><button class="dialog-close" data-action="close-dialog" aria-label="Close">×</button><label class="command-input">⌘<input autofocus placeholder="Open a project, task, file, or command…"></label><div class="command-results"><p>Suggested</p><button data-screen-target="project"><span>◇</span><strong>Open project: Notidian</strong><small>Project</small></button><button data-screen-target="task"><span>✓</span><strong>Open active task: Fix mobile navigation</strong><small>Task</small></button><button data-screen-target="memory"><span>◎</span><strong>Inspect context used in this turn</strong><small>Command</small></button></div></dialog>
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <dialog id="worker-dialog" data-component="WorkerDialog"><button class="dialog-close" data-action="close-dialog" aria-label="Close">×</button><span class="label-tbi">TBI WORKER DETAIL</span><h2>Developer</h2><p class="dialog-lead">Temporary specialist for one plan step. The user normally chooses the outcome—not this worker.</p><div class="dialog-grid"><div><small>Assigned outcome</small><strong>Implement responsive project navigation</strong></div><div><small>Status</small><strong class="green-text">Working · heartbeat 4s</strong></div><div><small>Selection rationale</small><strong>Multi-file coding + tests</strong></div><div><small>Context</small><strong>5 scoped sources · 38k tokens</strong></div><div><small>Tools</small><strong>File read/write · Git diff · Tests</strong></div><div><small>Isolation</small><strong>Managed worktree</strong></div></div><div class="mock-event-log"><p>14:37:08 <span>tool</span> patched ProjectRail.svelte</p><p>14:37:11 <span>verify</span> syntax check passed</p><p>14:37:14 <span>tool</span> inspecting navigation.test.ts</p></div><div class="dialog-actions"><button class="quiet-button">Steer worker</button><button class="quiet-button">Pause</button><button class="danger-quiet">Terminate</button></div></dialog>
+  <dialog id="command-dialog" data-component="CommandPalette"><button class="dialog-close" data-action="close-dialog" aria-label="Close">×</button><label class="command-input">⌘<input autofocus placeholder="Open a project, task, file, or command…"></label><div class="command-results"><p>Suggested</p><button data-screen-target="project"><span>◇</span><strong>Open project: Notidian</strong><small>Project</small></button><button data-screen-target="task"><span>✓</span><strong>Open active task: Fix mobile navigation</strong><small>Task</small></button><button data-screen-target="memory"><span>◎</span><strong>Inspect context used in this turn</strong><small>Command</small></button></div></dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite" data-component="HueToast"></div>
   <script src="app.js"></script>
 </body>
 </html>
