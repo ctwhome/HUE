@@ -8,7 +8,7 @@
     "url": "https://github.com/ctwhome/HUE"
   },
   "milestone_count": 9,
-  "issue_count": 50,
+  "issue_count": 54,
   "issues": {
     "HUE-001": {
       "number": 1,
@@ -209,6 +209,22 @@
     "HUE-050": {
       "number": 50,
       "url": "https://github.com/ctwhome/HUE/issues/50"
+    },
+    "HUE-051": {
+      "number": 51,
+      "url": "https://github.com/ctwhome/HUE/issues/51"
+    },
+    "HUE-052": {
+      "number": 52,
+      "url": "https://github.com/ctwhome/HUE/issues/52"
+    },
+    "HUE-053": {
+      "number": 53,
+      "url": "https://github.com/ctwhome/HUE/issues/53"
+    },
+    "HUE-054": {
+      "number": 54,
+      "url": "https://github.com/ctwhome/HUE/issues/54"
     }
   }
 }

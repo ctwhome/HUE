@@ -1,7 +1,7 @@
 # Data model, events and service contracts
 
 > **Product status:** `TBI`
-> **Open choices:** `TBD-002` service stack, `TBD-007` storage/index, `TBD-012` event transport, `TBD-017` sync/conflict model.
+> **Open choices:** `TBD-002` service stack, `TBD-007` storage/index, `TBD-012` event transport, `TBD-013` notification gateways, `TBD-017` sync/conflict model.
 
 ## Design rules
 
@@ -17,6 +17,8 @@
 ```mermaid
 erDiagram
     USER ||--o{ SPACE : owns
+    USER ||--o{ NOTIFICATION : receives
+    USER ||--o{ NOTIFICATION_ENDPOINT : configures
     SPACE ||--o| PROJECT : may_be
     SPACE ||--o| AREA : may_be
     SPACE }o--o{ RESOURCE : links
@@ -36,6 +38,9 @@ erDiagram
     PLAN_REVISION ||--o{ PLAN_STEP : contains
     RUN ||--o{ WORKER : executes
     RUN ||--o{ EVENT : records
+    EVENT ||--o{ NOTIFICATION : may_trigger
+    NOTIFICATION ||--o{ NOTIFICATION_DELIVERY : attempts
+    NOTIFICATION_ENDPOINT ||--o{ NOTIFICATION_DELIVERY : receives
     RUN ||--o{ APPROVAL : requests
     RUN ||--o{ ARTIFACT : produces
     WORKER ||--o{ TOOL_INVOCATION : invokes
@@ -119,6 +124,12 @@ Immutable semantic record:
 }
 ```
 
+### Notification, endpoint and delivery attempt
+
+A `NOTIFICATION` is the durable attention projection created from one or more semantic events. It links to the owning user/Space/Session/task/run, records class, urgency, outcome certainty, sensitivity, deduplication/group key, presentation fields, deep-link target, policy snapshot and unread/read/dismissed/acted lifecycle.
+
+A `NOTIFICATION_ENDPOINT` identifies an authorized local device or external gateway using credential references rather than raw tokens. A `NOTIFICATION_DELIVERY` records one channel attempt with redacted payload/template identity, queued/attempted/accepted/delivered/failed/expired timestamps where knowable, provider receipt, retry count and suppression/fallback reason. “Accepted by gateway” never implies “displayed”, “read” or “acted”.
+
 ### Artifact
 
 Name, kind/MIME, Space/Session/run ownership, content address/checksum, storage locator, version, provenance, sensitivity, preview status and relationship to changed external/source objects.
@@ -182,6 +193,8 @@ worker.selected|started|heartbeat|steered|stopped
 worker.tool.requested|started|progress|completed|failed
 approval.requested|approved|rejected|expired|revoked
 artifact.claimed|verified|created|updated
+notification.created|updated|grouped|suppressed|queued|accepted|displayed|delivered|failed|expired|read|acted|archived
+notification.endpoint_registered|authorized|revoked|health_changed
 memory.proposed|accepted|superseded|deleted
 inbox.captured|route_proposed|routed|kept
 route.resolved|fallback|exhausted
@@ -209,6 +222,7 @@ runs.*            get, events, reconcile, retry, branch
 workers.*         inspect, events, steer, terminate
 approvals.*       list, inspect, decide, revoke
 artifacts.*       list, preview, verify, export
+notifications.*   list, subscribe, read, dismiss, archive, policy, endpoints, attempts, test
 routing.*         resolve, explain, simulate, health
 providers.*       configure, health, quota
 system.*          health, backup, restore, diagnostics
@@ -241,6 +255,7 @@ Retention applies separately to:
 - raw events/tool output;
 - artifacts;
 - recordings/screenshots;
+- notification presentation records and delivery attempts;
 - semantic memories;
 - audit/security events;
 - backups.

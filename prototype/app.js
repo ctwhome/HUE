@@ -13,6 +13,30 @@
     toastTimer = setTimeout(() => toast.classList.remove('show'), 2600);
   }
 
+  function playNotificationPreview() {
+    const AudioContext = window.AudioContext;
+    if (!AudioContext) {
+      notify('Audio preview is unavailable in this browser.');
+      return;
+    }
+    const context = new AudioContext();
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.55);
+    gain.connect(context.destination);
+    [523.25, 659.25].forEach((frequency, index) => {
+      const oscillator = context.createOscillator();
+      oscillator.type = 'sine';
+      oscillator.frequency.value = frequency;
+      oscillator.connect(gain);
+      oscillator.start(context.currentTime + index * 0.12);
+      oscillator.stop(context.currentTime + 0.45 + index * 0.12);
+    });
+    setTimeout(() => context.close(), 800);
+    notify('Completion sound preview · local prototype only.');
+  }
+
   function showScreen(name, updateHash = true) {
     const next = $(`[data-screen="${name}"]`);
     if (!next) return;
@@ -44,6 +68,8 @@
       'show-replan': 'Plan revised after the first viewport test exposed an accessibility dependency.',
       'reject-approval': 'Mock approval rejected. No files or policies were changed.',
       'approve': 'Mock approval granted once. No real capability was issued.',
+      'open-notification-settings': 'Notification policy: channels, privacy, sounds, quiet hours, grouping and retention · TBI.',
+      'mock-mark-read': 'Mock notification marked read. The underlying semantic event remains durable.',
       'open-settings': 'Settings screen behavior is documented and TBI.',
     };
     if (name === 'project-menu') {
@@ -53,6 +79,10 @@
     if (name === 'toggle-density') {
       document.body.classList.toggle('compact');
       notify(document.body.classList.contains('compact') ? 'Compact density on' : 'Comfortable density on');
+      return;
+    }
+    if (name === 'test-sound') {
+      playNotificationPreview();
       return;
     }
     if (name === 'worker-detail') {

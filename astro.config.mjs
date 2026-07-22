@@ -69,6 +69,7 @@ export default defineConfig({
             { label: 'Security, privacy & trust', slug: 'spec/10-security-privacy-trust' },
             { label: 'Quality & observability', slug: 'spec/11-quality-evaluation-observability' },
             { label: 'Deployment & operations', slug: 'spec/12-deployment-operations' },
+            { label: 'Notifications & attention', slug: 'spec/16-notifications-attention-delivery' },
           ],
         },
         {

@@ -1,7 +1,7 @@
 # Security, privacy and trust
 
 > **Product status:** `TBI`
-> **Open choices:** `TBD-011` isolation, `TBD-017` sync/encryption, `TBD-018` credential vault, `TBD-019` license/governance.
+> **Open choices:** `TBD-011` isolation, `TBD-013` notification gateways, `TBD-014` mobile attention surface, `TBD-017` sync/encryption, `TBD-018` credential vault, `TBD-019` license/governance.
 
 ## Trust model
 
@@ -26,6 +26,7 @@ HUE is a privileged local application coordinating probabilistic workers and det
 8. The user can revoke access and stop active execution.
 9. Cloud transmission is visible and policy-governed.
 10. Export and deletion are first-class.
+11. Notification endpoints cannot expand worker capability, and external/lock-screen payloads are minimized by policy.
 
 ## Threat surfaces
 
@@ -40,6 +41,7 @@ HUE is a privileged local application coordinating probabilistic workers and det
 | Computer use | wrong window/click, sensitive UI | app scope, capture/verify, takeover, approval |
 | Plugin/MCP | undeclared data/network access | signed metadata, sandbox, capability mediation |
 | Event/log store | secret or private data persistence | redaction, sensitivity labels, retention |
+| Notification/phone gateways | lock-screen leakage, stolen device token, forged deep link, replay/flooding | generic payload defaults, vault-backed tokens, authenticated links, signing, deduplication, revocation |
 | Sync/remote access | account takeover, metadata leakage | E2E encryption decision, device auth, revocation |
 | Supply chain | malicious dependency/update | signed releases, lockfiles, provenance, update control |
 
@@ -103,6 +105,10 @@ Before using a provider route, policy resolves:
 
 A Project or Area can be marked local-only or restricted to an allowlist of providers/tools. This applies to routing and auxiliary services including embeddings, OCR, summaries and telemetry.
 
+### Notification privacy
+
+In-app notification history is local canonical state. Desktop lock screens, phone push, email, messaging gateways and webhooks are separate disclosure boundaries. They receive generic text by default and never raw prompts, logs, artifacts, paths, health details or secret-bearing errors. Space policy may force generic-only or local-only delivery. Device tokens and gateway credentials are vault-backed; deep links authenticate and re-fetch current state rather than trusting notification payloads. Consequential approvals open the full HUE attention surface and cannot be granted blindly from third-party channels. See [Notifications, attention and delivery](16-notifications-attention-delivery.md).
+
 ### Analytics
 
 No content-bearing outbound telemetry by default. Product analytics, crash uploads or evaluation sharing require opt-in with payload preview/categories. Local observability remains available.
@@ -118,7 +124,7 @@ No content-bearing outbound telemetry by default. Product analytics, crash uploa
 
 ## Identity and remote access — `TBI`
 
-Default local single-user mode must not require cloud identity. Remote/mobile access requires device authentication, encrypted transport, session revocation, rate limiting and an audit trail.
+Default local single-user mode must not require cloud identity. Remote/mobile access and phone delivery require device authentication, encrypted transport, session/endpoint revocation, rate limiting and an audit trail.
 
 **TBD-017:** Decide whether sync/remote access uses direct device networking, an encrypted relay, optional hosted account, or a combination.
 
@@ -148,6 +154,8 @@ The user can:
 - delete memories, Sessions, raw events and artifacts according to dependency rules;
 - inspect provider transmissions at category level;
 - configure retention and recordings;
+- configure notification channels, lock-screen privacy, sounds, quiet hours, per-Space overrides and delivery-history retention;
+- revoke notification devices/endpoints and test channel health;
 - run local-only mode.
 
 ## Security release gates

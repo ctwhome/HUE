@@ -23,23 +23,25 @@ Only then add adaptive multi-worker routing, coding specialization, computer use
 - docs/prototype review and product contract;
 - decide app shell/control-plane/runtime relationship;
 - select storage/event foundations;
+- choose notification gateways, phone attention surface and privacy/delivery semantics;
 - define threat model, license and contribution posture;
 - freeze v0 runtime adapter, Space manifest, context-pack and source-ownership contracts.
 
-**Exit:** all alpha-blocking TBDs have accepted ADRs; docs remain authoritative.
+**Exit:** all alpha-blocking TBDs, including notification/phone delivery choices, have accepted ADRs; docs remain authoritative.
 
 ## M1 — Local shell and Space foundations
 
 **Goal:** Open HUE locally and create a Project and an ongoing Area that each own their context, resources and policy.
 
 - local app/service skeleton;
+- HUE-owned token and component foundation over shell-appropriate shadcn primitives;
 - database/event journal migrations;
 - Project/Area CRUD, Resource relationships and trusted roots;
 - shared Space overview/settings shell with subtype-specific behavior;
 - filesystem trust/canonicalization;
 - import/open existing repository.
 
-**Exit:** one Project and one Area persist across restart, remain distinct in navigation and resolve only their trusted context/resources.
+**Exit:** first-run shell opens offline with HUE-owned Spaces/Sessions, shadcn-compatible HUE primitives, persistent state and honest empty/error/recovery screens.
 
 ## M2 — Sessions, context packs and portable knowledge
 
@@ -61,12 +63,13 @@ Only then add adaptive multi-worker routing, coding specialization, computer use
 
 - task/run/plan state machines;
 - semantic event stream and UI projection;
+- durable notification center plus local desktop/sound delivery;
 - one native worker path;
 - task graph/run inspector;
 - pause/steer/cancel;
 - restart reconciliation and outcome bundle.
 
-**Exit:** one real task survives control-plane restart and returns verified artifact evidence.
+**Exit:** one real task survives control-plane restart, returns verified artifact evidence and creates exactly one policy-correct local completion notification.
 
 ## M4 — Worker catalog and capability routing
 
@@ -132,12 +135,13 @@ Only then add adaptive multi-worker routing, coding specialization, computer use
 - backup/restore/export/import;
 - packaging, signed updates and migrations;
 - accessibility/mobile attention surface;
+- secure opt-in phone delivery, redacted deep links and delivery diagnostics;
 - performance and retention controls;
 - security review/threat tests;
 - dogfood and golden-task evaluation;
 - contributor and release documentation.
 
-**Exit:** release gates in security, quality and operations chapters pass on reference platforms.
+**Exit:** security, quality, backup and operations gates pass on reference platforms, and one authorized phone channel delivers a redacted task outcome with a secure deep link.
 
 ## Dependency graph
 
