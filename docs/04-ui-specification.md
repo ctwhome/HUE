@@ -33,29 +33,30 @@ Shadcn-svelte is the accessibility and interaction foundation, **not HUE's visua
 
 ## Global shell — `TBI`
 
+The stable desktop hierarchy is **Space rail → Space-scoped Sessions → main work window**.
+
 ```text
-┌──────────────┬─────────────────────────────────────┬──────────────────────┐
-│ HUE          │ Notidian / Mobile navigation       │ Project context      │
-│              │                                     │ Primary root         │
-│ Home         │ [Conversation] [Task] [Artifact]    │ Active instructions  │
-│ Projects     │                                     │ Active run          │
-│  ● Notidian  │                                     │ Files / diff        │
-│  ○ HUE       │                                     │ Context / memory    │
-│ Areas        │                                     │ Sources             │
-│  ○ Health    │                                     │                     │
-│  ○ Parenting │                                     │                     │
-│ Resources    │                                     │                     │
-│ Inbox (2)    │                                     │                      │
-│ Notifications│                                     │                      │
-│ Conversations│                                     │                      │
-│ Tasks        │                                     │                      │
-│ Memory       │                                     │                      │
-├──────────────┴─────────────────────────────────────┴──────────────────────┤
-│ ● Developer: implementing · Reviewer: waiting · [Open task] [Pause]       │
-└───────────────────────────────────────────────────────────────────────────┘
+┌──────────────────┬─────────────────────────┬──────────────────────────────────┐
+│ HUE        [⇤]   │ Notidian Sessions      │ Sync reliability                 │
+│                  │                         │                                  │
+│ Home             │ ● Sync reliability     │ [Conversation] [Task] [Artifact] │
+│ Inbox (2)        │   Execution · active   │                                  │
+│ Notifications(2)│                         │ Main work, context, evidence and │
+│                  │ ◐ Mobile navigation    │ optional inspector surfaces      │
+│ PROJECTS         │   Task · approval      │ remain inside this pane.         │
+│  ● HUE           │                         │                                  │
+│  ● Notidian      │ ○ Product direction    │                                  │
+│  ○ Valorlist     │   Discussion · quiet   │                                  │
+│  ✓ Supertaal     │                         │                                  │
+│ AREAS            │ [Filter Sessions…]     │                                  │
+│  ◐ Health        │ [+ New Session]         │                                  │
+│  ○ Parenting     │                         │                                  │
+└──────────────────┴─────────────────────────┴──────────────────────────────────┘
 ```
 
-The inspector can collapse. On narrow desktop widths it becomes a drawer. The active-run rail appears only while work is running, waiting or interrupted.
+The Space rail keeps every Project and Area visible and may collapse to stable identities/icons. It must not hide Projects behind a current-project dropdown. Selecting a Space replaces the adjacent Session list with only that Space’s independent Sessions. Each Session row shows title, Session type, status, last activity and concise attention/blocker context; color is never the only state signal. Selecting a Session updates the main work window while both parent selections remain visible.
+
+Global Home, Inbox and Notifications reuse the main window without destroying the selected Space/Session state. Task, artifact, file, knowledge and context inspectors are views or splits inside the main window, not replacements for the persistent hierarchy. At narrow desktop widths the Session column becomes a drawer; on mobile both Spaces and Sessions become explicit drawers, supported by direct mobile navigation controls. A compact active-run surface may appear only while work is running, waiting or interrupted.
 
 ## Screen S01 — Home / attention dashboard — `TBI`
 
@@ -392,6 +393,10 @@ The header bell displays unread attention count, not raw event volume. Dismissal
 - High-contrast and reduced-transparency modes.
 - Mobile approvals show enough context to avoid blind consent.
 - Long paths and model names truncate visually but remain copyable.
+- The expanded Space rail and Session sidebar keep the main work window free of horizontal page overflow at supported desktop widths.
+- Collapsing the Space rail preserves every Space as an accessible, labelled control; identity cannot depend on color alone.
+- When the Session sidebar becomes a drawer, opening it traps neither keyboard focus nor the main window, and closing it returns focus to the trigger.
+- On mobile, Spaces and Sessions are separately reachable drawers rather than compressed permanent columns.
 
 ## Prototype honesty
 

@@ -85,7 +85,7 @@ def validate_routes() -> None:
         if not path.exists():
             fail(f"missing built route: /{route}/ ({path.relative_to(ROOT)})")
 
-    for rel in ("prototype/index.html", "prototype/styles.css", "prototype/app.js", "favicon.svg", ".nojekyll"):
+    for rel in ("prototype/index.html", "prototype/styles.css", "prototype/shadcn.css", "prototype/workspace-shell.css", "prototype/app.js", "favicon.svg", ".nojekyll"):
         if not (DIST / rel).exists():
             fail(f"missing built static asset: {rel}")
 
