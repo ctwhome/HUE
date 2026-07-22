@@ -9,43 +9,82 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2395b7a4'/%3E%3Cpath d='M18 16h8v12h12V16h8v32h-8V36H26v12h-8z' fill='%230e1114'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="shadcn.css">
+  <link rel="stylesheet" href="workspace-shell.css">
 </head>
 <body>
   <div class="spec-ribbon" role="status"><strong>FUNCTIONAL SPEC PROTOTYPE</strong><span>HUE design contract · SvelteKit + shadcn-svelte target · mock data only</span><a href="../VISION.md">Vision</a><a href="../docs/04-ui-specification.md">Design contract</a></div>
   <div class="app-shell">
-    <aside class="sidebar" aria-label="Primary navigation" data-component="AppSidebar">
-      <div class="brand"><span class="brand-mark">H</span><div><strong>HUE</strong><small>Personal agent workspace</small></div></div>
-      <button class="workspace-switcher" type="button" data-action="project-menu"><span class="project-dot hue"></span><span><small>Current Space</small><strong>HUE Project</strong></span><span aria-hidden="true">⌄</span></button>
+    <aside class="sidebar project-rail" aria-label="Spaces and global navigation" data-component="SpaceRail">
+      <div class="brand rail-brand">
+        <span class="brand-mark">H</span>
+        <div class="rail-label"><strong>HUE</strong><small>Workspace</small></div>
+        <button class="rail-collapse-button" type="button" data-action="toggle-project-rail" aria-label="Collapse Spaces sidebar" aria-pressed="false" title="Collapse Spaces sidebar">⇤</button>
+      </div>
+
       <nav>
-        <p class="nav-label">Personal OS</p>
-        <button class="nav-item active" data-screen-target="home"><span>⌂</span>Home</button>
-        <button class="nav-item" data-screen-target="approvals"><span>!</span>Inbox <em class="attention">1</em></button>
-        <button class="nav-item" data-screen-target="notifications"><span>◉</span>Notifications <em class="attention">2</em></button>
-        <p class="nav-label">Projects</p>
-        <button class="nav-item" data-screen-target="project"><span>◇</span>Notidian</button>
-        <button class="nav-item" data-screen-target="architecture"><span>◇</span>HUE</button>
-        <p class="nav-label">Areas</p>
-        <button class="nav-item" data-screen-target="area"><span>○</span>Health</button>
-        <button class="nav-item" data-screen-target="area"><span>○</span>Parenting</button>
-        <p class="nav-label">Workspace</p>
-        <button class="nav-item" data-screen-target="conversation"><span>◫</span>Sessions</button>
-        <button class="nav-item" data-screen-target="task"><span>✓</span>Tasks <em>2</em></button>
-        <button class="nav-item" data-screen-target="memory"><span>◎</span>Knowledge</button>
-        <p class="nav-label">System</p>
-        <button class="nav-item" data-screen-target="architecture"><span>⌘</span>System logic</button>
-        <button class="nav-item" data-screen-target="roadmap"><span>↗</span>Roadmap</button>
+        <div class="rail-global" aria-label="Global views">
+          <p class="nav-label rail-label">Workspace</p>
+          <button class="nav-item active" data-screen-target="home" aria-label="Home" title="Home"><span>⌂</span><span class="rail-label">Home</span></button>
+          <button class="nav-item" data-screen-target="approvals" aria-label="Inbox, 1 item" title="Inbox"><span>!</span><span class="rail-label">Inbox</span><em class="attention">1</em></button>
+          <button class="nav-item" data-screen-target="notifications" aria-label="Notifications, 2 unread" title="Notifications"><span>◉</span><span class="rail-label">Notifications</span><em class="attention">2</em></button>
+        </div>
+
+        <div class="space-list" aria-label="All Spaces">
+          <div class="rail-section-heading"><p class="nav-label rail-label">Projects</p><button type="button" class="rail-add rail-label" data-action="new-space" aria-label="Create or open a project">＋</button></div>
+          <button class="space-nav-item active" data-space-target="hue" data-screen-target="architecture" aria-label="HUE project" title="HUE">
+            <span class="space-glyph hue-space">H</span><span class="space-copy rail-label"><strong>HUE</strong><small>Docs & product</small></span><span class="space-state decision" aria-label="3 decisions">3</span>
+          </button>
+          <button class="space-nav-item" data-space-target="notidian" data-screen-target="project" aria-label="Notidian project, one active session" title="Notidian">
+            <span class="space-glyph notidian-space">N</span><span class="space-copy rail-label"><strong>Notidian</strong><small>Knowledge workspace</small></span><span class="space-state running" aria-label="Active"></span>
+          </button>
+          <button class="space-nav-item" data-space-target="valorlist" data-screen-target="project" aria-label="Valorlist project" title="Valorlist">
+            <span class="space-glyph valorlist-space">V</span><span class="space-copy rail-label"><strong>Valorlist</strong><small>Trading research</small></span><span class="space-state quiet" aria-label="Quiet"></span>
+          </button>
+          <button class="space-nav-item" data-space-target="supertaal" data-screen-target="project" aria-label="Supertaal project" title="Supertaal">
+            <span class="space-glyph supertaal-space">S</span><span class="space-copy rail-label"><strong>Supertaal</strong><small>Language learning</small></span><span class="space-state verified" aria-label="Verified outcome">✓</span>
+          </button>
+
+          <div class="rail-section-heading"><p class="nav-label rail-label">Areas</p></div>
+          <button class="space-nav-item" data-space-target="health" data-screen-target="area" aria-label="Health area" title="Health">
+            <span class="space-glyph health-space">♥</span><span class="space-copy rail-label"><strong>Health</strong><small>Ongoing area</small></span><span class="space-state attention-dot" aria-label="Needs review"></span>
+          </button>
+          <button class="space-nav-item" data-space-target="parenting" data-screen-target="area" aria-label="Parenting area" title="Parenting">
+            <span class="space-glyph parenting-space">P</span><span class="space-copy rail-label"><strong>Parenting</strong><small>Ongoing area</small></span><span class="space-state quiet" aria-label="Quiet"></span>
+          </button>
+        </div>
+
+        <div class="rail-utilities" aria-label="Workspace tools">
+          <p class="nav-label rail-label">Tools</p>
+          <button class="nav-item" data-screen-target="task" aria-label="Tasks, 2 active" title="Tasks"><span>✓</span><span class="rail-label">Tasks</span><em>2</em></button>
+          <button class="nav-item" data-screen-target="memory" aria-label="Knowledge" title="Knowledge"><span>◎</span><span class="rail-label">Knowledge</span></button>
+          <button class="nav-item" data-screen-target="roadmap" aria-label="Roadmap" title="Roadmap"><span>↗</span><span class="rail-label">Roadmap</span></button>
+        </div>
       </nav>
+
       <div class="sidebar-foot">
         <button type="button" class="icon-button" data-action="toggle-density" aria-label="Toggle compact density">Aa</button>
         <button type="button" class="icon-button" data-action="open-settings" aria-label="Open conceptual settings">⚙</button>
-        <div class="runtime-state"><span></span><div><strong>Local control plane</strong><small>Target state · TBI</small></div></div>
+        <div class="runtime-state rail-label"><span></span><div><strong>Local runtime</strong><small>Healthy · target</small></div></div>
       </div>
     </aside>
 
+    <aside class="session-sidebar" aria-label="Sessions for the selected Space" data-component="SessionSidebar">
+      <header class="session-sidebar-header">
+        <div class="session-space-context"><span class="space-glyph hue-space" id="session-space-glyph">H</span><div><p class="kicker" id="session-space-kind">Project sessions</p><h2 id="session-space-name">HUE</h2></div></div>
+        <div class="session-heading-actions"><button type="button" class="session-add-button" data-action="new-session" aria-label="New Session in selected Space" title="New Session">＋</button><button type="button" class="session-close-button" data-action="close-panes" aria-label="Close Sessions">×</button></div>
+        <p id="session-space-description">Product direction, design and implementation work.</p>
+      </header>
+      <label class="session-search"><span aria-hidden="true">⌕</span><input id="session-search-input" type="search" placeholder="Filter Sessions" aria-label="Filter Sessions"></label>
+      <div class="session-list" id="session-list" aria-live="polite"></div>
+      <footer class="session-sidebar-footer"><span><i class="session-status running"></i>Active</span><span><i class="session-status waiting"></i>Waiting</span><span><i class="session-status quiet"></i>Quiet</span></footer>
+    </aside>
+
+    <button class="pane-backdrop" type="button" data-action="close-panes" aria-label="Close navigation panes"></button>
+
     <main class="main-area" id="main-content">
       <header class="topbar" data-component="AppHeader">
-        <div><p class="eyebrow" id="screen-eyebrow">HUE / Home</p><h1 id="screen-title">Good afternoon, Curi</h1></div>
-        <div class="top-actions"><button class="quiet-button notification-bell" data-screen-target="notifications" aria-label="Open notifications">◉ <span class="notification-count">2</span></button><button class="quiet-button" data-action="command">⌘ K <span>Command</span></button><button class="primary-button" data-screen-target="conversation">＋ New Session</button></div>
+        <div class="topbar-leading"><div class="pane-toggle-group"><button class="pane-toggle" type="button" data-action="open-projects" aria-label="Open Spaces">◇</button><button class="pane-toggle" type="button" data-action="open-sessions" aria-label="Open Sessions">◫</button></div><div><p class="eyebrow" id="screen-eyebrow">HUE / Home</p><h1 id="screen-title">Good afternoon, Curi</h1></div></div>
+        <div class="top-actions"><button class="quiet-button notification-bell" data-screen-target="notifications" aria-label="Open notifications">◉ <span class="notification-count">2</span></button><button class="quiet-button" data-action="command">⌘ K <span>Command</span></button><button class="primary-button" data-action="new-session">＋ New Session</button></div>
       </header>
 
       <section class="screen active" data-screen="home" data-title="Good afternoon, Curi" data-eyebrow="HUE / Home">
@@ -56,10 +95,10 @@
         </section>
         <div class="two-column">
           <section class="plain-section"><div class="section-heading"><div><p class="kicker">Continue</p><h3>Projects and Areas</h3></div></div>
-            <button class="project-row" data-screen-target="project"><span class="project-avatar green">N</span><span><strong>Notidian</strong><small>Mobile navigation · active now</small></span><span class="progress-ring" style="--p:72">72</span></button>
-            <button class="project-row" data-screen-target="architecture"><span class="project-avatar gold">H</span><span><strong>HUE</strong><small>Architecture decision register · 1h</small></span><span class="state-chip tbd-chip">3 TBD</span></button>
-            <button class="project-row" data-screen-target="area"><span class="project-avatar blue">♥</span><span><strong>Health</strong><small>Afternoon hunger review · ongoing Area</small></span><span class="state-chip">Review</span></button>
-            <button class="project-row"><span class="project-avatar blue">V</span><span><strong>Valorlist</strong><small>Paper replication notes · yesterday</small></span><span class="state-chip">Quiet</span></button>
+            <button class="project-row" data-space-target="notidian" data-screen-target="project"><span class="project-avatar green">N</span><span><strong>Notidian</strong><small>Mobile navigation · active now</small></span><span class="progress-ring" style="--p:72">72</span></button>
+            <button class="project-row" data-space-target="hue" data-screen-target="architecture"><span class="project-avatar gold">H</span><span><strong>HUE</strong><small>Architecture decision register · 1h</small></span><span class="state-chip tbd-chip">3 TBD</span></button>
+            <button class="project-row" data-space-target="health" data-screen-target="area"><span class="project-avatar blue">♥</span><span><strong>Health</strong><small>Afternoon hunger review · ongoing Area</small></span><span class="state-chip">Review</span></button>
+            <button class="project-row" data-space-target="valorlist" data-screen-target="project"><span class="project-avatar blue">V</span><span><strong>Valorlist</strong><small>Paper replication notes · yesterday</small></span><span class="state-chip">Quiet</span></button>
           </section>
           <section class="plain-section"><div class="section-heading"><div><p class="kicker">Running quietly</p><h3>Durable tasks</h3></div><button class="text-button" data-screen-target="task">View all →</button></div>
             <button class="run-row" data-screen-target="task"><span class="agent-pulse"></span><span><strong>Fix mobile navigation</strong><small>Developer working · reviewer waiting</small><span class="thin-progress"><i style="width:62%"></i></span></span><b>6m</b></button>
@@ -84,9 +123,9 @@
         <div class="project-grid"><section class="wide-block"><div class="section-heading"><div><p class="kicker">Current state</p><h3>Goals and system</h3></div><span class="label-tbi">TBI</span></div><div class="conversation-list"><button><span><strong>Stable energy and strength</strong><small>Current goal · reviewed this week</small></span><span class="memory-type preference">GOAL</span></button><button><span><strong>Vegan diet · running + strength</strong><small>Current routine · user maintained</small></span><span class="memory-type fact">STATE</span></button></div></section><section class="context-block"><div class="section-heading"><div><p class="kicker">Open questions</p><h3>Needs investigation</h3></div></div><div class="mini-files"><button><span>?</span><div><strong>Afternoon hunger</strong><small>unresolved uncertainty</small></div></button><button><span>?</span><div><strong>Meal timing</strong><small>research candidate</small></div></button></div></section><section class="wide-block"><div class="section-heading"><div><p class="kicker">Recent observations</p><h3>Epistemic provenance stays visible</h3></div></div><div class="conversation-list"><button><span><strong>15:00 hunger on 3 of 5 days</strong><small>Personal observation · Curi · Jul 21</small></span><span class="memory-type">OBSERVATION</span></button><button><span><strong>Protein distribution may contribute</strong><small>Agent inference · not accepted as fact</small></span><span class="memory-type preference">INFERENCE</span></button><button><span><strong>Meal composition review</strong><small>External evidence · 4 sources</small></span><span class="memory-type fact">EVIDENCE</span></button></div></section><section class="context-block"><div class="section-heading"><div><p class="kicker">Context boundary</p><h3>Area permissions</h3></div></div><dl><div><dt>Context pack</dt><dd>6 human-readable roles</dd></div><div><dt>Repositories</dt><dd>Denied</dd></div><div><dt>Notidian data</dt><dd>Not accessible</dd></div><div><dt>Review cadence</dt><dd>Weekly</dd></div></dl></section></div>
       </section>
 
-      <section class="screen conversation-screen" data-screen="conversation" data-title="Sync reliability" data-eyebrow="Notidian / Sessions / Execution">
-        <div class="conversation-thread"><div class="date-rule"><span>Today</span></div><article class="message user-message"><header><span class="user-avatar">C</span><strong>You</strong><time>14:28</time></header><p>Continue working on sync reliability in Notidian.</p></article><article class="message hue-message"><header><span class="brand-mark tiny">H</span><strong>HUE</strong><span class="route-pill">Execution · OpenCode · auto</span><time>14:29</time></header><p>I opened the Notidian Project, loaded its context pack, found GitHub issue #128 and the existing worktree, and resumed the linked OpenCode execution Session. The current blocker is an unverified conflict-retry path; no unrelated Space context was loaded.</p><div class="proposal"><div><span class="proposal-icon">✓</span><div><strong>Execution context prepared</strong><p>Issue #128 · worktree sync-reliability · 5 scoped sources · network asks.</p></div></div><div><button class="quiet-button">Inspect context</button><button class="primary-button" data-screen-target="task">Watch run</button></div></div><details><summary>Why this context?</summary><ul><li>Notidian context pack v17</li><li>GitHub issue #128 (authoritative)</li><li>Existing OpenCode Session and worktree</li><li>Cross-Space retrieval denied</li></ul></details></article></div>
-        <div class="composer"><div class="context-chips"><button>◇ Notidian</button><button>＋ Add context</button><span>Auto routing · computer use asks</span></div><div class="composer-box"><textarea rows="2" aria-label="Message" placeholder="Ask, decide, or assign an outcome…"></textarea><div><button aria-label="Attach">＋</button><button aria-label="Voice">◉</button><button class="send-button" data-action="mock-send" aria-label="Send">↑</button></div></div></div>
+      <section class="screen conversation-screen" data-screen="conversation" data-title="Three-pane workspace shell" data-eyebrow="HUE / Sessions / Design">
+        <div class="conversation-thread"><div class="date-rule"><span>Today</span></div><article class="message user-message"><header><span class="user-avatar">C</span><strong>You</strong><time>14:28</time></header><p id="session-user-message">Keep every project visible in a collapsible sidebar, show that project’s Sessions in the next column, and keep the main work window to the right.</p></article><article class="message hue-message"><header><span class="brand-mark tiny">H</span><strong>HUE</strong><span class="route-pill" id="session-route-pill">Design · HUE · active</span><time>14:29</time></header><p id="session-hue-message">The workspace now keeps the hierarchy visible: select a Space on the left, inspect its independent Sessions and status in the middle, then work in the selected Session on the right. Collapsing the Space rail preserves direct access through recognizable project identities.</p><div class="proposal"><div><span class="proposal-icon">✓</span><div><strong id="session-proposal-title">Workspace context established</strong><p id="session-proposal-detail">HUE Project · 4 current Sessions · Space context remains isolated.</p></div></div><div><button class="quiet-button">Inspect context</button><button class="primary-button" data-screen-target="task">Open linked task</button></div></div><details><summary>Why this context?</summary><ul><li id="session-context-space">HUE context pack</li><li>Selected Session and linked task state</li><li>Project-scoped sources and permissions</li><li>Cross-Space retrieval denied by default</li></ul></details></article></div>
+        <div class="composer"><div class="context-chips"><button id="composer-space-chip">◇ HUE</button><button>＋ Add context</button><span>Auto routing · current Space only</span></div><div class="composer-box"><textarea rows="2" aria-label="Message" placeholder="Ask, decide, or assign an outcome…"></textarea><div><button aria-label="Attach">＋</button><button aria-label="Voice">◉</button><button class="send-button" data-action="mock-send" aria-label="Send">↑</button></div></div></div>
       </section>
 
       <section class="screen" data-screen="task" data-title="Fix mobile navigation" data-eyebrow="Notidian / Tasks / HUE-028">
@@ -136,9 +175,16 @@
     </main>
   </div>
 
-  <div class="project-popover" id="project-popover" hidden><p>Switch project</p><button><span class="project-avatar gold">H</span><span><strong>HUE</strong><small>Documentation prototype</small></span><b>✓</b></button><button><span class="project-avatar green">N</span><span><strong>Notidian</strong><small>2 active tasks</small></span></button><button><span class="project-avatar blue">V</span><span><strong>Valorlist</strong><small>Quiet</small></span></button><button class="new-project">＋ Create or open project</button></div>
+  <nav class="mobile-bottom-nav" aria-label="Mobile workspace navigation">
+    <button class="active" data-screen-target="home" aria-label="Home"><span>⌂</span><small>Home</small></button>
+    <button data-action="open-projects" aria-label="Spaces"><span>◇</span><small>Spaces</small></button>
+    <button data-action="open-sessions" aria-label="Sessions"><span>◫</span><small>Sessions</small></button>
+    <button data-screen-target="task" aria-label="Tasks"><span>✓</span><small>Tasks</small></button>
+    <button data-screen-target="approvals" aria-label="Inbox"><span>!</span><small>Inbox</small><em>1</em></button>
+  </nav>
+
   <dialog id="worker-dialog" data-component="WorkerDialog"><button class="dialog-close" data-action="close-dialog" aria-label="Close">×</button><span class="label-tbi">TBI WORKER DETAIL</span><h2>Developer</h2><p class="dialog-lead">Temporary specialist for one plan step. The user normally chooses the outcome—not this worker.</p><div class="dialog-grid"><div><small>Assigned outcome</small><strong>Implement responsive project navigation</strong></div><div><small>Status</small><strong class="green-text">Working · heartbeat 4s</strong></div><div><small>Selection rationale</small><strong>Multi-file coding + tests</strong></div><div><small>Context</small><strong>5 scoped sources · 38k tokens</strong></div><div><small>Tools</small><strong>File read/write · Git diff · Tests</strong></div><div><small>Isolation</small><strong>Managed worktree</strong></div></div><div class="mock-event-log"><p>14:37:08 <span>tool</span> patched ProjectRail.svelte</p><p>14:37:11 <span>verify</span> syntax check passed</p><p>14:37:14 <span>tool</span> inspecting navigation.test.ts</p></div><div class="dialog-actions"><button class="quiet-button">Steer worker</button><button class="quiet-button">Pause</button><button class="danger-quiet">Terminate</button></div></dialog>
-  <dialog id="command-dialog" data-component="CommandPalette"><button class="dialog-close" data-action="close-dialog" aria-label="Close">×</button><label class="command-input">⌘<input autofocus placeholder="Open a project, task, file, or command…"></label><div class="command-results"><p>Suggested</p><button data-screen-target="project"><span>◇</span><strong>Open project: Notidian</strong><small>Project</small></button><button data-screen-target="task"><span>✓</span><strong>Open active task: Fix mobile navigation</strong><small>Task</small></button><button data-screen-target="memory"><span>◎</span><strong>Inspect context used in this turn</strong><small>Command</small></button></div></dialog>
+  <dialog id="command-dialog" data-component="CommandPalette"><button class="dialog-close" data-action="close-dialog" aria-label="Close">×</button><label class="command-input">⌘<input autofocus placeholder="Open a project, task, file, or command…"></label><div class="command-results"><p>Suggested</p><button data-space-target="notidian" data-screen-target="project"><span>◇</span><strong>Open project: Notidian</strong><small>Project</small></button><button data-screen-target="task"><span>✓</span><strong>Open active task: Fix mobile navigation</strong><small>Task</small></button><button data-screen-target="memory"><span>◎</span><strong>Inspect context used in this turn</strong><small>Command</small></button></div></dialog>
   <div class="toast" id="toast" role="status" aria-live="polite" data-component="HueToast"></div>
   <script src="app.js"></script>
 </body>
