@@ -1,0 +1,1811 @@
+[
+  {
+    "id": "HUE-001",
+    "title": "Review and freeze the HUE product contract",
+    "milestone": "M0",
+    "status": "TBI",
+    "readiness": "agent:ready",
+    "labels": [
+      "status:TBI",
+      "agent:ready",
+      "priority:P0",
+      "area:product",
+      "area:specification",
+      "type:feature"
+    ],
+    "goal": "Freeze HUE as a personal workspace with Projects, Areas, Resources, independent Sessions, portable knowledge and replaceable execution backends before implementation choices harden accidentally.",
+    "scope": [
+      "Review every product chapter and interactive prototype",
+      "Confirm the Space/Project/Area/Resource and Session/task/run distinctions",
+      "Confirm source ownership, OpenCode-first coding and non-omniscient orchestrator principles",
+      "Record revisions and rejected concepts",
+      "Create a versioned v0 product-contract tag"
+    ],
+    "acceptance": [
+      "Every chapter has SPEC/TBI/TBD status",
+      "The original and expanded visions are represented without contradiction",
+      "Projects, Areas, Resources, Sessions and source ownership are visible in the prototype",
+      "Non-goals and alpha scope are accepted",
+      "Review notes are preserved"
+    ],
+    "dependencies": [],
+    "non_goals": [],
+    "docs": [
+      "VISION.md",
+      "docs/00-status-and-review.md",
+      "docs/03-spaces-sessions-knowledge.md",
+      "prototype/index.html"
+    ]
+  },
+  {
+    "id": "HUE-002",
+    "title": "ADR: choose HUE product boundary, app shell and control-plane stack",
+    "milestone": "M0",
+    "status": "TBD",
+    "readiness": "agent:ready",
+    "labels": [
+      "decision:TBD",
+      "agent:ready",
+      "priority:P0",
+      "type:decision",
+      "area:product",
+      "area:control-plane",
+      "area:frontend"
+    ],
+    "goal": "Decide HUE’s owned personal-workspace boundary and the replaceable relationship to Hermes/OpenCode plus the application shell and control plane.",
+    "scope": [
+      "Spike Tauri, browser+daemon and existing Hermes WebUI extension paths",
+      "Compare TypeScript, Rust, Python/Hermes-derived and split daemon options",
+      "Document HUE ownership of Spaces, Sessions, context packs and task state",
+      "Document reuse/adapter boundaries for Hermes and OpenCode"
+    ],
+    "acceptance": [
+      "ADR covers TBD-001, TBD-002 and TBD-004",
+      "At least one runnable thin spike per finalist",
+      "No backend-native session/memory is made canonical accidentally",
+      "Decision scores recovery, packaging, reuse, accessibility and contributor ergonomics",
+      "Consequences and migration path are explicit"
+    ],
+    "dependencies": [
+      "HUE-001"
+    ],
+    "non_goals": [
+      "Implement production shell"
+    ],
+    "docs": [
+      "docs/05-system-architecture.md",
+      "docs/14-decision-register.md"
+    ]
+  },
+  {
+    "id": "HUE-003",
+    "title": "ADR: choose canonical storage, event journal and application transport",
+    "milestone": "M0",
+    "status": "TBD",
+    "readiness": "agent:ready",
+    "labels": [
+      "decision:TBD",
+      "agent:ready",
+      "priority:P0",
+      "type:decision",
+      "area:control-plane",
+      "area:operations"
+    ],
+    "goal": "Select durable local state, semantic events, canonical-versus-derived data and client transport foundations for Spaces, Sessions and source projections.",
+    "scope": [
+      "Prototype SQLite/event append and cursor resume",
+      "Model canonical HUE state versus rebuildable search/vector/source projections",
+      "Compare local HTTP/SSE/WS, JSON-RPC and embedded IPC"
+    ],
+    "acceptance": [
+      "ADR resolves TBD-007 and TBD-012",
+      "Crash/transaction experiment results included",
+      "Backup, migration and cursor semantics defined",
+      "Canonical HUE data, portable files, source authority and rebuildable indexes are explicit"
+    ],
+    "dependencies": [
+      "HUE-002"
+    ],
+    "non_goals": [
+      "Choose final embedding model"
+    ],
+    "docs": [
+      "docs/09-data-model-and-apis.md"
+    ]
+  },
+  {
+    "id": "HUE-004",
+    "title": "ADR: choose orchestration foundation and v0 worker/runtime contracts",
+    "milestone": "M0",
+    "status": "TBD",
+    "readiness": "agent:ready",
+    "labels": [
+      "decision:TBD",
+      "agent:ready",
+      "priority:P0",
+      "type:decision",
+      "area:orchestration",
+      "area:runtime-adapters"
+    ],
+    "goal": "Choose the smallest durable scheduler/router core and freeze provider-neutral worker plus runtime lifecycle contracts, including the first OpenCode adapter mode.",
+    "scope": [
+      "Compare custom state machine with Magentic, LangGraph, Mastra and ADK concepts",
+      "Define Space/Session attachment, plan, worker, adapter, steering and reconciliation contracts",
+      "Specify depth, budget and topology defaults",
+      "Spike OpenCode API/server/managed-CLI integration options"
+    ],
+    "acceptance": [
+      "ADR resolves TBD-003, TBD-005, TBD-009 and TBD-024",
+      "Contract covers start/events/steer/pause/resume/cancel/reconcile",
+      "HUE—not OpenCode/Hermes—owns canonical Session state",
+      "Unknown-outcome semantics are demonstrated",
+      "At least one fake adapter passes contract tests"
+    ],
+    "dependencies": [
+      "HUE-003"
+    ],
+    "non_goals": [],
+    "docs": [
+      "docs/07-orchestration-and-routing.md",
+      "docs/09-data-model-and-apis.md"
+    ]
+  },
+  {
+    "id": "HUE-005",
+    "title": "Create HUE threat model and alpha security baseline",
+    "milestone": "M0",
+    "status": "TBI",
+    "readiness": "agent:ready",
+    "labels": [
+      "status:TBI",
+      "agent:ready",
+      "priority:P0",
+      "type:security",
+      "area:security"
+    ],
+    "goal": "Turn the trust assumptions into testable boundaries before privileged execution is implemented.",
+    "scope": [
+      "Map assets, actors, boundaries and abuse cases",
+      "Define risk classes and policy enforcement points",
+      "Create security regression fixture inventory"
+    ],
+    "acceptance": [
+      "Threat model covers model, context, filesystem, shell, browser, computer use, plugins, sync and updates",
+      "Security invariants map to planned tests",
+      "Alpha release blockers are explicit",
+      "Review cadence and disclosure path defined"
+    ],
+    "dependencies": [
+      "HUE-001"
+    ],
+    "non_goals": [],
+    "docs": [
+      "docs/10-security-privacy-trust.md"
+    ]
+  },
+  {
+    "id": "HUE-006",
+    "title": "ADR: choose open-source license and project governance",
+    "milestone": "M0",
+    "status": "TBD",
+    "readiness": "agent:ready",
+    "labels": [
+      "decision:TBD",
+      "agent:ready",
+      "priority:P1",
+      "type:decision",
+      "area:product"
+    ],
+    "goal": "Adopt an explicit license and contributor/governance model suitable for an open agent workspace.",
+    "scope": [
+      "Compare Apache-2.0, MPL-2.0, AGPL-3.0 and dual/community approaches",
+      "Document hosted-service and commercial-embedding implications",
+      "Define contribution and DCO/CLA posture"
+    ],
+    "acceptance": [
+      "TBD-019 is resolved",
+      "Repository gains selected license and notices",
+      "Contributor expectations and decision authority are documented",
+      "Third-party reuse obligations are inventoried"
+    ],
+    "dependencies": [
+      "HUE-001"
+    ],
+    "non_goals": [],
+    "docs": [
+      "README.md",
+      "docs/14-decision-register.md"
+    ]
+  },
+  {
+    "id": "HUE-007",
+    "title": "Build the local HUE shell and supervised control-plane skeleton",
+    "milestone": "M1",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:frontend",
+      "area:control-plane",
+      "area:operations",
+      "type:feature"
+    ],
+    "goal": "Create the minimum packaged app/service that starts, reports health and shuts down safely.",
+    "scope": [
+      "Implement selected shell and local service boundary",
+      "Add readiness/health and structured startup diagnostics",
+      "Supervise one disposable child process"
+    ],
+    "acceptance": [
+      "Fresh launch reaches usable shell",
+      "Service restart is detected by client",
+      "Child ownership and shutdown are verified",
+      "No cloud account required"
+    ],
+    "dependencies": [
+      "HUE-002",
+      "HUE-003",
+      "HUE-005"
+    ],
+    "non_goals": [
+      "Full visual design",
+      "Agent execution"
+    ],
+    "docs": []
+  },
+  {
+    "id": "HUE-008",
+    "title": "Implement schema migrations and append-only semantic event journal",
+    "milestone": "M1",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:control-plane",
+      "area:operations",
+      "type:feature"
+    ],
+    "goal": "Provide transactional canonical storage and resumable semantic event history.",
+    "scope": [
+      "Implement schema/version migration framework",
+      "Append events atomically with state transitions",
+      "Expose cursor-based subscription/replay"
+    ],
+    "acceptance": [
+      "Interrupted transaction does not expose partial state",
+      "Cursor resumes without loss/duplication",
+      "Backup occurs before destructive migration",
+      "Tests cover sequence and concurrency"
+    ],
+    "dependencies": [
+      "HUE-003",
+      "HUE-007"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-009",
+    "title": "Implement Space manifests plus Project/Area CRUD and archive lifecycle",
+    "milestone": "M1",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:projects",
+      "area:control-plane",
+      "type:feature"
+    ],
+    "goal": "Persist Projects and ongoing Areas as explicit Space subtypes with common boundaries and distinct lifecycle semantics.",
+    "scope": [
+      "Create Space, Project and Area schemas/migrations",
+      "Implement create/read/update/archive/delete/export",
+      "Support role-based human-readable context-pack references",
+      "Keep repository/milestone fields Project-only and review-cadence/evidence policy Area-specific"
+    ],
+    "acceptance": [
+      "Project and Area persist across restart",
+      "Subtype cannot change silently",
+      "Archive/export preserves context-pack and source relationships",
+      "Area works without repository fields",
+      "Deletion impact preview lists Sessions, tasks, knowledge and bindings"
+    ],
+    "dependencies": [
+      "HUE-008"
+    ],
+    "non_goals": [],
+    "docs": [
+      "docs/03-spaces-sessions-knowledge.md",
+      "docs/06-projects-context-memory.md",
+      "docs/09-data-model-and-apis.md"
+    ]
+  },
+  {
+    "id": "HUE-010",
+    "title": "Implement trusted Space resource roots and filesystem boundary validation",
+    "milestone": "M1",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "type:security",
+      "area:projects",
+      "area:security"
+    ],
+    "goal": "Enforce resource-root policy for Projects and Areas outside model prompts.",
+    "scope": [
+      "Register primary/additional roots and repositories",
+      "Canonicalize and check symlink/path traversal",
+      "Separate read/write grants and health"
+    ],
+    "acceptance": [
+      "Escapes and unauthorized roots are denied",
+      "Moved/missing roots enter degraded state",
+      "Effective access is inspectable",
+      "Adversarial path tests pass"
+    ],
+    "dependencies": [
+      "HUE-005",
+      "HUE-009"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-011",
+    "title": "Build Project/Area overview, shared Space tabs and onboarding flows",
+    "milestone": "M1",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P1",
+      "area:frontend",
+      "area:projects",
+      "type:feature"
+    ],
+    "goal": "Expose coherent Space navigation while preserving meaningful Project versus Area behavior.",
+    "scope": [
+      "Build shared Overview/Sessions/Tasks/Knowledge/Files/Decisions/Activity/Settings tabs",
+      "Build repository/folder import for Projects",
+      "Build template-based Area onboarding without repository assumptions",
+      "Show context-pack/source/permission health",
+      "Implement empty, degraded and archived states"
+    ],
+    "acceptance": [
+      "Notidian-like Project shows repository/source state",
+      "Health-like Area shows goals/current system/observations/questions",
+      "Space tabs and terminology are consistent",
+      "Area UI never invents branches/worktrees unless linked",
+      "Accessibility and responsive states pass"
+    ],
+    "dependencies": [
+      "HUE-007",
+      "HUE-009",
+      "HUE-010"
+    ],
+    "non_goals": [],
+    "docs": [
+      "docs/04-ui-specification.md"
+    ]
+  },
+  {
+    "id": "HUE-012",
+    "title": "Implement typed Space-bound Sessions, messages, summaries and branches",
+    "milestone": "M2",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:frontend",
+      "area:control-plane",
+      "area:projects",
+      "type:feature"
+    ],
+    "goal": "Allow concurrent independent discussion, execution, research, monitoring and review Sessions without shared mutable context.",
+    "scope": [
+      "Persist Session type, Space binding and lifecycle",
+      "Implement messages, branches, attachments and backend-handle references",
+      "Create working summaries without promoting them to Space memory",
+      "Support concurrent active Sessions and explicit type transitions"
+    ],
+    "acceptance": [
+      "Two concurrent Sessions in different Spaces cannot leak messages/context",
+      "Discussion can create a linked execution Session/task",
+      "Session remains resumable across restart",
+      "Backend handle can be replaced without losing HUE Session",
+      "Close/archive retains searchable episodic record"
+    ],
+    "dependencies": [
+      "HUE-009",
+      "HUE-011"
+    ],
+    "non_goals": [],
+    "docs": [
+      "docs/02-product-experience.md",
+      "docs/03-spaces-sessions-knowledge.md",
+      "docs/09-data-model-and-apis.md"
+    ]
+  },
+  {
+    "id": "HUE-013",
+    "title": "Implement portable context packs and versioned context manifests",
+    "milestone": "M2",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:memory",
+      "area:projects",
+      "area:control-plane",
+      "type:feature"
+    ],
+    "goal": "Assemble least-context Session/worker inputs from human-readable Space files plus explicit sources and record exact immutable manifests.",
+    "scope": [
+      "Define role-based context-pack loader",
+      "Hash/version included files, knowledge and source records",
+      "Assemble foundations and per-turn/worker overlays",
+      "Expose inclusion reasons, omissions and budget",
+      "Support proposed context-pack revisions"
+    ],
+    "acceptance": [
+      "Context pack is readable/editable without HUE",
+      "Run can reproduce exact ordered sources/version/policy",
+      "Historical manifest is unchanged after file edits",
+      "Unrelated Space sources are absent",
+      "User can preview and reject proposed durable updates"
+    ],
+    "dependencies": [
+      "HUE-010",
+      "HUE-012"
+    ],
+    "non_goals": [],
+    "docs": [
+      "docs/03-spaces-sessions-knowledge.md",
+      "docs/06-projects-context-memory.md"
+    ]
+  },
+  {
+    "id": "HUE-014",
+    "title": "Implement global, Space, source and episodic memory lifecycle with provenance",
+    "milestone": "M2",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:memory",
+      "area:control-plane",
+      "type:feature"
+    ],
+    "goal": "Keep preferences, current Space state, authoritative-source facts and archived episodes separate and correctable.",
+    "scope": [
+      "Implement four memory layers and proposal lifecycle",
+      "Add provenance, sensitivity, freshness, supersession and retention",
+      "Prevent workers from direct shared-memory writes",
+      "Add typed epistemic status"
+    ],
+    "acceptance": [
+      "Layer cannot be promoted silently",
+      "Stale source memory is visibly stale",
+      "Closed Session stays searchable but is not injected by default",
+      "Correction/supersession changes future retrieval",
+      "Export/delete works by layer"
+    ],
+    "dependencies": [
+      "HUE-013"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-015",
+    "title": "Build knowledge/memory center, context-pack editor and “Why this context?” inspector",
+    "milestone": "M2",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P1",
+      "area:frontend",
+      "area:memory",
+      "type:feature"
+    ],
+    "goal": "Make maintained knowledge, memory layers and exact retrieval inspectable and correctable.",
+    "scope": [
+      "Show context-pack roles and version history",
+      "Show backlinks/tags/provenance and epistemic type",
+      "Show global/Space/source/episodic layers",
+      "Preview proposed edits and context manifests"
+    ],
+    "acceptance": [
+      "User can answer why a source was loaded",
+      "User can edit/supersede/delete appropriate records",
+      "Raw transcript is not mislabeled as durable knowledge",
+      "Source freshness and authority are visible",
+      "Sensitive values remain redacted"
+    ],
+    "dependencies": [
+      "HUE-013",
+      "HUE-014"
+    ],
+    "non_goals": [],
+    "docs": [
+      "docs/04-ui-specification.md"
+    ]
+  },
+  {
+    "id": "HUE-016",
+    "title": "Add cross-Space isolation, retrieval and context regression suite",
+    "milestone": "M2",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "type:security",
+      "area:memory",
+      "area:security",
+      "area:projects"
+    ],
+    "goal": "Prove Project/Area/Resource boundaries and explicit cross-Space links prevent accidental retrieval leakage.",
+    "scope": [
+      "Create two-project fixtures with conflicting/private facts",
+      "Exercise context assembly, search and memory operations",
+      "Test archive/move/delete boundaries"
+    ],
+    "acceptance": [
+      "No cross-project leakage in manifests or search",
+      "Global allowlisted preference appears as expected",
+      "Path/context attacks fail",
+      "Regression suite is deterministic"
+    ],
+    "dependencies": [
+      "HUE-013",
+      "HUE-014",
+      "HUE-005"
+    ],
+    "non_goals": [],
+    "docs": [
+      "docs/03-spaces-sessions-knowledge.md",
+      "docs/06-projects-context-memory.md",
+      "docs/10-security-privacy-trust.md"
+    ]
+  },
+  {
+    "id": "HUE-017",
+    "title": "Implement durable task, run, plan and step state machines",
+    "milestone": "M3",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:orchestration",
+      "area:control-plane",
+      "type:feature"
+    ],
+    "goal": "Represent assigned outcomes and execution attempts truthfully across restarts.",
+    "scope": [
+      "Persist task/run/plan revisions/steps",
+      "Validate transitions and dependencies",
+      "Model waiting, interrupted, unknown, unverified and verified"
+    ],
+    "acceptance": [
+      "Illegal transitions are rejected",
+      "Task and run statuses remain distinct",
+      "Plan revisions preserve rationale",
+      "State-machine tests cover every edge"
+    ],
+    "dependencies": [
+      "HUE-008",
+      "HUE-013",
+      "HUE-004"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-018",
+    "title": "Build semantic event projections and live run stream",
+    "milestone": "M3",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:orchestration",
+      "area:frontend",
+      "area:control-plane",
+      "type:feature"
+    ],
+    "goal": "Turn immutable run events into durable UI-readable projections.",
+    "scope": [
+      "Define event schemas and visibility/redaction",
+      "Project task/step/worker state",
+      "Stream and replay from cursor"
+    ],
+    "acceptance": [
+      "Page refresh reconstructs identical task state",
+      "Duplicate events are idempotent",
+      "User summary excludes raw noise",
+      "Lag/health is observable"
+    ],
+    "dependencies": [
+      "HUE-008",
+      "HUE-017"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-019",
+    "title": "Implement first native worker and deterministic verification path",
+    "milestone": "M3",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:orchestration",
+      "area:control-plane",
+      "type:feature"
+    ],
+    "goal": "Execute one scoped worker end to end under HUE ownership.",
+    "scope": [
+      "Start worker from manifest",
+      "Stream normalized lifecycle/tool events",
+      "Produce artifact claim and independent readback"
+    ],
+    "acceptance": [
+      "Worker only sees granted context/tools",
+      "Cancellation truthfully reports effects",
+      "Artifact is verified outside worker prose",
+      "Contract tests pass"
+    ],
+    "dependencies": [
+      "HUE-004",
+      "HUE-017",
+      "HUE-018"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-020",
+    "title": "Build task plan and live run inspector UI",
+    "milestone": "M3",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P1",
+      "area:frontend",
+      "area:orchestration",
+      "type:feature"
+    ],
+    "goal": "Show the user what is happening, why and what needs attention.",
+    "scope": [
+      "Render plan steps/dependencies and current worker",
+      "Expose semantic timeline and advanced runtime details",
+      "Implement steer/pause/cancel controls"
+    ],
+    "acceptance": [
+      "S04/S05 states are represented",
+      "Plan revisions are explained",
+      "No private chain-of-thought displayed",
+      "Responsive and keyboard flows pass"
+    ],
+    "dependencies": [
+      "HUE-018",
+      "HUE-019"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-021",
+    "title": "Implement restart reconciliation, checkpoints and outcome bundles",
+    "milestone": "M3",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:orchestration",
+      "area:operations",
+      "area:quality",
+      "type:feature"
+    ],
+    "goal": "Recover truthful execution state and produce evidence-backed completion.",
+    "scope": [
+      "Persist ownership lease/heartbeat/checkpoint",
+      "Reconcile worker on control-plane restart",
+      "Generate outcome bundle and recovery choices"
+    ],
+    "acceptance": [
+      "Running fixture survives restart",
+      "Missing worker becomes interrupted/unknown as appropriate",
+      "Retry checks side-effect state",
+      "Completed bundle links all evidence"
+    ],
+    "dependencies": [
+      "HUE-019",
+      "HUE-020"
+    ],
+    "non_goals": [],
+    "docs": [
+      "docs/11-quality-evaluation-observability.md"
+    ]
+  },
+  {
+    "id": "HUE-022",
+    "title": "Implement versioned worker catalog and manifest validation",
+    "milestone": "M4",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:orchestration",
+      "area:runtime-adapters",
+      "type:feature"
+    ],
+    "goal": "Define safe temporary specialist classes without permanent bot sprawl.",
+    "scope": [
+      "Implement catalog/manifest loader",
+      "Validate tools/resources/budgets and inheritance",
+      "Ship quick/research/developer/reviewer/verifier classes"
+    ],
+    "acceptance": [
+      "Unknown/broadened capabilities fail closed",
+      "Manifest version is recorded per worker",
+      "Project overrides cannot bypass safety",
+      "Catalog is inspectable"
+    ],
+    "dependencies": [
+      "HUE-004",
+      "HUE-019"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-023",
+    "title": "Implement capability-based route policy and precedence",
+    "milestone": "M4",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:routing",
+      "area:orchestration",
+      "area:security",
+      "type:feature"
+    ],
+    "goal": "Resolve provider-neutral needs into approved runtime/model/effort routes.",
+    "scope": [
+      "Implement capability request and route schema",
+      "Apply safety > user > task > project > global > worker defaults",
+      "Enforce privacy/cost/context/tool constraints"
+    ],
+    "acceptance": [
+      "Explicit user override wins within safety",
+      "Prohibited provider never selected",
+      "Resolution rationale is stored",
+      "Invalid policy uses approved fallback or fails closed"
+    ],
+    "dependencies": [
+      "HUE-022",
+      "HUE-005"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-024",
+    "title": "Add provider/runtime health, quota, budget and fallback handling",
+    "milestone": "M4",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:routing",
+      "area:operations",
+      "type:feature"
+    ],
+    "goal": "Adapt routes safely to real provider availability and budgets.",
+    "scope": [
+      "Provider/runtime registry and health checks",
+      "Quota/exhaustion/budget accounting",
+      "Ordered fallback and route-exhausted states"
+    ],
+    "acceptance": [
+      "Unhealthy route is not selected",
+      "Fallback preserves privacy/tool constraints",
+      "Budget boundary pauses visibly",
+      "Recovery after credentials/quota works"
+    ],
+    "dependencies": [
+      "HUE-023"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-025",
+    "title": "Implement adaptive orchestrator planning, dependencies and replanning",
+    "milestone": "M4",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:orchestration",
+      "area:routing",
+      "type:feature"
+    ],
+    "goal": "Implement a bounded scheduler/router that proposes inbox destination, attaches Space context, plans only when useful, handles dependencies, prevents conflicts and replans from evidence.",
+    "scope": [
+      "Implement direct/tool/single-worker/plan topology choice",
+      "Add Inbox destination and Session-type proposal hook",
+      "Schedule ready steps and parallel safe branches",
+      "Prevent conflicting writes/source actions",
+      "Replan with immutable revisions and explanation",
+      "Route results and proposed Space-state updates"
+    ],
+    "acceptance": [
+      "Simple fixture avoids unnecessary multi-agent plan",
+      "Inbox fixture receives correctable Space/Session proposal",
+      "Independent branches run concurrently",
+      "Conflicting execution is blocked",
+      "Failure triggers bounded replan",
+      "User sees plan revision reason"
+    ],
+    "dependencies": [
+      "HUE-021",
+      "HUE-023",
+      "HUE-024"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-026",
+    "title": "Build routing policy, explanation and evaluation workbench",
+    "milestone": "M4",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P1",
+      "area:frontend",
+      "area:routing",
+      "area:quality",
+      "type:feature"
+    ],
+    "goal": "Let users inspect, simulate and improve automatic routing.",
+    "scope": [
+      "Capability-slot settings UI",
+      "Route simulation/explanation",
+      "Golden task runner and route outcome metrics"
+    ],
+    "acceptance": [
+      "User can see why a route won",
+      "Simulation has no side effects",
+      "Golden fixtures cover simple/coding/privacy/fallback/override",
+      "Policy changes are versioned"
+    ],
+    "dependencies": [
+      "HUE-023",
+      "HUE-024",
+      "HUE-025"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-027",
+    "title": "Implement repository service and managed worktree lifecycle",
+    "milestone": "M5",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:coding",
+      "area:projects",
+      "area:security",
+      "type:feature"
+    ],
+    "goal": "Provide safe isolated repository execution owned by HUE.",
+    "scope": [
+      "Git status/branch/diff abstractions",
+      "Create/reuse/cleanup managed worktrees",
+      "Detect dirty/conflicting/orphan state"
+    ],
+    "acceptance": [
+      "Main workspace remains untouched by default",
+      "Worktree provenance links to run",
+      "Cleanup never deletes unmerged work silently",
+      "Restart reconciliation works"
+    ],
+    "dependencies": [
+      "HUE-010",
+      "HUE-021"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-028",
+    "title": "Implement OpenCode-first coding worker adapter with scoped terminal and file tools",
+    "milestone": "M5",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:coding",
+      "area:runtime-adapters",
+      "area:security",
+      "type:feature"
+    ],
+    "goal": "Make OpenCode the primary v0 software execution backend while HUE retains canonical Session/task/policy/evidence state.",
+    "scope": [
+      "Implement adapter mode selected by TBD-024",
+      "Inject versioned context and least-capability grants",
+      "Bind repository/worktree/GitHub issue and normalize events",
+      "Support steer/pause/cancel/reconcile",
+      "Capture usage, changed files and verification evidence"
+    ],
+    "acceptance": [
+      "Real OpenCode task modifies only managed worktree",
+      "HUE Session survives adapter restart",
+      "Normalized events do not expose backend-specific UI coupling",
+      "Cancel/reconcile truthfully classify outcome",
+      "An alternate adapter can satisfy same contract"
+    ],
+    "dependencies": [
+      "HUE-022",
+      "HUE-027"
+    ],
+    "non_goals": [],
+    "docs": [
+      "docs/05-system-architecture.md",
+      "docs/07-orchestration-and-routing.md",
+      "docs/08-tools-permissions-computer-use.md"
+    ]
+  },
+  {
+    "id": "HUE-029",
+    "title": "Build artifact, changed-files and diff review workspace",
+    "milestone": "M5",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P1",
+      "area:frontend",
+      "area:coding",
+      "type:feature"
+    ],
+    "goal": "Review code and generated artifacts in the same project/task context.",
+    "scope": [
+      "Artifact previews and provenance",
+      "Changed-file tree and side-by-side diff",
+      "Reviewer annotations and export/reveal actions"
+    ],
+    "acceptance": [
+      "S07 contract represented",
+      "Binary/large/unsupported states handled",
+      "Diff reflects actual worktree state",
+      "Artifacts link to originating run/step"
+    ],
+    "dependencies": [
+      "HUE-018",
+      "HUE-027",
+      "HUE-028"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-030",
+    "title": "Ingest test/build evidence and add independent review loop",
+    "milestone": "M5",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:coding",
+      "area:quality",
+      "area:orchestration",
+      "type:feature"
+    ],
+    "goal": "Make coding completion depend on evidence and independent review.",
+    "scope": [
+      "Capture structured quality-gate results",
+      "Spawn read-only reviewer under independence policy",
+      "Feed accepted findings back and reverify"
+    ],
+    "acceptance": [
+      "Worker self-report alone cannot verify task",
+      "Reviewer cannot write production files",
+      "Findings and dispositions are preserved",
+      "Final gates rerun after corrections"
+    ],
+    "dependencies": [
+      "HUE-025",
+      "HUE-028",
+      "HUE-029"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-031",
+    "title": "Implement commit, merge and pull-request approval handoff",
+    "milestone": "M5",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P1",
+      "area:coding",
+      "area:security",
+      "type:feature"
+    ],
+    "goal": "Move verified work into version-control collaboration only with explicit authority.",
+    "scope": [
+      "Preview commit/branch/PR metadata",
+      "Create scoped approval for commit/push/PR",
+      "Read back remote object and link evidence"
+    ],
+    "acceptance": [
+      "No remote write without approval",
+      "PR body links task and evidence",
+      "Remote URL/ID is independently verified",
+      "Failure leaves worktree recoverable"
+    ],
+    "dependencies": [
+      "HUE-030",
+      "HUE-005"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-032",
+    "title": "Implement capability policy engine and scoped expiring grants",
+    "milestone": "M6",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "type:security",
+      "area:security",
+      "area:control-plane"
+    ],
+    "goal": "Enforce least-capability access outside model prompts.",
+    "scope": [
+      "Risk classification and policy evaluation",
+      "Grant scope/expiry/revocation",
+      "Intercept tool/resource/credential requests"
+    ],
+    "acceptance": [
+      "Worker cannot self-expand grant",
+      "Expired/revoked/replayed grant is denied",
+      "Every decision emits audit event",
+      "Project and user policy precedence is tested"
+    ],
+    "dependencies": [
+      "HUE-005",
+      "HUE-019",
+      "HUE-023"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-033",
+    "title": "Build approval inbox, preview and decision scopes",
+    "milestone": "M6",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:frontend",
+      "area:security",
+      "type:feature"
+    ],
+    "goal": "Let users understand and decide consequential actions without blind consent.",
+    "scope": [
+      "Approval list/detail and deep links",
+      "Consequence/target/preview/alternatives display",
+      "Once/step/run/project scope choices"
+    ],
+    "acceptance": [
+      "S06 contract represented",
+      "Broad scope is not default",
+      "Expired/stale approvals cannot execute",
+      "Mobile approval includes sufficient context"
+    ],
+    "dependencies": [
+      "HUE-032"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-034",
+    "title": "Implement isolated browser worker with prompt-injection boundaries",
+    "milestone": "M6",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:computer-use",
+      "area:security",
+      "area:runtime-adapters",
+      "type:feature"
+    ],
+    "goal": "Perform interactive web tasks in isolated, policy-controlled browser contexts.",
+    "scope": [
+      "Isolated browser profiles and domain policy",
+      "DOM interaction/events/screenshots/downloads",
+      "Submission and authenticated-session gates"
+    ],
+    "acceptance": [
+      "Page instructions cannot change system policy",
+      "External submissions require correct approval",
+      "Final state and URL are verified",
+      "Personal session access is explicit"
+    ],
+    "dependencies": [
+      "HUE-032",
+      "HUE-033"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-035",
+    "title": "Integrate scoped computer-use backend and live monitor",
+    "milestone": "M6",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:computer-use",
+      "area:frontend",
+      "area:security",
+      "type:feature"
+    ],
+    "goal": "Operate native applications visibly with capture-act-verify and takeover.",
+    "scope": [
+      "Backend adapter, app/window scoping and action events",
+      "Live preview/action ledger/takeover",
+      "Approval hooks for sensitive UI/actions"
+    ],
+    "acceptance": [
+      "S11 workflow works on reference macOS",
+      "Unexpected modal pauses",
+      "Background/foreground state is truthful",
+      "Every mutation is recaptured/verified"
+    ],
+    "dependencies": [
+      "HUE-033",
+      "HUE-010"
+    ],
+    "non_goals": [],
+    "docs": [
+      "docs/08-tools-permissions-computer-use.md"
+    ]
+  },
+  {
+    "id": "HUE-036",
+    "title": "Implement external side-effect ledger and adversarial safety suite",
+    "milestone": "M6",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "type:security",
+      "area:security",
+      "area:computer-use",
+      "area:quality"
+    ],
+    "goal": "Prevent unsafe retries and prove browser/computer/tool boundaries under attack.",
+    "scope": [
+      "Persist effect intent/idempotency/readback/outcome",
+      "Reconcile unknown effects before retry",
+      "Run prompt injection, approval replay, secret leak and cancellation fixtures"
+    ],
+    "acceptance": [
+      "Duplicate external write is prevented",
+      "Unknown outcome has inspection path",
+      "All threat-model alpha fixtures pass",
+      "Evidence and redaction are retained"
+    ],
+    "dependencies": [
+      "HUE-032",
+      "HUE-034",
+      "HUE-035",
+      "HUE-021"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-037",
+    "title": "Publish runtime adapter SDK and conformance suite",
+    "milestone": "M7",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:runtime-adapters",
+      "area:quality",
+      "type:feature"
+    ],
+    "goal": "Let external runtimes implement HUE worker lifecycle without product-specific coupling.",
+    "scope": [
+      "SDK schemas/client utilities",
+      "Fake runtime and conformance harness",
+      "Version negotiation and capability discovery"
+    ],
+    "acceptance": [
+      "Third-party adapter can start/stream/steer/cancel/reconcile",
+      "Unknown capabilities fail safely",
+      "Semantic event invariants enforced",
+      "Compatibility policy documented"
+    ],
+    "dependencies": [
+      "HUE-004",
+      "HUE-021",
+      "HUE-022"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-038",
+    "title": "Implement Hermes runtime adapter",
+    "milestone": "M7",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P1",
+      "area:runtime-adapters",
+      "area:orchestration",
+      "type:feature"
+    ],
+    "goal": "Reuse Hermes provider/tools/skills strengths through the HUE runtime contract.",
+    "scope": [
+      "Map worker spec/context/tool policy",
+      "Normalize delegation/runtime events",
+      "Implement steering/cancel/reconcile"
+    ],
+    "acceptance": [
+      "Conformance suite passes",
+      "Hermes memory cannot bypass HUE scopes",
+      "External side effects are verifiable",
+      "Runtime health shown"
+    ],
+    "dependencies": [
+      "HUE-037"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-039",
+    "title": "Implement Codex and Claude Code adapter pilots",
+    "milestone": "M7",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P1",
+      "area:runtime-adapters",
+      "area:coding",
+      "type:feature"
+    ],
+    "goal": "Prove OpenCode is a first backend rather than a permanent dependency by running equivalent fixtures through alternate coding runtimes.",
+    "scope": [
+      "Implement minimal Codex adapter",
+      "Implement minimal Claude Code adapter",
+      "Normalize lifecycle/events/artifacts",
+      "Document capability differences and fallback limits"
+    ],
+    "acceptance": [
+      "Both pilots pass applicable conformance fixtures",
+      "No HUE Space/Session schema changes required",
+      "Differences appear through capability/health metadata",
+      "Recovery semantics remain truthful"
+    ],
+    "dependencies": [
+      "HUE-028",
+      "HUE-037"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-040",
+    "title": "Implement MCP/plugin mediation and deterministic job adapter",
+    "milestone": "M7",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P1",
+      "area:runtime-adapters",
+      "area:security",
+      "type:feature"
+    ],
+    "goal": "Extend capabilities without growing an unsafe core or calling LLMs unnecessarily.",
+    "scope": [
+      "Plugin/MCP discovery through capability policy",
+      "Installation permission disclosure",
+      "Deterministic script/job lifecycle adapter"
+    ],
+    "acceptance": [
+      "Undeclared capability/network access denied",
+      "Health/auth states are distinct",
+      "Deterministic task can run with zero model calls",
+      "Plugin events/artifacts use common contracts"
+    ],
+    "dependencies": [
+      "HUE-032",
+      "HUE-037"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-041",
+    "title": "Build onboarding, health diagnostics and recovery center",
+    "milestone": "M8",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:frontend",
+      "area:operations",
+      "type:feature"
+    ],
+    "goal": "Make local setup and failure recovery understandable without terminal archaeology.",
+    "scope": [
+      "First project/provider/runtime setup",
+      "Health matrix and redacted diagnostics export",
+      "Recovery inventory/actions"
+    ],
+    "acceptance": [
+      "Safe local project possible before cloud provider",
+      "Configured/enabled/authorized/healthy distinct",
+      "S12/S13 states represented",
+      "Diagnostics preview redacts secrets"
+    ],
+    "dependencies": [
+      "HUE-011",
+      "HUE-021",
+      "HUE-024",
+      "HUE-036"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-042",
+    "title": "Implement backup, restore, export/import and retention controls",
+    "milestone": "M8",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:operations",
+      "area:security",
+      "type:feature"
+    ],
+    "goal": "Protect user ownership and recoverability of HUE data.",
+    "scope": [
+      "Transactional backup and artifact options",
+      "Restore to fresh data directory",
+      "Portable project/memory export",
+      "Retention/deletion controls"
+    ],
+    "acceptance": [
+      "Integrity-checked round trip passes",
+      "Indexes rebuild from canonical data",
+      "Secret values excluded",
+      "Interrupted handles restore as interrupted/unknown"
+    ],
+    "dependencies": [
+      "HUE-008",
+      "HUE-014",
+      "HUE-021",
+      "HUE-036"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-043",
+    "title": "Package signed alpha with safe updates, accessibility and responsive attention surface",
+    "milestone": "M8",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "area:operations",
+      "area:frontend",
+      "area:security",
+      "type:feature"
+    ],
+    "goal": "Deliver an installable, accessible local alpha with safe migration/update behavior.",
+    "scope": [
+      "Reference-platform packaging and signing",
+      "Backup/drain/migrate/rollback update path",
+      "WCAG checks and mobile attention/approval layouts"
+    ],
+    "acceptance": [
+      "Clean install/uninstall documented",
+      "Update with paused run preserves recovery",
+      "Critical flows keyboard/screen-reader usable",
+      "Mobile can monitor/steer/approve safely"
+    ],
+    "dependencies": [
+      "HUE-007",
+      "HUE-033",
+      "HUE-041",
+      "HUE-042"
+    ],
+    "non_goals": [],
+    "docs": []
+  },
+  {
+    "id": "HUE-044",
+    "title": "Run alpha threat, golden-task, performance and dogfood release gates",
+    "milestone": "M8",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "type:quality",
+      "area:quality",
+      "area:security",
+      "area:operations"
+    ],
+    "goal": "Prove the release meets outcome, trust, comprehension and recovery contracts.",
+    "scope": [
+      "Execute security/adversarial suite",
+      "Run golden project/research/coding/computer-use tasks",
+      "Measure SLOs and comprehension",
+      "Dogfood HUE building a bounded HUE issue"
+    ],
+    "acceptance": [
+      "All alpha release blockers have evidence",
+      "Known risks are documented and accepted",
+      "No false implemented/verified labels remain",
+      "Release notes and outcome bundles published"
+    ],
+    "dependencies": [
+      "HUE-016",
+      "HUE-026",
+      "HUE-030",
+      "HUE-036",
+      "HUE-040",
+      "HUE-043"
+    ],
+    "non_goals": [],
+    "docs": [
+      "docs/10-security-privacy-trust.md",
+      "docs/11-quality-evaluation-observability.md"
+    ]
+  },
+  {
+    "id": "HUE-045",
+    "title": "Implement Resource library and explicit Space relationships",
+    "milestone": "M1",
+    "status": "TBI",
+    "readiness": "agent:ready",
+    "labels": [
+      "status:TBI",
+      "agent:ready",
+      "priority:P1",
+      "type:feature",
+      "area:projects",
+      "area:memory"
+    ],
+    "goal": "Represent reusable people, reading, templates and archives without granting global implicit access.",
+    "scope": [
+      "Create Resource schema and CRUD",
+      "Implement explicit typed Space-to-Resource links",
+      "Add Resources navigation/search and access preview",
+      "Support unlink/archive/export"
+    ],
+    "acceptance": [
+      "Resource can relate to multiple Spaces",
+      "Retrieval requires an allowed relationship/policy",
+      "Unlink does not delete underlying user file",
+      "Export preserves stable locators/provenance"
+    ],
+    "dependencies": [
+      "HUE-009"
+    ],
+    "non_goals": [
+      "Build a generic graph database UI"
+    ],
+    "docs": [
+      "docs/03-spaces-sessions-knowledge.md",
+      "docs/09-data-model-and-apis.md"
+    ]
+  },
+  {
+    "id": "HUE-046",
+    "title": "Implement portable second-brain relationships, backlinks and epistemic provenance",
+    "milestone": "M2",
+    "status": "TBI",
+    "readiness": "agent:ready",
+    "labels": [
+      "status:TBI",
+      "agent:ready",
+      "priority:P0",
+      "type:feature",
+      "area:memory"
+    ],
+    "goal": "Make HUE knowledge human-readable, linked, versioned and useful without any model or runtime.",
+    "scope": [
+      "Index approved context-pack/knowledge files",
+      "Implement backlinks, tags and explicit Space/Resource relationships",
+      "Track author/source/version/supersession",
+      "Implement epistemic types and proposed revision flow"
+    ],
+    "acceptance": [
+      "Files remain readable outside HUE",
+      "Backlinks/tags rebuild from canonical files/metadata",
+      "Observation, inference, evidence, advice, decision and uncertainty remain distinct",
+      "Worker output cannot silently become durable knowledge",
+      "History/export tests pass"
+    ],
+    "dependencies": [
+      "HUE-013",
+      "HUE-045"
+    ],
+    "non_goals": [
+      "Ship a general-purpose Obsidian clone"
+    ],
+    "docs": [
+      "docs/03-spaces-sessions-knowledge.md",
+      "docs/06-projects-context-memory.md",
+      "docs/10-security-privacy-trust.md"
+    ]
+  },
+  {
+    "id": "HUE-047",
+    "title": "Implement authoritative-source bindings and staleness-aware projections",
+    "milestone": "M2",
+    "status": "TBI",
+    "readiness": "agent:ready",
+    "labels": [
+      "status:TBI",
+      "agent:ready",
+      "priority:P0",
+      "type:feature",
+      "area:control-plane",
+      "area:operations"
+    ],
+    "goal": "Keep GitHub, Calendar, email and user files authoritative while giving HUE normalized, freshness-aware control surfaces.",
+    "scope": [
+      "Implement generic SourceBinding/SourceRecord contract",
+      "Build read-only GitHub issue/PR projection first",
+      "Store native IDs, locator, version/etag and freshness",
+      "Define conflict and explicit writeback path",
+      "Add source health UI/events"
+    ],
+    "acceptance": [
+      "GitHub remains source of truth for issue/PR",
+      "Stale projection is never presented as current",
+      "Readback precedes consequential mutation",
+      "Conflict becomes explicit state",
+      "Connector can be replaced without rewriting Space/Session records"
+    ],
+    "dependencies": [
+      "HUE-003",
+      "HUE-009"
+    ],
+    "non_goals": [
+      "Mirror complete external datasets",
+      "Implement Calendar/email writeback in first slice"
+    ],
+    "docs": [
+      "docs/03-spaces-sessions-knowledge.md",
+      "docs/09-data-model-and-apis.md",
+      "docs/10-security-privacy-trust.md"
+    ]
+  },
+  {
+    "id": "HUE-048",
+    "title": "Build universal inbox routing proposals and correction workflow",
+    "milestone": "M2",
+    "status": "TBI",
+    "readiness": "agent:ready",
+    "labels": [
+      "status:TBI",
+      "agent:ready",
+      "priority:P1",
+      "type:feature",
+      "area:frontend",
+      "area:orchestration"
+    ],
+    "goal": "Let users capture unfiled work while HUE proposes a correctable destination Space, Session type, topic and expected output.",
+    "scope": [
+      "Create Inbox capture and routing-proposal records",
+      "Implement initial rule/LLM-assisted proposal service",
+      "Build Accept/Change/Keep UI",
+      "Record transparent user corrections without hidden permanent learning",
+      "Dispatch accepted item into a Session/task"
+    ],
+    "acceptance": [
+      "Proposal shows original text and rationale",
+      "User can change each field before dispatch",
+      "Keep in inbox performs no hidden work",
+      "Correction provenance is inspectable/deletable",
+      "Dispatch creates exactly one idempotent destination object"
+    ],
+    "dependencies": [
+      "HUE-009",
+      "HUE-012",
+      "HUE-013"
+    ],
+    "non_goals": [
+      "Build advanced learned routing optimization"
+    ],
+    "docs": [
+      "docs/02-product-experience.md",
+      "docs/03-information-architecture.md",
+      "docs/04-ui-specification.md"
+    ]
+  },
+  {
+    "id": "HUE-049",
+    "title": "Implement Session summaries and structured Space-state update proposals",
+    "milestone": "M2",
+    "status": "TBI",
+    "readiness": "agent:ready",
+    "labels": [
+      "status:TBI",
+      "agent:ready",
+      "priority:P1",
+      "type:feature",
+      "area:memory",
+      "area:orchestration"
+    ],
+    "goal": "Turn completed work into concise resumable Session summaries and reviewable updates to current state/decisions/active work.",
+    "scope": [
+      "Generate structured Session close summary",
+      "Propose context-pack/knowledge changes as diffs",
+      "Link evidence, source records and superseded state",
+      "Accept/reject/edit proposal with provenance"
+    ],
+    "acceptance": [
+      "Summary captures goal/outcome/blockers/evidence/open threads",
+      "No durable Space update occurs without policy/user acceptance",
+      "Accepted change updates canonical file/record and indexes",
+      "Rejected proposal remains audit-visible but unretrieved",
+      "Old current state is superseded rather than silently overwritten"
+    ],
+    "dependencies": [
+      "HUE-012",
+      "HUE-013",
+      "HUE-014",
+      "HUE-046"
+    ],
+    "non_goals": [
+      "Copy full transcript into context pack"
+    ],
+    "docs": [
+      "docs/03-spaces-sessions-knowledge.md",
+      "docs/06-projects-context-memory.md"
+    ]
+  },
+  {
+    "id": "HUE-050",
+    "title": "ADR: choose portable context-pack and authoritative-source synchronization contracts",
+    "milestone": "M0",
+    "status": "TBD",
+    "readiness": "agent:ready",
+    "labels": [
+      "decision:TBD",
+      "agent:ready",
+      "priority:P0",
+      "type:decision",
+      "area:memory",
+      "area:control-plane"
+    ],
+    "goal": "Decide exact portable file roles/metadata and source ownership/synchronization semantics before implementing the second-brain and connectors.",
+    "scope": [
+      "Spike Markdown/frontmatter/sidecar context-pack variants",
+      "Define canonical file versus database projection rules",
+      "Define GitHub/Calendar/email ownership, freshness, polling/webhook and writeback conflict rules",
+      "Specify import/export/migration"
+    ],
+    "acceptance": [
+      "ADR resolves TBD-022 and TBD-023",
+      "Representative Project and Area packs are human-readable without HUE",
+      "Canonical/derived ownership table is complete",
+      "Conflict and offline behavior are specified",
+      "Migration/revisit triggers are explicit"
+    ],
+    "dependencies": [
+      "HUE-003"
+    ],
+    "non_goals": [
+      "Implement full connectors"
+    ],
+    "docs": [
+      "docs/03-spaces-sessions-knowledge.md",
+      "docs/14-decision-register.md"
+    ]
+  }
+]
