@@ -57,7 +57,7 @@ flowchart LR
     HUE_051["HUE-051 ADR: choose notification gateways, phone attention surface and delivery privacy"]
     HUE_052["HUE-052 Implement durable notification center, attention policy and local sound/desktop delivery"]
     HUE_053["HUE-053 Implement secure phone notifications, redacted deep links and delivery diagnostics"]
-    HUE_054["HUE-054 Implement the HUE component foundation with shadcn-compatible primitives"]
+    HUE_054["HUE-054 Implement the HUE Svelte component foundation with shadcn-svelte"]
     HUE_001 --> HUE_002
     HUE_002 --> HUE_003
     HUE_003 --> HUE_004
@@ -181,5 +181,5 @@ flowchart LR
     HUE_041 --> HUE_053
     HUE_051 --> HUE_053
     HUE_052 --> HUE_053
-    HUE_002 --> HUE_054
+    HUE_001 --> HUE_054
 ```

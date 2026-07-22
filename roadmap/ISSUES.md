@@ -100,9 +100,9 @@ Expose coherent Space navigation while preserving meaningful Project versus Area
 
 Represent reusable people, reading, templates and archives without granting global implicit access.
 
-### HUE-054 — Implement the HUE component foundation with shadcn-compatible primitives
+### HUE-054 — Implement the HUE Svelte component foundation with shadcn-svelte
 
-`TBI` · `agent:blocked` · dependencies: HUE-002
+`TBI` · `agent:ready` · dependencies: HUE-001
 
 Establish an accessible, source-owned component and token foundation that feels native across HUE desktop and responsive surfaces without making the library the product identity.
 
