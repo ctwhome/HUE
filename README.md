@@ -17,7 +17,7 @@ HUE lets a user open a **Project** or ongoing **Area** with its own goals, conte
 ## Review the vision
 
 1. Start with **[VISION.md](VISION.md)**.
-2. Open the **[interactive documentation prototype](prototype/index.html)** in a browser.
+2. Open the **[live interactive specification](https://ctwhome.github.io/HUE/)**, or run [`prototype/index.html`](prototype/index.html) locally.
 3. Review the specification in order:
    - [Status, labels and review protocol](docs/00-status-and-review.md)
    - [Problem, frustrations and product principles](docs/01-problem-and-principles.md)
@@ -60,7 +60,8 @@ HUE/
 ├── decisions/                # architecture decision records (ADRs)
 ├── roadmap/                  # machine-readable milestones and issues
 ├── scripts/                  # validation, roadmap rendering, GitHub sync
-└── .github/                  # contribution and issue conventions
+├── index.html                # GitHub Pages entry point for the prototype
+└── .nojekyll                 # serve the static prototype without Jekyll transforms
 ```
 
 ## Non-negotiable product contract
