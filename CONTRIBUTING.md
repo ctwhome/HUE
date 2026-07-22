@@ -33,7 +33,11 @@ A PR should include:
 ```bash
 python3 scripts/render_roadmap.py
 python3 scripts/validate_docs.py
+bun install
+bun run verify
 ```
+
+`bun run verify` regenerates the Starlight content projection, checks Astro and the canonical product contract, builds the production site, then crawls built routes, internal links, Mermaid containers, Pagefind search, roadmap data and the interactive prototype.
 
 ## License
 
