@@ -24,14 +24,14 @@
 
 | ID | Decision | Options/criteria | Status |
 |---|---|---|---|
-| TBD-013 | Notification gateways | local OS, Telegram, email, push; privacy and deep links | TBD |
-| TBD-014 | Mobile surface | responsive web/PWA; native shell; companion app; notification-only first | TBD |
+| TBD-013 | Notification gateways and delivery architecture | local OS/sound, native or PWA push, self-hosted/E2E relay, Telegram, email, webhooks; delivery receipts, offline queue, privacy, deep links, operating cost | TBD |
+| TBD-014 | Mobile attention surface | responsive web/PWA; native shell; companion app; notification-only first; secure monitor/approval depth | TBD |
 | TBD-015 | Plugin/tool protocol | MCP-first; native SDK; both through capability adapter | TBD |
 | TBD-016 | Cross-Space retrieval | deny by default; explicitly linked Resources; shared collections; policy-mediated query | TBD |
 | TBD-017 | Sync and remote access | no sync initially; direct tailnet; E2E relay; hosted account optional | TBD |
 | TBD-018 | Credential vault | OS keychain abstraction; external secret manager integrations | TBD |
 | TBD-019 | Open-source license/governance | Apache-2.0; AGPL-3.0; MPL-2.0; dual/community license | TBD |
-| TBD-020 | Visual identity/design system | original HUE system; relationship to Hermes branding; theming contract | TBD |
+| TBD-020 | Visual identity and component system | original HUE tokens over shadcn/ui + Radix for React; original HUE tokens over shadcn-svelte; custom primitive layer; relationship to Hermes branding | accessibility/focus behavior, native-feeling interaction, shell fit, theming, source ownership, update burden, visual distinctiveness | TBD |
 | TBD-021 | Telemetry/evaluation sharing | local only; opt-in anonymous aggregates; opt-in trace upload | TBD |
 | TBD-022 | Portable context-pack format and location | Markdown role files; frontmatter; sidecar manifest; database projection and checkout rules | TBD |
 | TBD-023 | Authoritative-source synchronization | GitHub/Calendar/email connector ownership, polling/webhooks, writeback and conflict semantics | TBD |
