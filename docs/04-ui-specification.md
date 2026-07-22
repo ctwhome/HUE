@@ -1,8 +1,9 @@
 # UI specification and screen wireframes
 
 > **Product status:** `TBI`
-> **Prototype:** [`../prototype/index.html`](../prototype/index.html) is a non-production interactive wireframe.
-> **Open choices:** `TBD-001` app shell, `TBD-013` notification gateways, `TBD-014` mobile attention surface, `TBD-020` visual identity.
+> **Prototype:** [`../prototype/index.html`](../prototype/index.html) is a non-production functional wireframe with a shadcn-compatible HUE visual layer.
+> **Accepted frontend:** [ADR-0001](../decisions/0001-sveltekit-shadcn-svelte.md) selects SvelteKit + Svelte 5 + shadcn-svelte and resolves `TBD-020`.
+> **Open choices:** `TBD-001` application packaging/shell, `TBD-013` notification gateways, `TBD-014` mobile attention surface.
 
 ## UI posture
 
@@ -19,17 +20,16 @@ HUE is primarily an **Operate** surface with secondary **Command/Inspect** behav
 - Keyboard-first desktop operation with complete pointer and touch support.
 - Minimum 44px mobile targets, visible focus, semantic landmarks and reduced-motion support.
 
-### Component foundation — recommended default
+### Component foundation — accepted
 
-Use **shadcn-compatible, source-owned primitives** as the implementation baseline:
+[ADR-0001](../decisions/0001-sveltekit-shadcn-svelte.md) selects **SvelteKit + Svelte 5 + shadcn-svelte** for the product frontend.
 
-- `shadcn/ui` with Radix primitives when the accepted shell uses React;
-- `shadcn-svelte` when it uses Svelte;
-- HUE-owned wrappers and CSS-variable tokens so screens do not couple directly to third-party primitive APIs;
-- Lucide-style line icons where an icon is useful, always with a text or accessible-name contract;
-- platform-appropriate dialogs, sheets, menus, keyboard behavior and focus return rather than fake OS chrome.
+- HUE-owned wrappers and CSS-variable tokens keep screens independent of low-level primitive APIs.
+- Lucide-style line icons are used where useful, always with a text or accessible-name contract.
+- Dialogs, sheets, menus, keyboard behavior and focus return follow platform conventions rather than fake OS chrome.
+- The dependency-free HTML prototype mirrors the accepted token, variant and component-anatomy contract; framework conversion waits until functional flows stabilize.
 
-Shadcn is the accessibility and interaction foundation, **not HUE's visual identity**. HUE supplies its own typography, semantic state colors, spacing, density, motion and composition. Stock shadcn theming, card-heavy dashboard composition and copy-pasted component variants are not acceptable defaults. The exact library binding remains coupled to `TBD-001` and is finalized under `TBD-020`.
+Shadcn-svelte is the accessibility and interaction foundation, **not HUE's visual identity**. HUE supplies its own typography, semantic state colors, spacing, density, motion and composition. Stock shadcn theming, card-heavy dashboard composition and copy-pasted variants are not acceptable defaults. Application packaging under `TBD-001` remains separate from the accepted frontend framework.
 
 ## Global shell — `TBI`
 

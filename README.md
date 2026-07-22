@@ -35,6 +35,7 @@ HUE lets a user open a **Project** or ongoing **Area** with its own goals, conte
    - [Deployment and operations](docs/12-deployment-operations.md)
    - [Milestones and implementation sequence](docs/13-roadmap.md)
    - [Decision register](docs/14-decision-register.md)
+   - [Accepted frontend ADR: SvelteKit + shadcn-svelte](decisions/0001-sveltekit-shadcn-svelte.md)
    - [Glossary](docs/15-glossary.md)
    - [Notifications, attention and delivery](docs/16-notifications-attention-delivery.md)
 

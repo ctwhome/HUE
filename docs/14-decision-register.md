@@ -3,6 +3,12 @@
 > **Register status:** `SPEC`
 > Every unresolved item below is explicitly `TBD`. Implementations must reference an accepted ADR rather than choose by accident.
 
+## Accepted decisions
+
+| ID | Decision | Accepted direction | ADR | Status |
+|---|---|---|---|---|
+| TBD-020 | Frontend and component system | SvelteKit + Svelte 5 + shadcn-svelte beneath HUE-owned tokens and wrapper components; static HTML prototype retained until functional flows stabilize | [ADR-0001](../decisions/0001-sveltekit-shadcn-svelte.md) | Accepted |
+
 ## Alpha-blocking decisions
 
 | ID | Decision | Options to evaluate | Decision criteria | Status |
@@ -31,7 +37,6 @@
 | TBD-017 | Sync and remote access | no sync initially; direct tailnet; E2E relay; hosted account optional | TBD |
 | TBD-018 | Credential vault | OS keychain abstraction; external secret manager integrations | TBD |
 | TBD-019 | Open-source license/governance | Apache-2.0; AGPL-3.0; MPL-2.0; dual/community license | TBD |
-| TBD-020 | Visual identity and component system | original HUE tokens over shadcn/ui + Radix for React; original HUE tokens over shadcn-svelte; custom primitive layer; relationship to Hermes branding | accessibility/focus behavior, native-feeling interaction, shell fit, theming, source ownership, update burden, visual distinctiveness | TBD |
 | TBD-021 | Telemetry/evaluation sharing | local only; opt-in anonymous aggregates; opt-in trace upload | TBD |
 | TBD-022 | Portable context-pack format and location | Markdown role files; frontmatter; sidecar manifest; database projection and checkout rules | TBD |
 | TBD-023 | Authoritative-source synchronization | GitHub/Calendar/email connector ownership, polling/webhooks, writeback and conflict semantics | TBD |
@@ -67,7 +72,8 @@ Each decision gets `decisions/NNNN-title.md` using the template. An accepted ADR
 These are recommendations to test, still `TBD`:
 
 - Build HUE’s Space/Session/knowledge/task model as its own control plane and treat Hermes as a valuable runtime/feature source, avoiding permanent coupling to one session loop.
-- Reuse/extend the existing Hermes WebUI project and session substrate for the first spike rather than beginning with a blank UI.
+- Use the accepted SvelteKit + Svelte 5 frontend and shadcn-svelte component foundation regardless of which packaging option wins `TBD-001`.
+- Reuse/extend the existing Hermes WebUI project and session substrate only where it does not reopen the accepted frontend stack or make backend-native sessions canonical.
 - Use SQLite as canonical local transactional storage with an append-only event journal and rebuildable indexes.
 - Build a small custom durable orchestration state machine while borrowing proven supervisor patterns; avoid importing a large framework before requirements are proven.
 - Use capability manifests and runtime adapters; do not encode providers directly in product features.

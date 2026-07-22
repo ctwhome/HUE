@@ -54,19 +54,19 @@
     ],
     "goal": "Decide HUE’s owned personal-workspace boundary and the replaceable relationship to Hermes/OpenCode plus the application shell and control plane.",
     "scope": [
-      "Spike Tauri, browser+daemon and existing Hermes WebUI extension paths",
-      "Compare TypeScript, Rust, Python/Hermes-derived and split daemon options",
+      "Spike Tauri, browser+daemon and existing Hermes WebUI extension packaging paths around the accepted SvelteKit frontend",
+      "Compare TypeScript, Rust, Python/Hermes-derived and split daemon control-plane options",
       "Document HUE ownership of Spaces, Sessions, context packs and task state",
       "Document reuse/adapter boundaries for Hermes and OpenCode",
-      "Compare shadcn/ui for React shells and shadcn-svelte for Svelte shells against a custom primitive layer"
+      "Honor ADR-0001: SvelteKit + Svelte 5 + shadcn-svelte is fixed; do not reopen React versus Svelte inside the shell decision"
     ],
     "acceptance": [
-      "ADR covers TBD-001, TBD-002 and TBD-004",
-      "At least one runnable thin spike per finalist",
-      "No backend-native session/memory is made canonical accidentally",
-      "Decision scores recovery, packaging, reuse, accessibility and contributor ergonomics",
+      "ADR covers the unresolved packaging portion of TBD-001 plus TBD-002 and TBD-004",
+      "At least one runnable thin spike per packaging/control-plane finalist",
+      "Every finalist hosts or serves the accepted SvelteKit frontend without making backend-native session/memory canonical",
+      "Decision scores recovery, packaging, native integration, reuse, accessibility and contributor ergonomics",
       "Consequences and migration path are explicit",
-      "ADR resolves how TBD-020 binds HUE tokens to accessible component primitives for each shell finalist"
+      "ADR-0001 and resolved TBD-020 remain authoritative unless a documented revisit trigger fires"
     ],
     "dependencies": [
       "HUE-001"
@@ -77,7 +77,8 @@
     "docs": [
       "docs/05-system-architecture.md",
       "docs/14-decision-register.md",
-      "docs/04-ui-specification.md"
+      "docs/04-ui-specification.md",
+      "decisions/0001-sveltekit-shadcn-svelte.md"
     ]
   },
   {
@@ -1956,44 +1957,51 @@
   },
   {
     "id": "HUE-054",
-    "title": "Implement the HUE component foundation with shadcn-compatible primitives",
+    "title": "Implement the HUE Svelte component foundation with shadcn-svelte",
     "milestone": "M1",
     "status": "TBI",
-    "readiness": "agent:blocked",
+    "readiness": "agent:ready",
     "labels": [
       "status:TBI",
-      "agent:blocked",
+      "agent:ready",
       "priority:P1",
       "type:feature",
       "area:frontend"
     ],
     "goal": "Establish an accessible, source-owned component and token foundation that feels native across HUE desktop and responsive surfaces without making the library the product identity.",
     "scope": [
-      "Use shadcn/ui plus Radix for a React shell, or shadcn-svelte for a Svelte shell, according to the accepted shell ADR",
+      "Implement the accepted SvelteKit + Svelte 5 + shadcn-svelte direction from ADR-0001",
       "Define HUE semantic color, typography, spacing, radius, elevation, density, motion and state tokens as CSS variables",
       "Implement buttons, inputs, tabs, menus, tooltips, dialogs, sheets, popovers, command palette, badges, tables and toast primitives",
-      "Wrap source-owned primitives behind HUE component APIs so upstream library changes do not leak through product screens",
-      "Create dark, light, high-contrast and reduced-motion examples plus desktop and mobile visual-regression fixtures"
+      "Wrap source-owned shadcn-svelte primitives behind HUE component APIs so upstream library changes do not leak through product screens",
+      "Create dark, light, high-contrast and reduced-motion examples plus desktop and mobile visual-regression fixtures",
+      "Use the static prototype token and component mapping as the migration fixture",
+      "Proceed independently of TBD-001 packaging: every shell finalist must host or serve this accepted frontend foundation"
     ],
     "acceptance": [
-      "Implementation matches the component path selected by HUE-002 and documents update ownership",
+      "Implementation follows ADR-0001 and documents source/update ownership",
       "HUE tokens—not shadcn defaults—control product identity and semantic task/approval/notification states",
       "Keyboard, focus return, screen-reader labels and 44px touch targets pass automated and manual checks",
       "Dialogs, menus, sheets and command palette follow platform-appropriate interaction conventions",
       "Representative shell, approval and notification fixtures pass dark/light desktop and 390px mobile visual regression",
-      "No screen imports low-level third-party primitives directly outside the HUE component boundary"
+      "No screen imports low-level shadcn-svelte primitives directly outside the HUE component boundary",
+      "Static-to-Svelte fixture parity is documented before any static screen is retired"
     ],
     "dependencies": [
-      "HUE-002"
+      "HUE-001"
     ],
     "non_goals": [
       "Finalize all screen layouts",
       "Copy the stock shadcn theme unchanged",
-      "Claim OS-native controls where HUE renders web components"
+      "Claim OS-native controls where HUE renders web components",
+      "Select or reopen the TBD-001 application packaging and control-plane decision",
+      "Migrate all functional prototype screens before their flows stabilize"
     ],
     "docs": [
       "docs/04-ui-specification.md",
-      "docs/14-decision-register.md"
+      "docs/14-decision-register.md",
+      "decisions/0001-sveltekit-shadcn-svelte.md",
+      "prototype/README.md"
     ]
   }
 ]

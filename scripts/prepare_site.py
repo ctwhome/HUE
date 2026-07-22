@@ -24,6 +24,8 @@ PAGES: list[tuple[Path, Path, str | None, str | None]] = [
     (ROOT / "roadmap/ISSUES.md", Path("roadmap/issues.md"), None, "The canonical milestone and implementation issue plan."),
     (ROOT / "roadmap/dependency-graph.md", Path("roadmap/dependencies.md"), None, "The generated dependency graph across all canonical HUE issues."),
     (ROOT / "decisions/0000-template.md", Path("decisions/adr-template.md"), "Architecture decision record template", "The evidence-first template for HUE architecture decisions."),
+    (ROOT / "decisions/0001-sveltekit-shadcn-svelte.md", Path("decisions/sveltekit-shadcn-svelte.md"), "ADR-0001 — SvelteKit + shadcn-svelte", "The accepted HUE frontend framework and component-foundation decision."),
+    (ROOT / "prototype/README.md", Path("prototype/component-map.md"), "Static prototype → Svelte component map", "The shared token, component and migration contract between the functional prototype and future Svelte implementation."),
     (ROOT / "CONTRIBUTING.md", Path("contributing.md"), None, "How to contribute to HUE without silently changing its product contract."),
 ]
 
@@ -39,6 +41,8 @@ ROUTES: dict[str, str] = {
     "roadmap/ISSUES.md": "/roadmap/issues/",
     "roadmap/dependency-graph.md": "/roadmap/dependencies/",
     "decisions/0000-template.md": "/decisions/adr-template/",
+    "decisions/0001-sveltekit-shadcn-svelte.md": "/decisions/sveltekit-shadcn-svelte/",
+    "prototype/README.md": "/prototype/component-map/",
     "CONTRIBUTING.md": "/contributing/",
     "roadmap/issues.json": "/data/issues.json",
     "roadmap/milestones.json": "/data/milestones.json",
@@ -166,7 +170,10 @@ def prepare_public() -> None:
 
     shutil.copytree(ROOT / "prototype", PUBLIC / "prototype", ignore=shutil.ignore_patterns("screenshots"))
     prototype_index = PUBLIC / "prototype/index.html"
-    prototype_index.write_text(prototype_index.read_text().replace("../VISION.md", "../vision/"))
+    prototype_text = prototype_index.read_text()
+    prototype_text = prototype_text.replace("../VISION.md", "../vision/")
+    prototype_text = prototype_text.replace("../docs/04-ui-specification.md", "../spec/04-ui-specification/")
+    prototype_index.write_text(prototype_text)
 
     data_dir = PUBLIC / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
