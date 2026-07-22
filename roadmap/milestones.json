@@ -1,0 +1,65 @@
+[
+  {
+    "id": "M0",
+    "title": "Product contract & architecture decisions",
+    "description": "Freeze the reviewable personal-workspace contract and resolve alpha-blocking architecture choices.",
+    "exit_criteria": "All alpha-blocking ADRs are accepted; v0 Space, Session, context-pack, event and runtime contracts are frozen.",
+    "state": "open"
+  },
+  {
+    "id": "M1",
+    "title": "Local shell & Space foundations",
+    "description": "Ship the local application skeleton with Projects and Areas as real context/resource boundaries plus explicit Resource relationships.",
+    "exit_criteria": "One Project and one Area persist across restart, remain distinct in navigation, and resolve only their trusted context/resources.",
+    "state": "open"
+  },
+  {
+    "id": "M2",
+    "title": "Sessions, context packs & portable knowledge",
+    "description": "Provide isolated typed Sessions, human-readable context packs, layered memory, source ownership and a useful second-brain substrate.",
+    "exit_criteria": "Two fixture Spaces cannot leak context; context packs remain useful as files; Session summaries and source projections preserve provenance.",
+    "state": "open"
+  },
+  {
+    "id": "M3",
+    "title": "Durable tasks, runs & visible execution",
+    "description": "Turn outcomes into resumable tasks with semantic events and one trustworthy worker path.",
+    "exit_criteria": "A real Space-bound task survives restart and returns an evidence-backed artifact without corrupting its Session state.",
+    "state": "open"
+  },
+  {
+    "id": "M4",
+    "title": "Worker catalog & capability routing",
+    "description": "Choose temporary specialists, models, providers, tools and runtimes by transparent policy.",
+    "exit_criteria": "Fixture tasks route correctly under privacy, budget, health and user-override constraints.",
+    "state": "open"
+  },
+  {
+    "id": "M5",
+    "title": "OpenCode-first coding workspace & artifact review",
+    "description": "Deliver the first primary software execution path through OpenCode with worktrees, tests, diffs, review and handoff.",
+    "exit_criteria": "A multi-file issue is completed through the OpenCode adapter, verified and presented for user-approved merge/PR handoff.",
+    "state": "open"
+  },
+  {
+    "id": "M6",
+    "title": "Permissions, browser & computer use",
+    "description": "Operate web/native applications through scoped grants, approvals and verified side effects.",
+    "exit_criteria": "A native-app workflow completes visibly and stops at every consequential boundary.",
+    "state": "open"
+  },
+  {
+    "id": "M7",
+    "title": "Replaceable runtime adapters & open ecosystem",
+    "description": "Prove HUE can normalize heterogeneous agents, source systems and tools behind stable contracts.",
+    "exit_criteria": "Two heterogeneous runtimes pass conformance with normalized events, scoped context and truthful recovery.",
+    "state": "open"
+  },
+  {
+    "id": "M8",
+    "title": "Alpha hardening & portable release",
+    "description": "Package a secure, accessible, recoverable local alpha.",
+    "exit_criteria": "Security, quality, backup, operations and reference-platform release gates pass.",
+    "state": "open"
+  }
+]
