@@ -1,0 +1,74 @@
+---
+title: HUE
+description: The reviewable product contract for an open-source, local-first personal agent workspace.
+template: splash
+editUrl: false
+pagefind: false
+hero:
+  title: HUE
+  tagline: A calm, local-first workspace for human-directed AI work—not one all-knowing agent.
+  actions:
+    - text: Read the vision
+      link: /HUE/vision/
+      icon: right-arrow
+      variant: primary
+    - text: Open the prototype
+      link: /HUE/prototype/
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<div class="hue-status-strip" aria-label="Specification status">
+  <span class="hue-status hue-status--spec">SPEC · reviewable</span>
+  <span class="hue-status hue-status--tbi">TBI · not implemented</span>
+  <span class="hue-status hue-status--tbd">24 TBD decisions</span>
+</div>
+
+## One workspace. Clear boundaries. Replaceable intelligence.
+
+HUE brings finishable **Projects**, ongoing **Areas**, reusable **Resources**, independent **Sessions**, durable Tasks, user-owned knowledge and temporary specialist workers into one coherent interface. The workspace owns the context and state; Hermes, OpenCode, model providers and agent runtimes remain replaceable infrastructure.
+
+<div class="hue-principles">
+  <div><strong>9</strong><span>milestones</span></div>
+  <div><strong>50</strong><span>canonical issues</span></div>
+  <div><strong>17</strong><span>specification chapters</span></div>
+  <div><strong>14</strong><span>system diagrams</span></div>
+</div>
+
+<CardGrid>
+  <Card title="Product experience">
+    Understand the frustrations HUE removes, the Project/Area/Session mental model, core journeys and every major interface state.
+
+    **[Explore the experience →](./spec/02-product-experience/)**
+  </Card>
+  <Card title="System design">
+    Review the local-first control plane, layered context, bounded orchestration, worker adapters, permissions and recovery model.
+
+    **[Inspect the architecture →](./spec/05-system-architecture/)**
+  </Card>
+  <Card title="Interactive specification">
+    Walk through Home, Inbox, Projects, Areas, Sessions, execution, approvals, knowledge and roadmap screens.
+
+    **[Open the prototype →](./prototype/)**
+  </Card>
+  <Card title="Implementation plan">
+    Follow the canonical milestone sequence, dependency graph and 50 autonomous-agent-ready implementation briefs.
+
+    **[Review the roadmap →](./roadmap/issues/)**
+  </Card>
+</CardGrid>
+
+## Review without guessing
+
+Every capability is marked **TBI** until working code and evidence exist. Every unresolved material choice is marked **TBD**. The documentation is the product contract: implementation should realize it, and any intentional product change must update it visibly.
+
+<div class="hue-review-path">
+  <a href="./vision/"><span>01</span>Vision</a>
+  <a href="./spec/01-problem-and-principles/"><span>02</span>Product principles</a>
+  <a href="./spec/03-spaces-sessions-knowledge/"><span>03</span>Spaces, Sessions and knowledge</a>
+  <a href="./spec/04-ui-specification/"><span>04</span>UI specification</a>
+  <a href="./spec/05-system-architecture/"><span>05</span>Architecture</a>
+  <a href="./spec/14-decision-register/"><span>06</span>Decisions and delivery</a>
+</div>

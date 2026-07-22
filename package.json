@@ -1,0 +1,24 @@
+{
+  "name": "hue-docs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "site:prepare": "python3 scripts/prepare_site.py",
+    "dev": "bun run site:prepare && astro dev",
+    "build": "bun run site:prepare && astro build",
+    "preview": "astro preview",
+    "check": "python3 scripts/validate_docs.py && bun run site:prepare && astro check",
+    "verify": "bun run check && bun run build && python3 scripts/validate_site.py"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.41.3",
+    "astro": "7.1.3",
+    "astro-mermaid": "2.1.0",
+    "mermaid": "11.16.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.9",
+    "typescript": "5.9.3"
+  }
+}
