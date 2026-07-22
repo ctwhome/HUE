@@ -148,6 +148,18 @@ The resulting run policy displays those overrides, and lower-precedence Space/gl
 3. HUE writes the accepted revision and updates indexes/backlinks.
 4. The same knowledge remains readable and navigable from ordinary files if HUE and all models are offline.
 
+## Core journey J — receive a verified outcome away from the app
+
+1. User starts a long compute and asks HUE to notify them when it is finished.
+2. HUE records the subscription on the durable task; the worker cannot decide its own alert severity or destination.
+3. The run finishes, verification completes and semantic outcome events create one grouped notification.
+4. The in-app notification center records the outcome and delivery history.
+5. The current device may play the configured sound and display an OS notification; an opt-in phone gateway receives only the permitted redacted summary.
+6. Opening the alert deep-links to the current completion card, evidence and next actions.
+7. If delivery fails, the task remains truthfully complete while channel health and retry/expiry state remain inspectable.
+
+Completion, verification, notification, delivery and read state are separate facts. See [Notifications, attention and delivery](16-notifications-attention-delivery.md) for the channel, privacy, quiet-hours and logging contract.
+
 ## Feedback contract
 
 HUE responses during long work should answer one of four questions:

@@ -36,6 +36,17 @@ def validate_roadmap() -> None:
         fail("roadmap/issues.json: duplicate issue IDs")
     if len(mids) != len(milestones):
         fail("roadmap/milestones.json: duplicate milestone IDs")
+    milestone_keys = {"id", "title", "description", "exit_criteria", "state"}
+    for milestone in milestones:
+        mid = milestone.get("id", "<missing>")
+        missing = milestone_keys - milestone.keys()
+        unknown = milestone.keys() - milestone_keys
+        if missing:
+            fail(f"{mid}: missing milestone fields {sorted(missing)}")
+        if unknown:
+            fail(f"{mid}: unknown milestone fields {sorted(unknown)}")
+        if milestone.get("state") not in {"open", "closed"}:
+            fail(f"{mid}: invalid milestone state {milestone.get('state')}")
     imap = {x.get("id"): x for x in issues}
     for issue in issues:
         iid = issue.get("id", "<missing>")

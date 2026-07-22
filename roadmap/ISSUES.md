@@ -2,7 +2,7 @@
 
 > Generated from `roadmap/issues.json` by `scripts/render_roadmap.py`. Do not edit by hand.
 
-**9 milestones · 50 issues**
+**9 milestones · 54 issues**
 
 ## M0 — Product contract & architecture decisions
 
@@ -52,11 +52,17 @@ Adopt an explicit license and contributor/governance model suitable for an open 
 
 Decide exact portable file roles/metadata and source ownership/synchronization semantics before implementing the second-brain and connectors.
 
+### HUE-051 — ADR: choose notification gateways, phone attention surface and delivery privacy
+
+`TBD` · `agent:ready` · dependencies: HUE-003, HUE-005
+
+Resolve the local and phone notification architecture without making a HUE cloud account mandatory or leaking sensitive task content.
+
 ## M1 — Local shell & Space foundations
 
 Ship the local application skeleton with Projects and Areas as real context/resource boundaries plus explicit Resource relationships.
 
-**Exit:** One Project and one Area persist across restart, remain distinct in navigation, and resolve only their trusted context/resources.
+**Exit:** First-run shell opens offline with HUE-owned Spaces/Sessions, shadcn-compatible HUE primitives, persistent state and honest empty/error/recovery screens.
 
 ### HUE-007 — Build the local HUE shell and supervised control-plane skeleton
 
@@ -93,6 +99,12 @@ Expose coherent Space navigation while preserving meaningful Project versus Area
 `TBI` · `agent:ready` · dependencies: HUE-009
 
 Represent reusable people, reading, templates and archives without granting global implicit access.
+
+### HUE-054 — Implement the HUE component foundation with shadcn-compatible primitives
+
+`TBI` · `agent:blocked` · dependencies: HUE-002
+
+Establish an accessible, source-owned component and token foundation that feels native across HUE desktop and responsive surfaces without making the library the product identity.
 
 ## M2 — Sessions, context packs & portable knowledge
 
@@ -156,9 +168,9 @@ Turn completed work into concise resumable Session summaries and reviewable upda
 
 ## M3 — Durable tasks, runs & visible execution
 
-Turn outcomes into resumable tasks with semantic events and one trustworthy worker path.
+Turn outcomes into resumable tasks with semantic events, one trustworthy worker path and durable local attention.
 
-**Exit:** A real Space-bound task survives restart and returns an evidence-backed artifact without corrupting its Session state.
+**Exit:** A real Space-bound task survives restart, returns evidence-backed artifacts and creates exactly one policy-correct local completion notification.
 
 ### HUE-017 — Implement durable task, run, plan and step state machines
 
@@ -189,6 +201,12 @@ Show the user what is happening, why and what needs attention.
 `TBI` · `agent:blocked` · dependencies: HUE-019, HUE-020
 
 Recover truthful execution state and produce evidence-backed completion.
+
+### HUE-052 — Implement durable notification center, attention policy and local sound/desktop delivery
+
+`TBI` · `agent:blocked` · dependencies: HUE-018, HUE-020, HUE-051
+
+Make meaningful task outcomes and attention needs durable, calm and locally visible even after HUE restarts.
 
 ## M4 — Worker catalog & capability routing
 
@@ -330,9 +348,9 @@ Extend capabilities without growing an unsafe core or calling LLMs unnecessarily
 
 ## M8 — Alpha hardening & portable release
 
-Package a secure, accessible, recoverable local alpha.
+Package a secure, accessible, recoverable local alpha with optional privacy-preserving phone attention.
 
-**Exit:** Security, quality, backup, operations and reference-platform release gates pass.
+**Exit:** Security, quality, backup and operations gates pass, and one authorized phone channel delivers a redacted task outcome with a secure deep link.
 
 ### HUE-041 — Build onboarding, health diagnostics and recovery center
 
@@ -348,7 +366,7 @@ Protect user ownership and recoverability of HUE data.
 
 ### HUE-043 — Package signed alpha with safe updates, accessibility and responsive attention surface
 
-`TBI` · `agent:blocked` · dependencies: HUE-007, HUE-033, HUE-041, HUE-042
+`TBI` · `agent:blocked` · dependencies: HUE-007, HUE-033, HUE-041, HUE-042, HUE-053
 
 Deliver an installable, accessible local alpha with safe migration/update behavior.
 
@@ -357,3 +375,9 @@ Deliver an installable, accessible local alpha with safe migration/update behavi
 `TBI` · `agent:blocked` · dependencies: HUE-016, HUE-026, HUE-030, HUE-036, HUE-040, HUE-043
 
 Prove the release meets outcome, trust, comprehension and recovery contracts.
+
+### HUE-053 — Implement secure phone notifications, redacted deep links and delivery diagnostics
+
+`TBI` · `agent:blocked` · dependencies: HUE-032, HUE-033, HUE-041, HUE-051, HUE-052
+
+Alert the user on an authorized phone when long work finishes or needs attention without exposing sensitive HUE content or weakening approval policy.

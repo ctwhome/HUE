@@ -54,6 +54,10 @@ flowchart LR
     HUE_048["HUE-048 Build universal inbox routing proposals and correction workflow"]
     HUE_049["HUE-049 Implement Session summaries and structured Space-state update proposals"]
     HUE_050["HUE-050 ADR: choose portable context-pack and authoritative-source synchronization contracts"]
+    HUE_051["HUE-051 ADR: choose notification gateways, phone attention surface and delivery privacy"]
+    HUE_052["HUE-052 Implement durable notification center, attention policy and local sound/desktop delivery"]
+    HUE_053["HUE-053 Implement secure phone notifications, redacted deep links and delivery diagnostics"]
+    HUE_054["HUE-054 Implement the HUE component foundation with shadcn-compatible primitives"]
     HUE_001 --> HUE_002
     HUE_002 --> HUE_003
     HUE_003 --> HUE_004
@@ -147,6 +151,7 @@ flowchart LR
     HUE_033 --> HUE_043
     HUE_041 --> HUE_043
     HUE_042 --> HUE_043
+    HUE_053 --> HUE_043
     HUE_016 --> HUE_044
     HUE_026 --> HUE_044
     HUE_030 --> HUE_044
@@ -166,4 +171,15 @@ flowchart LR
     HUE_014 --> HUE_049
     HUE_046 --> HUE_049
     HUE_003 --> HUE_050
+    HUE_003 --> HUE_051
+    HUE_005 --> HUE_051
+    HUE_018 --> HUE_052
+    HUE_020 --> HUE_052
+    HUE_051 --> HUE_052
+    HUE_032 --> HUE_053
+    HUE_033 --> HUE_053
+    HUE_041 --> HUE_053
+    HUE_051 --> HUE_053
+    HUE_052 --> HUE_053
+    HUE_002 --> HUE_054
 ```

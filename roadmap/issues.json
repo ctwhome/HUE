@@ -57,14 +57,16 @@
       "Spike Tauri, browser+daemon and existing Hermes WebUI extension paths",
       "Compare TypeScript, Rust, Python/Hermes-derived and split daemon options",
       "Document HUE ownership of Spaces, Sessions, context packs and task state",
-      "Document reuse/adapter boundaries for Hermes and OpenCode"
+      "Document reuse/adapter boundaries for Hermes and OpenCode",
+      "Compare shadcn/ui for React shells and shadcn-svelte for Svelte shells against a custom primitive layer"
     ],
     "acceptance": [
       "ADR covers TBD-001, TBD-002 and TBD-004",
       "At least one runnable thin spike per finalist",
       "No backend-native session/memory is made canonical accidentally",
       "Decision scores recovery, packaging, reuse, accessibility and contributor ergonomics",
-      "Consequences and migration path are explicit"
+      "Consequences and migration path are explicit",
+      "ADR resolves how TBD-020 binds HUE tokens to accessible component primitives for each shell finalist"
     ],
     "dependencies": [
       "HUE-001"
@@ -74,7 +76,8 @@
     ],
     "docs": [
       "docs/05-system-architecture.md",
-      "docs/14-decision-register.md"
+      "docs/14-decision-register.md",
+      "docs/04-ui-specification.md"
     ]
   },
   {
@@ -1516,7 +1519,8 @@
       "HUE-007",
       "HUE-033",
       "HUE-041",
-      "HUE-042"
+      "HUE-042",
+      "HUE-053"
     ],
     "non_goals": [],
     "docs": []
@@ -1805,6 +1809,190 @@
     ],
     "docs": [
       "docs/03-spaces-sessions-knowledge.md",
+      "docs/14-decision-register.md"
+    ]
+  },
+  {
+    "id": "HUE-051",
+    "title": "ADR: choose notification gateways, phone attention surface and delivery privacy",
+    "milestone": "M0",
+    "status": "TBD",
+    "readiness": "agent:ready",
+    "labels": [
+      "decision:TBD",
+      "agent:ready",
+      "priority:P0",
+      "type:decision",
+      "area:notifications",
+      "area:security",
+      "area:operations"
+    ],
+    "goal": "Resolve the local and phone notification architecture without making a HUE cloud account mandatory or leaking sensitive task content.",
+    "scope": [
+      "Compare native OS notifications and sound APIs on the reference desktop platform",
+      "Compare native/companion push, PWA web push, self-hosted or encrypted relay, Telegram and email fallback",
+      "Define endpoint registration, authenticated deep links, lock-screen privacy and channel acknowledgement semantics",
+      "Define durable queue, deduplication, retry, expiry, quiet-hours and operating-cost constraints",
+      "Choose the alpha phone attention surface and document migration/fallback paths"
+    ],
+    "acceptance": [
+      "ADR resolves TBD-013 and the alpha portion of TBD-014, explicitly accounting for TBD-017",
+      "At least one local desktop/sound spike and one phone-delivery spike produce measured evidence",
+      "No-cloud local mode and a secure opt-in phone path are both preserved",
+      "Payload minimization, token storage, device revocation, deep-link authentication and receipts are specified",
+      "The chosen path distinguishes queued, accepted, displayed/delivered, failed, expired, read and acted without fabricated certainty"
+    ],
+    "dependencies": [
+      "HUE-003",
+      "HUE-005"
+    ],
+    "non_goals": [
+      "Implement production notification delivery",
+      "Deliver full mobile feature parity"
+    ],
+    "docs": [
+      "docs/14-decision-register.md",
+      "docs/16-notifications-attention-delivery.md",
+      "docs/12-deployment-operations.md"
+    ]
+  },
+  {
+    "id": "HUE-052",
+    "title": "Implement durable notification center, attention policy and local sound/desktop delivery",
+    "milestone": "M3",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "type:feature",
+      "area:notifications",
+      "area:control-plane",
+      "area:frontend"
+    ],
+    "goal": "Make meaningful task outcomes and attention needs durable, calm and locally visible even after HUE restarts.",
+    "scope": [
+      "Implement Notification, NotificationEndpoint and NotificationDelivery records plus migrations",
+      "Consume semantic events by durable cursor and apply class, urgency, sensitivity, grouping and deduplication policy",
+      "Build notification center, unread count, filters, deep links and per-item delivery detail",
+      "Implement task subscriptions, per-Space overrides, quiet hours, mute, grouping, completion-duration threshold and retention",
+      "Integrate reference-platform OS notifications and configurable completion/attention sounds",
+      "Persist local delivery attempts, retry/expiry state and channel health diagnostics"
+    ],
+    "acceptance": [
+      "A verified long-running task creates exactly one canonical in-app outcome, one configured OS alert and one sound",
+      "Completed-unverified, verified, failed, cancelled and unknown outcomes remain distinct",
+      "Restart between event creation and delivery produces no lost or duplicate canonical notification",
+      "Worker-event bursts group under the task outcome and emit at most one sound",
+      "Quiet hours, local-only Space policy, disabled/unauthorized channels and retention are covered by automated tests",
+      "Keyboard, screen-reader and reduced-motion behavior passes the documented accessibility contract"
+    ],
+    "dependencies": [
+      "HUE-018",
+      "HUE-020",
+      "HUE-051"
+    ],
+    "non_goals": [
+      "Ship phone push or third-party messaging gateways",
+      "Make raw runtime logs a notification source"
+    ],
+    "docs": [
+      "docs/04-ui-specification.md",
+      "docs/09-data-model-and-apis.md",
+      "docs/16-notifications-attention-delivery.md"
+    ]
+  },
+  {
+    "id": "HUE-053",
+    "title": "Implement secure phone notifications, redacted deep links and delivery diagnostics",
+    "milestone": "M8",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P0",
+      "type:feature",
+      "area:notifications",
+      "area:security",
+      "area:operations",
+      "area:frontend"
+    ],
+    "goal": "Alert the user on an authorized phone when long work finishes or needs attention without exposing sensitive HUE content or weakening approval policy.",
+    "scope": [
+      "Implement the phone gateway and mobile attention surface selected by HUE-051",
+      "Register, authorize, test and revoke devices/endpoints using vault-backed credentials",
+      "Render generic/title/redacted-summary payloads under global and Space privacy policy",
+      "Implement authenticated deep links that re-fetch canonical task, approval or recovery state",
+      "Add durable queue, bounded retry, expiry, acknowledgement mapping, fallback and endpoint health",
+      "Add safe reminder/escalation behavior for unread blocking attention"
+    ],
+    "acceptance": [
+      "An opt-in phone receives a redacted verified-completion alert and opens the current evidence-backed completion card",
+      "Sensitive/local-only Space policy prevents title, content, paths and artifacts from leaving the host",
+      "Offline queue, restart, duplicate provider responses, token revocation and gateway outage tests pass",
+      "Provider accepted, delivered/displayed when supported, read and acted remain separate states",
+      "Consequential approvals require the authenticated HUE attention surface and cannot be granted blindly from a third-party channel",
+      "Phone delivery is optional; local notification history and desktop/sound behavior work without a HUE-operated account"
+    ],
+    "dependencies": [
+      "HUE-032",
+      "HUE-033",
+      "HUE-041",
+      "HUE-051",
+      "HUE-052"
+    ],
+    "non_goals": [
+      "Full mobile workspace parity",
+      "Content-rich lock-screen notifications by default",
+      "Mandatory hosted HUE account"
+    ],
+    "docs": [
+      "docs/10-security-privacy-trust.md",
+      "docs/12-deployment-operations.md",
+      "docs/16-notifications-attention-delivery.md"
+    ]
+  },
+  {
+    "id": "HUE-054",
+    "title": "Implement the HUE component foundation with shadcn-compatible primitives",
+    "milestone": "M1",
+    "status": "TBI",
+    "readiness": "agent:blocked",
+    "labels": [
+      "status:TBI",
+      "agent:blocked",
+      "priority:P1",
+      "type:feature",
+      "area:frontend"
+    ],
+    "goal": "Establish an accessible, source-owned component and token foundation that feels native across HUE desktop and responsive surfaces without making the library the product identity.",
+    "scope": [
+      "Use shadcn/ui plus Radix for a React shell, or shadcn-svelte for a Svelte shell, according to the accepted shell ADR",
+      "Define HUE semantic color, typography, spacing, radius, elevation, density, motion and state tokens as CSS variables",
+      "Implement buttons, inputs, tabs, menus, tooltips, dialogs, sheets, popovers, command palette, badges, tables and toast primitives",
+      "Wrap source-owned primitives behind HUE component APIs so upstream library changes do not leak through product screens",
+      "Create dark, light, high-contrast and reduced-motion examples plus desktop and mobile visual-regression fixtures"
+    ],
+    "acceptance": [
+      "Implementation matches the component path selected by HUE-002 and documents update ownership",
+      "HUE tokens—not shadcn defaults—control product identity and semantic task/approval/notification states",
+      "Keyboard, focus return, screen-reader labels and 44px touch targets pass automated and manual checks",
+      "Dialogs, menus, sheets and command palette follow platform-appropriate interaction conventions",
+      "Representative shell, approval and notification fixtures pass dark/light desktop and 390px mobile visual regression",
+      "No screen imports low-level third-party primitives directly outside the HUE component boundary"
+    ],
+    "dependencies": [
+      "HUE-002"
+    ],
+    "non_goals": [
+      "Finalize all screen layouts",
+      "Copy the stock shadcn theme unchanged",
+      "Claim OS-native controls where HUE renders web components"
+    ],
+    "docs": [
+      "docs/04-ui-specification.md",
       "docs/14-decision-register.md"
     ]
   }

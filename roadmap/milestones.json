@@ -10,7 +10,7 @@
     "id": "M1",
     "title": "Local shell & Space foundations",
     "description": "Ship the local application skeleton with Projects and Areas as real context/resource boundaries plus explicit Resource relationships.",
-    "exit_criteria": "One Project and one Area persist across restart, remain distinct in navigation, and resolve only their trusted context/resources.",
+    "exit_criteria": "First-run shell opens offline with HUE-owned Spaces/Sessions, shadcn-compatible HUE primitives, persistent state and honest empty/error/recovery screens.",
     "state": "open"
   },
   {
@@ -23,8 +23,8 @@
   {
     "id": "M3",
     "title": "Durable tasks, runs & visible execution",
-    "description": "Turn outcomes into resumable tasks with semantic events and one trustworthy worker path.",
-    "exit_criteria": "A real Space-bound task survives restart and returns an evidence-backed artifact without corrupting its Session state.",
+    "description": "Turn outcomes into resumable tasks with semantic events, one trustworthy worker path and durable local attention.",
+    "exit_criteria": "A real Space-bound task survives restart, returns evidence-backed artifacts and creates exactly one policy-correct local completion notification.",
     "state": "open"
   },
   {
@@ -58,8 +58,8 @@
   {
     "id": "M8",
     "title": "Alpha hardening & portable release",
-    "description": "Package a secure, accessible, recoverable local alpha.",
-    "exit_criteria": "Security, quality, backup, operations and reference-platform release gates pass.",
+    "description": "Package a secure, accessible, recoverable local alpha with optional privacy-preserving phone attention.",
+    "exit_criteria": "Security, quality, backup and operations gates pass, and one authorized phone channel delivers a redacted task outcome with a secure deep link.",
     "state": "open"
   }
 ]

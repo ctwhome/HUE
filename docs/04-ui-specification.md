@@ -2,7 +2,7 @@
 
 > **Product status:** `TBI`
 > **Prototype:** [`../prototype/index.html`](../prototype/index.html) is a non-production interactive wireframe.
-> **Open choices:** `TBD-001` app shell, `TBD-020` visual identity.
+> **Open choices:** `TBD-001` app shell, `TBD-013` notification gateways, `TBD-014` mobile attention surface, `TBD-020` visual identity.
 
 ## UI posture
 
@@ -19,6 +19,18 @@ HUE is primarily an **Operate** surface with secondary **Command/Inspect** behav
 - Keyboard-first desktop operation with complete pointer and touch support.
 - Minimum 44px mobile targets, visible focus, semantic landmarks and reduced-motion support.
 
+### Component foundation — recommended default
+
+Use **shadcn-compatible, source-owned primitives** as the implementation baseline:
+
+- `shadcn/ui` with Radix primitives when the accepted shell uses React;
+- `shadcn-svelte` when it uses Svelte;
+- HUE-owned wrappers and CSS-variable tokens so screens do not couple directly to third-party primitive APIs;
+- Lucide-style line icons where an icon is useful, always with a text or accessible-name contract;
+- platform-appropriate dialogs, sheets, menus, keyboard behavior and focus return rather than fake OS chrome.
+
+Shadcn is the accessibility and interaction foundation, **not HUE's visual identity**. HUE supplies its own typography, semantic state colors, spacing, density, motion and composition. Stock shadcn theming, card-heavy dashboard composition and copy-pasted component variants are not acceptable defaults. The exact library binding remains coupled to `TBD-001` and is finalized under `TBD-020`.
+
 ## Global shell — `TBI`
 
 ```text
@@ -34,6 +46,7 @@ HUE is primarily an **Operate** surface with secondary **Command/Inspect** behav
 │  ○ Parenting │                                     │                     │
 │ Resources    │                                     │                     │
 │ Inbox (2)    │                                     │                      │
+│ Notifications│                                     │                      │
 │ Conversations│                                     │                      │
 │ Tasks        │                                     │                      │
 │ Memory       │                                     │                      │
@@ -252,7 +265,8 @@ Tabs:
 6. **Defaults:** model policy, effort policy, worker policy, notification policy.
 7. **Permissions:** filesystem, network, tools, external-action gates.
 8. **Integrations:** GitHub, MCP, calendars, storage.
-9. **Data:** export, backup, delete and audit history.
+9. **Notifications:** outcome subscriptions, channels/devices, privacy level, sounds, quiet hours, grouping and escalation.
+10. **Data:** export, backup, delete and audit history.
 
 Settings changes apply to **new turns/runs** and never rewrite historical execution context silently.
 
@@ -340,6 +354,32 @@ Progressive setup:
 6. Explain approvals, memory and how to stop work.
 
 Provider setup cannot be required before browsing the product documentation or creating local projects.
+
+## Screen S14 — Notifications and delivery history — `TBI`
+
+**Purpose:** Show what needs attention, what finished and whether each configured channel actually received the alert.
+
+```text
+Notifications                                      2 unread
+[Needs attention] [Outcomes] [Monitoring] [System]    [Settings]
+
+NOW
+✓ Mobile navigation fixed                         Verified
+  Notidian · task ran 18m
+  Desktop: displayed · Sound: played · Phone: delivered
+  [Open result] [Delivery details] [Mark read]
+
+! Approval still required                         12m
+  Export research report · phone reminder in 3m
+  [Review safely] [Mute task]
+
+EARLIER
+○ Competitor monitor found no material change     Quiet · in-app only
+```
+
+Notification detail shows the source event, task/run, outcome certainty, policy snapshot, redacted payload preview, every delivery attempt and the strongest truthful acknowledgement (**queued**, **accepted**, **displayed/delivered**, **failed**, **expired**, **read**, **acted**).
+
+The header bell displays unread attention count, not raw event volume. Dismissal clears the attention projection but does not erase the underlying semantic/security event. Settings provide channel/device authorization, privacy level, per-Space overrides, completion threshold, sound test, quiet hours, grouping and escalation. See [Notifications, attention and delivery](16-notifications-attention-delivery.md).
 
 ## Responsive and accessibility requirements — `TBI`
 

@@ -1,7 +1,7 @@
 # Target system architecture
 
 > **Product status:** `TBI`
-> **Open choices:** `TBD-001` shell, `TBD-002` control-plane stack, `TBD-003` orchestration foundation, `TBD-004` primary runtime relationship, `TBD-007` database/vector strategy, `TBD-015` plugin protocol.
+> **Open choices:** `TBD-001` shell, `TBD-002` control-plane stack, `TBD-003` orchestration foundation, `TBD-004` primary runtime relationship, `TBD-007` database/vector strategy, `TBD-013` notification gateways, `TBD-014` mobile attention surface, `TBD-015` plugin protocol, `TBD-017` remote access.
 
 ## Architectural intent
 
@@ -59,7 +59,6 @@ flowchart TB
 
     D --> API
     M --> API
-    G --> NS
     API --> PS
     API --> SS
     API --> TS
@@ -92,7 +91,11 @@ flowchart TB
     CS --> IDX
     RP --> SQL
     PP --> SEC
+    EV --> NS
+    NS --> SQL
     NS --> API
+    NS --> M
+    NS --> G
 ```
 
 ## Architectural layers
@@ -197,6 +200,19 @@ The orchestrator is intentionally closer to an operating-system scheduler/router
 - tracks version, MIME type, provenance, checksum and project ownership;
 - renders previews safely;
 - verifies claimed side effects where possible.
+
+### Notification service
+
+- consumes semantic events by durable cursor and creates canonical attention records;
+- classifies outcome, urgency, sensitivity and safe presentation without trusting worker-selected severity;
+- applies global/device/Space/task policy, quiet hours, grouping, deduplication and escalation;
+- projects in-app notifications and queues local desktop, sound and opt-in phone/gateway delivery;
+- stores delivery attempts and only reports the acknowledgement strength a channel can prove;
+- redacts lock-screen and third-party payloads, generates authenticated deep links and expires stale actions;
+- resumes safely after restart without duplicate canonical notifications or delivery storms;
+- exposes endpoint/channel health, history, test delivery, revocation and retention.
+
+The event journal remains the source of semantic truth; the notification center is the canonical attention projection; external gateways are replaceable delivery adapters. See [Notifications, attention and delivery](16-notifications-attention-delivery.md).
 
 ## Deployment boundary — target
 

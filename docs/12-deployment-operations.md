@@ -136,18 +136,23 @@ Without network:
 - messages/tasks may be queued but no external side effect is claimed;
 - reconnect triggers reconciliation, not blind replay.
 
-## Notification policy — `TBI`
+## Notification operations — `TBI`
 
-Notify only for:
+The full product, channel, privacy, sound and delivery-history contract is in [Notifications, attention and delivery](16-notifications-attention-delivery.md).
 
-- explicit user-requested updates;
-- approvals/decisions blocking work;
-- task completion when requested;
-- failure or unknown outcome needing attention;
-- security or budget boundary;
-- deadline/time-sensitive event.
+The operational minimum is:
 
-Routine tool progress remains in-app. External channels receive redacted summaries and deep links.
+- persist canonical in-app attention before attempting a channel;
+- notify for explicit subscriptions, blocking approvals/decisions, meaningful terminal outcomes, security/budget boundaries and time-sensitive monitors;
+- keep routine progress in-app unless the user subscribes;
+- group/deduplicate by task and resume durable queues after restart;
+- respect OS authorization, Focus/Do Not Disturb, configured sounds, quiet hours and per-Space local-only policy;
+- send redacted external summaries with authenticated deep links;
+- distinguish suppressed, queued, attempting, accepted, displayed/delivered, failed, expired, read and acted;
+- expose configured/authorized/available/healthy state plus last successful delivery;
+- use bounded retry with expiry and never generate recursive alert storms for a failed gateway.
+
+External delivery failure does not change a task’s completion status. Offline reconnect reconciles relevance before replay, so stale approvals and obsolete progress notices expire rather than arriving late.
 
 ## Data directories and portability
 

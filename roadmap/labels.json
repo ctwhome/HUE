@@ -153,5 +153,10 @@
     "name": "area:inbox",
     "color": "FEF2C0",
     "description": "Universal inbox and routing proposals"
+  },
+  {
+    "name": "area:notifications",
+    "color": "BFD4F2",
+    "description": "Attention policy, notification center, sounds and external delivery"
   }
 ]
