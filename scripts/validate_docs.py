@@ -117,7 +117,7 @@ class BasicHTML(html.parser.HTMLParser):
 
 
 def validate_prototype() -> None:
-    for rel in ("prototype/index.html", "prototype/styles.css", "prototype/app.js"):
+    for rel in ("prototype/index.html", "prototype/styles.css", "prototype/shadcn.css", "prototype/workspace-shell.css", "prototype/app.js"):
         if not (ROOT / rel).exists():
             fail(f"missing prototype file: {rel}")
     html_path = ROOT / "prototype/index.html"
@@ -127,7 +127,7 @@ def validate_prototype() -> None:
             p = BasicHTML(); p.feed(text); p.close()
         except Exception as exc:
             fail(f"prototype/index.html parse error: {exc}")
-        for token in ("SPEC", "TBI", "data-screen", "app.js", "styles.css"):
+        for token in ("SPEC", "TBI", "data-screen", "app.js", "styles.css", "shadcn.css", "workspace-shell.css", "data-component=\"SpaceRail\"", "data-component=\"SessionSidebar\""):
             if token not in text:
                 fail(f"prototype/index.html missing required marker {token}")
 

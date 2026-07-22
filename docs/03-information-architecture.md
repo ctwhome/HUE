@@ -86,32 +86,36 @@ HUE
 
 ## Desktop composition
 
-The primary application is an **Operate + Command/Inspect** surface—not a marketing dashboard.
+The primary application is an **Operate + Command/Inspect** surface—not a marketing dashboard. Its stable hierarchy is **Spaces → Sessions → work**.
 
 ```text
-┌──────────────────┬─────────────────────────────────────┬─────────────────────┐
-│ Navigation       │ Primary workspace                   │ Context inspector   │
-│                  │                                     │                     │
-│ Home             │ Session / task / knowledge          │ Active Space        │
-│ Projects         │                                     │ Active run          │
-│   Notidian       │                                     │ Files / diff        │
-│   HUE             │                                     │ Context / memory    │
-│ Areas            │                                     │ Sources/provenance  │
-│   Health          │                                     │                     │
-│   Parenting       │                                     │                     │
-│ Resources        │                                     │                     │
-│ Inbox  2         │                                     │ Approvals           │
-│ Sessions         │                                     │                     │
-│ Tasks            │                                     │                     │
-├──────────────────┴─────────────────────────────────────┴─────────────────────┤
-│ Global activity rail: 2 active · 1 waiting · local runtime healthy          │
-└──────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────┬─────────────────────────┬──────────────────────────────────┐
+│ Spaces           │ Sessions in Notidian   │ Main work window                 │
+│ [collapse ⇤]     │                         │                                  │
+│                  │ ● Sync reliability     │ Selected Session, task, file,    │
+│ Home             │   active now           │ knowledge view or Space overview │
+│ Inbox  2         │                         │                                  │
+│ Notifications  2 │ ◐ Mobile navigation    │ Context, run evidence and         │
+│                  │   waiting for approval  │ inspector surfaces appear inside │
+│ Projects         │                         │ this window when relevant.       │
+│ ● HUE            │ ○ Product direction    │                                  │
+│ ● Notidian       │   quiet · Friday       │                                  │
+│ ○ Valorlist      │                         │                                  │
+│ ○ Supertaal      │ [Filter Sessions…]     │                                  │
+│ Areas            │ [+ New Session]         │                                  │
+│ ○ Health         │                         │                                  │
+│ ○ Parenting      │                         │                                  │
+└──────────────────┴─────────────────────────┴──────────────────────────────────┘
 ```
 
-- Left rail answers **where am I?**
-- Center answers **what am I discussing/doing/reviewing?**
-- Right inspector answers **what context, work and evidence belong to this object?**
-- Bottom activity rail is compact and appears only when work is active or blocked.
+- The left **Space rail** keeps every Project and Area directly visible. It can collapse to stable Space identities/icons without turning into a hidden project switcher.
+- Selecting a Space updates the adjacent **Session sidebar**; it never mixes Sessions from unrelated Spaces.
+- Session rows expose title, type, status, last activity and concise blocker/attention context. Running, waiting, review, blocked, verified and quiet states use text or accessible names in addition to color.
+- Selecting a Session changes the **main work window**. The selected Space and Session remain visible while the user discusses, runs, reviews or inspects work.
+- Global Home, Inbox and Notifications can use the same main window while preserving the selected Space and its Sessions.
+- The main window may contain a contextual inspector or split view, but that inspector does not replace the stable Space → Session hierarchy.
+- Below narrow-desktop width the Session sidebar becomes a drawer; on mobile both navigation panes become drawers with direct **Spaces** and **Sessions** controls.
+- A compact activity rail may appear only while work is active, waiting or blocked.
 
 ## Mobile composition
 
