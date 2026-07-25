@@ -4,11 +4,21 @@
 >
 > One calm interface for projects, permanent areas of life, independent sessions, durable tasks, user-owned knowledge, visible specialist agents, code, files, browser and computer use—while the user remains in control.
 
-![Product status](https://img.shields.io/badge/product-TBI-d97706) ![Specification](https://img.shields.io/badge/specification-reviewable-2563eb) ![Decisions](https://img.shields.io/badge/open%20decisions-TBD-7c3aed)
+![Project activity](https://img.shields.io/badge/development-paused-6b7280) ![Product status](https://img.shields.io/badge/product-TBI-d97706) ![Specification](https://img.shields.io/badge/specification-reviewable-2563eb) ![Decisions](https://img.shields.io/badge/open%20decisions-TBD-7c3aed)
 
-HUE is a planned **personal agent workspace** combining the best ideas behind Claude Cowork, Claude Code, ChatGPT Projects, GitHub Projects, second-brain systems, Hermes, OpenClaw, OpenCode, Codex, Magentic-style orchestration, and local computer-use systems—without binding the user to one model, provider, agent framework or hidden memory store.
+## Project activity status — paused
 
-**HUE is not implemented yet.** This repository is the product contract and documentation prototype from which implementation will proceed. Every product capability is explicitly marked **TBI** (to be implemented); unresolved choices are marked **TBD** (to be decided).
+> **Active HUE implementation is paused as of 25 July 2026.**
+
+The maintainer is first evaluating whether the existing Hermes WebUI, combined with direct Hermes delegation to OpenCode and Codex, can satisfy the intended personal workflow without requiring a separate full application and control plane.
+
+This repository remains available as a substantial product contract, prototype and implementation backlog, but it should not currently be read as an active delivery commitment. Existing issues and specifications are being preserved rather than closed or discarded. Reviews, roadmap execution and new implementation work may not receive timely attention while the project is paused.
+
+HUE may resume if the smaller integration approach exposes durable unmet needs—such as cross-runtime project context, session continuity, approvals, artifact review or task-state coordination—that cannot be handled cleanly inside Hermes. This activity status does not change the capability labels below: most target behavior remains `TBI`, and unresolved decisions remain `TBD`.
+
+HUE is a proposed **personal agent workspace** combining the best ideas behind Claude Cowork, Claude Code, ChatGPT Projects, GitHub Projects, second-brain systems, Hermes, OpenClaw, OpenCode, Codex, Magentic-style orchestration, and local computer-use systems—without binding the user to one model, provider, agent framework or hidden memory store.
+
+**HUE is not a complete application yet.** This repository contains a mature product contract, a documentation and interaction prototype, and early implementation slices. Most target capabilities remain explicitly marked **TBI** (to be implemented); unresolved choices remain **TBD** (to be decided). The pause described above supersedes any implication that the documented roadmap is currently being executed.
 
 ## The product in one sentence
 
