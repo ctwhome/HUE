@@ -2,8 +2,17 @@
 
 > **Document status:** `SPEC`
 > **Capability status:** `TBI`
+> **Repository activity:** paused since 25 July 2026
 
 This repository deliberately separates **a well-specified feature** from **an implemented feature**. Product documentation is allowed to describe the final experience in present-tense user language, but every capability chapter must carry an implementation status.
+
+## Repository activity status
+
+Active HUE implementation is paused while the maintainer evaluates a smaller alternative: using the existing Hermes WebUI as the primary interface and delegating coding work directly from Hermes to OpenCode and Codex. The experiment is intended to determine whether a separate HUE application and control plane are necessary for the maintainer's personal workflow.
+
+The product contract, prototype, decisions and issue backlog remain preserved for future reference. There is no active delivery schedule while the project is paused, and implementation work or reviews may not receive timely attention. Development may resume if the smaller integration cannot adequately provide project context, cross-runtime session continuity, approvals, artifact review or durable task coordination.
+
+`Paused` describes repository activity only. It is not a capability status and does not replace the canonical labels below: unimplemented target behavior remains `TBI`, unresolved choices remain `TBD`, and existing implementation evidence retains its recorded status.
 
 ## Canonical labels
 
