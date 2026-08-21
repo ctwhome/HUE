@@ -22,7 +22,7 @@ The accepted frontend target is **SvelteKit + Svelte 5 + shadcn-svelte**, docume
 | `.state-chip`, `.label-tbi`, `.risk-badge`, `.route-pill`, `.running-pill` | `StatusBadge`, `RiskBadge` | Badge |
 | `.project-rail`, `.space-nav-item` | `SpaceRail`, `SpaceRailItem` | Sidebar / Tooltip |
 | `.session-sidebar`, `.session-item`, `.session-search` | `SessionSidebar`, `SessionListItem` | Scroll Area / Input / Tooltip |
-| `.pane-backdrop`, `.mobile-bottom-nav` | `ResponsiveWorkspaceNavigation` | Sheet |
+| `.pane-backdrop`, `.mobile-bottom-nav`, `.drawer-drag-edge` | `ResponsiveWorkspaceNavigation`, `drawerGesture` | Sheet / history adapter |
 | `.inbox-tabs`, `.memory-tabs`, `.segmented` | `HueTabs` | Tabs |
 | `.plain-section`, `.wide-block`, `.context-block`, `.delivery-card` | domain section components | Card only where object boundaries are real |
 | `.filter-row input`, `.command-input`, `.composer-box` | `HueInput`, `SessionComposer` | Input / Textarea |
@@ -54,7 +54,7 @@ Canonical Markdown and prototype files use repository-relative source links. `sc
 1. Create the SvelteKit/Svelte 5 shell and install shadcn-svelte.
 2. Port the tokens and typography unchanged.
 3. Implement HUE wrapper primitives and interaction tests.
-4. Port the persistent `SpaceRail` → `SessionSidebar` → main-window shell, responsive drawers and command palette.
+4. Port the persistent `SpaceRail` → `SessionSidebar` → main-window shell, responsive drawers, pointer gesture action and app-history/Android Back adapter.
 5. Port one representative vertical slice: Home → task → approval → notification → artifact.
 6. Compare static and Svelte fixtures at desktop and 390px mobile.
 7. Retire static screens only after behavioral and accessibility parity.

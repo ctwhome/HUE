@@ -19,6 +19,7 @@
         <span class="brand-mark">H</span>
         <div class="rail-label"><strong>HUE</strong><small>Workspace</small></div>
         <button class="rail-collapse-button" type="button" data-action="toggle-project-rail" aria-label="Collapse Spaces sidebar" aria-pressed="false" title="Collapse Spaces sidebar">⇤</button>
+        <button class="rail-mobile-close-button" type="button" data-action="close-panes" aria-label="Close Spaces">×</button>
       </div>
 
       <nav>
@@ -30,7 +31,7 @@
         </div>
 
         <div class="space-list" aria-label="All Spaces">
-          <div class="rail-section-heading"><p class="nav-label rail-label">Projects</p><button type="button" class="rail-add rail-label" data-action="new-space" aria-label="Create or open a project">＋</button></div>
+          <div class="rail-section-heading"><p class="nav-label rail-label">Projects</p><button type="button" class="rail-add" data-action="new-space" aria-label="Add project" title="Add project">＋</button></div>
           <button class="space-nav-item active" data-space-target="hue" data-screen-target="architecture" aria-label="HUE project" title="HUE">
             <span class="space-glyph hue-space">H</span><span class="space-copy rail-label"><strong>HUE</strong><small>Docs & product</small></span><span class="space-state decision" aria-label="3 decisions">3</span>
           </button>
@@ -44,7 +45,7 @@
             <span class="space-glyph supertaal-space">S</span><span class="space-copy rail-label"><strong>Supertaal</strong><small>Language learning</small></span><span class="space-state verified" aria-label="Verified outcome">✓</span>
           </button>
 
-          <div class="rail-section-heading"><p class="nav-label rail-label">Areas</p></div>
+          <div class="rail-section-heading" data-project-list-end><p class="nav-label rail-label">Areas</p></div>
           <button class="space-nav-item" data-space-target="health" data-screen-target="area" aria-label="Health area" title="Health">
             <span class="space-glyph health-space">♥</span><span class="space-copy rail-label"><strong>Health</strong><small>Ongoing area</small></span><span class="space-state attention-dot" aria-label="Needs review"></span>
           </button>
@@ -66,20 +67,23 @@
         <button type="button" class="icon-button" data-action="open-settings" aria-label="Open conceptual settings">⚙</button>
         <div class="runtime-state rail-label"><span></span><div><strong>Local runtime</strong><small>Healthy · target</small></div></div>
       </div>
+      <span class="drawer-drag-edge" aria-hidden="true"></span>
     </aside>
 
     <aside class="session-sidebar" aria-label="Sessions for the selected Space" data-component="SessionSidebar">
       <header class="session-sidebar-header">
-        <div class="session-space-context"><span class="space-glyph hue-space" id="session-space-glyph">H</span><div><p class="kicker" id="session-space-kind">Project sessions</p><h2 id="session-space-name">HUE</h2></div></div>
+        <div class="session-space-context"><button class="session-back-button" type="button" data-action="show-projects" aria-label="Back to all Spaces">‹</button><span class="space-glyph hue-space" id="session-space-glyph">H</span><div><p class="kicker" id="session-space-kind">Project sessions</p><h2 id="session-space-name">HUE</h2></div></div>
         <div class="session-heading-actions"><button type="button" class="session-add-button" data-action="new-session" aria-label="New Session in selected Space" title="New Session">＋</button><button type="button" class="session-close-button" data-action="close-panes" aria-label="Close Sessions">×</button></div>
         <p id="session-space-description">Product direction, design and implementation work.</p>
       </header>
       <label class="session-search"><span aria-hidden="true">⌕</span><input id="session-search-input" type="search" placeholder="Filter Sessions" aria-label="Filter Sessions"></label>
       <div class="session-list" id="session-list" aria-live="polite"></div>
       <footer class="session-sidebar-footer"><span><i class="session-status running"></i>Active</span><span><i class="session-status waiting"></i>Waiting</span><span><i class="session-status quiet"></i>Quiet</span></footer>
+      <span class="drawer-drag-edge" aria-hidden="true"></span>
     </aside>
 
     <button class="pane-backdrop" type="button" data-action="close-panes" aria-label="Close navigation panes"></button>
+    <div class="drawer-edge-swipe-zone" aria-hidden="true"></div>
 
     <main class="main-area" id="main-content">
       <header class="topbar" data-component="AppHeader">
@@ -185,7 +189,19 @@
 
   <dialog id="worker-dialog" data-component="WorkerDialog"><button class="dialog-close" data-action="close-dialog" aria-label="Close">×</button><span class="label-tbi">TBI WORKER DETAIL</span><h2>Developer</h2><p class="dialog-lead">Temporary specialist for one plan step. The user normally chooses the outcome—not this worker.</p><div class="dialog-grid"><div><small>Assigned outcome</small><strong>Implement responsive project navigation</strong></div><div><small>Status</small><strong class="green-text">Working · heartbeat 4s</strong></div><div><small>Selection rationale</small><strong>Multi-file coding + tests</strong></div><div><small>Context</small><strong>5 scoped sources · 38k tokens</strong></div><div><small>Tools</small><strong>File read/write · Git diff · Tests</strong></div><div><small>Isolation</small><strong>Managed worktree</strong></div></div><div class="mock-event-log"><p>14:37:08 <span>tool</span> patched ProjectRail.svelte</p><p>14:37:11 <span>verify</span> syntax check passed</p><p>14:37:14 <span>tool</span> inspecting navigation.test.ts</p></div><div class="dialog-actions"><button class="quiet-button">Steer worker</button><button class="quiet-button">Pause</button><button class="danger-quiet">Terminate</button></div></dialog>
   <dialog id="command-dialog" data-component="CommandPalette"><button class="dialog-close" data-action="close-dialog" aria-label="Close">×</button><label class="command-input">⌘<input autofocus placeholder="Open a project, task, file, or command…"></label><div class="command-results"><p>Suggested</p><button data-space-target="notidian" data-screen-target="project"><span>◇</span><strong>Open project: Notidian</strong><small>Project</small></button><button data-screen-target="task"><span>✓</span><strong>Open active task: Fix mobile navigation</strong><small>Task</small></button><button data-screen-target="memory"><span>◎</span><strong>Inspect context used in this turn</strong><small>Command</small></button></div></dialog>
+  <dialog id="project-dialog" class="project-dialog" data-component="ProjectDialog">
+    <button class="dialog-close" type="button" data-action="close-dialog" aria-label="Close">×</button>
+    <p class="kicker">Projects</p>
+    <h2>Add a project</h2>
+    <p class="dialog-lead">Open a local folder as a dedicated project workspace.</p>
+    <form id="project-form">
+      <label>Project name<input id="project-name" name="name" autocomplete="off" required placeholder="Notidian"></label>
+      <label>Project path<input id="project-path" name="path" autocomplete="off" required placeholder="/absolute/project/path"></label>
+      <div class="dialog-actions"><button type="button" class="quiet-button" data-action="close-dialog">Cancel</button><button type="submit" class="primary-button">Add project</button></div>
+    </form>
+  </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite" data-component="HueToast"></div>
+  <p class="sr-only" id="navigation-announcer" aria-live="polite"></p>
   <script src="app.js"></script>
 </body>
 </html>
