@@ -582,7 +582,7 @@
       return;
     }
     if (name === 'open-roadmap') {
-      window.location.href = '../roadmap/ISSUES.md';
+      window.location.href = '../docs/roadmap/ISSUES.md';
       return;
     }
     notify(messages[name] || 'Prototype interaction · product behavior TBI.');

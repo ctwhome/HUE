@@ -2,7 +2,7 @@
 
 The prototype is deliberately dependency-free HTML, CSS and JavaScript while HUE's product flows are still changing. It is not the production frontend.
 
-The accepted frontend target is **SvelteKit + Svelte 5 + shadcn-svelte**, documented in [`decisions/0001-sveltekit-shadcn-svelte.md`](../decisions/0001-sveltekit-shadcn-svelte.md). The static prototype now mirrors that target's semantic tokens, variants and component anatomy so conversion can happen later without another visual redesign.
+The accepted frontend target is **SvelteKit + Svelte 5 + shadcn-svelte**, documented in [`docs/decisions/0001-sveltekit-shadcn-svelte.md`](../docs/decisions/0001-sveltekit-shadcn-svelte.md). The static prototype now mirrors that target's semantic tokens, variants and component anatomy so conversion can happen later without another visual redesign.
 
 ## Files
 
@@ -47,7 +47,7 @@ Screens may use product-semantic tokens; they must not bind themselves to low-le
 
 ## Projection and link contract
 
-Canonical Markdown and prototype files use repository-relative source links. `scripts/prepare_site.py` rewrites those links to their generated Starlight routes when it copies the prototype and documentation into the public site. Source files must not embed deployment-only `/HUE` routes, and generated content must not become a second source of truth.
+Canonical Markdown and prototype files use repository-relative source links. `docs/scripts/prepare_site.py` rewrites those links to their generated Starlight routes when it copies the prototype and documentation into the public site. Source files must not embed deployment-only `/HUE` routes, and generated content must not become a second source of truth.
 
 ## Conversion sequence
 
