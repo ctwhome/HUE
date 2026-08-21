@@ -1,7 +1,9 @@
 # Information architecture
 
-> **Product status:** `TBI`
-> **Open choices:** `TBD-001` application shell, `TBD-014` mobile packaging.
+> **Focused product status:** `IMPLEMENTED IN PART`
+> **Active navigation:** Projects → Workflows/Sessions → selected Session
+
+The broad information architecture below is retained as historical design context. ADR-0002 narrows the implemented product to Projects, Workflows, and Sessions; Home, Inbox, Areas, Resources, tasks, knowledge, files, notifications, and global settings are not active product scope.
 
 ## Primary navigation
 
