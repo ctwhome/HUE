@@ -4,21 +4,17 @@
 >
 > One calm interface around Hermes—without the broad Python dashboard or lossy browser terminal input.
 
-![Project activity](https://img.shields.io/badge/development-paused-6b7280) ![Runtime](https://img.shields.io/badge/runtime-Bun-f472b6) ![Hermes](https://img.shields.io/badge/protocol-ACP%20v1-7c3aed)
+![Project activity](https://img.shields.io/badge/development-resumed-16a34a) ![Product status](https://img.shields.io/badge/product-implementation%20started-2563eb) ![Runtime](https://img.shields.io/badge/runtime-Bun-f472b6) ![Hermes](https://img.shields.io/badge/protocol-ACP%20v1-7c3aed)
 
-## Project activity status — paused
+## Project activity status — resumed
 
-> **Active HUE implementation is paused as of 25 July 2026.**
+> **Focused HUE implementation resumed on 21 August 2026.**
 
-The maintainer is first evaluating whether the existing Hermes WebUI, combined with direct Hermes delegation to OpenCode and Codex, can satisfy the intended personal workflow without requiring a separate full application and control plane.
+Development was paused on 25 July 2026 while the maintainer evaluated whether Hermes WebUI plus direct OpenCode/Codex delegation could satisfy the workflow without another application. That experiment exposed the durable unmet need now addressed here: reliable Hermes message delivery and Project-scoped Session organization in a purpose-built interface.
 
-This repository remains available as a product contract, prototype, and early implementation, but it should not currently be read as an active delivery commitment. Existing issues and specifications are being preserved rather than closed or discarded. Reviews, roadmap execution, and new implementation work may not receive timely attention while the project is paused.
+HUE is now a focused **Hermes workspace client**. HUE owns local Project and Workflow metadata plus reliable message-delivery state. Hermes ACP owns model/tool execution and Hermes Session persistence.
 
-HUE may resume if the smaller integration approach exposes durable unmet needs such as cross-runtime project context, session continuity, approvals, artifact review, or task-state coordination that cannot be handled cleanly inside Hermes. The pause supersedes any implication that the documented roadmap is currently being executed.
-
-HUE is a purpose-built **Hermes workspace client**. HUE owns local Project and Workflow metadata plus reliable message-delivery state. Hermes ACP owns model/tool execution and Hermes Session persistence.
-
-An early verified implementation slice lives in `apps/workspace`. The older broad personal-OS specification remains as historical design context; [ADR-0002](decisions/0002-bun-hermes-acp-workspace.md) defines the focused implementation boundary.
+Implementation lives in `apps/workspace`. The older broad personal-OS specification remains in the repository as historical design context, but [ADR-0002](decisions/0002-bun-hermes-acp-workspace.md) is the active scope decision.
 
 ## The product in one sentence
 
