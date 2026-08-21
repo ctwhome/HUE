@@ -17,12 +17,7 @@ class RecordingRuntime implements PromptRuntime {
 		this.resumes.push({ cwd, sessionId });
 	}
 
-	async prompt(input: {
-		sessionId: string;
-		text: string;
-		images?: unknown[];
-		onChunk: (text: string) => void;
-	}): Promise<void> {
+	async prompt(input: Parameters<PromptRuntime['prompt']>[0]): Promise<void> {
 		this.calls.push({ sessionId: input.sessionId, text: input.text, images: input.images });
 		this.active += 1;
 		this.maxActive = Math.max(this.maxActive, this.active);
@@ -32,6 +27,13 @@ class RecordingRuntime implements PromptRuntime {
 			throw this.failure;
 		}
 		input.onChunk('Complete ');
+		input.onThought?.('Checking files.');
+		input.onSubagent?.({
+			id: 'delegate-1',
+			title: '1 subagent',
+			status: 'completed',
+			children: [{ index: 0, goal: 'Inspect files', status: 'completed', result: 'Found it' }]
+		});
 		input.onChunk('answer.');
 		this.active -= 1;
 	}
@@ -183,6 +185,9 @@ describe('MessageDispatcher', () => {
 				.filter((event) => event.type === 'agent.chunk')
 				.map((event) => event.payload.text)
 		).toEqual(['Complete ', 'answer.']);
+		expect(
+			store.listEvents('hue', 'session-1').find((event) => event.type === 'agent.thought')?.payload
+		).toEqual({ messageId: 'msg-1', text: 'Checking files.' });
 		store.close();
 	});
 
@@ -202,10 +207,33 @@ describe('MessageDispatcher', () => {
 		dispatcher.submit(envelope);
 		await dispatcher.whenIdle('session-1');
 
-		expect(runtime.calls).toEqual([
-			{ sessionId: 'session-1', text: envelope.text, images }
-		]);
+		expect(runtime.calls).toEqual([{ sessionId: 'session-1', text: envelope.text, images }]);
 		expect(store.getMessage(envelope.id)?.images).toEqual(images);
+		store.close();
+	});
+
+	it('persists delegate_task child status and results', async () => {
+		const store = makeStore();
+		const dispatcher = new MessageDispatcher(store, new RecordingRuntime());
+
+		dispatcher.submit({
+			id: 'msg-1',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Delegate it'
+		});
+		await dispatcher.whenIdle('session-1');
+
+		expect(
+			store.listEvents('hue', 'session-1').find((event) => event.type === 'agent.subagents')
+		).toMatchObject({
+			payload: {
+				messageId: 'msg-1',
+				id: 'delegate-1',
+				status: 'completed',
+				children: [{ goal: 'Inspect files', status: 'completed', result: 'Found it' }]
+			}
+		});
 		store.close();
 	});
 
@@ -220,6 +248,32 @@ describe('MessageDispatcher', () => {
 
 		expect(runtime.calls.map((call) => call.text)).toEqual(['First', 'Second']);
 		expect(runtime.maxActive).toBe(1);
+		store.close();
+	});
+
+	it('uses the latest explicitly edited queued envelope when its turn starts', async () => {
+		const store = makeStore();
+		const runtime = new RecordingRuntime();
+		let releaseFirst!: () => void;
+		runtime.prompt = async (input) => {
+			runtime.calls.push({ sessionId: input.sessionId, text: input.text, images: input.images });
+			if (input.text === 'First') await new Promise<void>((resolve) => (releaseFirst = resolve));
+		};
+		const dispatcher = new MessageDispatcher(store, runtime);
+
+		dispatcher.submit({ id: 'msg-1', projectId: 'hue', sessionId: 'session-1', text: 'First' });
+		dispatcher.submit({ id: 'msg-2', projectId: 'hue', sessionId: 'session-1', text: 'Original' });
+		await Promise.resolve();
+		store.updateQueuedMessage('msg-2', {
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Edited',
+			images: []
+		});
+		releaseFirst();
+		await dispatcher.whenIdle('session-1');
+
+		expect(runtime.calls.map(({ text }) => text)).toEqual(['First', 'Edited']);
 		store.close();
 	});
 

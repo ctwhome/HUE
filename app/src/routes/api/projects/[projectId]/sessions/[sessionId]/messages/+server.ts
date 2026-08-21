@@ -34,3 +34,27 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		return json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
 	}
 };
+
+export const PATCH: RequestHandler = async ({ params, request }) => {
+	if (!services().store.hasProjectSession(params.projectId, params.sessionId)) {
+		return json({ error: 'Session not found' }, { status: 404 });
+	}
+	try {
+		const body = (await request.json()) as { messageId?: string; text?: string; images?: unknown };
+		const messageId = body.messageId?.trim();
+		const text = body.text ?? '';
+		const images = validateImageAttachments(body.images);
+		if (!messageId || (!text.trim() && !images.length)) {
+			return json({ error: 'messageId and message content are required' }, { status: 400 });
+		}
+		const message = services().store.updateQueuedMessage(messageId, {
+			projectId: params.projectId,
+			sessionId: params.sessionId,
+			text,
+			images
+		});
+		return json({ message });
+	} catch (cause) {
+		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 409 });
+	}
+};

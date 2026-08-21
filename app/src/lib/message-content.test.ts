@@ -3,9 +3,7 @@ import { validateImageAttachments } from './message-content';
 
 test('accepts supported base64 image attachments', () => {
 	expect(
-		validateImageAttachments([
-			{ name: 'screen.png', mimeType: 'image/png', data: 'aGVsbG8=' }
-		])
+		validateImageAttachments([{ name: 'screen.png', mimeType: 'image/png', data: 'aGVsbG8=' }])
 	).toEqual([{ name: 'screen.png', mimeType: 'image/png', data: 'aGVsbG8=' }]);
 });
 

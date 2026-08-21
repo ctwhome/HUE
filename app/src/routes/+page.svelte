@@ -8,8 +8,11 @@
 		applySessionEvents,
 		isCurrentSessionRequest,
 		isCurrentTabRequest,
+		formatElapsed,
 		isTurnBusy,
-		runSingleFlight
+		runSingleFlight,
+		subagentTreesFromEvents,
+		type WorkspaceSubagentTree
 	} from '$lib';
 	import type { ImageAttachment } from '$lib/message-content';
 	import type { PageData } from './$types';
@@ -20,9 +23,28 @@
 		cwd: string;
 		title?: string | null;
 		updatedAt?: string | null;
+		busySince?: string | null;
 	};
 	type Workflow = { id: string; name: string; prompt: string; profile: string };
 	type HermesCommand = { name: string; description: string; input?: { hint: string } | null };
+	type HermesRuntime = {
+		profile: string;
+		models?: {
+			currentModelId: string;
+			availableModels: Array<{ modelId: string; name: string; description?: string | null }>;
+		} | null;
+		modes?: {
+			currentModeId: string;
+			availableModes: Array<{ id: string; name: string; description?: string | null }>;
+		} | null;
+		usage?: { used: number; size: number };
+	};
+	type HermesInfo = {
+		profile: string;
+		protocolVersion?: number;
+		agent?: { name: string; version: string };
+		capabilities?: Record<string, unknown>;
+	};
 	type TranscriptMessage = {
 		role: 'user' | 'assistant';
 		text: string;
@@ -36,9 +58,16 @@
 		text: string;
 		images: ImageAttachment[];
 	};
+	type QueuedMessage = {
+		id: string;
+		text: string;
+		images: ImageAttachment[];
+		status: 'queued';
+	};
 	type ActiveTurn = {
 		messageId: string;
 		status: 'queued' | 'running' | 'unknown';
+		thought: string;
 		output: string;
 		error: string | null;
 	};
@@ -52,6 +81,9 @@
 	let workflows = $state<Workflow[]>([]);
 	let selectedSession = $state<Session | null>(null);
 	let transcript = $state<TranscriptMessage[]>([]);
+	let subagents = $state<WorkspaceSubagentTree[]>([]);
+	let transcriptElement = $state<HTMLElement>();
+	let composerElement = $state<HTMLTextAreaElement>();
 	let activeTab = $state<'sessions' | 'workflows'>('sessions');
 	let loading = $state(false);
 	let error = $state('');
@@ -63,22 +95,36 @@
 	let directoryLoading = $state(false);
 	let directoryError = $state('');
 	let addProjectDialog: HTMLDialogElement;
+	let hermesDialog: HTMLDialogElement;
+	let hermesInfo = $state<HermesInfo | null>(null);
+	let hermesLoading = $state(false);
+	let hermesError = $state('');
 	let workflowName = $state('');
 	let workflowPrompt = $state('');
 	let composer = $state('');
 	let commands = $state<HermesCommand[]>([]);
+	let runtime = $state<HermesRuntime>({ profile: 'default' });
+	let branch = $state<string | null>(null);
+	let runtimeChanging = $state(false);
 	let commandIndex = $state(0);
 	let images = $state<ImageAttachment[]>([]);
 	let draggingImages = $state(false);
 	let delivery = $state('');
 	let pendingAssistant = $state('');
+	let pendingThought = $state('');
 	let eventCursor = $state(0);
 	let activeMessageId = $state('');
 	let pendingEnvelope = $state<PendingEnvelope | null>(null);
+	let queuedMessages = $state<QueuedMessage[]>([]);
+	let editingQueuedMessageId = $state('');
+	let stopping = $state(false);
 	let mobileDrawer = $state<'projects' | 'sessions' | null>(null);
 	let pollTimer: ReturnType<typeof setInterval> | null = null;
+	let elapsedTimer: ReturnType<typeof setInterval> | null = null;
+	let now = $state(Date.now());
 	let sessionRequestGeneration = 0;
 	let tabRequestGeneration = 0;
+	let hermesRequestGeneration = 0;
 	const pollFlight: { current: Promise<void> | null } = { current: null };
 
 	class ApiError extends Error {}
@@ -101,12 +147,35 @@
 		selectedSession = null;
 		pendingEnvelope = null;
 		transcript = [];
+		subagents = [];
 		commands = [];
+		runtime = { profile: 'default' };
+		branch = null;
+		queuedMessages = [];
+		editingQueuedMessageId = '';
 		images = [];
 		error = '';
 		mobileDrawer = 'sessions';
 		persistSelection();
 		await loadActiveTab();
+	}
+
+	async function openHermesInspector() {
+		const request = ++hermesRequestGeneration;
+		mobileDrawer = null;
+		hermesDialog.showModal();
+		hermesLoading = true;
+		hermesError = '';
+		try {
+			const info = await api<HermesInfo>('/api/hermes');
+			if (request === hermesRequestGeneration) hermesInfo = info;
+		} catch (cause) {
+			if (request === hermesRequestGeneration) {
+				hermesError = cause instanceof Error ? cause.message : String(cause);
+			}
+		} finally {
+			if (request === hermesRequestGeneration) hermesLoading = false;
+		}
 	}
 
 	function persistSelection() {
@@ -190,8 +259,11 @@
 			projectDirectoryName = directory.name;
 			projectDirectoryParent = directory.parent;
 			projectDirectories = directory.entries;
+			directoryLoading = false;
 			await tick();
-			addProjectDialog.querySelector<HTMLButtonElement>('.directory-row, .add-project button')?.focus();
+			addProjectDialog
+				.querySelector<HTMLButtonElement>('.directory-row, .add-project button')
+				?.focus();
 		} catch (cause) {
 			directoryError = cause instanceof Error ? cause.message : String(cause);
 		} finally {
@@ -226,18 +298,34 @@
 		saveCurrentDraft();
 		loading = true;
 		try {
-			const body = await api<{ session: Session }>(`/api/projects/${selectedProject.id}/sessions`, {
-				method: 'POST'
-			});
+			const body = await api<{
+				session: Session;
+				commands?: HermesCommand[];
+				runtime?: HermesRuntime;
+				branch?: string | null;
+			}>(`/api/projects/${selectedProject.id}/sessions`, { method: 'POST' });
 			sessions = [body.session, ...sessions];
 			selectedSession = body.session;
 			persistSelection();
 			transcript = [];
-			commands = [];
+			subagents = [];
+			commands = body.commands ?? [];
+			runtime = body.runtime ?? { profile: 'default' };
+			branch = body.branch ?? null;
 			images = [];
+			queuedMessages = [];
+			editingQueuedMessageId = '';
+			pendingAssistant = '';
+			pendingThought = '';
+			activeMessageId = '';
+			delivery = '';
+			pendingEnvelope = null;
+			error = '';
 			eventCursor = 0;
 			restoreDraft();
 			mobileDrawer = null;
+			await tick();
+			composerElement?.focus();
 			return body.session;
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : String(cause);
@@ -266,7 +354,11 @@
 				transcriptError?: string;
 				cursor: number;
 				activeTurn: ActiveTurn | null;
+				events: SessionEvent[];
+				messages: Array<QueuedMessage | { id: string; status: string }>;
 				commands?: HermesCommand[];
+				runtime?: HermesRuntime;
+				branch?: string | null;
 			}>(`/api/projects/${selectedProject.id}/sessions/${session.sessionId}`);
 			if (
 				!selectedProject ||
@@ -280,11 +372,20 @@
 				return;
 			}
 			transcript = body.transcript;
+			subagents = subagentTreesFromEvents(body.events ?? []);
 			commands = body.commands ?? [];
+			runtime = body.runtime ?? { profile: 'default' };
+			branch = body.branch ?? null;
+			queuedMessages = body.messages.filter(
+				(message): message is QueuedMessage =>
+					message.status === 'queued' && message.id !== body.activeTurn?.messageId
+			);
+			editingQueuedMessageId = '';
 			images = [];
 			eventCursor = body.cursor;
 			activeMessageId = body.activeTurn?.messageId ?? '';
 			pendingAssistant = body.activeTurn?.output ?? '';
+			pendingThought = body.activeTurn?.thought ?? '';
 			delivery = body.activeTurn
 				? body.activeTurn.status === 'queued'
 					? 'accepted'
@@ -295,6 +396,7 @@
 			error = body.transcriptError ?? '';
 			restoreDraft();
 			mobileDrawer = null;
+			await scrollLatestQuestionToTop();
 			if (body.activeTurn && body.activeTurn.status !== 'unknown') startPolling();
 		} catch (cause) {
 			if (request.generation === sessionRequestGeneration) {
@@ -332,13 +434,85 @@
 
 	async function submitMessage(event: SubmitEvent) {
 		event.preventDefault();
-		if (isTurnBusy(delivery)) return;
 		const text = composer;
 		if (!text.trim() && !images.length) return;
-		if (await sendText(text)) {
+		const sent = editingQueuedMessageId
+			? await updateQueuedMessage(text)
+			: isTurnBusy(delivery)
+				? await queueMessage(text)
+				: await sendText(text);
+		if (sent) {
 			composer = '';
 			images = [];
+			editingQueuedMessageId = '';
 			clearCurrentDraft();
+		}
+	}
+
+	async function queueMessage(text: string): Promise<boolean> {
+		if (!selectedProject || !selectedSession) return false;
+		const messageId = crypto.randomUUID();
+		try {
+			await api<{ status: string }>(
+				`/api/projects/${selectedProject.id}/sessions/${selectedSession.sessionId}/messages`,
+				{
+					method: 'POST',
+					body: JSON.stringify({ messageId, text, images })
+				}
+			);
+			queuedMessages = [
+				...queuedMessages,
+				{ id: messageId, text, images: [...images], status: 'queued' }
+			];
+			return true;
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : String(cause);
+			return false;
+		}
+	}
+
+	async function updateQueuedMessage(text: string): Promise<boolean> {
+		if (!selectedProject || !selectedSession || !editingQueuedMessageId) return false;
+		try {
+			const body = await api<{ message: QueuedMessage }>(
+				`/api/projects/${selectedProject.id}/sessions/${selectedSession.sessionId}/messages`,
+				{
+					method: 'PATCH',
+					body: JSON.stringify({ messageId: editingQueuedMessageId, text, images })
+				}
+			);
+			queuedMessages = queuedMessages.map((message) =>
+				message.id === editingQueuedMessageId ? body.message : message
+			);
+			return true;
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : String(cause);
+			return false;
+		}
+	}
+
+	async function editQueuedMessage(message: QueuedMessage) {
+		editingQueuedMessageId = message.id;
+		composer = message.text;
+		images = [...message.images];
+		await tick();
+		composerElement?.focus();
+	}
+
+	async function stopTurn() {
+		if (!selectedProject || !selectedSession || stopping) return;
+		stopping = true;
+		try {
+			await api(
+				`/api/projects/${selectedProject.id}/sessions/${selectedSession.sessionId}/cancel`,
+				{
+					method: 'POST'
+				}
+			);
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			stopping = false;
 		}
 	}
 
@@ -360,7 +534,9 @@
 		const messageId = envelope.id;
 		activeMessageId = messageId;
 		pendingAssistant = '';
+		pendingThought = '';
 		delivery = 'saving';
+		setSessionBusySince(session.sessionId, new Date().toISOString());
 		try {
 			const accepted = await api<{ duplicate: boolean; status: string }>(
 				`/api/projects/${selectedProject.id}/sessions/${selectedSession.sessionId}/messages`,
@@ -382,6 +558,7 @@
 				return true;
 			}
 			transcript = [...transcript, { role: 'user', text, images: envelope.images }];
+			await scrollLatestQuestionToTop();
 			delivery = 'accepted';
 			startPolling();
 			return true;
@@ -392,9 +569,27 @@
 			else clearPendingEnvelope();
 			activeMessageId = uncertain ? messageId : '';
 			delivery = uncertain ? 'delivery unknown' : 'not accepted';
+			setSessionBusySince(session.sessionId, null);
 			error = cause instanceof Error ? cause.message : String(cause);
 			return false;
 		}
+	}
+
+	async function scrollLatestQuestionToTop() {
+		await tick();
+		const latestQuestion = transcriptElement?.querySelector<HTMLElement>(
+			'article.user:not(:has(~ article.user))'
+		);
+		if (transcriptElement && latestQuestion) {
+			transcriptElement.scrollTop +=
+				latestQuestion.getBoundingClientRect().top - transcriptElement.getBoundingClientRect().top;
+		}
+	}
+
+	function setSessionBusySince(sessionId: string, busySince: string | null) {
+		sessions = sessions.map((session) =>
+			session.sessionId === sessionId ? { ...session, busySince } : session
+		);
 	}
 
 	async function retryPendingMessage() {
@@ -430,9 +625,10 @@
 		composer = key ? (localStorage.getItem(key) ?? '') : '';
 		const pending = pendingEnvelopeKey();
 		try {
-			pendingEnvelope = pending
+			const saved = pending
 				? (JSON.parse(localStorage.getItem(pending) ?? 'null') as PendingEnvelope | null)
 				: null;
+			pendingEnvelope = saved ? { ...saved, images: saved.images ?? [] } : null;
 		} catch {
 			pendingEnvelope = null;
 			if (pending) localStorage.removeItem(pending);
@@ -530,6 +726,28 @@
 		if (files.length) void addImageFiles(files);
 	}
 
+	function contextPercent() {
+		if (!runtime.usage?.size) return null;
+		return Math.max(0, Math.min(100, Math.round((runtime.usage.used / runtime.usage.size) * 100)));
+	}
+
+	async function changeRuntime(kind: 'modelId' | 'modeId', event: Event) {
+		if (!selectedProject || !selectedSession) return;
+		runtimeChanging = true;
+		try {
+			const value = (event.currentTarget as HTMLSelectElement).value;
+			const body = await api<{ runtime: HermesRuntime }>(
+				`/api/projects/${selectedProject.id}/sessions/${selectedSession.sessionId}`,
+				{ method: 'PATCH', body: JSON.stringify({ [kind]: value }) }
+			);
+			runtime = { ...runtime, ...body.runtime };
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			runtimeChanging = false;
+		}
+	}
+
 	function startPolling() {
 		stopPolling();
 		void syncEvents();
@@ -547,19 +765,34 @@
 		const sessionId = selectedSession.sessionId;
 		await runSingleFlight(pollFlight, async () => {
 			try {
-				const body = await api<{ events: SessionEvent[] }>(
+				const body = await api<{ events: SessionEvent[]; runtime?: HermesRuntime }>(
 					`/api/projects/${projectId}/sessions/${sessionId}/events?after=${eventCursor}`
 				);
 				if (selectedProject?.id !== projectId || selectedSession?.sessionId !== sessionId) return;
 				const next = applySessionEvents(
-					{ cursor: eventCursor, activeMessageId, pendingAssistant, delivery, transcript },
+					{
+						cursor: eventCursor,
+						activeMessageId,
+						pendingAssistant,
+						pendingThought,
+						delivery,
+						transcript,
+						subagents
+					},
 					body.events
 				);
 				eventCursor = next.cursor;
 				pendingAssistant = next.pendingAssistant;
+				pendingThought = next.pendingThought ?? '';
 				delivery = next.delivery;
 				transcript = next.transcript;
-				if (!isTurnBusy(delivery)) stopPolling();
+				subagents = next.subagents ?? [];
+				if (body.runtime) runtime = { ...runtime, ...body.runtime };
+				if (!isTurnBusy(delivery)) {
+					setSessionBusySince(sessionId, null);
+					if (queuedMessages.length && selectedSession) await openSession(selectedSession);
+					else stopPolling();
+				}
 			} catch {
 				if (selectedProject?.id === projectId && selectedSession?.sessionId === sessionId) {
 					delivery = 'reconnecting';
@@ -572,9 +805,13 @@
 		return sanitizeHtml(marked.parse(text, { async: false }));
 	}
 
-	onMount(() => void restoreSelection());
+	onMount(() => {
+		elapsedTimer = setInterval(() => (now = Date.now()), 1000);
+		void restoreSelection();
+	});
 	onDestroy(() => {
 		stopPolling();
+		if (elapsedTimer) clearInterval(elapsedTimer);
 	});
 </script>
 
@@ -586,6 +823,76 @@
 </svelte:head>
 
 <div class="workspace">
+	<nav class="global-rail" aria-label="Global navigation">
+		<span class="global-mark" aria-hidden="true">H</span>
+		<a
+			class="global-action active"
+			href="/"
+			aria-label="Workspace"
+			aria-current="page"
+			title="Workspace"
+		>
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<path d="M5 5h14v11H9l-4 3V5Z" />
+			</svg>
+		</a>
+		<button
+			class="global-action runtime-inspector-button"
+			aria-label="Inspect Hermes runtime"
+			title="Hermes runtime"
+			onclick={openHermesInspector}
+		>
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6" />
+			</svg>
+		</button>
+		<button
+			class="global-action"
+			aria-label="Schedules"
+			title="Schedules"
+			onclick={openHermesInspector}
+		>
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<path d="M5 4v3M19 4v3M4 9h16M5 6h14v14H5V6Z" />
+			</svg>
+		</button>
+		<button class="global-action" aria-label="Skills" title="Skills" onclick={openHermesInspector}>
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<path d="M4 4h7v7H4V4ZM13 4h7v7h-7V4ZM4 13h7v7H4v-7ZM13 13h7v7h-7v-7Z" />
+			</svg>
+		</button>
+		<button
+			class="global-action"
+			aria-label="Commands"
+			title="Session commands"
+			onclick={openHermesInspector}
+		>
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<path d="m8 7-4 5 4 5M16 7l4 5-4 5M13 5l-2 14" />
+			</svg>
+		</button>
+		<button
+			class="global-action"
+			aria-label="Profiles"
+			title="Profiles"
+			onclick={openHermesInspector}
+		>
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<circle cx="12" cy="8" r="3" /><path d="M5 20c0-4 3-7 7-7s7 3 7 7" />
+			</svg>
+		</button>
+		<a
+			class="global-action global-docs"
+			href="/docs/"
+			target="_blank"
+			aria-label="Open documentation in a new tab"
+			title="Documentation"
+		>
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<path d="M6 3h9l4 4v14H6V3Z" /><path d="M15 3v5h4M9 12h7M9 16h7" />
+			</svg>
+		</a>
+	</nav>
 	<nav class="mobile-navigation" aria-label="Workspace navigation">
 		<button
 			aria-controls="project-drawer"
@@ -599,6 +906,7 @@
 			onclick={() => (mobileDrawer = mobileDrawer === 'sessions' ? null : 'sessions')}
 			>Sessions</button
 		>
+		<button aria-label="Inspect Hermes runtime" onclick={openHermesInspector}>Hermes</button>
 	</nav>
 	{#if mobileDrawer}<button
 			class="drawer-backdrop"
@@ -614,26 +922,10 @@
 		<header class="brand">
 			<span class="brand-mark">H</span>
 			<div><strong>HUE</strong><small>Hermes workspace</small></div>
-			<a
-				class="docs-link"
-				href="/docs/"
-				target="_blank"
-				aria-label="Open documentation in a new tab"
-				title="Documentation"
-			>
-				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11a2 2 0 0 1 2 2v15a2 2 0 0 0-2-2H4V5.5Z" />
-					<path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v17a2 2 0 0 1 2-2h5V5.5Z" />
-				</svg>
-			</a>
 		</header>
 		<div class="section-heading">
 			<span class="section-label">Projects</span>
-			<button
-				class="icon-button"
-				aria-label="Add project"
-				onclick={openAddProject}>+</button
-			>
+			<button class="icon-button" aria-label="Add project" onclick={openAddProject}>+</button>
 		</div>
 		<nav>
 			{#each projects as project}
@@ -680,7 +972,8 @@
 				{:else if projectDirectories.length === 0}<p class="muted">No subdirectories.</p>
 				{:else}{#each projectDirectories as directory}
 						<button class="directory-row" onclick={() => loadDirectory(directory.path)}>
-							<span aria-hidden="true">□</span><span>{directory.name}</span><small
+							<span class="folder-icon" aria-hidden="true"></span><span>{directory.name}</span
+							><small
 								>{projects.some((project) => project.rootPath === directory.path)
 									? 'Added'
 									: '+'}</small
@@ -704,6 +997,64 @@
 				aria-label="Close add project"
 				onclick={() => addProjectDialog.close()}>×</button
 			>
+		</dialog>
+		<dialog
+			bind:this={hermesDialog}
+			class="hermes-dialog"
+			aria-labelledby="hermes-dialog-title"
+			onclick={(event) => event.target === event.currentTarget && hermesDialog.close()}
+		>
+			<header>
+				<div>
+					<h2 id="hermes-dialog-title">Hermes runtime</h2>
+					<p>Live information exposed through the supported ACP connection.</p>
+				</div>
+				<button
+					class="icon-button"
+					aria-label="Close Hermes runtime"
+					onclick={() => hermesDialog.close()}>×</button
+				>
+			</header>
+			{#if hermesLoading}<p class="muted" role="status">Connecting to Hermes…</p>
+			{:else if hermesError}<p class="directory-error" role="alert">{hermesError}</p>
+			{:else if hermesInfo}<div class="hermes-sections">
+					<section>
+						<h3>Profile</h3>
+						<strong>{hermesInfo.profile}</strong>
+						<p>The profile configured for this HUE runtime.</p>
+					</section>
+					<section>
+						<h3>Agent</h3>
+						<strong
+							>{hermesInfo.agent
+								? `${hermesInfo.agent.name} ${hermesInfo.agent.version}`
+								: 'Hermes ACP'}</strong
+						>
+						<p>ACP protocol v{hermesInfo.protocolVersion ?? 1}</p>
+					</section>
+					<section>
+						<h3>Session commands</h3>
+						{#if commands.length}<ul>
+								{#each commands as command}<li>
+										<strong>/{command.name}</strong>
+										{command.description}
+									</li>{/each}
+							</ul>
+						{:else}<p>Open a Session to inspect its advertised commands.</p>{/if}
+					</section>
+					<section>
+						<h3>Skills</h3>
+						<p>Skills are not exposed by Hermes ACP</p>
+					</section>
+					<section>
+						<h3>Schedules</h3>
+						<p>Schedules are not exposed by Hermes ACP</p>
+					</section>
+					{#if hermesInfo.capabilities}<details>
+							<summary>ACP capabilities</summary>
+							<pre>{JSON.stringify(hermesInfo.capabilities, null, 2)}</pre>
+						</details>{/if}
+				</div>{/if}
 		</dialog>
 	</aside>
 
@@ -748,7 +1099,14 @@
 						class:active={selectedSession?.sessionId === session.sessionId}
 						onclick={() => openSession(session)}
 					>
-						<strong>{session.title || 'Untitled session'}</strong>
+						<div class="session-row-title">
+							<strong>{session.title || 'Untitled session'}</strong>
+							{#if session.busySince}<span
+									class="busy-timer"
+									aria-label={`Busy for ${formatElapsed(session.busySince, now)}`}
+									>{formatElapsed(session.busySince, now)}</span
+								>{/if}
+						</div>
 						<small
 							>{session.updatedAt
 								? new Date(session.updatedAt).toLocaleString()
@@ -786,7 +1144,10 @@
 	<main class="session-view">
 		<header class="session-header">
 			<div>
-				<small>{selectedProject?.rootPath ?? 'Choose a Project'}</small>
+				<small>
+					{selectedProject?.rootPath ?? 'Choose a Project'}
+					{#if branch}<span class="header-branch">{branch}</span>{/if}
+				</small>
 				<h2>
 					{selectedSession?.title ||
 						(selectedSession ? 'New Hermes Session' : 'Projects · Workflows · Sessions')}
@@ -796,7 +1157,12 @@
 		</header>
 		{#if error}<div class="error" role="alert">{error}</div>{/if}
 		{#if selectedSession}
-			<section class="transcript" aria-live="polite">
+			<section
+				class="transcript"
+				class:turn-active={isTurnBusy(delivery)}
+				aria-live="polite"
+				bind:this={transcriptElement}
+			>
 				{#each transcript as message}
 					<article
 						class:assistant={message.role === 'assistant'}
@@ -818,6 +1184,35 @@
 						{/if}
 					</article>
 				{/each}
+				{#each subagents as tree (tree.id)}
+					<details class="subagent-tree" aria-label={tree.title} open>
+						<summary>
+							<span class="subagent-tree-title">{tree.title}</span>
+							<span class="subagent-status" class:active={tree.status === 'in_progress'}
+								>{tree.status.replace('_', ' ')}</span
+							>
+						</summary>
+						<div class="subagent-children">
+							{#each tree.children as child (child.index)}
+								<details class="subagent-child">
+									<summary>
+										<span class="subagent-branch" aria-hidden="true"></span>
+										<span class="subagent-goal">{child.goal}</span>
+										{#if child.role}<span class="subagent-role">@{child.role}</span>{/if}
+										<span class="subagent-status" class:active={child.status === 'in_progress'}
+											>{child.status.replace('_', ' ')}</span
+										>
+									</summary>
+									{#if child.result}<div class="subagent-result">{child.result}</div>{/if}
+								</details>
+							{/each}
+						</div>
+					</details>
+				{/each}
+				{#if pendingThought}<details class="agent-thought" open>
+						<summary>Hermes reasoning</summary>
+						<div class="markdown">{@html renderMarkdown(pendingThought)}</div>
+					</details>{/if}
 				{#if pendingAssistant}<article class="assistant">
 						<div class="avatar">H</div>
 						<div class="message markdown">
@@ -827,7 +1222,7 @@
 								>{/if}
 						</div>
 					</article>{/if}
-				{#if transcript.length === 0 && !pendingAssistant}<div class="welcome">
+				{#if transcript.length === 0 && !pendingAssistant && !pendingThought}<div class="welcome">
 						<span>H</span>
 						<h2>Start this Hermes Session</h2>
 						<p>Your complete message is saved before HUE sends it.</p>
@@ -860,10 +1255,31 @@
 								<span>{command.description}</span>
 							</button>{/each}
 					</div>{/if}
+				{#if queuedMessages.length}<section class="message-queue" aria-label="Queued messages">
+						<header><strong>Queued messages</strong><span>{queuedMessages.length}</span></header>
+						{#each queuedMessages as message}<article>
+								<div class="queued-copy">
+									<span class="queue-handle" aria-hidden="true">⠿</span>
+									<span>{message.text || `${message.images.length} image(s)`}</span>
+									{#if message.images.length}<small>+{message.images.length} file(s)</small>{/if}
+								</div>
+								<div class="queue-actions">
+									<span>Waiting</span>
+									<button
+										type="button"
+										aria-label="Edit queued message"
+										onclick={() => editQueuedMessage(message)}>Edit</button
+									>
+									<button type="button" aria-label="Send queued message now" onclick={stopTurn}
+										>Send now</button
+									>
+								</div>
+							</article>{/each}
+					</section>{/if}
 				{#if images.length}<div class="attachment-list">
 						{#each images as image, index}<figure>
-								<img src={`data:${image.mimeType};base64,${image.data}`} alt={image.name} />
 								<figcaption>{image.name}</figcaption>
+								<img src={`data:${image.mimeType};base64,${image.data}`} alt={image.name} />
 								<button
 									type="button"
 									aria-label={`Remove ${image.name}`}
@@ -872,16 +1288,20 @@
 							</figure>{/each}
 					</div>{/if}
 				<textarea
+					bind:this={composerElement}
 					value={composer}
 					oninput={updateDraft}
 					onkeydown={handleComposerKeydown}
 					onpaste={handlePaste}
-					disabled={isTurnBusy(delivery)}
-					placeholder="Message Hermes…"
+					placeholder={isTurnBusy(delivery)
+						? 'Type a follow-up and press Enter to queue…'
+						: 'Message Hermes… / for commands'}
 					aria-label="Message Hermes"></textarea>
 				<div class="composer-toolbar">
 					<label class="attach-button" aria-label="Attach images" title="Attach images">
-						<span aria-hidden="true">+</span>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<circle cx="12" cy="12" r="8.5" /><path d="M12 8v8M8 12h8" />
+						</svg>
 						<input
 							type="file"
 							accept="image/png,image/jpeg,image/gif,image/webp"
@@ -889,17 +1309,77 @@
 							onchange={handleImageInput}
 						/>
 					</label>
-					<small class:warning={delivery.includes('unknown')}
-						>{delivery || (commands.length ? 'Type / for Hermes commands' : 'Complete-envelope delivery')}</small
-					>{#if pendingEnvelope}<button
+					<div class="composer-context" aria-label="Hermes session context">
+						<span class="context-chip context-profile" title="Active Hermes profile">
+							<span aria-hidden="true">✣</span><span>{runtime.profile}</span>
+						</span>
+						{#if runtime.models}<label
+								class="context-chip context-select context-model"
+								title="Hermes model"
+							>
+								<span aria-hidden="true">◉</span>
+								<select
+									aria-label="Hermes model"
+									value={runtime.models.currentModelId}
+									disabled={runtimeChanging || isTurnBusy(delivery)}
+									onchange={(event) => changeRuntime('modelId', event)}
+								>
+									{#each runtime.models.availableModels as model}<option value={model.modelId}
+											>{model.name}</option
+										>{/each}
+								</select>
+							</label>{/if}
+						{#if runtime.modes}<label
+								class="context-chip context-select context-mode"
+								title="Hermes edit mode"
+							>
+								<span aria-hidden="true">◌</span>
+								<select
+									aria-label="Hermes mode"
+									value={runtime.modes.currentModeId}
+									disabled={runtimeChanging || isTurnBusy(delivery)}
+									onchange={(event) => changeRuntime('modeId', event)}
+								>
+									{#each runtime.modes.availableModes as mode}<option value={mode.id}
+											>{mode.name}</option
+										>{/each}
+								</select>
+							</label>{/if}
+						{#if contextPercent() !== null}<span
+								class="context-chip context-usage"
+								class:warning={contextPercent()! >= 80}
+								title={`${runtime.usage!.used.toLocaleString()} of ${runtime.usage!.size.toLocaleString()} context tokens used`}
+								>{contextPercent()}%</span
+							>{/if}
+					</div>
+					{#if delivery}<small
+							class="composer-delivery"
+							class:warning={delivery.includes('unknown')}>{delivery}</small
+						>{/if}
+					{#if pendingEnvelope}<button
 							type="button"
 							class="retry-message"
 							onclick={retryPendingMessage}
 							disabled={isTurnBusy(delivery)}>Retry exact message</button
+						>{:else if isTurnBusy(delivery)}<button
+							type="button"
+							class="composer-send stop-message"
+							aria-label="Stop"
+							title="Stop current turn"
+							onclick={stopTurn}
+							disabled={stopping}
+						>
+							<span aria-hidden="true"></span></button
 						>{:else}<button
 							type="submit"
-							disabled={(!composer.trim() && !images.length) || isTurnBusy(delivery)}
-							>Send</button
+							class="composer-send"
+							aria-label="Send"
+							title="Send message"
+							disabled={!composer.trim() && !images.length}
+						>
+							<svg viewBox="0 0 24 24" aria-hidden="true">
+								<path d="m5 5 14 7-14 7 3-7-3-7Z" /><path d="M8 12h11" />
+							</svg></button
 						>{/if}
 				</div>
 			</form>

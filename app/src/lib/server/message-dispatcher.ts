@@ -1,6 +1,21 @@
 import type { HUEStore } from './store';
 import type { ImageAttachment } from '$lib/message-content';
 
+export type SubagentChild = {
+	index: number;
+	goal: string;
+	role?: string;
+	status: string;
+	result?: string;
+};
+
+export type SubagentTree = {
+	id: string;
+	title: string;
+	status: string;
+	children: SubagentChild[];
+};
+
 export interface PromptRuntime {
 	resumeSession(cwd: string, sessionId: string): Promise<void>;
 	prompt(input: {
@@ -8,6 +23,8 @@ export interface PromptRuntime {
 		text: string;
 		images: ImageAttachment[];
 		onChunk: (text: string) => void;
+		onThought?: (text: string) => void;
+		onSubagent?: (update: SubagentTree) => void;
 	}): Promise<void>;
 }
 
@@ -72,17 +89,32 @@ export class MessageDispatcher {
 	private async process(envelope: MessageEnvelope, resumeCwd?: string): Promise<void> {
 		try {
 			if (resumeCwd) await this.runtime.resumeSession(resumeCwd, envelope.sessionId);
-			this.store.transitionMessage(envelope.id, 'running', {
+			const queued = this.store.getMessage(envelope.id);
+			if (!queued || queued.status !== 'queued') return;
+			const current = { ...envelope, text: queued.text, images: queued.images };
+			this.store.transitionMessage(current.id, 'running', {
 				messageId: envelope.id
 			});
 			await this.runtime.prompt({
-				sessionId: envelope.sessionId,
-				text: envelope.text,
-				images: envelope.images ?? [],
+				sessionId: current.sessionId,
+				text: current.text,
+				images: current.images ?? [],
 				onChunk: (text) => {
 					this.store.appendEvent(envelope.projectId, envelope.sessionId, 'agent.chunk', {
 						messageId: envelope.id,
 						text
+					});
+				},
+				onThought: (text) => {
+					this.store.appendEvent(envelope.projectId, envelope.sessionId, 'agent.thought', {
+						messageId: envelope.id,
+						text
+					});
+				},
+				onSubagent: (update) => {
+					this.store.appendEvent(envelope.projectId, envelope.sessionId, 'agent.subagents', {
+						messageId: envelope.id,
+						...update
 					});
 				}
 			});

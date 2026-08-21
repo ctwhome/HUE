@@ -153,6 +153,48 @@ describe('HUEStore acknowledged message transport', () => {
 		store.close();
 	});
 
+	it('edits only messages that are still queued', () => {
+		const store = makeDeliveryStore();
+		store.acceptMessage({
+			id: 'msg-1',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Original'
+		});
+
+		store.updateQueuedMessage('msg-1', {
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Edited before delivery',
+			images: [{ name: 'updated.png', mimeType: 'image/png', data: 'aGVsbG8=' }]
+		});
+
+		expect(store.getMessage('msg-1')).toMatchObject({
+			text: 'Edited before delivery',
+			images: [{ name: 'updated.png', mimeType: 'image/png', data: 'aGVsbG8=' }]
+		});
+		store.updateMessageStatus('msg-1', 'running');
+		expect(() =>
+			store.updateQueuedMessage('msg-1', {
+				projectId: 'hue',
+				sessionId: 'session-1',
+				text: 'Too late',
+				images: []
+			})
+		).toThrow('Message msg-1 is no longer queued');
+		store.close();
+	});
+
+	it('keeps the running message active when a follow-up is queued', () => {
+		const store = makeDeliveryStore();
+		store.acceptMessage({ id: 'active', projectId: 'hue', sessionId: 'session-1', text: 'First' });
+		store.updateMessageStatus('active', 'running');
+		store.acceptMessage({ id: 'queued', projectId: 'hue', sessionId: 'session-1', text: 'Next' });
+
+		expect(store.getSessionSnapshot('hue', 'session-1').activeTurn?.messageId).toBe('active');
+		store.close();
+	});
+
 	it('rejects reuse of a message id with different content', () => {
 		const store = makeDeliveryStore();
 		store.acceptMessage({
@@ -248,6 +290,10 @@ describe('HUEStore acknowledged message transport', () => {
 		});
 		store.updateMessageStatus('msg-1', 'running');
 		store.appendEvent('hue', 'session-1', 'message.running', { messageId: 'msg-1' });
+		store.appendEvent('hue', 'session-1', 'agent.thought', {
+			messageId: 'msg-1',
+			text: 'Inspecting state. '
+		});
 		store.appendEvent('hue', 'session-1', 'agent.chunk', {
 			messageId: 'msg-1',
 			text: 'Still working'
@@ -261,12 +307,14 @@ describe('HUEStore acknowledged message transport', () => {
 		expect(snapshot.events.map((event) => event.type)).toEqual([
 			'message.accepted',
 			'message.running',
+			'agent.thought',
 			'agent.chunk'
 		]);
 		expect(snapshot.cursor).toBe(snapshot.events.at(-1)!.sequence);
 		expect(snapshot.activeTurn).toEqual({
 			messageId: 'msg-1',
 			status: 'running',
+			thought: 'Inspecting state. ',
 			output: 'Still working',
 			error: null
 		});
@@ -291,6 +339,7 @@ describe('HUEStore acknowledged message transport', () => {
 		expect(store.getSessionSnapshot('hue', 'session-1').activeTurn).toEqual({
 			messageId: 'msg-1',
 			status: 'unknown',
+			thought: '',
 			output: '',
 			error: 'ACP disconnected before acknowledgement'
 		});
@@ -309,6 +358,20 @@ describe('HUEStore acknowledged message transport', () => {
 		store.database.query("UPDATE messages SET created_at = '2026-08-21T12:00:00.000Z'").run();
 
 		expect(store.getSessionSnapshot('hue', 'session-1').activeTurn?.messageId).toBe('a-second');
+		store.close();
+	});
+
+	it('lists start times only for queued and running sessions', () => {
+		const store = makeDeliveryStore();
+		store.upsertProjectSession('hue', { sessionId: 'session-2', cwd: '/work/hue' });
+		store.acceptMessage({ id: 'queued', projectId: 'hue', sessionId: 'session-1', text: 'Wait' });
+		store.acceptMessage({ id: 'done', projectId: 'hue', sessionId: 'session-2', text: 'Finish' });
+		store.updateMessageStatus('done', 'running');
+		store.updateMessageStatus('done', 'completed');
+
+		expect(store.getBusySessionStarts('hue')).toEqual({
+			'session-1': store.getMessage('queued')!.createdAt
+		});
 		store.close();
 	});
 });

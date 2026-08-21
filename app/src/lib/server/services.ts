@@ -1,4 +1,5 @@
 import { mkdirSync, realpathSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { HermesACP } from './hermes-acp';
@@ -53,4 +54,13 @@ export function sessionMatchesProjectRoot(projectRoot: string, sessionCwd: strin
 	} catch {
 		return false;
 	}
+}
+
+export function projectBranch(projectRoot: string): string | null {
+	const result = spawnSync('git', ['-C', projectRoot, 'branch', '--show-current'], {
+		encoding: 'utf8',
+		timeout: 2_000
+	});
+	const branch = result.status === 0 ? result.stdout.trim() : '';
+	return branch || null;
 }

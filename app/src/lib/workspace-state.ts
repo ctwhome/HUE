@@ -1,4 +1,11 @@
 export type WorkspaceTranscriptMessage = { role: 'user' | 'assistant'; text: string };
+export type WorkspaceSubagentTree = {
+	messageId: string;
+	id: string;
+	title: string;
+	status: string;
+	children: Array<{ index: number; goal: string; role?: string; status: string; result?: string }>;
+};
 export type WorkspaceSessionEvent = {
 	sequence: number;
 	type: string;
@@ -8,15 +15,42 @@ export type WorkspaceDeliveryState = {
 	cursor: number;
 	activeMessageId: string;
 	pendingAssistant: string;
+	pendingThought?: string;
 	delivery: string;
 	transcript: WorkspaceTranscriptMessage[];
+	subagents?: WorkspaceSubagentTree[];
 };
+
+function upsertSubagentTree(
+	trees: WorkspaceSubagentTree[],
+	payload: Record<string, unknown>
+): WorkspaceSubagentTree[] {
+	const tree = payload as WorkspaceSubagentTree;
+	if (!tree.id || !Array.isArray(tree.children)) return trees;
+	const index = trees.findIndex(({ id }) => id === tree.id);
+	if (index < 0) return [...trees, tree];
+	const next = [...trees];
+	next[index] = tree;
+	return next;
+}
+
+export function subagentTreesFromEvents(events: WorkspaceSessionEvent[]): WorkspaceSubagentTree[] {
+	return events.reduce(
+		(trees, event) =>
+			event.type === 'agent.subagents' ? upsertSubagentTree(trees, event.payload) : trees,
+		[] as WorkspaceSubagentTree[]
+	);
+}
 
 export function applySessionEvents(
 	state: WorkspaceDeliveryState,
 	events: WorkspaceSessionEvent[]
 ): WorkspaceDeliveryState {
-	let next = { ...state, transcript: [...state.transcript] };
+	let next = {
+		...state,
+		transcript: [...state.transcript],
+		subagents: [...(state.subagents ?? [])]
+	};
 	for (const event of events) {
 		if (event.sequence <= next.cursor) continue;
 		next.cursor = event.sequence;
@@ -24,6 +58,12 @@ export function applySessionEvents(
 		if (event.type === 'message.running') next.delivery = 'running';
 		if (event.type === 'agent.chunk') {
 			next.pendingAssistant += String(event.payload.text ?? '');
+		}
+		if (event.type === 'agent.thought') {
+			next.pendingThought = (next.pendingThought ?? '') + String(event.payload.text ?? '');
+		}
+		if (event.type === 'agent.subagents') {
+			next.subagents = upsertSubagentTree(next.subagents, event.payload);
 		}
 		if (['message.completed', 'message.failed', 'message.unknown'].includes(event.type)) {
 			next.delivery =
@@ -36,6 +76,7 @@ export function applySessionEvents(
 				next.transcript.push({ role: 'assistant', text: next.pendingAssistant });
 			}
 			next.pendingAssistant = '';
+			next.pendingThought = '';
 		}
 	}
 	return next;
@@ -79,4 +120,11 @@ export function isCurrentTabRequest(
 
 export function isTurnBusy(delivery: string): boolean {
 	return ['saving', 'accepted', 'running', 'reconnecting'].includes(delivery);
+}
+
+export function formatElapsed(startedAt: string, now = Date.now()): string {
+	const seconds = Math.max(0, Math.floor((now - Date.parse(startedAt)) / 1000));
+	if (seconds < 60) return `${seconds}s`;
+	if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+	return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
 }

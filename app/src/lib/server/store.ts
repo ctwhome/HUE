@@ -396,6 +396,45 @@ export class HUEStore {
 		return rows.map((row) => this.mapMessage(row));
 	}
 
+	updateQueuedMessage(
+		id: string,
+		input: { projectId: string; sessionId: string; text: string; images: ImageAttachment[] }
+	): StoredMessage {
+		const message = this.getMessage(id);
+		if (
+			!message ||
+			message.projectId !== input.projectId ||
+			message.sessionId !== input.sessionId
+		) {
+			throw new Error(`Message ${id} was not found`);
+		}
+		if (message.status !== 'queued') throw new Error(`Message ${id} is no longer queued`);
+		const updatedAt = new Date().toISOString();
+		this.database.transaction(() => {
+			this.database
+				.query('UPDATE messages SET text = ?, updated_at = ? WHERE id = ? AND status = ?')
+				.run(input.text, updatedAt, id, 'queued');
+			this.database.query('DELETE FROM message_attachments WHERE message_id = ?').run(id);
+			const insert = this.database.query(
+				'INSERT INTO message_attachments (message_id, position, name, mime_type, data) VALUES (?, ?, ?, ?, ?)'
+			);
+			for (const [position, image] of input.images.entries()) {
+				insert.run(id, position, image.name, image.mimeType, image.data);
+			}
+			this.appendEvent(input.projectId, input.sessionId, 'message.edited', { messageId: id });
+		})();
+		return this.getMessage(id)!;
+	}
+
+	getBusySessionStarts(projectId: string): Record<string, string> {
+		const rows = this.database
+			.query(
+				"SELECT session_id, MIN(created_at) AS started_at FROM messages WHERE project_id = ? AND status IN ('queued', 'running') GROUP BY session_id"
+			)
+			.all(projectId) as Array<{ session_id: string; started_at: string }>;
+		return Object.fromEntries(rows.map((row) => [row.session_id, row.started_at]));
+	}
+
 	private mapMessage(row: {
 		id: string;
 		project_id: string;
@@ -500,26 +539,27 @@ export class HUEStore {
 		activeTurn: {
 			messageId: string;
 			status: 'queued' | 'running' | 'unknown';
+			thought: string;
 			output: string;
 			error: string | null;
 		} | null;
 	} {
 		const messages = this.listMessages(projectId, sessionId);
 		const events = this.listEvents(projectId, sessionId);
-		const messagesById = new Map(messages.map((message) => [message.id, message]));
-		const activeMessage = events.findLast((event) => {
-			const message = messagesById.get(String(event.payload.messageId ?? ''));
-			return (
-				event.type === 'message.accepted' &&
-				!!message &&
-				['queued', 'running', 'unknown'].includes(message.status)
-			);
-		})?.payload.messageId;
-		const activeMessageRecord = activeMessage ? messagesById.get(String(activeMessage)) : undefined;
+		const activeMessageRecord =
+			messages.find(({ status }) => status === 'running' || status === 'unknown') ??
+			messages.find(({ status }) => status === 'queued');
 		const activeTurn = activeMessageRecord
 			? {
 					messageId: activeMessageRecord.id,
 					status: activeMessageRecord.status as 'queued' | 'running' | 'unknown',
+					thought: events
+						.filter(
+							(event) =>
+								event.type === 'agent.thought' && event.payload.messageId === activeMessageRecord.id
+						)
+						.map((event) => String(event.payload.text ?? ''))
+						.join(''),
 					output: events
 						.filter(
 							(event) =>
