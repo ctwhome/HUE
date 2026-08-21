@@ -1,18 +1,18 @@
 # HUE
 
-> **The open-source workspace for human-directed AI work.**
+> **A focused, fast workspace for Hermes Projects, Workflows, and Sessions.**
 >
-> One calm interface for projects, permanent areas of life, independent sessions, durable tasks, user-owned knowledge, visible specialist agents, code, files, browser and computer use—while the user remains in control.
+> One calm interface around Hermes—without the broad Python dashboard or lossy browser terminal input.
 
-![Product status](https://img.shields.io/badge/product-TBI-d97706) ![Specification](https://img.shields.io/badge/specification-reviewable-2563eb) ![Decisions](https://img.shields.io/badge/open%20decisions-TBD-7c3aed)
+![Product status](https://img.shields.io/badge/product-implementation%20started-2563eb) ![Runtime](https://img.shields.io/badge/runtime-Bun-f472b6) ![Hermes](https://img.shields.io/badge/protocol-ACP%20v1-7c3aed)
 
-HUE is a planned **personal agent workspace** combining the best ideas behind Claude Cowork, Claude Code, ChatGPT Projects, GitHub Projects, second-brain systems, Hermes, OpenClaw, OpenCode, Codex, Magentic-style orchestration, and local computer-use systems—without binding the user to one model, provider, agent framework or hidden memory store.
+HUE is a purpose-built **Hermes workspace client**. HUE owns local Project and Workflow metadata plus reliable message-delivery state. Hermes ACP owns model/tool execution and Hermes Session persistence.
 
-**HUE is not implemented yet.** This repository is the product contract and documentation prototype from which implementation will proceed. Every product capability is explicitly marked **TBI** (to be implemented); unresolved choices are marked **TBD** (to be decided).
+Implementation lives in `apps/workspace`. The older broad personal-OS specification remains in the repository as historical design context, but [ADR-0002](decisions/0002-bun-hermes-acp-workspace.md) is the active scope decision.
 
 ## The product in one sentence
 
-HUE lets a user open a **Project** or ongoing **Area** with its own goals, context pack, files, sources, permissions and memory; start independent discussion, execution, research, monitoring or review sessions; watch a bounded orchestrator route work to temporary specialists; intervene through steering and approvals; and receive verified results and artifacts in the same user-owned workspace.
+HUE lets a user open a local **Project**, launch a reusable **Workflow**, and create or resume reliable Hermes **Sessions** whose complete messages survive retries and reconnects.
 
 ## Review the vision
 
@@ -36,6 +36,7 @@ HUE lets a user open a **Project** or ongoing **Area** with its own goals, conte
    - [Milestones and implementation sequence](docs/13-roadmap.md)
    - [Decision register](docs/14-decision-register.md)
    - [Accepted frontend ADR: SvelteKit + shadcn-svelte](decisions/0001-sveltekit-shadcn-svelte.md)
+   - [Accepted focused workspace ADR: Bun + Hermes ACP](decisions/0002-bun-hermes-acp-workspace.md)
    - [Glossary](docs/15-glossary.md)
    - [Notifications, attention and delivery](docs/16-notifications-attention-delivery.md)
 
@@ -57,6 +58,7 @@ The canonical status rules live in [docs/00-status-and-review.md](docs/00-status
 ```text
 HUE/
 ├── VISION.md                 # stable product north star
+├── apps/workspace/           # functional SvelteKit/Bun Hermes workspace
 ├── docs/                     # canonical target product specification
 ├── prototype/                # canonical clickable UI wireframe source
 ├── decisions/                # architecture decision records (ADRs)
@@ -81,21 +83,15 @@ bun run verify    # product contract + Astro checks + build + output crawl
 
 The production site is deployed to [ctwhome.github.io/HUE](https://ctwhome.github.io/HUE/) by GitHub Actions after every verified push to `main`.
 
-## Non-negotiable product contract
+## Focused product contract
 
-- One coherent HUE workspace and front door—not one omniscient model and not a fleet the user must manually operate.
-- **Projects and Areas are real context and permission boundaries**, not chat folders. Projects can finish; Areas represent ongoing responsibilities; Resources can serve several spaces.
-- Sessions and tasks are different objects: sessions are isolated discussion/execution/research/monitoring/review contexts; tasks are durable desired outcomes.
-- Specialist agents are **temporary workers selected by the orchestrator**, not personalities the user has to choose.
-- Model, provider, effort, tools and isolation are normally selected by policy; explicit user choices always win.
-- Orchestration is visible at the right level: readable task state by default, full event/transcript details on demand.
-- Native APIs and deterministic tools are preferred over browser automation; browser automation is preferred over computer use.
-- External, irreversible, sensitive or high-impact actions pass through explicit policy and approval gates.
-- Memory is layered and inspectable. Raw run logs do not silently become durable memory.
-- Human-readable context packs and the second-brain knowledge substrate remain usable without HUE or any AI backend.
-- GitHub, Calendar, email and user files remain authoritative for their native objects; HUE provides bindings and a control surface rather than making stale duplicates.
-- Results are backed by artifacts, diffs, tests, citations or other verification—not worker self-report.
-- Local-first, model-independent and framework-independent are product requirements; Hermes, OpenCode and cloud services are replaceable backends.
+- Exactly three user-facing product objects: **Projects, Workflows, Sessions**.
+- Projects are trusted working-directory boundaries; Workflows are reusable Project-scoped Hermes prompts; Sessions are Hermes ACP conversations.
+- The browser sends complete message envelopes, never PTY keystrokes.
+- HUE persists an envelope before acknowledging it, deduplicates client retries, and exposes monotonic reconnect cursors.
+- Unknown delivery remains visibly unknown and is never auto-retried.
+- HUE never writes Hermes' `state.db` directly and never silently grants ACP permission requests.
+- Data remains local by default in HUE SQLite plus the user's existing Hermes profile.
 
 ## Roadmap and issues
 
