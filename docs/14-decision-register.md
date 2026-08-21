@@ -8,23 +8,21 @@
 | ID | Decision | Accepted direction | ADR | Status |
 |---|---|---|---|---|
 | TBD-020 | Frontend and component system | SvelteKit + Svelte 5 + shadcn-svelte beneath HUE-owned tokens and wrapper components; static HTML prototype retained until functional flows stabilize | [ADR-0001](../decisions/0001-sveltekit-shadcn-svelte.md) | Accepted |
+| TBD-001, TBD-002, TBD-004, TBD-007, TBD-012 | Focused product boundary, shell, control plane, runtime, storage, and transport | Browser workspace on SvelteKit/Bun; `bun:sqlite`; Hermes ACP external-process adapter; acknowledged HTTP envelopes and cursor replay | [ADR-0002](../decisions/0002-bun-hermes-acp-workspace.md) | Accepted |
 
 ## Alpha-blocking decisions
 
 | ID | Decision | Options to evaluate | Decision criteria | Status |
 |---|---|---|---|---|
-| TBD-001 | Application shell | Tauri v2; Electron; browser/PWA + daemon; extend existing Hermes WebUI | local integration, packaging, accessibility, update safety, reuse | TBD |
-| TBD-002 | Control-plane implementation stack | TypeScript/Node; Rust core; Python/Hermes-derived; split daemon | recovery/process control, contracts, reuse, contributors, cross-platform | TBD |
 | TBD-003 | Orchestration foundation | custom state machine; Magentic/Agent Framework concepts; LangGraph; Mastra; Google ADK; hybrid | durable execution, dynamic plans, observability, adapter neutrality, complexity | TBD |
-| TBD-004 | Runtime relationship to Hermes/OpenCode | embed/runtime adapter; external process adapter; selective reuse; independent core | time-to-first-slice, upstream coupling, provider/tools/memory reuse, HUE ownership of Spaces/Sessions | TBD |
 | TBD-005 | Default task topology policy | rules + LLM; planner-first; direct-first adaptive; learned policy | predictability, cost, quality, avoid agent bureaucracy | TBD |
 | TBD-006 | Knowledge/memory engine | portable files + relational graph; relational curated records; vector DB; hybrid; adapt Hermes memory | human readability, backlinks, provenance, correction, namespaces, privacy, portability | TBD |
-| TBD-007 | Transactional/search/vector storage | SQLite + FTS/vector extension; SQLite + separate index; embedded DB alternative | local reliability, migrations, backup, search, concurrency | TBD |
+
 | TBD-008 | Routing evaluation and optimization | static policy; local benchmarks; opt-in federated metrics; manual ranking | privacy, measurable quality, provider churn, simplicity | TBD |
 | TBD-009 | Worker catalog format | built-in typed manifests; YAML/Markdown; plugin-provided; skills as manifests | discoverability, safety, versioning, authoring UX | TBD |
 | TBD-010 | Computer-use backend | cua-driver; OS-specific native adapters; browser-only first; pluggable contract | background operation, accessibility, safety, cross-platform, recordings | TBD |
 | TBD-011 | Worker/code isolation | git worktrees; OS sandbox; containers; lightweight VM; policy mix | security, performance, filesystem fidelity, cross-platform | TBD |
-| TBD-012 | App API/event transport | local HTTP+SSE/WS; JSON-RPC; gRPC/connect; embedded IPC | resume cursors, clients, debugging, compatibility | TBD |
+
 
 ## Pre-alpha decisions
 
@@ -57,9 +55,8 @@ Each decision gets `decisions/NNNN-title.md` using the template. An accepted ADR
 
 ## Recommended investigation order
 
-1. **TBD-004 + TBD-001 + TBD-002:** determine product boundary and executable skeleton.
-2. **TBD-007 + TBD-012:** durable state/event foundation.
-3. **TBD-003 + TBD-005:** orchestrator model above that foundation.
+1. **Accepted ADR-0002:** implement and harden the focused Project/Workflow/Session slice.
+2. **TBD-003 + TBD-005:** only revisit orchestration if the focused product produces a concrete need.
 4. **TBD-006 + TBD-016 + TBD-022:** context pack, knowledge and memory semantics.
 5. **TBD-009 + TBD-011:** worker and isolation contracts.
 6. **TBD-008:** route policy/evaluation.
@@ -71,9 +68,9 @@ Each decision gets `decisions/NNNN-title.md` using the template. An accepted ADR
 
 These are recommendations to test, still `TBD`:
 
-- Build HUE’s Space/Session/knowledge/task model as its own control plane and treat Hermes as a valuable runtime/feature source, avoiding permanent coupling to one session loop.
+- Keep HUE's Project/Workflow metadata and delivery journal independent while treating Hermes ACP as the sole Session execution/runtime boundary.
 - Use the accepted SvelteKit + Svelte 5 frontend and shadcn-svelte component foundation regardless of which packaging option wins `TBD-001`.
-- Reuse/extend the existing Hermes WebUI project and session substrate only where it does not reopen the accepted frontend stack or make backend-native sessions canonical.
+- Do not fork or embed the existing Hermes Python WebUI; use ACP and complete semantic message envelopes instead of PTY input.
 - Use SQLite as canonical local transactional storage with an append-only event journal and rebuildable indexes.
 - Build a small custom durable orchestration state machine while borrowing proven supervisor patterns; avoid importing a large framework before requirements are proven.
 - Use capability manifests and runtime adapters; do not encode providers directly in product features.

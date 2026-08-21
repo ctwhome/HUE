@@ -1,11 +1,17 @@
 # Target system architecture
 
-> **Product status:** `TBI`
-> **Open choices:** `TBD-001` shell, `TBD-002` control-plane stack, `TBD-003` orchestration foundation, `TBD-004` primary runtime relationship, `TBD-007` database/vector strategy, `TBD-013` notification gateways, `TBD-014` mobile attention surface, `TBD-015` plugin protocol, `TBD-017` remote access.
+> **Focused implementation status:** `IMPLEMENTED IN PART`
+> **Accepted boundary:** [ADR-0002 — Bun + Hermes ACP workspace](../decisions/0002-bun-hermes-acp-workspace.md)
 
 ## Architectural intent
 
 HUE separates a stable **personal workspace and product control plane** from replaceable model, agent-runtime and tool backends. The workspace—not Hermes, OpenCode or a model context—owns Spaces, Sessions, context packs, task state and memory. The UI should not need to know whether a step ran through Hermes, OpenCode, Codex, Claude Code, a local model or a deterministic program, although advanced inspection remains available.
+
+## Focused implementation boundary — accepted
+
+The active product is smaller than the historical target architecture below. It contains only Projects, reusable Workflows, and Hermes Sessions. SvelteKit HTTP routes run under Bun; `bun:sqlite` stores Project/Workflow metadata plus message idempotency and cursor events; a supervised Hermes ACP process owns execution and Hermes conversation history. The browser sends complete acknowledged message envelopes and never PTY keystrokes.
+
+The remaining sections are retained as historical design context, not an active implementation backlog. Capabilities outside ADR-0002 require a new product decision.
 
 ## Logical architecture — `TBI`
 
