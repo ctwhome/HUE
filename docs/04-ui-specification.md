@@ -397,6 +397,10 @@ The header bell displays unread attention count, not raw event volume. Dismissal
 - Collapsing the Space rail preserves every Space as an accessible, labelled control; identity cannot depend on color alone.
 - When the Session sidebar becomes a drawer, opening it traps neither keyboard focus nor the main window, and closing it returns focus to the trigger.
 - On mobile, Spaces and Sessions are separately reachable drawers rather than compressed permanent columns.
+- A rightward drag from the left edge opens the current Space’s Session history with direct finger tracking; a leftward drag dismisses either open drawer. Distance and velocity thresholds distinguish an intentional flick from vertical scrolling.
+- The Session drawer exposes a visible Back control to all Spaces, and selecting a Space drills forward into its isolated Session list.
+- Backdrop tap, explicit close controls, Escape, browser Back and Android/system Back dismiss the topmost dialog or drawer before changing the main-window route. Focus returns to the invoking control when one exists.
+- Gesture navigation is additive: every gesture has a labelled button equivalent, respects reduced-motion preferences and does not capture vertical scroll or interactions that did not begin at the screen edge/drawer surface.
 
 ## Prototype honesty
 

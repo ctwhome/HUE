@@ -6,8 +6,23 @@
   const toast = $('#toast');
   const sessionList = $('#session-list');
   const sessionSearch = $('#session-search-input');
+  const projectRail = $('.project-rail');
+  const sessionSidebar = $('.session-sidebar');
+  const paneBackdrop = $('.pane-backdrop');
+  const navigationAnnouncer = $('#navigation-announcer');
+  const mobileDrawerQuery = window.matchMedia('(max-width: 760px)');
+  const narrowDrawerQuery = window.matchMedia('(max-width: 900px)');
+  const DRAWER_EDGE = 28;
+  const GESTURE_LOCK = 10;
+  const DISTANCE_THRESHOLD = 0.3;
+  const VELOCITY_THRESHOLD = 0.55;
   let toastTimer;
   let activeSpaceId = 'hue';
+  let paneReturnFocus = null;
+  let restoringHistory = false;
+  let gesture = null;
+  let scrollMomentumFrame = 0;
+  let suppressClickUntil = 0;
 
   const spaces = {
     hue: {
@@ -178,32 +193,126 @@
     toastTimer = setTimeout(() => toast.classList.remove('show'), 2600);
   }
 
-  function closePanes() {
-    document.body.classList.remove('projects-pane-open', 'sessions-pane-open');
+  function currentScreenName() {
+    return $('.screen.active')?.dataset.screen || 'home';
   }
 
-  function updateMobileNavigation(screenName) {
+  function currentPane() {
+    if (document.body.classList.contains('projects-pane-open')) return 'projects';
+    if (document.body.classList.contains('sessions-pane-open')) return 'sessions';
+    return null;
+  }
+
+  function currentLayer() {
+    const dialog = $('dialog[open]');
+    if (dialog) return `dialog:${dialog.id}`;
+    return currentPane();
+  }
+
+  function snapshotState(layer = currentLayer()) {
+    return {
+      huePrototype: true,
+      screen: currentScreenName(),
+      spaceId: activeSpaceId,
+      sessionId: selectedSessions[activeSpaceId],
+      layer
+    };
+  }
+
+  function writeHistory(mode = 'push', layer = currentLayer()) {
+    if (restoringHistory) return;
+    const state = snapshotState(layer);
+    if (mode === 'replace') history.replaceState(state, '', `#${state.screen}`);
+    else history.pushState(state, '', `#${state.screen}`);
+  }
+
+  function announceNavigation(message) {
+    if (!navigationAnnouncer || !message) return;
+    navigationAnnouncer.textContent = '';
+    requestAnimationFrame(() => { navigationAnnouncer.textContent = message; });
+  }
+
+  function updateMobileNavigation(screenName = currentScreenName()) {
     $$('.mobile-bottom-nav button').forEach((button) => button.classList.remove('active'));
-    let selector = `[data-screen-target="${screenName}"]`;
-    if (screenName === 'conversation') selector = '[data-action="open-sessions"]';
-    if (['project', 'area', 'architecture'].includes(screenName)) selector = '[data-action="open-projects"]';
+    const pane = currentPane();
+    let selector = pane ? `[data-action="open-${pane}"]` : `[data-screen-target="${screenName}"]`;
+    if (!pane && screenName === 'conversation') selector = '[data-action="open-sessions"]';
+    if (!pane && ['project', 'area', 'architecture'].includes(screenName)) selector = '[data-action="open-projects"]';
     const button = $(selector, $('.mobile-bottom-nav'));
     button?.classList.add('active');
   }
 
-  function showScreen(name, updateHash = true, overrides = {}) {
+  function syncDrawerAccessibility() {
+    const pane = currentPane();
+    const projectsHidden = mobileDrawerQuery.matches && pane !== 'projects';
+    const sessionsHidden = narrowDrawerQuery.matches && pane !== 'sessions';
+    projectRail.inert = projectsHidden;
+    sessionSidebar.inert = sessionsHidden;
+    projectRail.setAttribute('aria-hidden', String(projectsHidden));
+    sessionSidebar.setAttribute('aria-hidden', String(sessionsHidden));
+    paneBackdrop.setAttribute('aria-hidden', String(!pane));
+    $$('[data-action="open-projects"]').forEach((button) => button.setAttribute('aria-expanded', String(pane === 'projects')));
+    $$('[data-action="open-sessions"]').forEach((button) => button.setAttribute('aria-expanded', String(pane === 'sessions')));
+    updateMobileNavigation();
+  }
+
+  function applyPane(pane, options = {}) {
+    const previous = currentPane();
+    document.body.classList.toggle('projects-pane-open', pane === 'projects');
+    document.body.classList.toggle('sessions-pane-open', pane === 'sessions');
+    syncDrawerAccessibility();
+    if (options.announce !== false && pane !== previous) {
+      if (pane === 'projects') announceNavigation('Spaces menu opened.');
+      else if (pane === 'sessions') announceNavigation(`${currentSpace().name} Sessions opened.`);
+      else if (previous) announceNavigation('Navigation menu closed.');
+    }
+  }
+
+  function openPane(pane, options = {}) {
+    if (pane === 'projects' && !mobileDrawerQuery.matches) return;
+    if (pane === 'sessions' && !narrowDrawerQuery.matches) return;
+    if (currentPane() === pane && !options.force) {
+      closePanes();
+      return;
+    }
+    paneReturnFocus = options.trigger || document.activeElement;
+    const replacingLayer = Boolean(history.state?.huePrototype && history.state.layer);
+    applyPane(pane, { announce: options.announce });
+    if (options.history !== false) writeHistory(options.historyMode || (replacingLayer ? 'replace' : 'push'), pane);
+  }
+
+  function closeDialogsDirect() {
+    $$('dialog[open]').forEach((dialog) => dialog.close());
+  }
+
+  function closePanes(options = {}) {
+    const layer = currentLayer();
+    if (options.history !== false && layer && history.state?.huePrototype && history.state.layer) {
+      history.back();
+      return;
+    }
+    closeDialogsDirect();
+    applyPane(null, { announce: options.announce });
+    if (options.restoreFocus !== false && paneReturnFocus instanceof HTMLElement && paneReturnFocus.isConnected) {
+      paneReturnFocus.focus({ preventScroll: true });
+    }
+    paneReturnFocus = null;
+  }
+
+  function showScreen(name, updateHistory = true, overrides = {}, historyMode) {
     const next = $(`[data-screen="${name}"]`);
     if (!next) return;
+    const hadLayer = Boolean(currentLayer());
+    closeDialogsDirect();
+    applyPane(null, { announce: false });
     $$('.screen').forEach((screen) => screen.classList.toggle('active', screen === next));
     $$('.project-rail .nav-item').forEach((item) => item.classList.toggle('active', item.dataset.screenTarget === name));
     title.textContent = overrides.title || next.dataset.title || 'HUE';
     eyebrow.textContent = overrides.eyebrow || next.dataset.eyebrow || 'HUE';
     updateMobileNavigation(name);
-    if (updateHash) history.replaceState(null, '', `#${name}`);
-    $('#main-content').scrollTo({ top: 0, behavior: 'smooth' });
-    $$('dialog[open]').forEach((dialog) => dialog.close());
-    closePanes();
+    $('#main-content').scrollTo({ top: 0, behavior: restoringHistory ? 'auto' : 'smooth' });
     document.title = `${title.textContent} · HUE prototype`;
+    if (updateHistory) writeHistory(historyMode || (hadLayer ? 'replace' : 'push'), null);
   }
 
   function currentSpace() {
@@ -382,9 +491,20 @@
     updateRailToggle();
   }
 
-  function action(name) {
+  function openDialog(dialog, source) {
+    if (!dialog) return;
+    const replacingLayer = Boolean(history.state?.huePrototype && history.state.layer);
+    paneReturnFocus = source || document.activeElement;
+    closeDialogsDirect();
+    applyPane(null, { announce: false });
+    dialog.showModal();
+    writeHistory(replacingLayer ? 'replace' : 'push', `dialog:${dialog.id}`);
+  }
+
+  function action(name, source) {
     const workerDialog = $('#worker-dialog');
     const commandDialog = $('#command-dialog');
+    const projectDialog = $('#project-dialog');
     const messages = {
       'open-settings': 'Settings screen behavior is documented and TBI.',
       'mock-send': 'Prototype only — no message or task was sent.',
@@ -395,8 +515,7 @@
       'reject-approval': 'Mock approval rejected. No files or policies were changed.',
       'approve': 'Mock approval granted once. No real capability was issued.',
       'open-notification-settings': 'Notification policy: channels, privacy, sounds, quiet hours, grouping and retention · TBI.',
-      'mock-mark-read': 'Mock notification marked read. The underlying semantic event remains durable.',
-      'new-space': 'Create/open Space flow is TBI. Every existing Project and Area remains visible in the rail.'
+      'mock-mark-read': 'Mock notification marked read. The underlying semantic event remains durable.'
     };
 
     if (name === 'toggle-project-rail') {
@@ -404,13 +523,15 @@
       return;
     }
     if (name === 'open-projects') {
-      document.body.classList.remove('sessions-pane-open');
-      document.body.classList.add('projects-pane-open');
+      openPane('projects', { trigger: source });
+      return;
+    }
+    if (name === 'show-projects') {
+      openPane('projects', { trigger: source, force: true, historyMode: 'replace' });
       return;
     }
     if (name === 'open-sessions') {
-      document.body.classList.remove('projects-pane-open');
-      document.body.classList.add('sessions-pane-open');
+      openPane('sessions', { trigger: source });
       return;
     }
     if (name === 'close-panes') {
@@ -435,16 +556,21 @@
       return;
     }
     if (name === 'worker-detail') {
-      workerDialog.showModal();
+      openDialog(workerDialog, source);
       return;
     }
     if (name === 'command') {
-      commandDialog.showModal();
+      openDialog(commandDialog, source);
       setTimeout(() => $('input', commandDialog)?.focus(), 10);
       return;
     }
+    if (name === 'new-space') {
+      openDialog(projectDialog, source);
+      setTimeout(() => $('#project-name')?.focus(), 10);
+      return;
+    }
     if (name === 'close-dialog') {
-      $$('dialog[open]').forEach((dialog) => dialog.close());
+      closePanes();
       return;
     }
     if (name === 'review-approval') {
@@ -462,10 +588,211 @@
     notify(messages[name] || 'Prototype interaction · product behavior TBI.');
   }
 
+  function restoreAppState(state) {
+    restoringHistory = true;
+    closeDialogsDirect();
+    applyPane(null, { announce: false });
+
+    const nextState = state?.huePrototype ? state : {
+      screen: $(`[data-screen="${location.hash.slice(1)}"]`) ? location.hash.slice(1) : 'home',
+      spaceId: activeSpaceId,
+      sessionId: selectedSessions[activeSpaceId],
+      layer: null
+    };
+
+    if (spaces[nextState.spaceId]) {
+      if (spaces[nextState.spaceId].sessions.some((session) => session.id === nextState.sessionId)) {
+        selectedSessions[nextState.spaceId] = nextState.sessionId;
+      }
+      setActiveSpace(nextState.spaceId);
+    }
+
+    const session = sessionById(currentSpace(), selectedSessions[activeSpaceId]);
+    updateConversation(session);
+    showScreen(nextState.screen || 'home', false, nextState.screen === 'conversation' ? {
+      title: session.title,
+      eyebrow: `${currentSpace().name} / Sessions / ${session.type}`
+    } : {});
+
+    if (nextState.layer === 'projects' || nextState.layer === 'sessions') {
+      applyPane(nextState.layer, { announce: true });
+    } else if (typeof nextState.layer === 'string' && nextState.layer.startsWith('dialog:')) {
+      const dialog = $(`#${nextState.layer.slice(7)}`);
+      dialog?.showModal();
+    }
+    restoringHistory = false;
+  }
+
+  function drawerForPane(pane) {
+    return pane === 'projects' ? projectRail : sessionSidebar;
+  }
+
+  function clearGestureVisuals(drawer) {
+    drawer?.classList.remove('drawer-dragging');
+    drawer?.style.removeProperty('transform');
+    document.body.classList.remove('drawer-gesture-active');
+    document.body.style.removeProperty('--drawer-scrim-opacity');
+  }
+
+  function beginDrawerGesture(event) {
+    if (!mobileDrawerQuery.matches || event.pointerType === 'mouse' || !event.isPrimary || $('dialog[open]')) return;
+    if (scrollMomentumFrame) {
+      cancelAnimationFrame(scrollMomentumFrame);
+      scrollMomentumFrame = 0;
+    }
+    const pane = currentPane();
+    let mode = null;
+    let targetPane = pane;
+
+    if (pane && drawerForPane(pane).contains(event.target)) {
+      mode = 'close';
+    } else if (!pane && (event.target.closest('.drawer-edge-swipe-zone') || event.clientX <= DRAWER_EDGE)) {
+      mode = 'open';
+      targetPane = 'sessions';
+    }
+    if (!mode) return;
+
+    gesture = {
+      pointerId: event.pointerId,
+      mode,
+      pane: targetPane,
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      lastTime: event.timeStamp,
+      velocityX: 0,
+      velocityY: 0,
+      progress: mode === 'open' ? 0 : 1,
+      locked: false,
+      drawer: drawerForPane(targetPane),
+      width: drawerForPane(targetPane).getBoundingClientRect().width,
+      scrollTarget: event.target.closest('.session-list, .project-rail nav'),
+      startScrollTop: event.target.closest('.session-list, .project-rail nav')?.scrollTop || 0
+    };
+  }
+
+  function lockDrawerGesture() {
+    const drawer = gesture.drawer;
+    drawer.classList.add('drawer-dragging');
+    document.body.classList.add('drawer-gesture-active');
+    if (gesture.mode === 'open') {
+      drawer.style.transform = `translate3d(${-gesture.width}px, 0, 0)`;
+      applyPane(gesture.pane, { announce: false });
+    }
+    document.body.style.setProperty('--drawer-scrim-opacity', String(gesture.progress));
+    gesture.locked = true;
+  }
+
+  function moveDrawerGesture(event) {
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
+    const dx = event.clientX - gesture.startX;
+    const dy = event.clientY - gesture.startY;
+
+    if (!gesture.locked) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < GESTURE_LOCK) return;
+      if (Math.abs(dy) > Math.abs(dx)) {
+        if (!gesture.scrollTarget) {
+          gesture = null;
+          return;
+        }
+        gesture.mode = 'scroll';
+        gesture.locked = true;
+      } else if (gesture.mode === 'open' && dx <= 0) {
+        gesture = null;
+        return;
+      } else {
+        lockDrawerGesture();
+      }
+    }
+
+    event.preventDefault();
+    const now = event.timeStamp;
+    const elapsed = Math.max(1, now - gesture.lastTime);
+    gesture.velocityX = (event.clientX - gesture.lastX) / elapsed;
+    gesture.velocityY = (event.clientY - gesture.lastY) / elapsed;
+    gesture.lastX = event.clientX;
+    gesture.lastY = event.clientY;
+    gesture.lastTime = now;
+
+    if (gesture.mode === 'scroll') {
+      gesture.scrollTarget.scrollTop = gesture.startScrollTop - dy;
+      return;
+    }
+
+    const translateX = gesture.mode === 'open'
+      ? Math.min(0, Math.max(-gesture.width, -gesture.width + Math.max(0, dx)))
+      : Math.min(0, Math.max(-gesture.width, Math.min(0, dx)));
+    gesture.progress = 1 + translateX / gesture.width;
+    gesture.drawer.style.transform = `translate3d(${translateX}px, 0, 0)`;
+    document.body.style.setProperty('--drawer-scrim-opacity', String(gesture.progress));
+  }
+
+  function continueScrollMomentum(activeGesture) {
+    if (!activeGesture.scrollTarget || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let velocity = activeGesture.velocityY;
+    if (Math.abs(velocity) < 0.08) return;
+    const tick = () => {
+      velocity *= 0.92;
+      activeGesture.scrollTarget.scrollTop -= velocity * 16;
+      if (Math.abs(velocity) >= 0.02) {
+        scrollMomentumFrame = requestAnimationFrame(tick);
+      } else {
+        scrollMomentumFrame = 0;
+      }
+    };
+    scrollMomentumFrame = requestAnimationFrame(tick);
+  }
+
+  function finishDrawerGesture(event, cancelled = false) {
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
+    const activeGesture = gesture;
+    gesture = null;
+    if (!activeGesture.locked) return;
+    if (activeGesture.mode === 'scroll') {
+      continueScrollMomentum(activeGesture);
+      return;
+    }
+
+    const opening = activeGesture.mode === 'open';
+    const completed = !cancelled && (opening
+      ? activeGesture.progress >= DISTANCE_THRESHOLD || activeGesture.velocityX >= VELOCITY_THRESHOLD
+      : activeGesture.progress <= 1 - DISTANCE_THRESHOLD || activeGesture.velocityX <= -VELOCITY_THRESHOLD);
+    const shouldBeOpen = opening ? completed : !completed;
+    const targetX = shouldBeOpen ? 0 : -activeGesture.width;
+    suppressClickUntil = performance.now() + 350;
+
+    activeGesture.drawer.classList.remove('drawer-dragging');
+    activeGesture.drawer.getBoundingClientRect();
+    activeGesture.drawer.style.transform = `translate3d(${targetX}px, 0, 0)`;
+    document.body.style.setProperty('--drawer-scrim-opacity', shouldBeOpen ? '1' : '0');
+
+    window.setTimeout(() => {
+      clearGestureVisuals(activeGesture.drawer);
+      if (opening && completed) {
+        paneReturnFocus = null;
+        writeHistory('push', activeGesture.pane);
+        announceNavigation(`${currentSpace().name} Sessions opened.`);
+      } else if (opening) {
+        applyPane(null, { announce: false });
+      } else if (completed) {
+        applyPane(null, { announce: true });
+        if (history.state?.huePrototype && history.state.layer) history.back();
+      }
+    }, 230);
+  }
+
   $$('[data-space-target]').forEach((button) => {
     button.addEventListener('click', () => {
       setActiveSpace(button.dataset.spaceTarget);
-      if (button.dataset.screenTarget) showScreen(button.dataset.screenTarget);
+      const isMobileRailSelection = mobileDrawerQuery.matches && projectRail.contains(button);
+      if (isMobileRailSelection) {
+        applyPane(null, { announce: false });
+        writeHistory('replace', null);
+        openPane('sessions', { trigger: button, force: true, historyMode: 'push' });
+      } else if (button.dataset.screenTarget) {
+        showScreen(button.dataset.screenTarget);
+      }
     });
   });
 
@@ -473,7 +800,58 @@
     button.addEventListener('click', () => showScreen(button.dataset.screenTarget));
   });
 
-  $$('[data-action]').forEach((button) => button.addEventListener('click', () => action(button.dataset.action)));
+  $$('[data-action]').forEach((button) => button.addEventListener('click', () => action(button.dataset.action, button)));
+
+  $('#project-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const name = data.get('name').trim();
+    const path = data.get('path').trim();
+    const id = `project-${Date.now()}`;
+    const glyph = name.charAt(0).toUpperCase();
+    const button = document.createElement('button');
+
+    spaces[id] = {
+      name,
+      path,
+      kind: 'Project',
+      glyph,
+      glyphClass: 'custom-space',
+      overviewScreen: 'project',
+      description: `Local project at ${path}.`,
+      sessions: []
+    };
+    selectedSessions[id] = undefined;
+    button.type = 'button';
+    button.className = 'space-nav-item';
+    button.dataset.spaceTarget = id;
+    button.dataset.screenTarget = 'project';
+    button.title = name;
+    button.setAttribute('aria-label', `${name} project`);
+    const icon = document.createElement('span');
+    icon.className = 'space-glyph custom-space';
+    icon.textContent = glyph;
+    const copy = document.createElement('span');
+    copy.className = 'space-copy rail-label';
+    const strong = document.createElement('strong');
+    strong.textContent = name;
+    const small = document.createElement('small');
+    small.textContent = path;
+    copy.append(strong, small);
+    button.append(icon, copy);
+    button.addEventListener('click', () => {
+      setActiveSpace(id);
+      showScreen('project');
+    });
+    $('[data-project-list-end]').before(button);
+    form.reset();
+    closeDialogsDirect();
+    paneReturnFocus = null;
+    setActiveSpace(id);
+    showScreen('project', true, {}, 'replace');
+    notify(`${name} added to Projects.`);
+  });
 
   sessionList.addEventListener('click', (event) => {
     const button = event.target.closest('[data-session-id]');
@@ -482,15 +860,44 @@
 
   sessionSearch.addEventListener('input', () => renderSessions(sessionSearch.value));
 
+  document.addEventListener('pointerdown', beginDrawerGesture, { passive: true });
+  window.addEventListener('pointermove', moveDrawerGesture, { passive: false });
+  window.addEventListener('pointerup', (event) => finishDrawerGesture(event));
+  window.addEventListener('pointercancel', (event) => finishDrawerGesture(event, true));
+  document.addEventListener('click', (event) => {
+    if (performance.now() < suppressClickUntil) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
+
+  $$('dialog').forEach((dialog) => {
+    dialog.addEventListener('cancel', (event) => {
+      event.preventDefault();
+      closePanes();
+    });
+  });
+
   document.addEventListener('keydown', (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
       event.preventDefault();
-      action('command');
+      action('command', document.activeElement);
     }
-    if (event.key === 'Escape') closePanes();
+    if (event.key === 'Escape' && currentLayer()) {
+      event.preventDefault();
+      closePanes();
+    }
   });
 
-  window.addEventListener('resize', updateRailToggle);
+  function handleViewportChange() {
+    if (!narrowDrawerQuery.matches) applyPane(null, { announce: false });
+    else if (!mobileDrawerQuery.matches && currentPane() === 'projects') applyPane(null, { announce: false });
+    updateRailToggle();
+    syncDrawerAccessibility();
+  }
+
+  window.addEventListener('resize', handleViewportChange);
+  window.addEventListener('popstate', (event) => restoreAppState(event.state));
 
   const initial = location.hash.slice(1);
   const initialScreen = $(`[data-screen="${initial}"]`) ? initial : 'home';
@@ -498,4 +905,6 @@
   setActiveSpace(initialSpace);
   showScreen(initialScreen, false);
   updateRailToggle();
+  syncDrawerAccessibility();
+  history.replaceState(snapshotState(null), '', `#${initialScreen}`);
 })();
