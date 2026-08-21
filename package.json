@@ -6,7 +6,7 @@
   "packageManager": "bun@1.3.14",
   "scripts": {
     "site:prepare": "python3 scripts/prepare_site.py",
-    "dev": "bun run site:prepare && astro dev",
+    "dev": "bun scripts/dev.ts",
     "build": "bun run site:prepare && astro build",
     "preview": "astro preview",
     "check": "python3 scripts/validate_docs.py && bun run site:prepare && astro check",
