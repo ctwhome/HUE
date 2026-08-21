@@ -14,7 +14,7 @@ Development was paused on 25 July 2026 while the maintainer evaluated whether He
 
 HUE is now a focused **Hermes workspace client**. HUE owns local Project and Workflow metadata plus reliable message-delivery state. Hermes ACP owns model/tool execution and Hermes Session persistence.
 
-Implementation lives in `apps/workspace`. The older broad personal-OS specification remains in the repository as historical design context, but [ADR-0002](decisions/0002-bun-hermes-acp-workspace.md) is the active scope decision.
+Implementation lives in `app`. The older broad personal-OS specification remains in the repository as historical design context, but [ADR-0002](docs/decisions/0002-bun-hermes-acp-workspace.md) is the active scope decision.
 
 ## The product in one sentence
 
@@ -23,7 +23,7 @@ HUE lets a user open a local **Project**, launch a reusable **Workflow**, and cr
 ## Review the vision
 
 1. Start with **[VISION.md](VISION.md)**.
-2. Open the **[Astro/Starlight documentation website](https://ctwhome.github.io/HUE/)** and its embedded [interactive specification](https://ctwhome.github.io/HUE/prototype/), or run the site locally with `bun run dev`.
+2. Open the **[Astro/Starlight documentation website](https://ctwhome.github.io/HUE/)** and its embedded [interactive specification](https://ctwhome.github.io/HUE/prototype/), or run the docs and workspace locally with `make dev`.
 3. Review the specification in order:
    - [Status, labels and review protocol](docs/00-status-and-review.md)
    - [Problem, frustrations and product principles](docs/01-problem-and-principles.md)
@@ -41,8 +41,8 @@ HUE lets a user open a local **Project**, launch a reusable **Workflow**, and cr
    - [Deployment and operations](docs/12-deployment-operations.md)
    - [Milestones and implementation sequence](docs/13-roadmap.md)
    - [Decision register](docs/14-decision-register.md)
-   - [Accepted frontend ADR: SvelteKit + shadcn-svelte](decisions/0001-sveltekit-shadcn-svelte.md)
-   - [Accepted focused workspace ADR: Bun + Hermes ACP](decisions/0002-bun-hermes-acp-workspace.md)
+   - [Accepted frontend ADR: SvelteKit + shadcn-svelte](docs/decisions/0001-sveltekit-shadcn-svelte.md)
+   - [Accepted focused workspace ADR: Bun + Hermes ACP](docs/decisions/0002-bun-hermes-acp-workspace.md)
    - [Glossary](docs/15-glossary.md)
    - [Notifications, attention and delivery](docs/16-notifications-attention-delivery.md)
 
@@ -63,28 +63,22 @@ The canonical status rules live in [docs/00-status-and-review.md](docs/00-status
 
 ```text
 HUE/
-├── VISION.md                 # stable product north star
-├── apps/workspace/           # functional SvelteKit/Bun Hermes workspace
-├── docs/                     # canonical target product specification
+├── Makefile                  # starts the complete development workspace
+├── app/                      # SvelteKit/Bun Hermes workspace
+├── docs/                     # Astro app, specification, ADRs, roadmap, and spikes
 ├── prototype/                # canonical clickable UI wireframe source
-├── decisions/                # architecture decision records (ADRs)
-├── roadmap/                  # machine-readable milestones and issues
-├── site/content/             # docs-site-only landing content
-├── src/                      # Astro/Starlight configuration, assets and styles
-├── public/                   # static site assets
-├── scripts/                  # validation, site projection, roadmap rendering, GitHub sync
-├── astro.config.mjs          # online documentation navigation and deployment base
+├── VISION.md                 # stable product north star
 └── .github/workflows/        # verified GitHub Pages deployment
 ```
 
-The canonical product Markdown remains in `VISION.md`, `docs/`, `roadmap/`, and `decisions/`. `scripts/prepare_site.py` projects those files into Starlight at build time, rewrites their internal links, and copies the prototype and roadmap data. Generated projections are ignored by Git so the website cannot become a second hand-edited source of truth.
+The canonical product Markdown remains in `VISION.md` and `docs/`. `docs/scripts/prepare_site.py` projects those files into Starlight at build time, rewrites their internal links, and copies the prototype and roadmap data. Generated projections are ignored by Git so the website cannot become a second hand-edited source of truth.
 
 ## Documentation website
 
 ```bash
 bun install
-bun run dev       # local Starlight development server
-bun run verify    # product contract + Astro checks + build + output crawl
+make dev          # local Starlight and SvelteKit development servers
+bun run --cwd docs verify
 ```
 
 The production site is deployed to [ctwhome.github.io/HUE](https://ctwhome.github.io/HUE/) by GitHub Actions after every verified push to `main`.
@@ -103,9 +97,9 @@ The production site is deployed to [ctwhome.github.io/HUE](https://ctwhome.githu
 
 The canonical source is:
 
-- [`roadmap/milestones.json`](roadmap/milestones.json)
-- [`roadmap/issues.json`](roadmap/issues.json)
-- [`roadmap/dependency-graph.md`](roadmap/dependency-graph.md)
+- [`docs/roadmap/milestones.json`](docs/roadmap/milestones.json)
+- [`docs/roadmap/issues.json`](docs/roadmap/issues.json)
+- [`docs/roadmap/dependency-graph.md`](docs/roadmap/dependency-graph.md)
 
 The GitHub copy is generated from those files so the plan and implementation tracker cannot drift silently.
 

@@ -5,7 +5,7 @@ HUE is currently a **documentation-first product specification**, not a producti
 ## Before proposing code
 
 1. Read `VISION.md` and the relevant product chapters.
-2. Find the canonical `HUE-xxx` issue in `roadmap/issues.json` / GitHub.
+2. Find the canonical `HUE-xxx` issue in `docs/roadmap/issues.json` / GitHub.
 3. Check dependencies and named `TBD` decisions.
 4. Do not implement a blocked issue by choosing an architecture in code; resolve the ADR first.
 
@@ -26,18 +26,18 @@ A PR should include:
 - Use `TBI`, `TBD`, `SPEC`, `POC`, `IMPLEMENTED`, and `VERIFIED` exactly as defined.
 - Do not mark an entire chapter implemented for a partial slice.
 - Add unresolved material choices to the decision register and an ADR issue.
-- Keep `roadmap/*.json` canonical; run the render script after edits.
+- Keep `docs/roadmap/*.json` canonical; run the render script after edits.
 
 ## Local validation
 
 ```bash
-python3 scripts/render_roadmap.py
-python3 scripts/validate_docs.py
+python3 docs/scripts/render_roadmap.py
+python3 docs/scripts/validate_docs.py
 bun install
-bun run verify
+bun run --cwd docs verify
 ```
 
-`bun run verify` regenerates the Starlight content projection, checks Astro and the canonical product contract, builds the production site, then crawls built routes, internal links, Mermaid containers, Pagefind search, roadmap data and the interactive prototype.
+`bun run --cwd docs verify` regenerates the Starlight content projection, checks Astro and the canonical product contract, builds the production site, then crawls built routes, internal links, Mermaid containers, Pagefind search, roadmap data and the interactive prototype.
 
 ## License
 

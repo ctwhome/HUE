@@ -2,7 +2,7 @@
 
 > **Product status:** `TBI`
 > **Prototype:** [`../prototype/index.html`](../prototype/index.html) is a non-production functional wireframe with a shadcn-compatible HUE visual layer.
-> **Accepted frontend:** [ADR-0001](../decisions/0001-sveltekit-shadcn-svelte.md) selects SvelteKit + Svelte 5 + shadcn-svelte and resolves `TBD-020`.
+> **Accepted frontend:** [ADR-0001](decisions/0001-sveltekit-shadcn-svelte.md) selects SvelteKit + Svelte 5 + shadcn-svelte and resolves `TBD-020`.
 > **Open choices:** `TBD-001` application packaging/shell, `TBD-013` notification gateways, `TBD-014` mobile attention surface.
 
 ## UI posture
@@ -22,7 +22,7 @@ HUE is primarily an **Operate** surface with secondary **Command/Inspect** behav
 
 ### Component foundation — accepted
 
-[ADR-0001](../decisions/0001-sveltekit-shadcn-svelte.md) selects **SvelteKit + Svelte 5 + shadcn-svelte** for the product frontend.
+[ADR-0001](decisions/0001-sveltekit-shadcn-svelte.md) selects **SvelteKit + Svelte 5 + shadcn-svelte** for the product frontend.
 
 - HUE-owned wrappers and CSS-variable tokens keep screens independent of low-level primitive APIs.
 - Lucide-style line icons are used where useful, always with a text or accessible-name contract.
