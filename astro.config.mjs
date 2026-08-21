@@ -91,6 +91,7 @@ export default defineConfig({
           label: 'Project',
           items: [
             { label: 'Frontend ADR: SvelteKit', slug: 'decisions/sveltekit-shadcn-svelte' },
+            { label: 'Workspace ADR: Bun + Hermes ACP', slug: 'decisions/bun-hermes-acp-workspace' },
             { label: 'Prototype component map', slug: 'prototype/component-map' },
             { label: 'ADR template', slug: 'decisions/adr-template' },
             { label: 'Contributing', slug: 'contributing' },
