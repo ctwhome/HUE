@@ -45,6 +45,23 @@
 		agent?: { name: string; version: string };
 		capabilities?: Record<string, unknown>;
 	};
+	type GlobalView = 'runtime' | 'skills' | 'schedules' | 'commands' | 'profiles';
+	type HermesSkill = {
+		name: string;
+		category: string;
+		source: string;
+		trust?: string;
+		status: string;
+	};
+	type HermesJob = {
+		id: string;
+		name?: string;
+		schedule?: string;
+		status: string;
+		nextRun?: string;
+		lastRun?: string;
+	};
+	type HermesProfile = { name: string; model: string; gateway: string; active: boolean };
 	type TranscriptMessage = {
 		role: 'user' | 'assistant';
 		text: string;
@@ -95,10 +112,20 @@
 	let directoryLoading = $state(false);
 	let directoryError = $state('');
 	let addProjectDialog: HTMLDialogElement;
-	let hermesDialog: HTMLDialogElement;
+	let editProjectDialog: HTMLDialogElement;
+	let editingProject = $state<Project | null>(null);
+	let projectName = $state('');
+	let projectIcon = $state<string | null>(null);
+	let projectEditError = $state('');
+	let projectSaving = $state(false);
 	let hermesInfo = $state<HermesInfo | null>(null);
 	let hermesLoading = $state(false);
 	let hermesError = $state('');
+	let globalView = $state<GlobalView | null>(null);
+	let hermesSkills = $state<HermesSkill[]>([]);
+	let hermesJobs = $state<HermesJob[]>([]);
+	let hermesProfiles = $state<HermesProfile[]>([]);
+	let hermesFilter = $state('');
 	let workflowName = $state('');
 	let workflowPrompt = $state('');
 	let composer = $state('');
@@ -160,15 +187,28 @@
 		await loadActiveTab();
 	}
 
-	async function openHermesInspector() {
+	async function openHermesPanel(view: GlobalView) {
 		const request = ++hermesRequestGeneration;
 		mobileDrawer = null;
-		hermesDialog.showModal();
-		hermesLoading = true;
+		globalView = view;
+		hermesFilter = '';
+		hermesLoading = false;
 		hermesError = '';
+		if (view === 'commands') return;
+		hermesLoading = true;
 		try {
-			const info = await api<HermesInfo>('/api/hermes');
-			if (request === hermesRequestGeneration) hermesInfo = info;
+			const result = await api<
+				HermesInfo & {
+					skills?: HermesSkill[];
+					jobs?: HermesJob[];
+					profiles?: HermesProfile[];
+				}
+			>(`/api/hermes${view === 'runtime' ? '' : `?view=${view}`}`);
+			if (request !== hermesRequestGeneration) return;
+			if (view === 'runtime') hermesInfo = result;
+			if (view === 'skills') hermesSkills = result.skills ?? [];
+			if (view === 'schedules') hermesJobs = result.jobs ?? [];
+			if (view === 'profiles') hermesProfiles = result.profiles ?? [];
 		} catch (cause) {
 			if (request === hermesRequestGeneration) {
 				hermesError = cause instanceof Error ? cause.message : String(cause);
@@ -290,6 +330,95 @@
 			await chooseProject(body.project);
 		} catch (cause) {
 			directoryError = cause instanceof Error ? cause.message : String(cause);
+		}
+	}
+
+	function openEditProject(event: MouseEvent, project: Project) {
+		event.stopPropagation();
+		editingProject = project;
+		projectName = project.name;
+		projectIcon = project.icon;
+		projectEditError = '';
+		editProjectDialog.showModal();
+	}
+
+	function isProjectImage(icon: string | null): boolean {
+		return icon?.startsWith('data:image/') ?? false;
+	}
+
+	async function chooseProjectImage(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file) return;
+		if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
+			projectEditError = 'Only PNG, JPEG, GIF, and WebP images are supported';
+			return;
+		}
+		if (file.size > 1024 * 1024) {
+			projectEditError = 'Project icon image must be 1 MB or smaller';
+			return;
+		}
+		projectIcon = await new Promise<string>((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(String(reader.result));
+			reader.onerror = () => reject(reader.error);
+			reader.readAsDataURL(file);
+		});
+		projectEditError = '';
+	}
+
+	async function saveProject(event: SubmitEvent) {
+		event.preventDefault();
+		if (!editingProject) return;
+		projectSaving = true;
+		projectEditError = '';
+		try {
+			const body = await api<{ project: Project }>(`/api/projects/${editingProject.id}`, {
+				method: 'PATCH',
+				body: JSON.stringify({ name: projectName, icon: projectIcon })
+			});
+			projects = projects.map((project) =>
+				project.id === body.project.id ? body.project : project
+			);
+			if (selectedProject?.id === body.project.id) selectedProject = body.project;
+			editProjectDialog.close();
+		} catch (cause) {
+			projectEditError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			projectSaving = false;
+		}
+	}
+
+	async function removeProject() {
+		if (
+			!editingProject ||
+			!confirm(`Remove ${editingProject.name} from HUE? Hermes transcripts will not be deleted.`)
+		)
+			return;
+		projectSaving = true;
+		projectEditError = '';
+		try {
+			const removedId = editingProject.id;
+			await api(`/api/projects/${removedId}`, { method: 'DELETE' });
+			projects = projects.filter((project) => project.id !== removedId);
+			editProjectDialog.close();
+			if (selectedProject?.id === removedId) {
+				const nextProject = projects[0];
+				if (nextProject) await chooseProject(nextProject);
+				else {
+					selectedProject = null;
+					selectedSession = null;
+					sessions = [];
+					workflows = [];
+					transcript = [];
+					persistSelection();
+				}
+			}
+		} catch (cause) {
+			projectEditError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			projectSaving = false;
 		}
 	}
 
@@ -825,22 +954,24 @@
 <div class="workspace">
 	<nav class="global-rail" aria-label="Global navigation">
 		<span class="global-mark" aria-hidden="true">H</span>
-		<a
-			class="global-action active"
-			href="/"
+		<button
+			class="global-action"
+			class:active={globalView === null}
 			aria-label="Workspace"
-			aria-current="page"
+			aria-current={globalView === null ? 'page' : undefined}
 			title="Workspace"
+			onclick={() => (globalView = null)}
 		>
 			<svg viewBox="0 0 24 24" aria-hidden="true">
 				<path d="M5 5h14v11H9l-4 3V5Z" />
 			</svg>
-		</a>
+		</button>
 		<button
 			class="global-action runtime-inspector-button"
+			class:active={globalView === 'runtime'}
 			aria-label="Inspect Hermes runtime"
 			title="Hermes runtime"
-			onclick={openHermesInspector}
+			onclick={() => openHermesPanel('runtime')}
 		>
 			<svg viewBox="0 0 24 24" aria-hidden="true">
 				<path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6" />
@@ -848,24 +979,32 @@
 		</button>
 		<button
 			class="global-action"
+			class:active={globalView === 'schedules'}
 			aria-label="Schedules"
 			title="Schedules"
-			onclick={openHermesInspector}
+			onclick={() => openHermesPanel('schedules')}
 		>
 			<svg viewBox="0 0 24 24" aria-hidden="true">
 				<path d="M5 4v3M19 4v3M4 9h16M5 6h14v14H5V6Z" />
 			</svg>
 		</button>
-		<button class="global-action" aria-label="Skills" title="Skills" onclick={openHermesInspector}>
+		<button
+			class="global-action"
+			class:active={globalView === 'skills'}
+			aria-label="Skills"
+			title="Skills"
+			onclick={() => openHermesPanel('skills')}
+		>
 			<svg viewBox="0 0 24 24" aria-hidden="true">
 				<path d="M4 4h7v7H4V4ZM13 4h7v7h-7V4ZM4 13h7v7H4v-7ZM13 13h7v7h-7v-7Z" />
 			</svg>
 		</button>
 		<button
 			class="global-action"
+			class:active={globalView === 'commands'}
 			aria-label="Commands"
 			title="Session commands"
-			onclick={openHermesInspector}
+			onclick={() => openHermesPanel('commands')}
 		>
 			<svg viewBox="0 0 24 24" aria-hidden="true">
 				<path d="m8 7-4 5 4 5M16 7l4 5-4 5M13 5l-2 14" />
@@ -873,9 +1012,10 @@
 		</button>
 		<button
 			class="global-action"
+			class:active={globalView === 'profiles'}
 			aria-label="Profiles"
 			title="Profiles"
-			onclick={openHermesInspector}
+			onclick={() => openHermesPanel('profiles')}
 		>
 			<svg viewBox="0 0 24 24" aria-hidden="true">
 				<circle cx="12" cy="8" r="3" /><path d="M5 20c0-4 3-7 7-7s7 3 7 7" />
@@ -897,20 +1037,150 @@
 		<button
 			aria-controls="project-drawer"
 			aria-expanded={mobileDrawer === 'projects'}
+			title="Projects"
 			onclick={() => (mobileDrawer = mobileDrawer === 'projects' ? null : 'projects')}
 			>Projects</button
 		>
 		<button
 			aria-controls="session-drawer"
 			aria-expanded={mobileDrawer === 'sessions'}
+			title="Sessions"
 			onclick={() => (mobileDrawer = mobileDrawer === 'sessions' ? null : 'sessions')}
 			>Sessions</button
 		>
-		<button aria-label="Inspect Hermes runtime" onclick={openHermesInspector}>Hermes</button>
+		<button
+			aria-label="Inspect Hermes runtime"
+			title="Hermes runtime"
+			onclick={() => openHermesPanel('runtime')}>Hermes</button
+		>
 	</nav>
+	{#if globalView}<section class="global-panel" aria-label="Hermes management">
+			<header>
+				<div>
+					<small>Hermes</small>
+					<h1>
+						{globalView === 'runtime'
+							? 'Runtime'
+							: globalView === 'skills'
+								? 'Installed skills'
+								: globalView === 'schedules'
+									? 'Scheduled jobs'
+									: globalView === 'commands'
+										? 'Session commands'
+										: 'Profiles'}
+					</h1>
+				</div>
+				<button
+					aria-label="Back to workspace"
+					title="Back to workspace"
+					onclick={() => (globalView = null)}>×</button
+				>
+			</header>
+			<nav class="global-panel-tabs" aria-label="Hermes sections">
+				<button
+					title="Runtime"
+					class:active={globalView === 'runtime'}
+					onclick={() => openHermesPanel('runtime')}>Runtime</button
+				>
+				<button
+					title="Skills"
+					class:active={globalView === 'skills'}
+					onclick={() => openHermesPanel('skills')}>Skills</button
+				>
+				<button
+					title="Schedules"
+					class:active={globalView === 'schedules'}
+					onclick={() => openHermesPanel('schedules')}>Schedules</button
+				>
+				<button
+					title="Commands"
+					class:active={globalView === 'commands'}
+					onclick={() => openHermesPanel('commands')}>Commands</button
+				>
+				<button
+					title="Profiles"
+					class:active={globalView === 'profiles'}
+					onclick={() => openHermesPanel('profiles')}>Profiles</button
+				>
+			</nav>
+			<div class="global-panel-content">
+				{#if hermesLoading && globalView !== 'commands'}<p class="muted" role="status">
+						Loading Hermes {globalView}…
+					</p>
+				{:else if hermesError}<p class="directory-error" role="alert">{hermesError}</p>
+				{:else if globalView === 'runtime' && hermesInfo}<div class="inventory-grid">
+						<article><small>Profile</small><strong>{hermesInfo.profile}</strong></article>
+						<article>
+							<small>Agent</small><strong
+								>{hermesInfo.agent
+									? `${hermesInfo.agent.name} ${hermesInfo.agent.version}`
+									: 'Hermes ACP'}</strong
+							>
+						</article>
+						<article>
+							<small>Protocol</small><strong>ACP v{hermesInfo.protocolVersion ?? 1}</strong>
+						</article>
+						{#if hermesInfo.capabilities}<details>
+								<summary>Advertised capabilities</summary>
+								<pre>{JSON.stringify(hermesInfo.capabilities, null, 2)}</pre>
+							</details>{/if}
+					</div>
+				{:else if globalView === 'skills'}
+					<input
+						bind:value={hermesFilter}
+						class="inventory-filter"
+						placeholder="Filter installed skills"
+						aria-label="Filter installed skills"
+					/>
+					<div class="inventory-list">
+						{#each hermesSkills.filter((skill) => `${skill.name} ${skill.category} ${skill.source}`
+								.toLowerCase()
+								.includes(hermesFilter.toLowerCase())) as skill}
+							<article>
+								<div>
+									<strong>{skill.name}</strong><small
+										>{skill.category || 'Uncategorised'} · {skill.source}</small
+									>
+								</div>
+								<span>{skill.status}</span>
+							</article>
+						{/each}
+					</div>
+				{:else if globalView === 'schedules'}<div class="inventory-list">
+						{#each hermesJobs as job}<article>
+								<div>
+									<strong>{job.name || job.id}</strong><small
+										>{job.schedule || 'No schedule'}{job.nextRun
+											? ` · Next ${job.nextRun}`
+											: ''}</small
+									>
+								</div>
+								<span class:paused={job.status !== 'active'}>{job.status}</span>
+							</article>{/each}
+						{#if !hermesJobs.length}<p class="muted">No scheduled jobs.</p>{/if}
+					</div>
+				{:else if globalView === 'profiles'}<div class="inventory-grid">
+						{#each hermesProfiles as profile}<article>
+								<small>{profile.active ? 'Active profile' : 'Profile'}</small><strong
+									>{profile.name}</strong
+								>
+								<p>{profile.model} · Gateway {profile.gateway}</p>
+							</article>{/each}
+					</div>
+				{:else if globalView === 'commands'}
+					{#if commands.length}<div class="inventory-list">
+							{#each commands as command}<article>
+									<div><strong>/{command.name}</strong><small>{command.description}</small></div>
+								</article>{/each}
+						</div>
+					{:else}<p class="muted">Open a Hermes Session to load its advertised commands.</p>{/if}
+				{/if}
+			</div>
+		</section>{/if}
 	{#if mobileDrawer}<button
 			class="drawer-backdrop"
 			aria-label="Close navigation"
+			title="Close navigation"
 			onclick={() => (mobileDrawer = null)}
 		></button>{/if}
 	<aside
@@ -925,16 +1195,37 @@
 		</header>
 		<div class="section-heading">
 			<span class="section-label">Projects</span>
-			<button class="icon-button" aria-label="Add project" onclick={openAddProject}>+</button>
+			<button
+				class="icon-button"
+				aria-label="Add project"
+				title="Add project"
+				onclick={openAddProject}>+</button
+			>
 		</div>
 		<nav>
 			{#each projects as project}
-				<button
-					class:active={selectedProject?.id === project.id}
-					onclick={() => chooseProject(project)}
-				>
-					<span class="project-dot"></span><span>{project.name}</span>
-				</button>
+				<div class="project-row">
+					<button
+						class="project-select"
+						class:active={selectedProject?.id === project.id}
+						title={`Open ${project.name}`}
+						onclick={() => chooseProject(project)}
+					>
+						{#if isProjectImage(project.icon)}<img
+								class="project-icon project-icon-image"
+								src={project.icon ?? ''}
+								alt=""
+							/>
+						{:else if project.icon}<span class="project-icon">{project.icon}</span>
+						{:else}<span class="project-dot"></span>{/if}<span>{project.name}</span>
+					</button>
+					<button
+						class="project-edit"
+						aria-label={`Edit ${project.name}`}
+						title={`Edit ${project.name}`}
+						onclick={(event) => openEditProject(event, project)}>···</button
+					>
+				</div>
 			{/each}
 		</nav>
 		<dialog
@@ -961,7 +1252,8 @@
 				<button
 					disabled={!projectDirectoryParent || directoryLoading}
 					onclick={() => projectDirectoryParent && loadDirectory(projectDirectoryParent)}
-					aria-label="Parent directory">↑</button
+					aria-label="Parent directory"
+					title="Parent directory">↑</button
 				>
 				<code>{projectRoot || 'Loading…'}</code>
 			</div>
@@ -971,7 +1263,11 @@
 				{:else if directoryError}<p class="directory-error" role="alert">{directoryError}</p>
 				{:else if projectDirectories.length === 0}<p class="muted">No subdirectories.</p>
 				{:else}{#each projectDirectories as directory}
-						<button class="directory-row" onclick={() => loadDirectory(directory.path)}>
+						<button
+							class="directory-row"
+							title={`Open ${directory.name}`}
+							onclick={() => loadDirectory(directory.path)}
+						>
 							<span class="folder-icon" aria-hidden="true"></span><span>{directory.name}</span
 							><small
 								>{projects.some((project) => project.rootPath === directory.path)
@@ -984,6 +1280,7 @@
 			<form class="add-project" onsubmit={addProject}>
 				<button
 					type="submit"
+					title="Add this directory"
 					disabled={directoryLoading ||
 						!projectRoot ||
 						projects.some((project) => project.rootPath === projectRoot)}
@@ -995,66 +1292,90 @@
 			<button
 				class="icon-button"
 				aria-label="Close add project"
+				title="Close add project"
 				onclick={() => addProjectDialog.close()}>×</button
 			>
 		</dialog>
 		<dialog
-			bind:this={hermesDialog}
-			class="hermes-dialog"
-			aria-labelledby="hermes-dialog-title"
-			onclick={(event) => event.target === event.currentTarget && hermesDialog.close()}
+			bind:this={editProjectDialog}
+			class="add-project-dialog edit-project-dialog"
+			aria-labelledby="edit-project-title"
+			onclick={(event) => event.target === event.currentTarget && editProjectDialog.close()}
 		>
 			<header>
 				<div>
-					<h2 id="hermes-dialog-title">Hermes runtime</h2>
-					<p>Live information exposed through the supported ACP connection.</p>
+					<h2 id="edit-project-title">Edit project</h2>
+					<p>Make this project easy to spot, rename it, or remove it from HUE.</p>
 				</div>
-				<button
-					class="icon-button"
-					aria-label="Close Hermes runtime"
-					onclick={() => hermesDialog.close()}>×</button
-				>
 			</header>
-			{#if hermesLoading}<p class="muted" role="status">Connecting to Hermes…</p>
-			{:else if hermesError}<p class="directory-error" role="alert">{hermesError}</p>
-			{:else if hermesInfo}<div class="hermes-sections">
-					<section>
-						<h3>Profile</h3>
-						<strong>{hermesInfo.profile}</strong>
-						<p>The profile configured for this HUE runtime.</p>
-					</section>
-					<section>
-						<h3>Agent</h3>
-						<strong
-							>{hermesInfo.agent
-								? `${hermesInfo.agent.name} ${hermesInfo.agent.version}`
-								: 'Hermes ACP'}</strong
-						>
-						<p>ACP protocol v{hermesInfo.protocolVersion ?? 1}</p>
-					</section>
-					<section>
-						<h3>Session commands</h3>
-						{#if commands.length}<ul>
-								{#each commands as command}<li>
-										<strong>/{command.name}</strong>
-										{command.description}
-									</li>{/each}
-							</ul>
-						{:else}<p>Open a Session to inspect its advertised commands.</p>{/if}
-					</section>
-					<section>
-						<h3>Skills</h3>
-						<p>Skills are not exposed by Hermes ACP</p>
-					</section>
-					<section>
-						<h3>Schedules</h3>
-						<p>Schedules are not exposed by Hermes ACP</p>
-					</section>
-					{#if hermesInfo.capabilities}<details>
-							<summary>ACP capabilities</summary>
-							<pre>{JSON.stringify(hermesInfo.capabilities, null, 2)}</pre>
-						</details>{/if}
-				</div>{/if}
+			<form onsubmit={saveProject}>
+				<fieldset class="project-icon-field">
+					<legend>Project icon</legend>
+					<div class="project-icon-editor">
+						<div class="project-icon-preview">
+							{#if isProjectImage(projectIcon)}<img
+									src={projectIcon ?? ''}
+									alt="Project icon preview"
+								/>
+							{:else}<span>{projectIcon || '•'}</span>{/if}
+						</div>
+						<div class="project-icon-options">
+							<div class="emoji-options" aria-label="Choose an emoji">
+								{#each [['🚀', 'rocket'], ['🎨', 'palette'], ['🧠', 'brain'], ['🛠️', 'tools'], ['📚', 'books'], ['🌱', 'seedling'], ['⚡', 'lightning']] as option}<button
+										type="button"
+										class:active={projectIcon === option[0]}
+										aria-label={`Use ${option[1]} icon`}
+										title={`Use ${option[1]} icon`}
+										onclick={() => (projectIcon = option[0])}>{option[0]}</button
+									>{/each}
+							</div>
+							<div class="project-icon-upload">
+								<label title="Choose a custom image">
+									<span>Choose image</span>
+									<input
+										type="file"
+										accept="image/png,image/jpeg,image/gif,image/webp"
+										aria-label="Project icon image"
+										onchange={chooseProjectImage}
+									/>
+								</label>
+								<button
+									type="button"
+									title="Use default project dot"
+									onclick={() => (projectIcon = null)}>Default</button
+								>
+							</div>
+						</div>
+					</div>
+				</fieldset>
+				<label>
+					<span>Project name</span>
+					<input bind:value={projectName} aria-label="Project name" required />
+				</label>
+				<label>
+					<span>Project directory</span>
+					<input value={editingProject?.rootPath ?? ''} aria-label="Project directory" disabled />
+				</label>
+				{#if projectEditError}<p class="directory-error" role="alert">{projectEditError}</p>{/if}
+				<div class="edit-project-actions">
+					<button
+						type="button"
+						class="danger-button"
+						title="Remove project"
+						disabled={projectSaving}
+						onclick={removeProject}>Remove project</button
+					>
+					<button type="submit" title="Save changes" disabled={projectSaving || !projectName.trim()}
+						>Save changes</button
+					>
+				</div>
+			</form>
+			<button
+				class="icon-button"
+				aria-label="Close edit project"
+				title="Close edit project"
+				onclick={() => editProjectDialog.close()}>×</button
+			>
 		</dialog>
 	</aside>
 
@@ -1080,16 +1401,21 @@
 				{#if activeTab === 'sessions' && selectedProject}<button
 						class="icon-button"
 						onclick={createSession}
-						aria-label="New session">+</button
+						aria-label="New session"
+						title="New session">+</button
 					>{/if}
 			</div>
 		</header>
 		<div class="tabs" role="tablist">
-			<button class:active={activeTab === 'sessions'} onclick={() => changeTab('sessions')}
-				>Sessions</button
+			<button
+				title="Sessions"
+				class:active={activeTab === 'sessions'}
+				onclick={() => changeTab('sessions')}>Sessions</button
 			>
-			<button class:active={activeTab === 'workflows'} onclick={() => changeTab('workflows')}
-				>Workflows</button
+			<button
+				title="Workflows"
+				class:active={activeTab === 'workflows'}
+				onclick={() => changeTab('workflows')}>Workflows</button
 			>
 		</div>
 		{#if activeTab === 'sessions'}
@@ -1097,6 +1423,7 @@
 				{#each sessions as session}
 					<button
 						class:active={selectedSession?.sessionId === session.sessionId}
+						title={`Open ${session.title || 'Untitled session'}`}
 						onclick={() => openSession(session)}
 					>
 						<div class="session-row-title">
@@ -1126,7 +1453,8 @@
 							<strong>{workflow.name}</strong>
 							<p>{workflow.prompt}</p>
 						</div>
-						<button onclick={() => runWorkflow(workflow)}>Run</button>
+						<button title={`Run ${workflow.name}`} onclick={() => runWorkflow(workflow)}>Run</button
+						>
 					</article>
 				{/each}
 			</div>
@@ -1136,7 +1464,7 @@
 					bind:value={workflowPrompt}
 					placeholder="Reusable Hermes prompt"
 					aria-label="Workflow prompt"></textarea>
-				<button type="submit">Save workflow</button>
+				<button type="submit" title="Save workflow">Save workflow</button>
 			</form>
 		{/if}
 	</aside>
@@ -1248,6 +1576,7 @@
 								type="button"
 								role="option"
 								aria-selected={index === commandIndex}
+								title={command.description || `Use /${command.name}`}
 								onmousedown={(event) => event.preventDefault()}
 								onclick={() => chooseCommand(command)}
 							>
@@ -1268,10 +1597,14 @@
 									<button
 										type="button"
 										aria-label="Edit queued message"
+										title="Edit queued message"
 										onclick={() => editQueuedMessage(message)}>Edit</button
 									>
-									<button type="button" aria-label="Send queued message now" onclick={stopTurn}
-										>Send now</button
+									<button
+										type="button"
+										aria-label="Send queued message now"
+										title="Send queued message now"
+										onclick={stopTurn}>Send now</button
 									>
 								</div>
 							</article>{/each}
@@ -1283,6 +1616,7 @@
 								<button
 									type="button"
 									aria-label={`Remove ${image.name}`}
+									title={`Remove ${image.name}`}
 									onclick={() => (images = images.filter((_, item) => item !== index))}>×</button
 								>
 							</figure>{/each}
@@ -1359,6 +1693,7 @@
 					{#if pendingEnvelope}<button
 							type="button"
 							class="retry-message"
+							title="Retry exact message"
 							onclick={retryPendingMessage}
 							disabled={isTurnBusy(delivery)}>Retry exact message</button
 						>{:else if isTurnBusy(delivery)}<button

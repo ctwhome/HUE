@@ -38,6 +38,23 @@ button {
 	color: inherit;
 }
 
+.app-tooltip {
+	position: fixed;
+	z-index: 100;
+	max-width: min(280px, calc(100vw - 16px));
+	padding: 6px 9px;
+	border: 1px solid #3a414e;
+	border-radius: 7px;
+	background: #20242c;
+	box-shadow: 0 8px 24px #0008;
+	color: #f4f5f7;
+	font-size: 0.75rem;
+	font-weight: 500;
+	line-height: 1.3;
+	pointer-events: none;
+	white-space: normal;
+}
+
 .workspace {
 	height: 100dvh;
 	overflow: hidden;
@@ -101,6 +118,132 @@ button {
 }
 .global-docs {
 	margin-top: auto;
+}
+.global-panel {
+	position: fixed;
+	z-index: 15;
+	inset: 0 0 0 56px;
+	display: flex;
+	min-width: 0;
+	flex-direction: column;
+	background: #0b0d11;
+}
+.global-panel > header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	min-height: 76px;
+	padding: 14px 22px;
+	border-bottom: 1px solid var(--line);
+}
+.global-panel h1,
+.global-panel h2 {
+	margin: 3px 0 0;
+}
+.global-panel h1 {
+	font-size: 1rem;
+}
+.global-panel h2 {
+	font-size: 1.1rem;
+}
+.global-panel header small,
+.inventory-grid small,
+.inventory-list small {
+	color: var(--muted);
+}
+.global-panel > header button {
+	width: 40px;
+	height: 40px;
+	border: 1px solid var(--line);
+	border-radius: 9px;
+	background: #171a21;
+	cursor: pointer;
+}
+.global-panel-tabs {
+	display: flex;
+	gap: 6px;
+	padding: 10px 22px;
+	overflow-x: auto;
+	border-bottom: 1px solid var(--line);
+}
+.global-panel-tabs button {
+	flex: 0 0 auto;
+	min-height: 38px;
+	padding: 8px 13px;
+	border: 1px solid transparent;
+	border-radius: 9px;
+	background: transparent;
+	color: var(--muted);
+	cursor: pointer;
+}
+.global-panel-tabs button.active {
+	border-color: #6e3a1f;
+	background: #3a2118;
+	color: #ffb15c;
+}
+.global-panel-content {
+	flex: 1;
+	overflow: auto;
+	padding: 28px clamp(18px, 5vw, 70px);
+}
+.inventory-filter {
+	max-width: 480px;
+	margin-bottom: 16px;
+}
+.inventory-list,
+.inventory-grid {
+	display: grid;
+	gap: 8px;
+}
+.inventory-grid {
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.inventory-list article,
+.inventory-grid article,
+.inventory-grid details {
+	min-width: 0;
+	padding: 14px 16px;
+	border: 1px solid var(--line);
+	border-radius: 11px;
+	background: #11141a;
+}
+.inventory-list article {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+}
+.inventory-list article div,
+.inventory-grid article {
+	display: grid;
+	gap: 5px;
+}
+.inventory-list article > span {
+	flex: 0 0 auto;
+	padding: 4px 8px;
+	border-radius: 999px;
+	background: #143222;
+	color: #8de4ae;
+	font-size: 0.7rem;
+	text-transform: capitalize;
+}
+.inventory-list article > span.paused {
+	background: #352817;
+	color: #fbbf77;
+}
+.inventory-grid p {
+	margin: 0;
+	color: var(--muted);
+	font-size: 0.78rem;
+}
+.inventory-grid details {
+	grid-column: 1 / -1;
+}
+.inventory-grid summary {
+	cursor: pointer;
+}
+.inventory-grid pre {
+	overflow: auto;
 }
 .project-rail,
 .context-panel {
@@ -182,84 +325,6 @@ button {
 	height: 40px;
 	margin-left: 0;
 }
-.hermes-dialog {
-	position: fixed;
-	inset: 50% auto auto 50%;
-	transform: translate(-50%, -50%);
-	margin: 0;
-	width: min(620px, calc(100vw - 32px));
-	max-height: calc(100dvh - 32px);
-	overflow: auto;
-	color: #e7e9ef;
-	background: #151922;
-	border: 1px solid #303642;
-	border-radius: 14px;
-	padding: 18px;
-	box-shadow: 0 24px 80px #000b;
-}
-.hermes-dialog::backdrop {
-	background: #05060899;
-	backdrop-filter: blur(3px);
-}
-.hermes-dialog > header {
-	display: flex;
-	align-items: start;
-	justify-content: space-between;
-	gap: 16px;
-}
-.hermes-dialog h2,
-.hermes-dialog h3,
-.hermes-dialog p {
-	margin-top: 0;
-}
-.hermes-dialog header p,
-.hermes-sections p,
-.hermes-sections li {
-	color: var(--muted);
-	font-size: 0.78rem;
-	line-height: 1.5;
-}
-.hermes-sections {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: 10px;
-	margin-top: 14px;
-}
-.hermes-sections section,
-.hermes-sections details {
-	min-width: 0;
-	padding: 13px;
-	border: 1px solid var(--line);
-	border-radius: 10px;
-	background: #11141a;
-}
-.hermes-sections h3 {
-	font-size: 0.72rem;
-	letter-spacing: 0.08em;
-	text-transform: uppercase;
-	color: #969dab;
-}
-.hermes-sections p {
-	margin: 6px 0 0;
-}
-.hermes-sections ul {
-	margin: 8px 0 0;
-	padding-left: 18px;
-}
-.hermes-sections details {
-	grid-column: 1 / -1;
-}
-.hermes-sections summary {
-	cursor: pointer;
-}
-.hermes-dialog .icon-button,
-.hermes-sections summary {
-	min-height: 44px;
-}
-.hermes-sections pre {
-	overflow: auto;
-	font-size: 0.72rem;
-}
 .section-label {
 	color: #6f7684;
 	font-size: 0.65rem;
@@ -279,7 +344,11 @@ button {
 	display: grid;
 	gap: 4px;
 }
-.project-rail nav button {
+.project-row {
+	position: relative;
+}
+.project-rail nav .project-select {
+	width: 100%;
 	border: 0;
 	background: transparent;
 	border-radius: 9px;
@@ -290,17 +359,47 @@ button {
 	align-items: center;
 	cursor: pointer;
 	color: #b7bdc8;
+	padding-right: 38px;
 }
-.project-rail nav button:hover,
-.project-rail nav button.active {
+.project-rail nav .project-select:hover,
+.project-rail nav .project-select.active {
 	background: #20242d;
 	color: white;
 }
+.project-rail nav .project-edit {
+	position: absolute;
+	top: 50%;
+	right: 5px;
+	transform: translateY(-50%);
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	justify-content: center;
+	opacity: 0;
+}
+.project-row:hover .project-edit,
+.project-row:focus-within .project-edit,
+.project-select.active + .project-edit {
+	opacity: 1;
+}
 .project-dot {
+	flex: 0 0 auto;
 	width: 8px;
 	height: 8px;
 	border-radius: 50%;
 	background: #5d6470;
+}
+.project-icon {
+	display: grid;
+	place-items: center;
+	flex: 0 0 auto;
+	width: 24px;
+	height: 24px;
+	border-radius: 7px;
+	font-size: 1rem;
+}
+.project-icon-image {
+	object-fit: cover;
 }
 .project-rail nav button.active .project-dot {
 	background: var(--accent);
@@ -448,6 +547,113 @@ button {
 }
 .add-project-dialog .add-project {
 	margin-top: 12px;
+}
+.edit-project-dialog {
+	width: min(460px, calc(100vw - 32px));
+}
+.edit-project-dialog form,
+.edit-project-dialog label {
+	display: grid;
+	gap: 7px;
+}
+.edit-project-dialog form {
+	gap: 14px;
+}
+.project-icon-field {
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+.project-icon-field legend,
+.edit-project-dialog label span {
+	color: var(--muted);
+	font-size: 0.76rem;
+}
+.project-icon-editor {
+	display: grid;
+	grid-template-columns: 58px minmax(0, 1fr);
+	align-items: center;
+	gap: 12px;
+	margin-top: 7px;
+}
+.project-icon-preview {
+	display: grid;
+	place-items: center;
+	width: 58px;
+	height: 58px;
+	border: 1px solid var(--line);
+	border-radius: 14px;
+	background: #0d1015;
+	font-size: 1.8rem;
+}
+.project-icon-preview img {
+	width: 100%;
+	height: 100%;
+	border-radius: inherit;
+	object-fit: cover;
+}
+.project-icon-options {
+	display: grid;
+	gap: 8px;
+}
+.emoji-options,
+.project-icon-upload {
+	display: flex;
+	gap: 6px;
+}
+.emoji-options {
+	overflow-x: auto;
+}
+.emoji-options button,
+.project-icon-upload label,
+.project-icon-upload button {
+	display: grid;
+	place-items: center;
+	min-width: 34px;
+	height: 34px;
+	margin: 0;
+	padding: 0 9px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: #1b1f27;
+	cursor: pointer;
+}
+.emoji-options button.active {
+	border-color: #8668e8;
+	background: #322653;
+}
+.project-icon-upload label,
+.project-icon-upload button {
+	color: #b7bdc8;
+	font-size: 0.74rem;
+}
+.project-icon-upload input {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	opacity: 0;
+}
+.edit-project-dialog input:disabled {
+	opacity: 0.65;
+}
+.edit-project-actions {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+}
+.edit-project-actions button {
+	min-height: 38px;
+	padding: 9px 12px;
+	border: 0;
+	border-radius: 9px;
+	background: #6d4fd3;
+	font-weight: 650;
+	cursor: pointer;
+}
+.edit-project-actions .danger-button {
+	background: transparent;
+	color: #ff8f9d;
 }
 .add-project button:disabled {
 	opacity: 0.45;
@@ -1272,7 +1478,7 @@ textarea:focus {
 	}
 	.brand > div,
 	.section-label,
-	.project-rail nav button span:not(.project-dot) {
+	.project-rail nav .project-select span:not(.project-dot) {
 		display: none;
 	}
 	.section-heading {
@@ -1288,8 +1494,15 @@ textarea:focus {
 	.runtime-inspector-button {
 		margin-left: 0;
 	}
-	.project-rail nav button {
+	.project-rail nav .project-select {
 		justify-content: center;
+		padding-inline: 10px;
+	}
+	.project-rail nav .project-edit {
+		right: -5px;
+		width: 24px;
+		height: 24px;
+		font-size: 0.75rem;
 	}
 	.project-dot {
 		width: 11px;
@@ -1317,6 +1530,23 @@ textarea:focus {
 	}
 	.global-rail {
 		display: none;
+	}
+	.global-panel {
+		inset: 56px 0 0;
+	}
+	.global-panel > header {
+		min-height: 62px;
+		padding: 10px 14px;
+	}
+	.global-panel-tabs {
+		padding-inline: 10px;
+	}
+	.global-panel-tabs button,
+	.global-panel > header button {
+		min-height: 44px;
+	}
+	.global-panel-content {
+		padding: 18px 12px;
 	}
 	.mobile-navigation button {
 		min-height: 44px;
@@ -1364,7 +1594,7 @@ textarea:focus {
 	}
 	.project-rail .brand > div,
 	.project-rail .section-label,
-	.project-rail nav button span:not(.project-dot) {
+	.project-rail nav .project-select span:not(.project-dot) {
 		display: initial;
 	}
 	.project-rail .brand {
@@ -1378,9 +1608,17 @@ textarea:focus {
 	.project-rail nav {
 		display: grid;
 	}
-	.project-rail nav button {
+	.project-rail nav .project-select {
 		justify-content: flex-start;
 		min-height: 44px;
+		padding-right: 44px;
+	}
+	.project-rail nav .project-edit {
+		right: 0;
+		width: 44px;
+		height: 44px;
+		font-size: 1rem;
+		opacity: 1;
 	}
 	.context-panel .icon-button {
 		width: 44px;
@@ -1402,14 +1640,6 @@ textarea:focus {
 	.attach-button {
 		width: 44px;
 	}
-	.hermes-sections {
-		grid-template-columns: 1fr;
-	}
-	.hermes-sections details {
-		grid-column: auto;
-	}
-	.hermes-dialog .icon-button,
-	.hermes-sections summary,
 	.agent-thought summary {
 		min-height: 44px;
 	}
@@ -1417,6 +1647,15 @@ textarea:focus {
 	.directory-location button,
 	.add-project-dialog > .icon-button {
 		min-height: 44px;
+	}
+	.edit-project-actions button {
+		min-height: 44px;
+	}
+	.emoji-options button,
+	.project-icon-upload label,
+	.project-icon-upload button {
+		min-width: 44px;
+		height: 44px;
 	}
 	.session-view {
 		min-height: 0;

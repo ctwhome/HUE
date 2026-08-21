@@ -10,6 +10,7 @@ export type Project = {
 	id: string;
 	name: string;
 	rootPath: string;
+	icon: string | null;
 	createdAt: string;
 };
 
@@ -73,6 +74,7 @@ export class HUEStore {
 				id TEXT PRIMARY KEY,
 				name TEXT NOT NULL,
 				root_path TEXT NOT NULL UNIQUE,
+				icon TEXT,
 				created_at TEXT NOT NULL
 			);
 
@@ -128,6 +130,12 @@ export class HUEStore {
 			CREATE INDEX IF NOT EXISTS session_events_cursor_idx
 				ON session_events(session_id, sequence);
 		`);
+		const projectColumns = this.database.query('PRAGMA table_info(projects)').all() as Array<{
+			name: string;
+		}>;
+		if (!projectColumns.some((column) => column.name === 'icon')) {
+			this.database.exec('ALTER TABLE projects ADD COLUMN icon TEXT');
+		}
 		const messageColumns = this.database.query('PRAGMA table_info(messages)').all() as Array<{
 			name: string;
 		}>;
@@ -241,28 +249,58 @@ export class HUEStore {
 		this.database
 			.query('INSERT INTO projects (id, name, root_path, created_at) VALUES (?, ?, ?, ?)')
 			.run(input.id, input.name, input.rootPath, createdAt);
-		return { ...input, createdAt };
+		return { ...input, icon: null, createdAt };
 	}
 
 	listProjects(): Project[] {
 		const rows = this.database
-			.query('SELECT id, name, root_path, created_at FROM projects ORDER BY created_at, id')
-			.all() as Array<{ id: string; name: string; root_path: string; created_at: string }>;
+			.query('SELECT id, name, root_path, icon, created_at FROM projects ORDER BY created_at, id')
+			.all() as Array<{
+			id: string;
+			name: string;
+			root_path: string;
+			icon: string | null;
+			created_at: string;
+		}>;
 		return rows.map((row) => ({
 			id: row.id,
 			name: row.name,
 			rootPath: row.root_path,
+			icon: row.icon,
 			createdAt: row.created_at
 		}));
 	}
 
 	getProject(id: string): Project | null {
 		const row = this.database
-			.query('SELECT id, name, root_path, created_at FROM projects WHERE id = ?')
-			.get(id) as { id: string; name: string; root_path: string; created_at: string } | null;
+			.query('SELECT id, name, root_path, icon, created_at FROM projects WHERE id = ?')
+			.get(id) as {
+			id: string;
+			name: string;
+			root_path: string;
+			icon: string | null;
+			created_at: string;
+		} | null;
 		return row
-			? { id: row.id, name: row.name, rootPath: row.root_path, createdAt: row.created_at }
+			? {
+					id: row.id,
+					name: row.name,
+					rootPath: row.root_path,
+					icon: row.icon,
+					createdAt: row.created_at
+				}
 			: null;
+	}
+
+	updateProject(id: string, input: { name: string; icon: string | null }): Project | null {
+		const result = this.database
+			.query('UPDATE projects SET name = ?, icon = ? WHERE id = ?')
+			.run(input.name, input.icon, id);
+		return result.changes ? this.getProject(id) : null;
+	}
+
+	deleteProject(id: string): boolean {
+		return this.database.query('DELETE FROM projects WHERE id = ?').run(id).changes > 0;
 	}
 
 	createWorkflow(input: {
