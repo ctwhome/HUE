@@ -7,8 +7,8 @@
 
 | ID | Decision | Accepted direction | ADR | Status |
 |---|---|---|---|---|
-| TBD-020 | Frontend and component system | SvelteKit + Svelte 5 + shadcn-svelte beneath HUE-owned tokens and wrapper components; static HTML prototype retained until functional flows stabilize | [ADR-0001](../decisions/0001-sveltekit-shadcn-svelte.md) | Accepted |
-| TBD-001, TBD-002, TBD-004, TBD-007, TBD-012 | Focused product boundary, shell, control plane, runtime, storage, and transport | Browser workspace on SvelteKit/Bun; `bun:sqlite`; Hermes ACP external-process adapter; acknowledged HTTP envelopes and cursor replay | [ADR-0002](../decisions/0002-bun-hermes-acp-workspace.md) | Accepted |
+| TBD-020 | Frontend and component system | SvelteKit + Svelte 5 + shadcn-svelte beneath HUE-owned tokens and wrapper components; static HTML prototype retained until functional flows stabilize | [ADR-0001](decisions/0001-sveltekit-shadcn-svelte.md) | Accepted |
+| TBD-001, TBD-002, TBD-004, TBD-007, TBD-012 | Focused product boundary, shell, control plane, runtime, storage, and transport | Browser workspace on SvelteKit/Bun; `bun:sqlite`; Hermes ACP external-process adapter; acknowledged HTTP envelopes and cursor replay | [ADR-0002](decisions/0002-bun-hermes-acp-workspace.md) | Accepted |
 
 ## Alpha-blocking decisions
 
@@ -42,7 +42,7 @@
 
 ## ADR workflow
 
-Each decision gets `decisions/NNNN-title.md` using the template. An accepted ADR includes:
+Each decision gets `docs/decisions/NNNN-title.md` using the template. An accepted ADR includes:
 
 - context and decision question;
 - constraints/non-negotiables from the vision;

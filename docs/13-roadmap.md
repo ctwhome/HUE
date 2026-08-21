@@ -2,7 +2,7 @@
 
 > **Plan status:** `IMPLEMENTED IN PART`
 > **Product scope:** Projects, Workflows, Sessions
-> **Architecture:** [ADR-0002](../decisions/0002-bun-hermes-acp-workspace.md)
+> **Architecture:** [ADR-0002](decisions/0002-bun-hermes-acp-workspace.md)
 
 HUE is now a focused Hermes workspace client. Earlier universal-control-plane milestones are superseded and are not an implicit backlog.
 
