@@ -77,7 +77,7 @@ The canonical product Markdown remains in `VISION.md` and `docs/`. `docs/scripts
 
 ```bash
 bun install
-make dev          # local Starlight and SvelteKit development servers
+make dev          # app at :4010/ and documentation at :4010/docs/
 bun run --cwd docs verify
 ```
 

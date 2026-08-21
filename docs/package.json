@@ -6,8 +6,8 @@
   "packageManager": "bun@1.3.14",
   "scripts": {
     "site:prepare": "python3 scripts/prepare_site.py",
-    "dev": "bun run site:prepare && astro dev",
-    "dev:stop": "astro dev stop",
+    "dev": "HUE_DOCS_BASE=/docs bun run site:prepare && HUE_DOCS_BASE=/docs astro dev",
+    "dev:stop": "HUE_DOCS_BASE=/docs astro dev stop",
     "build": "bun run site:prepare && astro build",
     "preview": "astro preview",
     "check": "python3 scripts/validate_docs.py && bun run site:prepare && astro check",

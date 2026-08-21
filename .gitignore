@@ -12,3 +12,5 @@ dist/
 docs/src/content/docs/
 docs/public/prototype/
 docs/public/data/
+app/static/docs/
+.playwright-mcp

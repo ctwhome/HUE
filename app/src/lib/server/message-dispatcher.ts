@@ -1,10 +1,12 @@
 import type { HUEStore } from './store';
+import type { ImageAttachment } from '$lib/message-content';
 
 export interface PromptRuntime {
 	resumeSession(cwd: string, sessionId: string): Promise<void>;
 	prompt(input: {
 		sessionId: string;
 		text: string;
+		images: ImageAttachment[];
 		onChunk: (text: string) => void;
 	}): Promise<void>;
 }
@@ -14,6 +16,7 @@ export type MessageEnvelope = {
 	projectId: string;
 	sessionId: string;
 	text: string;
+	images?: ImageAttachment[];
 };
 
 export class DeliveryUncertainError extends Error {
@@ -75,6 +78,7 @@ export class MessageDispatcher {
 			await this.runtime.prompt({
 				sessionId: envelope.sessionId,
 				text: envelope.text,
+				images: envelope.images ?? [],
 				onChunk: (text) => {
 					this.store.appendEvent(envelope.projectId, envelope.sessionId, 'agent.chunk', {
 						messageId: envelope.id,
