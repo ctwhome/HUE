@@ -76,7 +76,9 @@ body.project-rail-collapsed {
 }
 
 .rail-collapse-button,
+.rail-mobile-close-button,
 .rail-add,
+.session-back-button,
 .session-add-button,
 .session-close-button,
 .pane-toggle {
@@ -93,7 +95,9 @@ body.project-rail-collapsed {
 }
 
 .rail-collapse-button:hover,
+.rail-mobile-close-button:hover,
 .rail-add:hover,
+.session-back-button:hover,
 .session-add-button:hover,
 .session-close-button:hover,
 .pane-toggle:hover {
@@ -103,7 +107,9 @@ body.project-rail-collapsed {
 }
 
 .rail-collapse-button:focus-visible,
+.rail-mobile-close-button:focus-visible,
 .rail-add:focus-visible,
+.session-back-button:focus-visible,
 .session-add-button:focus-visible,
 .session-close-button:focus-visible,
 .pane-toggle:focus-visible,
@@ -112,6 +118,13 @@ body.project-rail-collapsed {
 .mobile-bottom-nav button:focus-visible {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
+}
+
+.rail-mobile-close-button,
+.session-back-button,
+.drawer-drag-edge,
+.drawer-edge-swipe-zone {
+  display: none;
 }
 
 .app-shell .project-rail nav {
@@ -252,6 +265,7 @@ body.project-rail-collapsed {
 .supertaal-space { background: hsl(var(--decision) / 0.14); border-color: hsl(var(--decision) / 0.3); }
 .health-space { background: hsl(var(--destructive) / 0.12); border-color: hsl(var(--destructive) / 0.27); }
 .parenting-space { background: hsl(var(--primary) / 0.13); border-color: hsl(var(--primary) / 0.27); }
+.custom-space { background: hsl(var(--primary) / 0.13); border-color: hsl(var(--primary) / 0.27); }
 
 .space-copy {
   display: flex;
@@ -647,6 +661,51 @@ body.project-rail-collapsed .project-rail .sidebar-foot {
   display: none;
 }
 
+.project-dialog {
+  width: min(28rem, calc(100vw - 2rem));
+  padding: 1.5rem;
+}
+
+.project-dialog form,
+.project-dialog label {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.project-dialog form {
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.project-dialog label {
+  color: hsl(var(--muted-foreground));
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
+.project-dialog input {
+  width: 100%;
+  height: 2.65rem;
+  padding: 0 0.75rem;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--input));
+  border-radius: calc(var(--radius) - 0.12rem);
+  outline: 0;
+}
+
+.project-dialog input:focus {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.16);
+}
+
+.project-dialog .dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.35rem;
+}
+
 /* A second permanent column reduces the main surface; stack dense internal
  * inspector layouts before they can create horizontal overflow. */
 @media (max-width: 1360px) {
@@ -756,14 +815,20 @@ body.project-rail-collapsed .project-rail .sidebar-foot {
     position: fixed;
     inset: var(--shell-top) 0 0;
     z-index: 55;
+    display: block;
+    opacity: 0;
+    pointer-events: none;
     background: rgb(0 0 0 / 0.48);
     border: 0;
     backdrop-filter: blur(2px);
+    transition: opacity 180ms ease;
   }
 
   body.sessions-pane-open .pane-backdrop,
-  body.projects-pane-open .pane-backdrop {
-    display: block;
+  body.projects-pane-open .pane-backdrop,
+  body.drawer-gesture-active .pane-backdrop {
+    opacity: var(--drawer-scrim-opacity, 1);
+    pointer-events: auto;
   }
 
   .approval-layout,
@@ -784,6 +849,16 @@ body.project-rail-collapsed .project-rail .sidebar-foot {
     --project-rail-width: 0rem;
   }
 
+  html,
+  body {
+    overscroll-behavior-x: none;
+  }
+
+  button,
+  [role='button'] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
   body.project-rail-expanded,
   body.project-rail-collapsed {
     --project-rail-width: 0rem;
@@ -800,8 +875,21 @@ body.project-rail-collapsed .project-rail .sidebar-foot {
     inset: var(--shell-top) auto calc(4rem + env(safe-area-inset-bottom, 0px)) 0;
     width: min(20rem, 88vw);
     height: auto;
-    transform: translateX(-105%);
-    transition: transform 180ms ease;
+    transform: translate3d(-105%, 0, 0);
+    transition: transform 220ms cubic-bezier(0.2, 0.78, 0.2, 1);
+    touch-action: none;
+    overscroll-behavior: contain;
+    will-change: transform;
+  }
+
+  .app-shell .project-rail *,
+  .session-sidebar * {
+    touch-action: none;
+  }
+
+  .app-shell .project-rail.drawer-dragging,
+  .session-sidebar.drawer-dragging {
+    transition: none !important;
   }
 
   .app-shell .project-rail {
@@ -818,12 +906,109 @@ body.project-rail-collapsed .project-rail .sidebar-foot {
 
   body.projects-pane-open .project-rail,
   body.sessions-pane-open .session-sidebar {
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
+  }
+
+  .rail-mobile-close-button,
+  .session-back-button {
+    display: inline-grid;
+  }
+
+  .rail-mobile-close-button,
+  .session-back-button,
+  .session-add-button,
+  .session-close-button {
+    width: 2.5rem;
+    height: 2.5rem;
+    min-width: 2.5rem;
+  }
+
+  .session-back-button {
+    margin-left: -0.35rem;
+    font-size: 1.45rem;
+    line-height: 1;
+  }
+
+  .session-space-context {
+    gap: 0.48rem;
+    padding-right: 5.4rem;
+  }
+
+  .session-heading-actions {
+    width: 5.2rem;
+  }
+
+  .drawer-drag-edge {
+    position: absolute;
+    top: 0;
+    right: -0.2rem;
+    bottom: 0;
+    display: block;
+    width: 0.7rem;
+    pointer-events: none;
+  }
+
+  .drawer-drag-edge::after {
+    position: absolute;
+    top: 50%;
+    right: 0.08rem;
+    width: 0.16rem;
+    height: 2.6rem;
+    content: '';
+    opacity: 0;
+    background: hsl(var(--foreground) / 0.22);
+    border-radius: 999px;
+    transform: translateY(-50%);
+    transition: opacity 120ms ease;
+  }
+
+  body.drawer-gesture-active .drawer-dragging .drawer-drag-edge::after {
+    opacity: 1;
+  }
+
+  body.drawer-gesture-active .pane-backdrop {
+    transition: none;
+  }
+
+  .drawer-edge-swipe-zone {
+    position: fixed;
+    inset: var(--shell-top) auto calc(4rem + env(safe-area-inset-bottom, 0px)) 0;
+    z-index: 67;
+    display: block;
+    width: 1.75rem;
+    touch-action: none;
+  }
+
+  body.projects-pane-open .drawer-edge-swipe-zone,
+  body.sessions-pane-open .drawer-edge-swipe-zone {
+    pointer-events: none;
   }
 
   .app-shell .project-rail .brand,
   .app-shell .project-rail .sidebar-foot {
     display: grid;
+  }
+
+  body.project-rail-collapsed .app-shell .project-rail .sidebar-foot,
+  .app-shell .project-rail .sidebar-foot {
+    grid-template-columns: 2.35rem 2.35rem minmax(0, 1fr);
+    align-items: center;
+    justify-items: stretch;
+    gap: 0.45rem;
+  }
+
+  .app-shell .project-rail .sidebar-foot .runtime-state {
+    min-width: 0;
+  }
+
+  .app-shell .project-rail nav,
+  .session-list {
+    scrollbar-width: none;
+  }
+
+  .app-shell .project-rail nav::-webkit-scrollbar,
+  .session-list::-webkit-scrollbar {
+    display: none;
   }
 
   .app-shell .project-rail nav {
@@ -937,6 +1122,11 @@ body.project-rail-collapsed .project-rail .sidebar-foot {
     background: transparent;
     border: 1px solid transparent;
     border-radius: calc(var(--radius) - 0.05rem);
+    transition: color 140ms ease, background-color 140ms ease, transform 90ms ease;
+  }
+
+  .mobile-bottom-nav button:active {
+    transform: scale(0.96);
   }
 
   .mobile-bottom-nav button.active {
@@ -976,7 +1166,10 @@ body.project-rail-collapsed .project-rail .sidebar-foot {
 @media (prefers-reduced-motion: reduce) {
   .app-shell,
   .project-rail,
-  .session-sidebar {
+  .session-sidebar,
+  .pane-backdrop,
+  .drawer-drag-edge::after,
+  .mobile-bottom-nav button {
     transition: none !important;
   }
 }

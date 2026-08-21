@@ -115,6 +115,9 @@ The primary application is an **Operate + Command/Inspect** surface—not a mark
 - Global Home, Inbox and Notifications can use the same main window while preserving the selected Space and its Sessions.
 - The main window may contain a contextual inspector or split view, but that inspector does not replace the stable Space → Session hierarchy.
 - Below narrow-desktop width the Session sidebar becomes a drawer; on mobile both navigation panes become drawers with direct **Spaces** and **Sessions** controls.
+- On touch devices, a rightward drag from the left edge reveals the selected Space’s Sessions and tracks the finger; either drawer can be dismissed with a leftward drag or backdrop tap.
+- The Session drawer provides a visible Back affordance to the all-Spaces menu. Selecting a Space drills forward into only that Space’s Sessions.
+- Android/system Back and browser Back close the topmost dialog or drawer before navigating to the previous main-window state; gesture navigation must not replace explicit buttons or trap vertical scrolling.
 - A compact activity rail may appear only while work is active, waiting or blocked.
 
 ## Mobile composition
