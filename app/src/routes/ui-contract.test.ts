@@ -2,12 +2,35 @@ import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 const page = readFileSync(new URL('./+page.svelte', import.meta.url), 'utf8');
+const layout = readFileSync(new URL('./+layout.svelte', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../app.css', import.meta.url), 'utf8');
 const e2e = readFileSync(new URL('./workspace.e2e.ts', import.meta.url), 'utf8');
 
 test('workflow fields have accessible names', () => {
 	expect(page).toContain('aria-label="Workflow name"');
 	expect(page).toContain('aria-label="Workflow prompt"');
+});
+
+test('every button and navigation action has a tooltip', () => {
+	for (const [control] of page.matchAll(/<(button|a)\b[\s\S]*?<\/\1\s*>/g)) {
+		expect(control).toContain('title=');
+	}
+});
+
+test('tooltips use the app-level styled tooltip provider', () => {
+	expect(layout).toContain("import TooltipProvider from '$lib/components/TooltipProvider.svelte'");
+	expect(layout).toContain('<TooltipProvider />');
+	expect(styles).toMatch(/\.app-tooltip\s*\{[^}]*position: fixed;[^}]*z-index: 100;/s);
+});
+
+test('sidebar tooltips prefer collision-aware right placement', () => {
+	const tooltip = readFileSync(
+		new URL('../lib/components/TooltipProvider.svelte', import.meta.url),
+		'utf8'
+	);
+	expect(tooltip).toContain("trigger.closest('.global-rail')");
+	expect(tooltip).toContain('target.right + gap');
+	expect(tooltip).toContain('Math.min(innerWidth - tip.width - margin');
 });
 
 test('brand header links to the bundled documentation', () => {
@@ -22,13 +45,11 @@ test('narrow global rail opens a read-only Hermes inspector', () => {
 		expect(page).toContain(`aria-label="${label}"`);
 	}
 	expect(page).toContain('aria-label="Inspect Hermes runtime"');
-	expect(page).toContain('/api/hermes');
-	expect(page).toMatch(/<dialog\s+bind:this=\{hermesDialog\}/);
-	expect(page).toContain('Skills are not exposed by Hermes ACP');
-	expect(page).toContain('Schedules are not exposed by Hermes ACP');
-	expect(styles).toMatch(
-		/\.hermes-dialog \.icon-button,\s*\.hermes-sections summary\s*\{\s*min-height: 44px;/
-	);
+	expect(page).toContain('aria-label="Hermes management"');
+	expect(page).toContain("openHermesPanel('skills')");
+	expect(page).toContain("openHermesPanel('schedules')");
+	expect(page).toContain("openHermesPanel('profiles')");
+	expect(page).not.toContain('Skills are not exposed by Hermes ACP');
 });
 
 test('mobile changed-shell controls enforce 44px targets', () => {
@@ -49,6 +70,17 @@ test('project creation is opened from the Projects heading in a dialog', () => {
 	expect(page).toContain('onclick={openAddProject}');
 	expect(page).toContain('/api/directories?');
 	expect(page).toMatch(/<dialog\s+bind:this=\{addProjectDialog\}/);
+});
+
+test('projects can be edited from the project sidebar', () => {
+	expect(page).toContain('aria-label={`Edit ${project.name}`}');
+	expect(page).toMatch(/<dialog\s+bind:this=\{editProjectDialog\}/);
+	expect(page).toContain('aria-label="Project icon image"');
+	expect(page).toContain("['🚀', 'rocket']");
+	expect(page).toContain('aria-label={`Use ${option[1]} icon`}');
+	expect(page).toContain('project-icon-image');
+	expect(page).toContain("method: 'PATCH'");
+	expect(page).toContain("method: 'DELETE'");
 });
 
 test('uncertain HTTP acknowledgement exposes an explicit exact-envelope retry', () => {

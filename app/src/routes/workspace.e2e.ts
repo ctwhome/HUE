@@ -1,4 +1,7 @@
 import { expect, test } from '@playwright/test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 async function expectMinimumTouchTargets(locator: import('@playwright/test').Locator) {
 	for (let index = 0; index < (await locator.count()); index += 1) {
@@ -13,9 +16,7 @@ async function addProject(page: import('@playwright/test').Page) {
 	await page.goto('/');
 	const projectsMenu = page.locator('.mobile-navigation').getByRole('button', { name: 'Projects' });
 	if (await projectsMenu.isVisible()) await projectsMenu.click();
-	const existing = page
-		.locator('.project-rail nav')
-		.getByRole('button', { name: 'HUE', includeHidden: true });
+	const existing = page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' });
 	if (await existing.count()) {
 		await existing.click();
 		return;
@@ -26,7 +27,7 @@ async function addProject(page: import('@playwright/test').Page) {
 	if (!response.ok()) throw new Error(`${response.status()}: ${await response.text()}`);
 	await page.goto('/');
 	if (await projectsMenu.isVisible()) await projectsMenu.click();
-	await page.locator('.project-rail nav').getByRole('button', { name: 'HUE' }).click();
+	await page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' }).click();
 }
 
 test('opens project creation from the Projects heading and dismisses it with Escape', async ({
@@ -35,7 +36,7 @@ test('opens project creation from the Projects heading and dismisses it with Esc
 	const browserErrors: string[] = [];
 	let submittedProject: { name: string; rootPath: string } | undefined;
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
-	page.on('pageerror', (error) => browserErrors.push(error.message));
+	page.on('pageerror', (error) => browserErrors.push(error.stack ?? error.message));
 	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
 	await page.route(/\/api\/directories/, (route) => {
 		const url = new URL(route.request().url());
@@ -113,19 +114,102 @@ test('opens project creation from the Projects heading and dismisses it with Esc
 	expect(browserErrors).toEqual([]);
 });
 
-test('inspects the active Hermes runtime without exposing unsupported administration', async ({
+test('renames and removes a project from the projects sidebar', async ({ page }) => {
+	test.setTimeout(60_000);
+	const rootPath = mkdtempSync(join(tmpdir(), 'hue-edit-project-'));
+	const response = await page.request.post('/api/projects', {
+		data: { name: 'Editable project', rootPath }
+	});
+	const project = (await response.json()).project as { id: string; rootPath: string };
+	let currentName = 'Editable project';
+	try {
+		const invalidIcon = await page.request.patch(`/api/projects/${project.id}`, {
+			data: { name: currentName, icon: 'data:text/html;base64,PHNjcmlwdD4=' }
+		});
+		expect(invalidIcon.status()).toBe(400);
+		for (const viewport of [
+			{ width: 1440, height: 900 },
+			{ width: 1024, height: 768 },
+			{ width: 390, height: 844 },
+			{ width: 320, height: 844 }
+		]) {
+			await page.setViewportSize(viewport);
+			await page.goto('/');
+			const projectsMenu = page
+				.locator('.mobile-navigation')
+				.getByRole('button', { name: 'Projects' });
+			if (await projectsMenu.isVisible()) await projectsMenu.click();
+			const editButton = page.getByRole('button', { name: `Edit ${currentName}` });
+			await editButton.click();
+			const dialog = page.getByRole('dialog', { name: 'Edit project' });
+			await expect(dialog).toBeVisible();
+			await expect(dialog.getByLabel('Project directory')).toHaveValue(project.rootPath);
+			if (viewport.width === 1440) {
+				await dialog.getByRole('button', { name: 'Use rocket icon' }).click();
+				await expect(dialog.locator('.project-icon-preview')).toHaveText('🚀');
+			}
+			if (viewport.width === 390) {
+				await dialog.getByLabel('Project icon image').setInputFiles({
+					name: 'project.png',
+					mimeType: 'image/png',
+					buffer: Buffer.from(
+						'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+						'base64'
+					)
+				});
+				await expect(dialog.getByRole('img', { name: 'Project icon preview' })).toBeVisible();
+			}
+			const renamed = `Renamed ${viewport.width}`;
+			await dialog.getByLabel('Project name').fill(renamed);
+			await dialog.getByRole('button', { name: 'Save changes' }).click();
+			currentName = renamed;
+			await expect(page.locator('.project-select', { hasText: currentName })).toBeAttached();
+			if (viewport.width < 390) {
+				await expect(page.locator('.project-select .project-icon-image')).toBeVisible();
+			}
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+				viewport.width
+			);
+		}
+		await page.getByRole('button', { name: `Edit ${currentName}` }).click();
+		page.once('dialog', (confirmation) => confirmation.accept());
+		await page
+			.getByRole('dialog', { name: 'Edit project' })
+			.getByRole('button', { name: 'Remove project' })
+			.click();
+		await expect(page.locator('.project-select', { hasText: currentName })).toHaveCount(0);
+	} finally {
+		if (project) await page.request.delete(`/api/projects/${project.id}`).catch(() => undefined);
+		rmSync(rootPath, { recursive: true, force: true });
+	}
+});
+
+test('opens distinct Hermes runtime, skills, schedules, commands, and profiles panels', async ({
 	page
 }) => {
-	await page.route('/api/hermes', (route) =>
-		route.fulfill({
-			json: {
-				profile: 'work',
-				protocolVersion: 1,
-				agent: { name: 'hermes-agent', version: '0.2.0' },
-				capabilities: { loadSession: true }
-			}
-		})
-	);
+	await page.route(/\/api\/hermes(?:\?.*)?$/, (route) => {
+		const view = new URL(route.request().url()).searchParams.get('view');
+		const json =
+			view === 'skills'
+				? { skills: [{ name: 'browser-use', category: '', source: 'local', status: 'enabled' }] }
+				: view === 'schedules'
+					? {
+							jobs: [
+								{ id: 'job-1', name: 'Monthly check', schedule: '0 9 1 * *', status: 'active' }
+							]
+						}
+					: view === 'profiles'
+						? {
+								profiles: [{ name: 'work', model: 'gpt-5.6-sol', gateway: 'running', active: true }]
+							}
+						: {
+								profile: 'work',
+								protocolVersion: 1,
+								agent: { name: 'hermes-agent', version: '0.2.0' },
+								capabilities: { loadSession: true }
+							};
+		return route.fulfill({ json });
+	});
 
 	for (const viewport of [
 		{ width: 1440, height: 900 },
@@ -148,20 +232,28 @@ test('inspects the active Hermes runtime without exposing unsupported administra
 			await expect(page.getByRole('button', { name: 'Inspect Hermes runtime' })).toBeVisible();
 		}
 		await page.getByRole('button', { name: 'Inspect Hermes runtime' }).click();
-		const dialog = page.getByRole('dialog', { name: 'Hermes runtime' });
-		await expect(dialog).toBeVisible();
-		await expect(dialog.getByText('work', { exact: true })).toBeVisible();
-		await expect(dialog.getByText('hermes-agent 0.2.0')).toBeVisible();
-		await expect(dialog.getByText('Skills are not exposed by Hermes ACP')).toBeVisible();
-		await expect(dialog.getByText('Schedules are not exposed by Hermes ACP')).toBeVisible();
+		const panel = page.getByRole('region', { name: 'Hermes management' });
+		await expect(panel).toBeVisible();
+		await expect(panel.getByText('hermes-agent 0.2.0')).toBeVisible();
+		await panel.getByRole('button', { name: 'Skills' }).click();
+		await expect(panel.getByRole('heading', { name: 'Installed skills' })).toBeVisible();
+		await expect(panel.getByText('browser-use', { exact: true })).toBeVisible();
+		await panel.getByRole('button', { name: 'Schedules' }).click();
+		await expect(panel.getByRole('heading', { name: 'Scheduled jobs' })).toBeVisible();
+		await expect(panel.getByText('Monthly check')).toBeVisible();
+		await panel.getByRole('button', { name: 'Profiles' }).click();
+		await expect(panel.getByRole('heading', { name: 'Profiles' })).toBeVisible();
+		await expect(panel.getByText('gpt-5.6-sol')).toBeVisible();
+		await panel.getByRole('button', { name: 'Commands' }).click();
+		await expect(panel.getByRole('heading', { name: 'Session commands' })).toBeVisible();
 		if (viewport.width <= 390) {
-			await expectMinimumTouchTargets(dialog.locator('.icon-button, summary'));
+			await expectMinimumTouchTargets(panel.locator('button'));
 		}
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
 		);
-		await page.keyboard.press('Escape');
-		await expect(dialog).toBeHidden();
+		await panel.getByRole('button', { name: 'Back to workspace' }).click();
+		await expect(panel).toBeHidden();
 	}
 });
 
@@ -182,13 +274,13 @@ test('keeps the newest Hermes inspector response after closing and reopening', a
 
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Inspect Hermes runtime' }).click();
-	await page.keyboard.press('Escape');
+	await page.getByRole('button', { name: 'Back to workspace' }).click();
 	await page.getByRole('button', { name: 'Inspect Hermes runtime' }).click();
-	const dialog = page.getByRole('dialog', { name: 'Hermes runtime' });
-	await expect(dialog.getByText('current', { exact: true })).toBeVisible();
+	const panel = page.getByRole('region', { name: 'Hermes management' });
+	await expect(panel.getByText('current', { exact: true })).toBeVisible();
 	releaseFirst();
-	await expect(dialog.getByText('current', { exact: true })).toBeVisible();
-	await expect(dialog.getByText('stale', { exact: true })).toBeHidden();
+	await expect(panel.getByText('current', { exact: true })).toBeVisible();
+	await expect(panel.getByText('stale', { exact: true })).toBeHidden();
 });
 
 test('sends one complete envelope and renders streamed completion', async ({ page }) => {
@@ -339,10 +431,9 @@ test('keeps the latest user question at the top while its answer grows', async (
 				Number.parseFloat(getComputedStyle(element).paddingTop)
 			));
 		await expect
-			.poll(
-				async () => Math.abs((await loadedQuestion.boundingBox())!.y - loadedStickyTop),
-				{ message: `${viewport.width}x${viewport.height}` }
-			)
+			.poll(async () => Math.abs((await loadedQuestion.boundingBox())!.y - loadedStickyTop), {
+				message: `${viewport.width}x${viewport.height}`
+			})
 			.toBeLessThan(2);
 		await page.getByLabel('Message Hermes').fill('Keep this question visible');
 		await page.getByRole('button', { name: 'Send', exact: true }).click();

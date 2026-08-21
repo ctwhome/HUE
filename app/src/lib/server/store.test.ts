@@ -46,6 +46,22 @@ describe('HUEStore project and workflow boundaries', () => {
 
 		store.close();
 	});
+
+	it('updates project names and icons, then removes projects', () => {
+		const store = makeStore();
+		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+
+		expect(store.updateProject('hue', { name: 'Hue workspace', icon: '🚀' })).toMatchObject({
+			id: 'hue',
+			name: 'Hue workspace',
+			icon: '🚀',
+			rootPath: '/work/hue'
+		});
+		expect(store.deleteProject('hue')).toBe(true);
+		expect(store.listProjects()).toEqual([]);
+		expect(store.deleteProject('hue')).toBe(false);
+		store.close();
+	});
 });
 
 describe('HUEStore acknowledged message transport', () => {
