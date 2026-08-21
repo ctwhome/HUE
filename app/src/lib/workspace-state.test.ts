@@ -27,6 +27,77 @@ describe('workspace async state', () => {
 		expect(result).toMatchObject({ cursor: 4, pendingAssistant: 'new' });
 	});
 
+	it('shows published Hermes reasoning while a turn is running and clears it on completion', () => {
+		const running = workspaceState.applySessionEvents(
+			{
+				cursor: 0,
+				activeMessageId: 'msg-1',
+				pendingAssistant: '',
+				pendingThought: '',
+				delivery: 'accepted',
+				transcript: []
+			},
+			[
+				{ sequence: 1, type: 'message.running', payload: { messageId: 'msg-1' } },
+				{
+					sequence: 2,
+					type: 'agent.thought',
+					payload: { messageId: 'msg-1', text: 'Checking the relevant files.' }
+				}
+			]
+		);
+
+		expect(running).toMatchObject({
+			delivery: 'running',
+			pendingThought: 'Checking the relevant files.',
+			pendingAssistant: ''
+		});
+
+		const completed = workspaceState.applySessionEvents(running, [
+			{ sequence: 3, type: 'agent.chunk', payload: { messageId: 'msg-1', text: 'Done.' } },
+			{ sequence: 4, type: 'message.completed', payload: { messageId: 'msg-1' } }
+		]);
+		expect(completed.pendingThought).toBe('');
+		expect(completed.transcript).toEqual([{ role: 'assistant', text: 'Done.' }]);
+	});
+
+	it('replays and merges durable subagent tree updates', () => {
+		const events = [
+			{
+				sequence: 2,
+				type: 'agent.subagents',
+				payload: {
+					messageId: 'msg-1',
+					id: 'delegate-1',
+					title: '1 subagent',
+					status: 'in_progress',
+					children: [{ index: 0, goal: 'Inspect files', status: 'in_progress' }]
+				}
+			},
+			{
+				sequence: 3,
+				type: 'agent.subagents',
+				payload: {
+					messageId: 'msg-1',
+					id: 'delegate-1',
+					title: '1 subagent',
+					status: 'completed',
+					children: [{ index: 0, goal: 'Inspect files', status: 'completed', result: 'Found it' }]
+				}
+			}
+		];
+
+		expect(workspaceState.subagentTreesFromEvents(events)).toEqual([
+			{
+				messageId: 'msg-1',
+				id: 'delegate-1',
+				title: '1 subagent',
+				status: 'completed',
+				children: [{ index: 0, goal: 'Inspect files', status: 'completed', result: 'Found it' }]
+			}
+		]);
+	});
+
 	it('runs overlapping polls as one in-flight request', async () => {
 		let resolve!: () => void;
 		let calls = 0;
@@ -86,5 +157,18 @@ describe('workspace async state', () => {
 		}
 		expect(workspaceState.isTurnBusy('completed')).toBe(false);
 		expect(workspaceState.isTurnBusy('delivery unknown')).toBe(false);
+	});
+
+	it('formats compact elapsed session times', () => {
+		const startedAt = '2026-08-21T16:36:41.000Z';
+		expect(workspaceState.formatElapsed(startedAt, Date.parse('2026-08-21T16:36:41.000Z'))).toBe(
+			'0s'
+		);
+		expect(workspaceState.formatElapsed(startedAt, Date.parse('2026-08-21T16:38:40.000Z'))).toBe(
+			'1m 59s'
+		);
+		expect(workspaceState.formatElapsed(startedAt, Date.parse('2026-08-21T17:38:40.000Z'))).toBe(
+			'1h 1m'
+		);
 	});
 });

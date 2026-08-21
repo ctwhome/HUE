@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { sessionMatchesProjectRoot } from './services';
+import { projectBranch, sessionMatchesProjectRoot } from './services';
 
 const temporaryDirectories: string[] = [];
 
@@ -23,4 +23,12 @@ test('matches Hermes session cwd to Project root by canonical path', () => {
 	expect(sessionMatchesProjectRoot(projectRoot, projectAlias)).toBe(true);
 	expect(sessionMatchesProjectRoot(projectRoot, otherRoot)).toBe(false);
 	expect(sessionMatchesProjectRoot(projectRoot, join(temporary, 'missing'))).toBe(false);
+});
+
+test('reports the current Git branch for a Project root', () => {
+	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-branch-'));
+	temporaryDirectories.push(projectRoot);
+	Bun.spawnSync(['git', 'init', '-b', 'feature/context-bar'], { cwd: projectRoot });
+
+	expect(projectBranch(projectRoot)).toBe('feature/context-bar');
 });

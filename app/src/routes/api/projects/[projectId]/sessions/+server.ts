@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { services, sessionMatchesProjectRoot } from '$lib/server/services';
+import { projectBranch, services, sessionMatchesProjectRoot } from '$lib/server/services';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ params }) => {
@@ -13,7 +13,13 @@ export const GET: RequestHandler = async ({ params }) => {
 			services().store.upsertProjectSession(project.id, session);
 		}
 		services().dispatcher.recover();
-		return json({ sessions });
+		const busyStarts = services().store.getBusySessionStarts(project.id);
+		return json({
+			sessions: sessions.map((session) => ({
+				...session,
+				busySince: busyStarts[session.sessionId] ?? null
+			}))
+		});
 	} catch (error) {
 		return json({ error: error instanceof Error ? error.message : String(error) }, { status: 503 });
 	}
@@ -29,7 +35,15 @@ export const POST: RequestHandler = async ({ params }) => {
 		}
 		services().store.upsertProjectSession(project.id, session);
 		services().dispatcher.recover();
-		return json({ session }, { status: 201 });
+		return json(
+			{
+				session,
+				commands: services().runtime.getAvailableCommands(session.sessionId),
+				runtime: services().runtime.getSessionState(session.sessionId),
+				branch: projectBranch(project.rootPath)
+			},
+			{ status: 201 }
+		);
 	} catch (error) {
 		return json({ error: error instanceof Error ? error.message : String(error) }, { status: 503 });
 	}

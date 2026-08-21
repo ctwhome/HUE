@@ -11,5 +11,8 @@ export const GET: RequestHandler = ({ params, url }) => {
 	}
 	const rawAfter = Number(url.searchParams.get('after') ?? '0');
 	const after = Number.isSafeInteger(rawAfter) && rawAfter >= 0 ? rawAfter : 0;
-	return json({ events: services().store.listEvents(params.projectId, params.sessionId, after) });
+	return json({
+		events: services().store.listEvents(params.projectId, params.sessionId, after),
+		runtime: services().runtime.getSessionState(params.sessionId)
+	});
 };
