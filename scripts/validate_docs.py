@@ -127,9 +127,23 @@ def validate_prototype() -> None:
             p = BasicHTML(); p.feed(text); p.close()
         except Exception as exc:
             fail(f"prototype/index.html parse error: {exc}")
-        for token in ("SPEC", "TBI", "data-screen", "app.js", "styles.css", "shadcn.css", "workspace-shell.css", "data-component=\"SpaceRail\"", "data-component=\"SessionSidebar\""):
+        for token in ("SPEC", "TBI", "data-screen", "app.js", "styles.css", "shadcn.css", "workspace-shell.css", "data-component=\"SpaceRail\"", "data-component=\"SessionSidebar\"", "drawer-edge-swipe-zone", "data-action=\"show-projects\""):
             if token not in text:
                 fail(f"prototype/index.html missing required marker {token}")
+
+    js_path = ROOT / "prototype/app.js"
+    if js_path.exists():
+        js_text = js_path.read_text()
+        for token in ("beginDrawerGesture", "finishDrawerGesture", "history.pushState", "popstate", "dialog:"):
+            if token not in js_text:
+                fail(f"prototype/app.js missing native-navigation marker {token}")
+
+    shell_path = ROOT / "prototype/workspace-shell.css"
+    if shell_path.exists():
+        shell_text = shell_path.read_text()
+        for token in ("touch-action: none", "drawer-gesture-active", "prefers-reduced-motion"):
+            if token not in shell_text:
+                fail(f"prototype/workspace-shell.css missing gesture marker {token}")
 
 
 def validate_decisions() -> None:
