@@ -1,7 +1,7 @@
 # Target system architecture
 
 > **Focused implementation status:** `IMPLEMENTED IN PART`
-> **Accepted boundary:** [ADR-0002 — Bun + Hermes ACP workspace](../decisions/0002-bun-hermes-acp-workspace.md)
+> **Accepted boundary:** [ADR-0002 — Bun + Hermes ACP workspace](decisions/0002-bun-hermes-acp-workspace.md)
 
 ## Architectural intent
 

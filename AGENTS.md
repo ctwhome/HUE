@@ -6,10 +6,11 @@ HUE is a focused native Bun/SvelteKit workspace for exactly three user-facing ob
 
 ## Repository map
 
-- `apps/workspace/`: production SvelteKit 5/Svelte 5 application and Bun SQLite control plane.
-- `spikes/001-hermes-acp-bun/`: retained evidence for the validated Hermes ACP seam.
-- `decisions/`: accepted architecture decisions; ADR-0002 is the active implementation boundary.
-- `docs/`, `roadmap/`, `prototype/`: product contract and historical broader design context.
+- `app/`: production SvelteKit 5/Svelte 5 application and Bun SQLite control plane.
+- `docs/`: Astro/Starlight application, canonical specification, roadmap, decisions, and retained spikes.
+- `docs/decisions/`: accepted architecture decisions; ADR-0002 is the active implementation boundary.
+- `docs/spikes/001-hermes-acp-bun/`: retained evidence for the validated Hermes ACP seam.
+- `prototype/`: historical interactive design context.
 
 ## Canonical commands
 
@@ -18,14 +19,14 @@ Use Bun 1.3.14 throughout.
 ```bash
 bun install --frozen-lockfile
 bun test
-cd apps/workspace
+cd app
 bun run check
 bun run build
 bun run test:e2e
 HUE_REAL_HERMES=1 bun test src/lib/server/hermes-acp.test.ts
 ```
 
-Run production locally from `apps/workspace` with `bun run build` followed by `HOST=127.0.0.1 PORT=4173 HUE_DATABASE_PATH="$HOME/.hue/hue.db" bun run start`.
+Run production locally from `app` with `bun run build` followed by `HOST=127.0.0.1 PORT=4173 HUE_DATABASE_PATH="$HOME/.hue/hue.db" bun run start`.
 
 ## Delivery rules
 
