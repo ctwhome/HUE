@@ -7,7 +7,7 @@ import {
 import { HUEStore } from './store';
 
 class RecordingRuntime implements PromptRuntime {
-	calls: Array<{ sessionId: string; text: string }> = [];
+	calls: Array<{ sessionId: string; text: string; images?: unknown[] }> = [];
 	resumes: Array<{ cwd: string; sessionId: string }> = [];
 	active = 0;
 	maxActive = 0;
@@ -20,9 +20,10 @@ class RecordingRuntime implements PromptRuntime {
 	async prompt(input: {
 		sessionId: string;
 		text: string;
+		images?: unknown[];
 		onChunk: (text: string) => void;
 	}): Promise<void> {
-		this.calls.push({ sessionId: input.sessionId, text: input.text });
+		this.calls.push({ sessionId: input.sessionId, text: input.text, images: input.images });
 		this.active += 1;
 		this.maxActive = Math.max(this.maxActive, this.active);
 		await Promise.resolve();
@@ -62,7 +63,7 @@ describe('MessageDispatcher', () => {
 		dispatcher.recover();
 		await dispatcher.whenIdle('session-1');
 
-		expect(runtime.calls).toEqual([{ sessionId: 'session-1', text: 'Resume me' }]);
+		expect(runtime.calls).toEqual([{ sessionId: 'session-1', text: 'Resume me', images: [] }]);
 		expect(store.getMessage('queued')?.status).toBe('completed');
 		expect(store.getMessage('running')?.status).toBe('unknown');
 		expect(
@@ -82,7 +83,7 @@ describe('MessageDispatcher', () => {
 		let finishPrompt!: () => void;
 		const runtime = new RecordingRuntime();
 		runtime.prompt = async (input) => {
-			runtime.calls.push({ sessionId: input.sessionId, text: input.text });
+			runtime.calls.push({ sessionId: input.sessionId, text: input.text, images: input.images });
 			await new Promise<void>((resolve) => (finishPrompt = resolve));
 		};
 		const dispatcher = new MessageDispatcher(store, runtime);
@@ -123,7 +124,7 @@ describe('MessageDispatcher', () => {
 		await dispatcher.whenIdle('session-1');
 
 		expect(runtime.resumes).toEqual([{ cwd: '/work/hue', sessionId: 'session-1' }]);
-		expect(runtime.calls).toEqual([{ sessionId: 'session-1', text: 'Resume me once' }]);
+		expect(runtime.calls).toEqual([{ sessionId: 'session-1', text: 'Resume me once', images: [] }]);
 		expect(store.getMessage('queued')?.status).toBe('completed');
 		expect(store.getMessage('running')?.status).toBe('unknown');
 		expect(store.listEvents('hue', 'session-1').at(-1)?.type).toBe('message.completed');
@@ -174,7 +175,7 @@ describe('MessageDispatcher', () => {
 
 		expect(first).toMatchObject({ duplicate: false, status: 'queued' });
 		expect(retry.duplicate).toBe(true);
-		expect(runtime.calls).toEqual([{ sessionId: 'session-1', text: envelope.text }]);
+		expect(runtime.calls).toEqual([{ sessionId: 'session-1', text: envelope.text, images: [] }]);
 		expect(store.getMessage('msg-1')?.status).toBe('completed');
 		expect(
 			store
@@ -182,6 +183,29 @@ describe('MessageDispatcher', () => {
 				.filter((event) => event.type === 'agent.chunk')
 				.map((event) => event.payload.text)
 		).toEqual(['Complete ', 'answer.']);
+		store.close();
+	});
+
+	it('persists and forwards image attachments as part of the exact envelope', async () => {
+		const store = makeStore();
+		const runtime = new RecordingRuntime();
+		const dispatcher = new MessageDispatcher(store, runtime);
+		const images = [{ name: 'screen.png', mimeType: 'image/png', data: 'aGVsbG8=' }];
+		const envelope = {
+			id: 'image-message',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Review this screenshot',
+			images
+		};
+
+		dispatcher.submit(envelope);
+		await dispatcher.whenIdle('session-1');
+
+		expect(runtime.calls).toEqual([
+			{ sessionId: 'session-1', text: envelope.text, images }
+		]);
+		expect(store.getMessage(envelope.id)?.images).toEqual(images);
 		store.close();
 	});
 

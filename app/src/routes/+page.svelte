@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { onDestroy, onMount, untrack } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
+	import { replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import { marked } from 'marked';
 	import sanitizeHtml from 'sanitize-html';
 	import {
@@ -9,6 +11,7 @@
 		isTurnBusy,
 		runSingleFlight
 	} from '$lib';
+	import type { ImageAttachment } from '$lib/message-content';
 	import type { PageData } from './$types';
 
 	type Project = PageData['projects'][number];
@@ -19,15 +22,28 @@
 		updatedAt?: string | null;
 	};
 	type Workflow = { id: string; name: string; prompt: string; profile: string };
-	type TranscriptMessage = { role: 'user' | 'assistant'; text: string };
+	type HermesCommand = { name: string; description: string; input?: { hint: string } | null };
+	type TranscriptMessage = {
+		role: 'user' | 'assistant';
+		text: string;
+		images?: ImageAttachment[];
+	};
 	type SessionEvent = { sequence: number; type: string; payload: Record<string, unknown> };
-	type PendingEnvelope = { id: string; projectId: string; sessionId: string; text: string };
+	type PendingEnvelope = {
+		id: string;
+		projectId: string;
+		sessionId: string;
+		text: string;
+		images: ImageAttachment[];
+	};
 	type ActiveTurn = {
 		messageId: string;
 		status: 'queued' | 'running' | 'unknown';
 		output: string;
 		error: string | null;
 	};
+	type Directory = { name: string; path: string };
+	type DirectoryListing = Directory & { parent: string | null; entries: Directory[] };
 
 	let { data }: { data: PageData } = $props();
 	let projects = $state<Project[]>(untrack(() => [...data.projects]));
@@ -39,11 +55,21 @@
 	let activeTab = $state<'sessions' | 'workflows'>('sessions');
 	let loading = $state(false);
 	let error = $state('');
-	let projectName = $state('');
 	let projectRoot = $state('');
+	let projectDirectoryName = $state('');
+	let projectDirectories = $state<Directory[]>([]);
+	let projectDirectoryParent = $state<string | null>(null);
+	let showHiddenDirectories = $state(false);
+	let directoryLoading = $state(false);
+	let directoryError = $state('');
+	let addProjectDialog: HTMLDialogElement;
 	let workflowName = $state('');
 	let workflowPrompt = $state('');
 	let composer = $state('');
+	let commands = $state<HermesCommand[]>([]);
+	let commandIndex = $state(0);
+	let images = $state<ImageAttachment[]>([]);
+	let draggingImages = $state(false);
 	let delivery = $state('');
 	let pendingAssistant = $state('');
 	let eventCursor = $state(0);
@@ -75,9 +101,31 @@
 		selectedSession = null;
 		pendingEnvelope = null;
 		transcript = [];
+		commands = [];
+		images = [];
 		error = '';
 		mobileDrawer = 'sessions';
+		persistSelection();
 		await loadActiveTab();
+	}
+
+	function persistSelection() {
+		const url = new URL(window.location.href);
+		if (selectedProject) url.searchParams.set('project', selectedProject.id);
+		else url.searchParams.delete('project');
+		if (selectedSession) url.searchParams.set('session', selectedSession.sessionId);
+		else url.searchParams.delete('session');
+		replaceState(url, page.state);
+	}
+
+	async function restoreSelection() {
+		const params = new URL(window.location.href).searchParams;
+		const project = projects.find(({ id }) => id === params.get('project')) ?? selectedProject;
+		selectedProject = project ?? null;
+		await loadActiveTab();
+		const session = sessions.find(({ sessionId }) => sessionId === params.get('session'));
+		if (session) await openSession(session);
+		else persistSelection();
 	}
 
 	async function loadActiveTab() {
@@ -125,20 +173,51 @@
 		await loadActiveTab();
 	}
 
+	function openAddProject() {
+		directoryError = '';
+		addProjectDialog.showModal();
+		void loadDirectory();
+	}
+
+	async function loadDirectory(path?: string, showHidden = showHiddenDirectories) {
+		directoryLoading = true;
+		directoryError = '';
+		try {
+			const query = new URLSearchParams({ hidden: String(showHidden) });
+			if (path) query.set('path', path);
+			const directory = await api<DirectoryListing>(`/api/directories?${query}`);
+			projectRoot = directory.path;
+			projectDirectoryName = directory.name;
+			projectDirectoryParent = directory.parent;
+			projectDirectories = directory.entries;
+			await tick();
+			addProjectDialog.querySelector<HTMLButtonElement>('.directory-row, .add-project button')?.focus();
+		} catch (cause) {
+			directoryError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			directoryLoading = false;
+		}
+	}
+
+	function toggleHiddenDirectories(event: Event) {
+		showHiddenDirectories = (event.currentTarget as HTMLInputElement).checked;
+		void loadDirectory(projectRoot, showHiddenDirectories);
+	}
+
 	async function addProject(event: SubmitEvent) {
 		event.preventDefault();
 		error = '';
 		try {
 			const body = await api<{ project: Project }>('/api/projects', {
 				method: 'POST',
-				body: JSON.stringify({ name: projectName, rootPath: projectRoot })
+				body: JSON.stringify({ name: projectDirectoryName, rootPath: projectRoot })
 			});
 			projects = [...projects, body.project];
-			projectName = '';
 			projectRoot = '';
+			addProjectDialog.close();
 			await chooseProject(body.project);
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : String(cause);
+			directoryError = cause instanceof Error ? cause.message : String(cause);
 		}
 	}
 
@@ -152,7 +231,10 @@
 			});
 			sessions = [body.session, ...sessions];
 			selectedSession = body.session;
+			persistSelection();
 			transcript = [];
+			commands = [];
+			images = [];
 			eventCursor = 0;
 			restoreDraft();
 			mobileDrawer = null;
@@ -175,6 +257,7 @@
 		saveCurrentDraft();
 		stopPolling();
 		selectedSession = session;
+		persistSelection();
 		loading = true;
 		error = '';
 		try {
@@ -183,6 +266,7 @@
 				transcriptError?: string;
 				cursor: number;
 				activeTurn: ActiveTurn | null;
+				commands?: HermesCommand[];
 			}>(`/api/projects/${selectedProject.id}/sessions/${session.sessionId}`);
 			if (
 				!selectedProject ||
@@ -196,6 +280,8 @@
 				return;
 			}
 			transcript = body.transcript;
+			commands = body.commands ?? [];
+			images = [];
 			eventCursor = body.cursor;
 			activeMessageId = body.activeTurn?.messageId ?? '';
 			pendingAssistant = body.activeTurn?.output ?? '';
@@ -206,7 +292,7 @@
 						? 'delivery unknown'
 						: 'running'
 				: '';
-			error = body.activeTurn?.error ?? body.transcriptError ?? '';
+			error = body.transcriptError ?? '';
 			restoreDraft();
 			mobileDrawer = null;
 			if (body.activeTurn && body.activeTurn.status !== 'unknown') startPolling();
@@ -248,14 +334,15 @@
 		event.preventDefault();
 		if (isTurnBusy(delivery)) return;
 		const text = composer;
-		if (!text.trim()) return;
+		if (!text.trim() && !images.length) return;
 		if (await sendText(text)) {
 			composer = '';
+			images = [];
 			clearCurrentDraft();
 		}
 	}
 
-	async function sendText(text: string): Promise<boolean> {
+	async function sendText(text: string, attachments: ImageAttachment[] = images): Promise<boolean> {
 		if (!selectedProject || !selectedSession || isTurnBusy(delivery)) return false;
 		const session = selectedSession;
 		const envelope =
@@ -267,7 +354,8 @@
 						id: crypto.randomUUID(),
 						projectId: selectedProject.id,
 						sessionId: selectedSession.sessionId,
-						text
+						text,
+						images: attachments
 					};
 		const messageId = envelope.id;
 		activeMessageId = messageId;
@@ -278,7 +366,7 @@
 				`/api/projects/${selectedProject.id}/sessions/${selectedSession.sessionId}/messages`,
 				{
 					method: 'POST',
-					body: JSON.stringify({ messageId, text })
+					body: JSON.stringify({ messageId, text: envelope.text, images: envelope.images })
 				}
 			);
 			pendingEnvelope = null;
@@ -293,7 +381,7 @@
 				startPolling();
 				return true;
 			}
-			transcript = [...transcript, { role: 'user', text }];
+			transcript = [...transcript, { role: 'user', text, images: envelope.images }];
 			delivery = 'accepted';
 			startPolling();
 			return true;
@@ -311,8 +399,9 @@
 
 	async function retryPendingMessage() {
 		if (!pendingEnvelope || isTurnBusy(delivery)) return;
-		if (await sendText(pendingEnvelope.text)) {
+		if (await sendText(pendingEnvelope.text, pendingEnvelope.images)) {
 			composer = '';
+			images = [];
 			clearCurrentDraft();
 		}
 	}
@@ -367,7 +456,78 @@
 
 	function updateDraft(event: Event) {
 		composer = (event.currentTarget as HTMLTextAreaElement).value;
+		commandIndex = 0;
 		saveCurrentDraft();
+	}
+
+	function matchingCommands() {
+		const match = composer.match(/^\/([^\s]*)$/);
+		if (!match) return [];
+		return commands.filter(({ name }) => name.toLowerCase().startsWith(match[1].toLowerCase()));
+	}
+
+	function chooseCommand(command: HermesCommand) {
+		composer = `/${command.name} `;
+		commandIndex = 0;
+		saveCurrentDraft();
+	}
+
+	function handleComposerKeydown(event: KeyboardEvent) {
+		const matches = matchingCommands();
+		if (matches.length && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+			event.preventDefault();
+			const step = event.key === 'ArrowDown' ? 1 : -1;
+			commandIndex = (commandIndex + step + matches.length) % matches.length;
+			return;
+		}
+		if (matches.length && (event.key === 'Tab' || event.key === 'Enter')) {
+			event.preventDefault();
+			chooseCommand(matches[commandIndex] ?? matches[0]);
+			return;
+		}
+		if (event.key === 'Enter' && !event.shiftKey) {
+			event.preventDefault();
+			(event.currentTarget as HTMLTextAreaElement).form?.requestSubmit();
+		}
+	}
+
+	async function addImageFiles(files: FileList | File[]) {
+		for (const file of Array.from(files).slice(0, 4 - images.length)) {
+			if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
+				error = 'Only PNG, JPEG, GIF, and WebP images are supported';
+				continue;
+			}
+			if (file.size > 10 * 1024 * 1024) {
+				error = 'Each image must be 10 MB or smaller';
+				continue;
+			}
+			const dataUrl = await new Promise<string>((resolve, reject) => {
+				const reader = new FileReader();
+				reader.onload = () => resolve(String(reader.result));
+				reader.onerror = () => reject(reader.error);
+				reader.readAsDataURL(file);
+			});
+			images = [...images, { name: file.name, mimeType: file.type, data: dataUrl.split(',')[1] }];
+		}
+	}
+
+	function handleImageInput(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		if (input.files) void addImageFiles(input.files);
+		input.value = '';
+	}
+
+	function handleDrop(event: DragEvent) {
+		event.preventDefault();
+		draggingImages = false;
+		if (event.dataTransfer?.files) void addImageFiles(event.dataTransfer.files);
+	}
+
+	function handlePaste(event: ClipboardEvent) {
+		const files = Array.from(event.clipboardData?.files ?? []).filter((file) =>
+			file.type.startsWith('image/')
+		);
+		if (files.length) void addImageFiles(files);
 	}
 
 	function startPolling() {
@@ -412,7 +572,7 @@
 		return sanitizeHtml(marked.parse(text, { async: false }));
 	}
 
-	onMount(() => void loadActiveTab());
+	onMount(() => void restoreSelection());
 	onDestroy(() => {
 		stopPolling();
 	});
@@ -454,8 +614,27 @@
 		<header class="brand">
 			<span class="brand-mark">H</span>
 			<div><strong>HUE</strong><small>Hermes workspace</small></div>
+			<a
+				class="docs-link"
+				href="/docs/"
+				target="_blank"
+				aria-label="Open documentation in a new tab"
+				title="Documentation"
+			>
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11a2 2 0 0 1 2 2v15a2 2 0 0 0-2-2H4V5.5Z" />
+					<path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v17a2 2 0 0 1 2-2h5V5.5Z" />
+				</svg>
+			</a>
 		</header>
-		<div class="section-label">Projects</div>
+		<div class="section-heading">
+			<span class="section-label">Projects</span>
+			<button
+				class="icon-button"
+				aria-label="Add project"
+				onclick={openAddProject}>+</button
+			>
+		</div>
 		<nav>
 			{#each projects as project}
 				<button
@@ -466,15 +645,66 @@
 				</button>
 			{/each}
 		</nav>
-		<form class="add-project" onsubmit={addProject}>
-			<input bind:value={projectName} placeholder="Project name" aria-label="Project name" />
-			<input
-				bind:value={projectRoot}
-				placeholder="/absolute/project/path"
-				aria-label="Project root path"
-			/>
-			<button type="submit">Add project</button>
-		</form>
+		<dialog
+			bind:this={addProjectDialog}
+			class="add-project-dialog"
+			aria-labelledby="add-project-title"
+			onclick={(event) => event.target === event.currentTarget && addProjectDialog.close()}
+		>
+			<header>
+				<div>
+					<h2 id="add-project-title">Add project directory</h2>
+					<p>Choose a folder to add as a project.</p>
+				</div>
+				<label>
+					<input
+						type="checkbox"
+						checked={showHiddenDirectories}
+						onchange={toggleHiddenDirectories}
+					/>
+					Show hidden
+				</label>
+			</header>
+			<div class="directory-location">
+				<button
+					disabled={!projectDirectoryParent || directoryLoading}
+					onclick={() => projectDirectoryParent && loadDirectory(projectDirectoryParent)}
+					aria-label="Parent directory">↑</button
+				>
+				<code>{projectRoot || 'Loading…'}</code>
+			</div>
+			<section class="directory-browser" aria-label="Directories">
+				<strong>Directories</strong>
+				{#if directoryLoading}<p class="muted">Loading directories…</p>
+				{:else if directoryError}<p class="directory-error" role="alert">{directoryError}</p>
+				{:else if projectDirectories.length === 0}<p class="muted">No subdirectories.</p>
+				{:else}{#each projectDirectories as directory}
+						<button class="directory-row" onclick={() => loadDirectory(directory.path)}>
+							<span aria-hidden="true">□</span><span>{directory.name}</span><small
+								>{projects.some((project) => project.rootPath === directory.path)
+									? 'Added'
+									: '+'}</small
+							>
+						</button>
+					{/each}{/if}
+			</section>
+			<form class="add-project" onsubmit={addProject}>
+				<button
+					type="submit"
+					disabled={directoryLoading ||
+						!projectRoot ||
+						projects.some((project) => project.rootPath === projectRoot)}
+					>{projects.some((project) => project.rootPath === projectRoot)
+						? 'Already added'
+						: 'Add this directory'}</button
+				>
+			</form>
+			<button
+				class="icon-button"
+				aria-label="Close add project"
+				onclick={() => addProjectDialog.close()}>×</button
+			>
+		</dialog>
 	</aside>
 
 	<aside
@@ -488,11 +718,20 @@
 				<small>Selected project</small>
 				<h1>{selectedProject?.name ?? 'No project'}</h1>
 			</div>
-			{#if activeTab === 'sessions' && selectedProject}<button
-					class="icon-button"
-					onclick={createSession}
-					aria-label="New session">+</button
-				>{/if}
+			<div class="context-actions">
+				<span
+					class="loading-indicator"
+					class:active={loading}
+					role="status"
+					aria-label="Loading project contents"
+					aria-hidden={!loading}
+				></span>
+				{#if activeTab === 'sessions' && selectedProject}<button
+						class="icon-button"
+						onclick={createSession}
+						aria-label="New session">+</button
+					>{/if}
+			</div>
 		</header>
 		<div class="tabs" role="tablist">
 			<button class:active={activeTab === 'sessions'} onclick={() => changeTab('sessions')}
@@ -502,7 +741,6 @@
 				>Workflows</button
 			>
 		</div>
-		{#if loading}<p class="muted padded">Loading on demand…</p>{/if}
 		{#if activeTab === 'sessions'}
 			<div class="item-list">
 				{#each sessions as session}
@@ -568,7 +806,15 @@
 						{#if message.role === 'assistant'}
 							<div class="message markdown">{@html renderMarkdown(message.text)}</div>
 						{:else}
-							<p class="message">{message.text}</p>
+							<div class="message user-message">
+								{#if message.images?.length}<div class="message-images">
+										{#each message.images as image}<img
+												src={`data:${image.mimeType};base64,${image.data}`}
+												alt={image.name}
+											/>{/each}
+									</div>{/if}
+								{#if message.text}<p>{message.text}</p>{/if}
+							</div>
 						{/if}
 					</article>
 				{/each}
@@ -587,22 +833,72 @@
 						<p>Your complete message is saved before HUE sends it.</p>
 					</div>{/if}
 			</section>
-			<form class="composer" onsubmit={submitMessage}>
+			<form
+				class="composer"
+				class:dragging={draggingImages}
+				onsubmit={submitMessage}
+				ondragover={(event) => {
+					event.preventDefault();
+					draggingImages = true;
+				}}
+				ondragleave={() => (draggingImages = false)}
+				ondrop={handleDrop}
+			>
+				{#if matchingCommands().length}<div
+						class="command-menu"
+						role="listbox"
+						aria-label="Hermes commands"
+					>
+						{#each matchingCommands() as command, index}<button
+								type="button"
+								role="option"
+								aria-selected={index === commandIndex}
+								onmousedown={(event) => event.preventDefault()}
+								onclick={() => chooseCommand(command)}
+							>
+								<strong>/{command.name}{command.input ? ` ${command.input.hint}` : ''}</strong>
+								<span>{command.description}</span>
+							</button>{/each}
+					</div>{/if}
+				{#if images.length}<div class="attachment-list">
+						{#each images as image, index}<figure>
+								<img src={`data:${image.mimeType};base64,${image.data}`} alt={image.name} />
+								<figcaption>{image.name}</figcaption>
+								<button
+									type="button"
+									aria-label={`Remove ${image.name}`}
+									onclick={() => (images = images.filter((_, item) => item !== index))}>×</button
+								>
+							</figure>{/each}
+					</div>{/if}
 				<textarea
 					value={composer}
 					oninput={updateDraft}
+					onkeydown={handleComposerKeydown}
+					onpaste={handlePaste}
 					disabled={isTurnBusy(delivery)}
 					placeholder="Message Hermes…"
 					aria-label="Message Hermes"></textarea>
-				<div>
+				<div class="composer-toolbar">
+					<label class="attach-button" aria-label="Attach images" title="Attach images">
+						<span aria-hidden="true">+</span>
+						<input
+							type="file"
+							accept="image/png,image/jpeg,image/gif,image/webp"
+							multiple
+							onchange={handleImageInput}
+						/>
+					</label>
 					<small class:warning={delivery.includes('unknown')}
-						>{delivery || 'Complete-envelope delivery'}</small
+						>{delivery || (commands.length ? 'Type / for Hermes commands' : 'Complete-envelope delivery')}</small
 					>{#if pendingEnvelope}<button
 							type="button"
 							class="retry-message"
 							onclick={retryPendingMessage}
 							disabled={isTurnBusy(delivery)}>Retry exact message</button
-						>{:else}<button type="submit" disabled={!composer.trim() || isTurnBusy(delivery)}
+						>{:else}<button
+							type="submit"
+							disabled={(!composer.trim() && !images.length) || isTurnBusy(delivery)}
 							>Send</button
 						>{/if}
 				</div>

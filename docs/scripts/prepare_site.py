@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 from pathlib import Path
@@ -12,7 +13,7 @@ APP = Path(__file__).resolve().parents[1]
 ROOT = APP.parent
 CONTENT = APP / "src/content/docs"
 PUBLIC = APP / "public"
-BASE = "/HUE"
+BASE = os.environ.get("HUE_DOCS_BASE", "/HUE")
 GITHUB_EDIT = "https://github.com/ctwhome/HUE/edit/main/"
 
 DOCS = sorted((ROOT / "docs").glob("*.md"))

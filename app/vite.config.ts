@@ -5,6 +5,18 @@ import { sveltekit } from '@sveltejs/kit/vite';
 
 export default defineConfig({
 	plugins: [
+		{
+			name: 'docs-directory-index',
+			configureServer(server) {
+				server.middlewares.use((request, _response, next) => {
+					if (request.url?.startsWith('/docs/')) {
+						const [path, query] = request.url.split('?', 2);
+						if (path.endsWith('/')) request.url = `${path}index.html${query ? `?${query}` : ''}`;
+					}
+					next();
+				});
+			}
+		},
 		tailwindcss(),
 		sveltekit({
 			compilerOptions: {
@@ -15,6 +27,10 @@ export default defineConfig({
 			adapter: adapter()
 		})
 	],
+	server: {
+		port: 4010,
+		strictPort: true
+	},
 	test: {
 		expect: { requireAssertions: true },
 		projects: [

@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { Readable, Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
 import { DeliveryUncertainError, type PromptRuntime } from './message-dispatcher';
+import type { ImageAttachment } from '$lib/message-content';
 
 export type HermesSession = {
 	sessionId: string;
@@ -30,6 +31,8 @@ export class HermesACP implements PromptRuntime {
 	private starting: Promise<void> | null = null;
 	private closing = false;
 	private readonly updateHandlers = new Map<string, Set<(update: acp.SessionUpdate) => void>>();
+	private readonly availableCommands = new Map<string, acp.AvailableCommand[]>();
+	private readonly commandWaiters = new Map<string, Set<() => void>>();
 
 	constructor(options: HermesACPOptions = {}) {
 		this.command = options.command ?? 'hermes';
@@ -189,6 +192,7 @@ export class HermesACP implements PromptRuntime {
 				mcpServers: []
 			});
 			if (!response) throw new Error(`Hermes Session ${sessionId} was not found`);
+			await this.waitForAvailableCommands(sessionId);
 			return transcript;
 		} finally {
 			unsubscribe();
@@ -198,6 +202,7 @@ export class HermesACP implements PromptRuntime {
 	async prompt(input: {
 		sessionId: string;
 		text: string;
+		images: ImageAttachment[];
 		onChunk: (text: string) => void;
 	}): Promise<void> {
 		const context = await this.context();
@@ -205,7 +210,10 @@ export class HermesACP implements PromptRuntime {
 		try {
 			const response = await context.request(acp.methods.agent.session.prompt, {
 				sessionId: input.sessionId,
-				prompt: [{ type: 'text', text: input.text }]
+				prompt: [
+					...(input.text.trim() ? [{ type: 'text' as const, text: input.text }] : []),
+					...input.images.map(({ data, mimeType }) => ({ type: 'image' as const, data, mimeType }))
+				]
 			});
 			if (response.stopReason !== 'end_turn') {
 				throw new Error(`Hermes ended the turn with ${response.stopReason}`);
@@ -241,7 +249,30 @@ export class HermesACP implements PromptRuntime {
 	}
 
 	private dispatchUpdate(sessionId: string, update: acp.SessionUpdate): void {
+		if (update.sessionUpdate === 'available_commands_update') {
+			this.availableCommands.set(sessionId, update.availableCommands);
+			for (const resolve of this.commandWaiters.get(sessionId) ?? []) resolve();
+			this.commandWaiters.delete(sessionId);
+		}
 		for (const handler of this.updateHandlers.get(sessionId) ?? []) handler(update);
+	}
+
+	getAvailableCommands(sessionId: string): acp.AvailableCommand[] {
+		return this.availableCommands.get(sessionId) ?? [];
+	}
+
+	private async waitForAvailableCommands(sessionId: string): Promise<void> {
+		if (this.availableCommands.has(sessionId)) return;
+		await new Promise<void>((resolve) => {
+			const finish = () => {
+				clearTimeout(timer);
+				resolve();
+			};
+			const timer = setTimeout(finish, 250);
+			const waiters = this.commandWaiters.get(sessionId) ?? new Set();
+			waiters.add(finish);
+			this.commandWaiters.set(sessionId, waiters);
+		});
 	}
 
 	async close(): Promise<void> {
@@ -251,6 +282,9 @@ export class HermesACP implements PromptRuntime {
 		this.connection = null;
 		this.child = null;
 		this.updateHandlers.clear();
+		this.availableCommands.clear();
+		for (const waiters of this.commandWaiters.values()) for (const resolve of waiters) resolve();
+		this.commandWaiters.clear();
 		connection?.close();
 		if (!child || child.exitCode !== null) return;
 

@@ -17,6 +17,7 @@ describe('HermesACP real integration', () => {
 				await runtime.prompt({
 					sessionId: session.sessionId,
 					text: '/version',
+					images: [],
 					onChunk: (text) => chunks.push(text)
 				});
 
@@ -37,6 +38,23 @@ describe('HermesACP real integration', () => {
 });
 
 describe('HermesACP update subscriptions', () => {
+	it('retains Hermes-advertised slash commands for the session', () => {
+		const runtime = new HermesACP();
+		const subscriptions = runtime as unknown as {
+			dispatchUpdate: (sessionId: string, update: unknown) => void;
+		};
+		subscriptions.dispatchUpdate('session-1', {
+			sessionUpdate: 'available_commands_update',
+			availableCommands: [
+				{ name: 'compress', description: 'Compress conversation context', input: null }
+			]
+		});
+
+		expect(runtime.getAvailableCommands('session-1')).toEqual([
+			{ name: 'compress', description: 'Compress conversation context', input: null }
+		]);
+	});
+
 	it('keeps concurrent handlers until each operation unsubscribes', () => {
 		const runtime = new HermesACP();
 		const subscriptions = runtime as unknown as {

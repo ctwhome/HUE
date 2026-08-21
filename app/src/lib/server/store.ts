@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import type { Database as BunDatabase } from 'bun:sqlite';
+import type { ImageAttachment } from '$lib/message-content';
 
 const runtimeRequire = createRequire(import.meta.url);
 
@@ -26,6 +27,7 @@ export type StoredMessage = {
 	projectId: string;
 	sessionId: string;
 	text: string;
+	images: ImageAttachment[];
 	status: MessageStatus;
 	createdAt: string;
 	updatedAt: string;
@@ -101,6 +103,15 @@ export class HUEStore {
 				status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'unknown')),
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL
+			);
+
+			CREATE TABLE IF NOT EXISTS message_attachments (
+				message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+				position INTEGER NOT NULL,
+				name TEXT NOT NULL,
+				mime_type TEXT NOT NULL,
+				data TEXT NOT NULL,
+				PRIMARY KEY (message_id, position)
 			);
 
 			CREATE INDEX IF NOT EXISTS messages_session_id_idx
@@ -294,7 +305,13 @@ export class HUEStore {
 		}));
 	}
 
-	acceptMessage(input: { id: string; projectId: string; sessionId: string; text: string }): {
+	acceptMessage(input: {
+		id: string;
+		projectId: string;
+		sessionId: string;
+		text: string;
+		images?: ImageAttachment[];
+	}): {
 		duplicate: boolean;
 		status: MessageStatus;
 	} {
@@ -304,11 +321,13 @@ export class HUEStore {
 			);
 		}
 		const existing = this.getMessage(input.id);
+		const images = input.images ?? [];
 		if (existing) {
 			if (
 				existing.projectId !== input.projectId ||
 				existing.sessionId !== input.sessionId ||
-				existing.text !== input.text
+				existing.text !== input.text ||
+				JSON.stringify(existing.images) !== JSON.stringify(images)
 			) {
 				throw new MessageConflictError(input.id);
 			}
@@ -322,6 +341,12 @@ export class HUEStore {
 					'INSERT INTO messages (id, project_id, session_id, text, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
 				)
 				.run(input.id, input.projectId, input.sessionId, input.text, 'queued', now, now);
+			const insertAttachment = this.database.query(
+				'INSERT INTO message_attachments (message_id, position, name, mime_type, data) VALUES (?, ?, ?, ?, ?)'
+			);
+			for (const [position, image] of images.entries()) {
+				insertAttachment.run(input.id, position, image.name, image.mimeType, image.data);
+			}
 			this.database
 				.query(
 					'INSERT INTO session_events (project_id, session_id, type, payload, created_at) VALUES (?, ?, ?, ?, ?)'
@@ -385,6 +410,15 @@ export class HUEStore {
 			projectId: row.project_id,
 			sessionId: row.session_id,
 			text: row.text,
+			images: this.database
+				.query(
+					'SELECT name, mime_type, data FROM message_attachments WHERE message_id = ? ORDER BY position'
+				)
+				.all(row.id)
+				.map((image) => {
+					const value = image as { name: string; mime_type: string; data: string };
+					return { name: value.name, mimeType: value.mime_type, data: value.data };
+				}),
 			status: row.status,
 			createdAt: row.created_at,
 			updatedAt: row.updated_at

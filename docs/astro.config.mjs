@@ -2,11 +2,12 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import mermaid from 'astro-mermaid';
 
-const base = '/HUE';
+const base = process.env.HUE_DOCS_BASE || '/HUE';
 
 export default defineConfig({
   site: 'https://ctwhome.github.io',
   base,
+  outDir: process.env.HUE_DOCS_OUT_DIR || './dist',
   integrations: [
     mermaid({
       autoTheme: true,

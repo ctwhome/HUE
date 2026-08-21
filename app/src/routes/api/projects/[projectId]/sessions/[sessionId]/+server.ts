@@ -11,7 +11,11 @@ export const GET: RequestHandler = async ({ params }) => {
 	const snapshot = services().store.getSessionSnapshot(params.projectId, params.sessionId);
 	try {
 		const transcript = await services().runtime.loadTranscript(project.rootPath, params.sessionId);
-		return json({ transcript, ...snapshot });
+		return json({
+			transcript,
+			commands: services().runtime.getAvailableCommands(params.sessionId),
+			...snapshot
+		});
 	} catch (error) {
 		if (snapshot.messages.length) {
 			return json({

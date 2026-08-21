@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { services } from '$lib/server/services';
 import { MessageConflictError } from '$lib/server/store';
+import { validateImageAttachments } from '$lib/message-content';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ params, request }) => {
@@ -11,17 +12,19 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		return json({ error: 'Session not found' }, { status: 404 });
 	}
 	try {
-		const body = (await request.json()) as { messageId?: string; text?: string };
+		const body = (await request.json()) as { messageId?: string; text?: string; images?: unknown };
 		const messageId = body.messageId?.trim();
 		const text = body.text ?? '';
-		if (!messageId || !text.trim()) {
-			return json({ error: 'messageId and non-empty text are required' }, { status: 400 });
+		const images = validateImageAttachments(body.images);
+		if (!messageId || (!text.trim() && !images.length)) {
+			return json({ error: 'messageId and message content are required' }, { status: 400 });
 		}
 		const accepted = services().dispatcher.submit({
 			id: messageId,
 			projectId: params.projectId,
 			sessionId: params.sessionId,
-			text
+			text,
+			images
 		});
 		return json({ messageId, ...accepted }, { status: 202 });
 	} catch (error) {
