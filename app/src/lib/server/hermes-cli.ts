@@ -25,7 +25,12 @@ export function parseSkills(output: string) {
 	return clean(output)
 		.split('\n')
 		.filter((line) => line.trim().startsWith('│'))
-		.map((line) => line.split('│').slice(1, -1).map((cell) => cell.trim()))
+		.map((line) =>
+			line
+				.split('│')
+				.slice(1, -1)
+				.map((cell) => cell.trim())
+		)
 		.filter((cells) => cells.length === 5 && cells[0] !== 'Name')
 		.map(([name, category, source, trust, status]) => ({
 			name,
@@ -64,7 +69,10 @@ export function parseProfiles(output: string) {
 		.filter((line) => line && !line.startsWith('Profile') && !line.startsWith('─'))
 		.map((line) => {
 			const active = line.startsWith('◆');
-			const [name, model, gateway] = line.replace(/^◆/, '').trim().split(/\s{2,}/);
+			const [name, model, gateway] = line
+				.replace(/^◆/, '')
+				.trim()
+				.split(/\s{2,}/);
 			return { name, model, gateway, active };
 		})
 		.filter((profile) => profile.name && profile.model);
@@ -84,7 +92,8 @@ export function readHermesPanel(panel: HermesPanel) {
 		env: { ...process.env, NO_COLOR: '1', TERM: 'dumb', COLUMNS: '500' }
 	});
 	if (result.error) throw result.error;
-	if (result.status !== 0) throw new Error(result.stderr.trim() || `hermes ${args.join(' ')} failed`);
+	if (result.status !== 0)
+		throw new Error(result.stderr.trim() || `hermes ${args.join(' ')} failed`);
 	if (panel === 'skills') return { skills: parseSkills(result.stdout) };
 	if (panel === 'schedules') return { jobs: parseCronJobs(result.stdout) };
 	return { profiles: parseProfiles(result.stdout) };
