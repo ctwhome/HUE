@@ -2125,3 +2125,85 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		if (viewport.width <= 390) await expectMinimumTouchTargets(workbench.locator('button, a'));
 	}
 });
+
+test('remounts project-scoped tools when switching projects', async ({ page }) => {
+	await page.unroute('**/api/projects/*/terminal**');
+	const roots = [
+		mkdtempSync(join(tmpdir(), 'hue-workbench-a-')),
+		mkdtempSync(join(tmpdir(), 'hue-workbench-b-'))
+	];
+	const projects: Array<{ id: string; name: string }> = [];
+	const terminalActions: Array<{ projectId: string; action: string }> = [];
+	try {
+		for (const [index, rootPath] of roots.entries()) {
+			const response = await page.request.post('/api/projects', {
+				data: { name: `Lifecycle ${index + 1}`, rootPath }
+			});
+			projects.push((await response.json()).project);
+		}
+		await page.route(/\/api\/projects\/([^/]+)\/repository$/, (route) => {
+			const projectId =
+				route
+					.request()
+					.url()
+					.match(/projects\/([^/]+)\//)?.[1] ?? '';
+			return route.fulfill({
+				json: {
+					isRepository: true,
+					branch: projectId === projects[0].id ? 'branch-one' : 'branch-two',
+					changes: [],
+					worktrees: [],
+					remotes: []
+				}
+			});
+		});
+		await page.route(/\/api\/projects\/([^/]+)\/terminal(?:\?.*)?$/, async (route) => {
+			const projectId =
+				route
+					.request()
+					.url()
+					.match(/projects\/([^/]+)\//)?.[1] ?? '';
+			if (route.request().method() === 'GET') {
+				return route.fulfill({
+					json: { output: '', cursor: 0, inputSequence: 0, reset: false, status: 'running' }
+				});
+			}
+			const body = (await route.request().postDataJSON()) as { action: string };
+			terminalActions.push({ projectId, action: body.action });
+			return route.fulfill({
+				json:
+					body.action === 'create'
+						? { terminalId: `${projectId}-terminal`, cursor: 0, status: 'running' }
+						: { success: true }
+			});
+		});
+
+		await page.goto(`/?project=${projects[0].id}`);
+		await expect(
+			page.locator('.session-header').getByText('branch-one', { exact: true })
+		).toBeVisible();
+		const firstBrowser = page.getByRole('article', { name: 'Project browser' });
+		await firstBrowser.getByLabel('Browser address').fill('http://localhost:4001');
+		await firstBrowser.getByRole('button', { name: 'Go' }).click();
+		await page.locator('.project-select').filter({ hasText: projects[1].name }).click();
+
+		await expect(
+			page.locator('.session-header').getByText('branch-two', { exact: true })
+		).toBeVisible();
+		await expect(
+			page.getByRole('article', { name: 'Project browser' }).getByLabel('Browser address')
+		).toHaveValue('');
+		await expect
+			.poll(() =>
+				terminalActions.some(
+					({ projectId, action }) => projectId === projects[0].id && action === 'close'
+				)
+			)
+			.toBe(true);
+		expect(terminalActions).toContainEqual({ projectId: projects[1].id, action: 'create' });
+	} finally {
+		for (const project of projects)
+			await page.request.delete(`/api/projects/${project.id}`).catch(() => undefined);
+		for (const root of roots) rmSync(root, { recursive: true, force: true });
+	}
+});
