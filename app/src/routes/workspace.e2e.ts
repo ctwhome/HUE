@@ -89,6 +89,276 @@ test.beforeEach(async ({ page }) => {
 	await mockDefaultSessionRequests(page);
 });
 
+test('Project file workspace stays usable across required viewports', async ({
+	page
+}, testInfo) => {
+	test.setTimeout(60_000);
+	await page.setViewportSize(viewports[0]);
+	const browserErrors: string[] = [];
+	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
+	page.on('pageerror', (error) => browserErrors.push(error.stack ?? error.message));
+	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
+	await page.route('**/api/projects/*/files**', async (route) => {
+		const url = new URL(route.request().url());
+		if (route.request().method() === 'POST')
+			return route.fulfill({ status: 409, json: { error: 'File changed outside HUE' } });
+		if (url.searchParams.get('mode') === 'preview')
+			return route.fulfill({
+				json:
+					url.searchParams.get('path') === 'README.md'
+						? {
+								path: 'README.md',
+								name: 'README.md',
+								type: 'file',
+								kind: 'markdown',
+								mime: 'text/markdown',
+								size: 12,
+								mtime: new Date(0).toISOString(),
+								version: { hash: 'abc', mtimeNs: '1', size: 12 },
+								content: '# HUE\nReady'
+							}
+						: {
+								path: 'src/main.ts',
+								name: 'main.ts',
+								type: 'file',
+								kind: 'code',
+								mime: 'text/plain',
+								size: 20,
+								mtime: new Date(0).toISOString(),
+								version: { hash: 'def', mtimeNs: '1', size: 20 },
+								content: 'export const hue = true;'
+							}
+			});
+		if (url.searchParams.get('mode') === 'artifacts')
+			return route.fulfill({ json: { artifacts: [] } });
+		return route.fulfill({
+			json: {
+				entries: [
+					{
+						name: 'README.md',
+						path: 'README.md',
+						type: 'file',
+						size: 12,
+						mtime: new Date(0).toISOString()
+					},
+					{
+						name: 'src',
+						path: 'src',
+						type: 'directory',
+						size: 0,
+						mtime: new Date(0).toISOString()
+					},
+					{
+						name: 'main.ts',
+						path: 'src/main.ts',
+						type: 'file',
+						size: 20,
+						mtime: new Date(0).toISOString()
+					}
+				],
+				truncated: false,
+				limits: { maxEntries: 10000, maxDepth: 32 }
+			}
+		});
+	});
+	await addProject(page);
+	await page.getByRole('button', { name: 'Files', exact: true }).click();
+	await page.getByRole('treeitem', { name: /README.md/ }).click();
+	await expect(page.getByRole('heading', { name: 'README.md' })).toBeVisible();
+	const tree = page.getByRole('tree', { name: 'Project file tree' });
+	await expect(tree.locator('[role="treeitem"][tabindex="0"]')).toHaveCount(1);
+	await page.getByRole('treeitem', { name: /README.md/ }).focus();
+	await page.keyboard.press('End');
+	await expect(page.getByRole('treeitem', { name: /src/ })).toBeFocused();
+	await page.keyboard.press('ArrowRight');
+	await expect(page.getByRole('treeitem', { name: /src/ })).toHaveAttribute(
+		'aria-expanded',
+		'true'
+	);
+	await page.keyboard.press('ArrowRight');
+	await expect(page.getByRole('treeitem', { name: /main.ts/ })).toBeFocused();
+	await page.keyboard.press('ArrowLeft');
+	await expect(page.getByRole('treeitem', { name: /src/ })).toBeFocused();
+	await page.keyboard.press('ArrowLeft');
+	await expect(page.getByRole('treeitem', { name: /src/ })).toHaveAttribute(
+		'aria-expanded',
+		'false'
+	);
+	await page.getByRole('treeitem', { name: /README.md/ }).click();
+	await page.getByRole('button', { name: 'Edit Markdown' }).click();
+	await page.getByLabel('File content').fill('# Unsaved');
+	await page.setViewportSize(viewports[0]);
+	expect(await page.evaluate(() => window.innerWidth)).toBe(viewports[0].width);
+	expect(await page.evaluate(() => matchMedia('(max-width: 700px)').matches)).toBe(false);
+	for (const action of [
+		page.getByRole('button', { name: 'Refresh files' }),
+		page.getByRole('button', { name: 'Develop' }),
+		page.getByRole('button', { name: 'Settings' }),
+		page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' }),
+		page.getByRole('button', { name: 'Rename or move file' }),
+		page.getByRole('button', { name: 'Delete file' }),
+		page.getByRole('button', { name: 'Project', exact: true })
+	]) {
+		await action.click();
+		await expect(page.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
+		await page.getByRole('button', { name: 'Keep editing' }).click();
+	}
+	expect(
+		await page.evaluate(() => {
+			const event = new Event('beforeunload', { cancelable: true });
+			return !window.dispatchEvent(event);
+		})
+	).toBe(true);
+	await page.getByRole('treeitem', { name: /src/ }).click();
+	await page.getByRole('treeitem', { name: /main.ts/ }).click();
+	await expect(page.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
+	await page.getByRole('button', { name: 'Keep editing' }).click();
+	await page.getByRole('button', { name: 'Save file' }).click();
+	await expect(
+		page.locator('p[role="alert"]').filter({ hasText: 'File changed outside HUE' })
+	).toBeVisible();
+
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		await expect(page.getByRole('region', { name: 'Project files' })).toBeVisible();
+		await page.getByLabel('File content').focus();
+		await expect(page.getByLabel('File content')).toBeFocused();
+		await testInfo.attach(`project-files-${viewport.width}x${viewport.height}`, {
+			body: await page.screenshot(),
+			contentType: 'image/png'
+		});
+		if (viewport.width <= 390) {
+			await expectMinimumTouchTargets(
+				page.getByRole('region', { name: 'Project files' }).locator('button')
+			);
+			await expect(page.getByRole('button', { name: 'Back to files' })).toBeVisible();
+		}
+	}
+	expect(browserErrors.filter((message) => !message.includes('409 (Conflict)'))).toEqual([]);
+});
+
+test('stale file preview cannot replace or save over newer selection with matching version', async ({
+	page
+}) => {
+	const pending = new Map<string, import('@playwright/test').Route>();
+	const saved: Array<{ path: string; content: string }> = [];
+	const version = { hash: 'same', mtimeNs: '1', size: 4 };
+	await page.route('**/api/projects/*/files**', async (route) => {
+		const url = new URL(route.request().url());
+		if (route.request().method() === 'POST') {
+			const body = (await route.request().postDataJSON()) as { path: string; content: string };
+			saved.push(body);
+			return route.fulfill({
+				json: {
+					path: body.path,
+					name: body.path,
+					type: 'file',
+					kind: 'code',
+					mime: 'text/plain',
+					size: body.content.length,
+					mtime: new Date(0).toISOString(),
+					version,
+					content: body.content
+				}
+			});
+		}
+		if (url.searchParams.get('mode') === 'preview') {
+			pending.set(url.searchParams.get('path')!, route);
+			return;
+		}
+		return route.fulfill({
+			json: {
+				entries: [
+					{
+						name: 'old.ts',
+						path: 'old.ts',
+						type: 'file',
+						size: 4,
+						mtime: new Date(0).toISOString()
+					},
+					{
+						name: 'new.ts',
+						path: 'new.ts',
+						type: 'file',
+						size: 4,
+						mtime: new Date(0).toISOString()
+					}
+				],
+				truncated: false
+			}
+		});
+	});
+	await addProject(page);
+	await page.getByRole('button', { name: 'Files', exact: true }).click();
+	await page.getByRole('treeitem', { name: /old\.ts/ }).click();
+	await expect.poll(() => pending.has('old.ts')).toBe(true);
+	await page.getByRole('treeitem', { name: /new\.ts/ }).click();
+	await expect.poll(() => pending.has('new.ts')).toBe(true);
+	await pending.get('new.ts')!.fulfill({
+		json: {
+			path: 'new.ts',
+			name: 'new.ts',
+			type: 'file',
+			kind: 'code',
+			mime: 'text/plain',
+			size: 4,
+			mtime: new Date(0).toISOString(),
+			version,
+			content: 'new!'
+		}
+	});
+	await expect(page.getByRole('heading', { name: 'new.ts' })).toBeVisible();
+	await pending
+		.get('old.ts')!
+		.fulfill({
+			json: {
+				path: 'old.ts',
+				name: 'old.ts',
+				type: 'file',
+				kind: 'code',
+				mime: 'text/plain',
+				size: 4,
+				mtime: new Date(0).toISOString(),
+				version,
+				content: 'old!'
+			}
+		})
+		.catch(() => undefined);
+	await expect(page.getByRole('heading', { name: 'new.ts' })).toBeVisible();
+	await page.getByLabel('File content').fill('save newer');
+	await page.getByRole('button', { name: 'Save file' }).click();
+	await expect.poll(() => saved.length).toBe(1);
+	expect(saved[0]).toMatchObject({ path: 'new.ts', content: 'save newer' });
+});
+
+test('production file endpoint validates and ranges real Project content', async ({ page }) => {
+	await removeProjects(page);
+	await addProject(page);
+	const projects = (await (await page.request.get('/api/projects')).json()) as {
+		projects: Array<{ id: string }>;
+	};
+	const projectId = projects.projects[0].id;
+	const tree = await page.request.get(
+		`/api/projects/${projectId}/files?mode=tree&maxEntries=20&maxDepth=1`
+	);
+	expect(tree.ok()).toBe(true);
+	expect(
+		((await tree.json()) as { entries: Array<{ path: string }> }).entries.some(
+			({ path }) => path === 'README.md'
+		)
+	).toBe(true);
+	const content = await page.request.get(
+		`/api/projects/${projectId}/files?mode=content&path=README.md`,
+		{ headers: { range: 'bytes=0-7' } }
+	);
+	expect(content.status()).toBe(206);
+	expect(content.headers()['x-content-type-options']).toBe('nosniff');
+	expect(content.headers()['content-range']).toMatch(/^bytes 0-7\//);
+});
+
 test('shows honest first-run actions without persisted Projects', async ({ page }) => {
 	await removeProjects(page);
 	await page.goto('/');

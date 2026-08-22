@@ -35,6 +35,8 @@
 	function mountTerminal() {
 		if (!terminalElement) return;
 		terminalResizeObserver?.disconnect();
+		terminalRenderer?.blur();
+		if (typeof window !== 'undefined') window.getSelection()?.removeAllRanges();
 		terminalRenderer?.dispose();
 		terminalRenderer = new Terminal({
 			cursorBlink: true,
@@ -202,7 +204,11 @@
 	async function closeTerminals() {
 		if (terminalPollTimer) clearTimeout(terminalPollTimer);
 		terminalResizeObserver?.disconnect();
+		terminalRenderer?.blur();
+		if (typeof window !== 'undefined') window.getSelection()?.removeAllRanges();
 		terminalRenderer?.dispose();
+		terminalRenderer = null;
+		terminalFit = null;
 		const tabs = [...terminalTabs];
 		await Promise.all(
 			tabs.map((tab) =>

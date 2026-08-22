@@ -8,6 +8,7 @@ import { resolveHermesCommand } from './hermes-cli';
 import { HermesServe } from './hermes-serve';
 import { MessageDispatcher } from './message-dispatcher';
 import { ProjectTerminals, resolveTerminalShell } from './project-terminals';
+import { ProjectFiles } from './project-files';
 import { HUEStore } from './store';
 import type { Project } from './store';
 
@@ -223,7 +224,7 @@ export function projectBranch(projectRoot: string): string | null {
 export type ProjectRepository = {
 	isRepository: boolean;
 	branch: string | null;
-	changes: Array<{ path: string; index: string; worktree: string }>;
+	changes: Array<{ path: string; index: string; worktree: string; fileUrl: string | null }>;
 	worktrees: Array<{ path: string; branch: string | null; head: string }>;
 	remotes: Array<{ name: string; webUrl: string | null }>;
 };
@@ -279,9 +280,18 @@ export function projectRepository(projectRoot: string): ProjectRepository {
 		.split('\0')
 		.filter(Boolean);
 	const changes: ProjectRepository['changes'] = [];
+	const projectFiles = new ProjectFiles(projectRoot);
 	for (let index = 0; index < statusEntries.length; index += 1) {
 		const entry = statusEntries[index];
-		changes.push({ path: entry.slice(3), index: entry[0], worktree: entry[1] });
+		const path = entry.slice(3);
+		let fileUrl: string | null = null;
+		try {
+			projectFiles.validateFile(path);
+			fileUrl = path;
+		} catch {
+			// Tool output becomes clickable only after descriptor-safe server validation.
+		}
+		changes.push({ path, index: entry[0], worktree: entry[1], fileUrl });
 		if (entry[0] === 'R' || entry[0] === 'C' || entry[1] === 'R' || entry[1] === 'C') index += 1;
 	}
 	changes.sort((left, right) => left.path.localeCompare(right.path));

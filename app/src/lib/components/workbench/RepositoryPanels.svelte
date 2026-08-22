@@ -8,13 +8,20 @@
 	type Repository = {
 		isRepository: boolean;
 		branch: string | null;
-		changes: Array<{ path: string; index: string; worktree: string }>;
+		changes: Array<{ path: string; index: string; worktree: string; fileUrl: string | null }>;
 		worktrees: Array<{ path: string; branch: string | null; head: string }>;
 		remotes: Array<{ name: string; webUrl: string | null }>;
 	};
 
-	let { projectId, onbranch }: { projectId: string; onbranch: (branch: string | null) => void } =
-		$props();
+	let {
+		projectId,
+		onbranch,
+		onopenfile
+	}: {
+		projectId: string;
+		onbranch: (branch: string | null) => void;
+		onopenfile: (path: string) => void;
+	} = $props();
 	let repository = $state<Repository | null>(null);
 	let repositoryLoading = $state(false);
 	let repositoryError = $state('');
@@ -54,6 +61,9 @@
 		repository?.changes.filter(({ index }) => index !== ' ' && index !== '?') ?? [];
 	const unstagedChanges = () =>
 		repository?.changes.filter(({ index, worktree }) => index === '?' || worktree !== ' ') ?? [];
+	function openValidated(change: Repository['changes'][number]) {
+		if (change.fileUrl) onopenfile(change.fileUrl);
+	}
 	async function mutateRepository(operation: Record<string, string>) {
 		if (repositoryBusy) return false;
 		repositoryBusy = true;
@@ -164,9 +174,13 @@
 								disabled={repositoryBusy}
 								onclick={() => mutateRepository({ action: 'unstage', path: change.path })}
 								><Minus size={14} aria-hidden="true" /></button
-							><code class="text-amber-300">{change.index}</code><span
-								class="overflow-hidden text-ellipsis whitespace-nowrap">{change.path}</span
-							>
+							><code class="text-amber-300">{change.index}</code>{#if change.fileUrl}<button
+									class="overflow-hidden text-left text-ellipsis whitespace-nowrap hover:underline"
+									title={`Open ${change.path}`}
+									onclick={() => openValidated(change)}>{change.path}</button
+								>{:else}<span class="overflow-hidden text-ellipsis whitespace-nowrap"
+									>{change.path}</span
+								>{/if}
 						</li>{/each}
 				</ul>
 			</section>
@@ -192,9 +206,13 @@
 								disabled={repositoryBusy}
 								onclick={() => mutateRepository({ action: 'stage', path: change.path })}
 								><Plus size={14} aria-hidden="true" /></button
-							><code class="text-amber-300">{change.worktree}</code><span
-								class="overflow-hidden text-ellipsis whitespace-nowrap">{change.path}</span
-							>
+							><code class="text-amber-300">{change.worktree}</code>{#if change.fileUrl}<button
+									class="overflow-hidden text-left text-ellipsis whitespace-nowrap hover:underline"
+									title={`Open ${change.path}`}
+									onclick={() => openValidated(change)}>{change.path}</button
+								>{:else}<span class="overflow-hidden text-ellipsis whitespace-nowrap"
+									>{change.path}</span
+								>{/if}
 						</li>{/each}
 				</ul>
 			</section>

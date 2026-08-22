@@ -61,4 +61,4 @@ Project → Workflow or new Session → complete acknowledged message → Hermes
 
 ## Scope discipline
 
-The roadmap intentionally excludes generic orchestration, multiple runtimes, Areas, knowledge/memory management, files/artifacts, notifications, computer use, and third-party source integrations. Additions require a superseding product decision with real usage evidence.
+The roadmap intentionally excludes generic orchestration, multiple runtimes, Areas, knowledge/memory management, global files/artifacts, notifications, computer use, and third-party source integrations. [ADR-0004](decisions/0004-project-development-panels.md) permits bounded file and evidence panels only inside a trusted Project root. Other additions require a superseding product decision with real usage evidence.

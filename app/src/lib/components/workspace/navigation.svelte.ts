@@ -1,5 +1,3 @@
-import { replaceState } from '$app/navigation';
-import { page } from '$app/state';
 import { tick } from 'svelte';
 import { automaticSessionIcon } from '$lib/icon';
 import { isCurrentSessionRequest, isCurrentTabRequest } from '$lib';
@@ -37,6 +35,7 @@ type NavigationEffects = {
 	sendText: (text: string) => Promise<boolean>;
 	setError: (message: string) => void;
 	setLoading: (loading: boolean) => void;
+	guard: (action: () => void) => boolean;
 };
 
 export class WorkspaceNavigation {
@@ -78,7 +77,7 @@ export class WorkspaceNavigation {
 		url.searchParams.set('project', this.selectedProject?.id ?? 'none');
 		if (this.selectedSession) url.searchParams.set('session', this.selectedSession.sessionId);
 		else url.searchParams.delete('session');
-		replaceState(url, page.state);
+		history.replaceState(history.state, '', url);
 	}
 
 	restoreSelection = async () => {
@@ -104,6 +103,7 @@ export class WorkspaceNavigation {
 	};
 
 	chooseProject = async (project: Project | null) => {
+		if (this.effects.guard(() => void this.chooseProject(project))) return;
 		this.effects.endVoice();
 		this.effects.cacheSession();
 		this.effects.saveDraft();
@@ -123,6 +123,7 @@ export class WorkspaceNavigation {
 	};
 
 	createProjectlessSession = async () => {
+		if (this.effects.guard(() => void this.createProjectlessSession())) return;
 		await this.chooseProject(null);
 		await this.createSession();
 	};
@@ -179,6 +180,7 @@ export class WorkspaceNavigation {
 	};
 
 	createSession = async (): Promise<Session | null> => {
+		if (this.effects.guard(() => void this.createSession())) return null;
 		this.effects.endVoice();
 		this.effects.saveDraft();
 		this.effects.cacheSession();
@@ -212,6 +214,7 @@ export class WorkspaceNavigation {
 	};
 
 	openSession = async (session: Session) => {
+		if (this.effects.guard(() => void this.openSession(session))) return;
 		if (session.available === false) {
 			this.effects.setError(session.recovery ?? 'Hermes Session is unavailable.');
 			return;
