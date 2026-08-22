@@ -12,6 +12,7 @@ const workspacePaths = [
 	'../lib/components/workspace/DirtyGuardDialog.svelte',
 	'../lib/components/workspace/dirty-guard.ts',
 	'../lib/components/workspace/ProjectRail.svelte',
+	'../lib/components/workspace/ProjectFoldersEditor.svelte',
 	'../lib/components/workspace/message-state.svelte.ts',
 	'../lib/components/workspace/navigation.svelte.ts',
 	'../lib/components/workspace/project-management.svelte.ts',
@@ -243,7 +244,7 @@ test('mobile shell keeps drawers and 44px targets', () => {
 });
 
 test('project and session controls preserve accessible editing', () => {
-	expect(page).toContain('aria-label="Add project"');
+	expect(page).toContain('aria-label="Add Hermes Project"');
 	expect(page).toContain('aria-label="New session without a project"');
 	expect(page).toContain('aria-label="Project icon image"');
 	expect(page).toContain('aria-label="Choose project emoji"');
@@ -254,8 +255,8 @@ test('project and session controls preserve accessible editing', () => {
 
 test('stale Projects and first run expose direct recovery instead of a broken workbench', () => {
 	for (const label of [
-		'Locate',
-		'Remove',
+		'Manage folders',
+		'Archive',
 		'Open without Project',
 		'Add Project',
 		'Start without Project'

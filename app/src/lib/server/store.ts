@@ -144,6 +144,7 @@ export class HUEStore {
 				name TEXT NOT NULL,
 				root_path TEXT NOT NULL UNIQUE,
 				icon TEXT,
+				legacy INTEGER NOT NULL DEFAULT 1,
 				created_at TEXT NOT NULL
 			);
 
@@ -212,6 +213,9 @@ export class HUEStore {
 		}>;
 		if (!projectColumns.some((column) => column.name === 'icon')) {
 			this.database.exec('ALTER TABLE projects ADD COLUMN icon TEXT');
+		}
+		if (!projectColumns.some((column) => column.name === 'legacy')) {
+			this.database.exec('ALTER TABLE projects ADD COLUMN legacy INTEGER NOT NULL DEFAULT 1');
 		}
 		let sessionColumns = this.database.query('PRAGMA table_info(project_sessions)').all() as Array<{
 			name: string;
@@ -730,6 +734,76 @@ export class HUEStore {
 		return { ...input, icon: null, createdAt };
 	}
 
+	listLegacyProjects(): Project[] {
+		const rows = this.database
+			.query(
+				'SELECT id, name, root_path, icon, created_at FROM projects WHERE legacy = 1 ORDER BY created_at, id'
+			)
+			.all() as Array<{
+			id: string;
+			name: string;
+			root_path: string;
+			icon: string | null;
+			created_at: string;
+		}>;
+		return rows.map((row) => ({
+			id: row.id,
+			name: row.name,
+			rootPath: row.root_path,
+			icon: row.icon,
+			createdAt: row.created_at
+		}));
+	}
+
+	ensureProjectMetadata(id: string): void {
+		if (!id.trim() || id.includes('\0')) throw new Error('Hermes Project id is invalid');
+		if (this.hasProjectMetadata(id)) return;
+		this.database
+			.query(
+				'INSERT INTO projects (id, name, root_path, icon, legacy, created_at) VALUES (?, ?, ?, NULL, 0, ?)'
+			)
+			.run(id, '', `hue-hermes-project:${encodeURIComponent(id)}`, new Date().toISOString());
+	}
+
+	hasProjectMetadata(id: string): boolean {
+		return !!this.database.query('SELECT 1 FROM projects WHERE id = ?').get(id);
+	}
+
+	adoptHermesProject(legacyId: string, hermesId: string): void {
+		if (
+			!legacyId.trim() ||
+			!hermesId.trim() ||
+			legacyId.includes('\0') ||
+			hermesId.includes('\0')
+		) {
+			throw new Error('Project id is invalid');
+		}
+		this.database.transaction(() => {
+			const legacy = this.database
+				.query('SELECT 1 FROM projects WHERE id = ? AND legacy = 1')
+				.get(legacyId);
+			if (!legacy) throw new Error(`Legacy Project ${legacyId} was not found`);
+			if (legacyId === hermesId) {
+				this.database.query('UPDATE projects SET legacy = 0 WHERE id = ?').run(legacyId);
+				return;
+			}
+			this.ensureProjectMetadata(hermesId);
+			for (const table of ['workflows', 'project_sessions', 'messages', 'session_events']) {
+				this.database
+					.query(`UPDATE ${table} SET project_id = ? WHERE project_id = ?`)
+					.run(hermesId, legacyId);
+			}
+			this.database
+				.query(
+					`INSERT OR IGNORE INTO dismissed_sessions (project_scope, session_id, dismissed_at)
+					 SELECT ?, session_id, dismissed_at FROM dismissed_sessions WHERE project_scope = ?`
+				)
+				.run(hermesId, legacyId);
+			this.database.query('DELETE FROM dismissed_sessions WHERE project_scope = ?').run(legacyId);
+			this.database.query('DELETE FROM projects WHERE id = ?').run(legacyId);
+		})();
+	}
+
 	listProjects(): Project[] {
 		const rows = this.database
 			.query('SELECT id, name, root_path, icon, created_at FROM projects ORDER BY created_at, id')
@@ -798,14 +872,21 @@ export class HUEStore {
 		return project ? this.updateProject(id, { ...project, rootPath }) : null;
 	}
 
-	deleteProject(id: string): boolean {
-		return this.database.transaction(() => {
-			const active = this.database
+	hasActiveProjectDeliveries(id: string): boolean {
+		return Boolean(
+			this.database
 				.query(
 					"SELECT 1 FROM messages WHERE project_id = ? AND status IN ('queued', 'running', 'unknown') LIMIT 1"
 				)
-				.get(id);
-			if (active) throw new Error('Project has active message deliveries');
+				.get(id)
+		);
+	}
+
+	deleteProject(id: string): boolean {
+		return this.database.transaction(() => {
+			if (this.hasActiveProjectDeliveries(id)) {
+				throw new Error('Project has active message deliveries');
+			}
 			this.database.query('DELETE FROM session_events WHERE project_id = ?').run(id);
 			this.database.query('DELETE FROM messages WHERE project_id = ?').run(id);
 			return this.database.query('DELETE FROM projects WHERE id = ?').run(id).changes > 0;

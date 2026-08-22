@@ -10,4 +10,9 @@
 	<meta name="description" content="Projects, Workflows, and reliable Hermes Sessions." />
 </svelte:head>
 
-<Workspace projects={data.projects} />
+<Workspace
+	projects={data.projects}
+	projectsCapability={data.projectsCapability}
+	projectsError={data.projectsError}
+	reconciliationIssues={data.reconciliationIssues}
+/>

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -70,7 +70,11 @@ async function addProject(page: import('@playwright/test').Page) {
 		return;
 	}
 	const response = await page.request.post('/api/projects', {
-		data: { name: 'HUE', rootPath: process.env.HUE_E2E_PROJECT_ROOT ?? process.cwd() }
+		data: {
+			name: 'HUE',
+			folders: [process.env.HUE_E2E_PROJECT_ROOT ?? process.cwd()],
+			primaryPath: process.env.HUE_E2E_PROJECT_ROOT ?? process.cwd()
+		}
 	});
 	if (!response.ok()) throw new Error(`${response.status()}: ${await response.text()}`);
 	await page.goto('/');
@@ -196,7 +200,7 @@ test('Project file workspace stays usable across required viewports', async ({
 	await page.getByRole('treeitem', { name: /README.md/ }).click();
 	await page.getByRole('button', { name: 'Edit Markdown' }).click();
 	await page.getByLabel('File content').fill('# Unsaved');
-	await page.getByTitle('Workflows').click();
+	await page.getByRole('button', { name: 'Workflows', exact: true }).click();
 	await page.getByRole('button', { name: 'Run', exact: true }).click();
 	await expect(page.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
 	expect(
@@ -432,7 +436,7 @@ test('shows honest first-run actions without persisted Projects', async ({ page 
 	}
 });
 
-test('recovers missing Project roots with Locate, Remove, or projectless continuation', async ({
+test('recovers missing primary folders with folder management, archive, or projectless continuation', async ({
 	page
 }) => {
 	await removeProjects(page);
@@ -443,7 +447,11 @@ test('recovers missing Project roots with Locate, Remove, or projectless continu
 		const retiredRoot = mkdtempSync(join(tmpdir(), 'hue-retired-project-'));
 		const replacementRoot = mkdtempSync(join(tmpdir(), 'hue-located-project-'));
 		const created = await page.request.post('/api/projects', {
-			data: { name: `Missing ${viewport.width}`, rootPath: retiredRoot }
+			data: {
+				name: `Missing ${viewport.width}`,
+				folders: [retiredRoot],
+				primaryPath: retiredRoot
+			}
 		});
 		const project = (await created.json()).project as { id: string };
 		rmSync(retiredRoot, { recursive: true, force: true });
@@ -454,7 +462,7 @@ test('recovers missing Project roots with Locate, Remove, or projectless continu
 			const recovery = page.getByRole('region', { name: 'Project folder unavailable' });
 			await expect(recovery).toBeVisible();
 			await expect(page.getByRole('region', { name: /workbench/ })).toHaveCount(0);
-			for (const label of ['Locate', 'Remove', 'Open without Project'])
+			for (const label of ['Manage folders', 'Archive', 'Open without Project'])
 				await expect(recovery.getByRole('button', { name: label, exact: true })).toBeVisible();
 			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 				viewport.width
@@ -465,10 +473,10 @@ test('recovers missing Project roots with Locate, Remove, or projectless continu
 				await recovery.getByRole('button', { name: 'Open without Project' }).click();
 				await expect(page).toHaveURL(/project=none/);
 			} else if (index === 1) {
-				await recovery.getByRole('button', { name: 'Remove', exact: true }).click();
+				await recovery.getByRole('button', { name: 'Archive', exact: true }).click();
 				await page
-					.getByRole('dialog', { name: 'Remove project?' })
-					.getByRole('button', { name: 'Remove project' })
+					.getByRole('dialog', { name: 'Archive Hermes Project?' })
+					.getByRole('button', { name: 'Archive Project' })
 					.click();
 				await expect(page.getByText(`Missing ${viewport.width}`, { exact: true })).toHaveCount(0);
 			} else {
@@ -482,11 +490,21 @@ test('recovers missing Project roots with Locate, Remove, or projectless continu
 						}
 					})
 				);
-				await recovery.getByRole('button', { name: 'Locate' }).click();
+				await recovery.getByRole('button', { name: 'Manage folders' }).click();
 				await page
-					.getByRole('dialog', { name: 'Locate project directory' })
-					.getByRole('button', { name: 'Use this directory' })
+					.getByRole('dialog', { name: 'Edit Hermes Project' })
+					.getByRole('button', { name: 'Add folder' })
 					.click();
+				await page
+					.getByRole('dialog', { name: `Add folder to Missing ${viewport.width}` })
+					.getByRole('button', { name: 'Add this folder' })
+					.click();
+				const editor = page.getByRole('dialog', { name: 'Edit Hermes Project' });
+				await editor
+					.locator('div.rounded-lg', { hasText: replacementRoot })
+					.getByRole('button', { name: 'Make primary' })
+					.click();
+				await editor.getByRole('button', { name: 'Done' }).click();
 				await expect(page.getByRole('region', { name: /workbench/ })).toBeVisible();
 				const health = page.getByRole('region', { name: 'Runtime health' });
 				for (const label of ['Project', 'Git', 'Terminal', 'Preview', 'Hermes ACP', 'Hermes admin'])
@@ -562,7 +580,7 @@ test('opens project creation from the Projects heading and dismisses it with Esc
 	page
 }) => {
 	const browserErrors: string[] = [];
-	let submittedProject: { name: string; rootPath: string } | undefined;
+	let submittedProject: { name: string; folders: string[]; primaryPath: string } | undefined;
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
 	page.on('pageerror', (error) => browserErrors.push(error.message));
 	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
@@ -592,11 +610,31 @@ test('opens project creation from the Projects heading and dismisses it with Esc
 		submittedProject = (await route.request().postDataJSON()) as typeof submittedProject;
 		return route.fulfill({
 			status: 201,
-			json: { project: { id: 'picked-project', ...submittedProject } }
+			json: {
+				project: {
+					id: 'picked-project',
+					name: submittedProject?.name,
+					icon: null,
+					primaryPath: submittedProject?.primaryPath,
+					folders: submittedProject?.folders.map((path) => ({
+						path,
+						label: null,
+						isPrimary: path === submittedProject?.primaryPath,
+						available: true
+					})),
+					rootAvailable: true
+				}
+			}
 		});
 	});
 	await page.route(/\/api\/projects\/picked-project\/sessions$/, (route) =>
 		route.fulfill({ json: { sessions: [] } })
+	);
+	await page.route('/api/projects/picked-project/workflows', (route) =>
+		route.fulfill({ json: { workflows: [] } })
+	);
+	await page.route('**/api/health?projectId=picked-project', (route) =>
+		route.fulfill({ json: { checks: [] } })
 	);
 	await page.route('/api/projects/picked-project/repository', (route) =>
 		route.fulfill({
@@ -618,7 +656,7 @@ test('opens project creation from the Projects heading and dismisses it with Esc
 		});
 	});
 	await page.setViewportSize({ width: 1440, height: 900 });
-	await addProject(page);
+	await page.goto('/');
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await page.goto('/');
@@ -626,8 +664,10 @@ test('opens project creation from the Projects heading and dismisses it with Esc
 			.locator('.mobile-navigation')
 			.getByRole('button', { name: 'Projects' });
 		if (await projectsMenu.isVisible()) await projectsMenu.click();
-		const dialog = page.getByRole('dialog', { name: 'Add project directory' });
-		const addButton = page.locator('.section-heading').getByRole('button', { name: 'Add project' });
+		const dialog = page.getByRole('dialog', { name: 'Create Hermes Project' });
+		const addButton = page
+			.locator('.section-heading')
+			.getByRole('button', { name: 'Add Hermes Project' });
 		await expect(dialog).toBeHidden();
 		await addButton.click();
 		await expect(dialog).toBeVisible();
@@ -650,25 +690,35 @@ test('opens project creation from the Projects heading and dismisses it with Esc
 		await expect(dialog).toBeHidden();
 		if (viewport.width === 1440) {
 			await addButton.click();
-			await dialog.getByRole('button', { name: 'Add this directory' }).click();
+			await dialog.getByRole('button', { name: 'Select current folder' }).click();
+			await dialog.getByRole('button', { name: 'Documents' }).click();
+			await dialog.getByRole('button', { name: 'Select current folder' }).click();
+			await dialog.getByRole('radio', { name: '/Users/example/Documents' }).check();
+			await dialog.getByLabel('Project name').fill('example');
+			await dialog.getByRole('button', { name: 'Create Project' }).click();
 			await expect(dialog).toBeHidden();
-			expect(submittedProject).toEqual({ name: 'example', rootPath: '/Users/example' });
+			expect(submittedProject).toEqual({
+				name: 'example',
+				folders: ['/Users/example', '/Users/example/Documents'],
+				primaryPath: '/Users/example/Documents'
+			});
 		}
 	}
 	expect(browserErrors).toEqual([]);
 });
 
-test('renames and removes a project from the projects sidebar', async ({ page }) => {
+test('edits authoritative Project metadata and folders, then archives it', async ({ page }) => {
 	test.setTimeout(60_000);
 	const rootPath = mkdtempSync(join(tmpdir(), 'hue-edit-project-'));
+	const secondRoot = mkdtempSync(join(tmpdir(), 'hue-edit-project-docs-'));
 	const response = await page.request.post('/api/projects', {
-		data: { name: 'Editable project', rootPath }
+		data: { name: 'Editable project', folders: [rootPath, secondRoot], primaryPath: rootPath }
 	});
-	const project = (await response.json()).project as { id: string; rootPath: string };
+	const project = (await response.json()).project as { id: string; primaryPath: string };
 	let currentName = 'Editable project';
 	try {
 		const invalidIcon = await page.request.patch(`/api/projects/${project.id}`, {
-			data: { name: currentName, icon: 'data:text/html;base64,PHNjcmlwdD4=' }
+			data: { action: 'update', name: currentName, icon: 'data:text/html;base64,PHNjcmlwdD4=' }
 		});
 		expect(invalidIcon.status()).toBe(400);
 		for (const viewport of viewports) {
@@ -680,15 +730,16 @@ test('renames and removes a project from the projects sidebar', async ({ page })
 			if (await projectsMenu.isVisible()) await projectsMenu.click();
 			const editButton = page.getByRole('button', { name: `Edit ${currentName}` });
 			await editButton.click();
-			const dialog = page.getByRole('dialog', { name: 'Edit project' });
+			const dialog = page.getByRole('dialog', { name: 'Edit Hermes Project' });
 			await expect(dialog).toBeVisible();
-			await expect(dialog.getByLabel('Project directory')).toHaveValue(project.rootPath);
-			await dialog.getByRole('button', { name: 'Remove project' }).click();
-			const confirmation = page.getByRole('dialog', { name: 'Remove project?' });
+			if (viewport.width === 1440) {
+				await expect(dialog.getByText(rootPath, { exact: true })).toBeVisible();
+				await expect(dialog.getByText(secondRoot, { exact: true })).toBeVisible();
+			}
+			await dialog.getByRole('button', { name: 'Archive Project' }).click();
+			const confirmation = page.getByRole('dialog', { name: 'Archive Hermes Project?' });
 			await expect(confirmation).toBeVisible();
-			await expect(confirmation).toContainText(
-				`Remove ${currentName} from HUE? Hermes transcripts will not be deleted.`
-			);
+			await expect(confirmation).toContainText(`Archive ${currentName}?`);
 			if (viewport.width <= 390) await expectMinimumTouchTargets(confirmation.locator('button'));
 			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 				viewport.width
@@ -697,6 +748,13 @@ test('renames and removes a project from the projects sidebar', async ({ page })
 			await expect(confirmation).toBeHidden();
 			await expect(dialog).toBeVisible();
 			if (viewport.width === 1440) {
+				const secondFolder = dialog.locator('div.rounded-lg', { hasText: secondRoot });
+				await secondFolder.getByPlaceholder('Optional label').fill('Docs');
+				await secondFolder.getByRole('button', { name: 'Save label' }).click();
+				await secondFolder.getByRole('button', { name: 'Make primary' }).click();
+				const firstFolder = dialog.locator('div.rounded-lg', { hasText: rootPath });
+				await firstFolder.getByRole('button', { name: 'Remove' }).click();
+				await expect(dialog.getByText(rootPath, { exact: true })).toHaveCount(0);
 				await dialog.getByRole('button', { name: 'Choose project emoji' }).click();
 				const picker = dialog.locator('emoji-picker');
 				await expect(picker).toBeVisible();
@@ -723,7 +781,7 @@ test('renames and removes a project from the projects sidebar', async ({ page })
 			}
 			const renamed = `Renamed ${viewport.width}`;
 			await dialog.getByLabel('Project name').fill(renamed);
-			await dialog.getByRole('button', { name: 'Save changes' }).click();
+			await dialog.getByRole('button', { name: 'Save name and icon' }).click();
 			currentName = renamed;
 			const renamedProject = page.locator('.project-select', { hasText: currentName });
 			await expect(renamedProject).toBeAttached();
@@ -739,24 +797,25 @@ test('renames and removes a project from the projects sidebar', async ({ page })
 			);
 		}
 		await page.getByRole('button', { name: `Edit ${currentName}` }).click();
-		const editDialog = page.getByRole('dialog', { name: 'Edit project' });
-		await editDialog.getByRole('button', { name: 'Remove project' }).click();
-		const confirmation = page.getByRole('dialog', { name: 'Remove project?' });
+		const editDialog = page.getByRole('dialog', { name: 'Edit Hermes Project' });
+		await editDialog.getByRole('button', { name: 'Archive Project' }).click();
+		const confirmation = page.getByRole('dialog', { name: 'Archive Hermes Project?' });
 		await expect(confirmation).toBeVisible();
-		await confirmation.getByRole('button', { name: 'Remove project' }).click();
+		await confirmation.getByRole('button', { name: 'Archive Project' }).click();
 		await expect(page.locator('.project-select', { hasText: currentName })).toHaveCount(0);
 	} finally {
 		if (project) await page.request.delete(`/api/projects/${project.id}`).catch(() => undefined);
 		rmSync(rootPath, { recursive: true, force: true });
+		rmSync(secondRoot, { recursive: true, force: true });
 	}
 });
 
-test('keeps unresolved-delivery removal conflict visible with a Locate recovery path', async ({
+test('keeps unresolved-delivery archive conflict visible without false removal', async ({
 	page
 }) => {
 	const rootPath = mkdtempSync(join(tmpdir(), 'hue-project-unknown-delivery-'));
 	const created = await page.request.post('/api/projects', {
-		data: { name: 'Unknown delivery project', rootPath }
+		data: { name: 'Unknown delivery project', folders: [rootPath], primaryPath: rootPath }
 	});
 	const project = (await created.json()).project as { id: string };
 	await page.route(`**/api/projects/${project.id}`, async (route) => {
@@ -773,19 +832,17 @@ test('keeps unresolved-delivery removal conflict visible with a Locate recovery 
 		await page.goto(`/?project=${project.id}`);
 		await page.getByRole('button', { name: 'Edit Unknown delivery project' }).click();
 		await page
-			.getByRole('dialog', { name: 'Edit project' })
-			.getByRole('button', { name: 'Remove project' })
+			.getByRole('dialog', { name: 'Edit Hermes Project' })
+			.getByRole('button', { name: 'Archive Project' })
 			.click();
-		const confirmation = page.getByRole('dialog', { name: 'Remove project?' });
-		await confirmation.getByRole('button', { name: 'Remove project' }).click();
+		const confirmation = page.getByRole('dialog', { name: 'Archive Hermes Project?' });
+		await confirmation.getByRole('button', { name: 'Archive Project' }).click();
 
 		await expect(confirmation).toBeVisible();
 		await expect(confirmation.getByRole('alert')).toContainText(
 			'Project has unresolved message delivery'
 		);
-		await expect(
-			confirmation.getByRole('button', { name: 'Locate Project instead' })
-		).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Edit Unknown delivery project' })).toBeVisible();
 	} finally {
 		await page.unroute(`**/api/projects/${project.id}`);
 		await page.request.delete(`/api/projects/${project.id}`).catch(() => undefined);
@@ -965,7 +1022,7 @@ test('opens distinct Hermes runtime, skills, schedules, commands, profiles, and 
 test('guards unsaved skill edits across workspace and Project navigation', async ({ page }) => {
 	const targetRoot = mkdtempSync(join(tmpdir(), 'hue-dirty-skill-target-'));
 	const created = await page.request.post('/api/projects', {
-		data: { name: 'Dirty skill target', rootPath: targetRoot }
+		data: { name: 'Dirty skill target', folders: [targetRoot], primaryPath: targetRoot }
 	});
 	const target = (await created.json()).project as { id: string };
 	await page.route('/api/hermes/skills/browser-use', (route) =>
@@ -3429,7 +3486,7 @@ test('mobile uses explicit exclusive Projects and Sessions drawers', async ({ pa
 	await expect(page.locator('#project-drawer')).toBeHidden();
 	await expect(page.locator('#session-drawer')).toBeVisible();
 	await expectMinimumTouchTargets(page.locator('#session-drawer button'));
-	await page.getByRole('button', { name: 'Workflows' }).click();
+	await page.getByRole('button', { name: 'Workflows', exact: true }).click();
 	await expectMinimumTouchTargets(
 		page.locator('#session-drawer button, #session-drawer input, #session-drawer textarea')
 	);
@@ -3520,7 +3577,7 @@ test('remounts project-scoped tools when switching projects', async ({ page }) =
 	try {
 		for (const [index, rootPath] of roots.entries()) {
 			const response = await page.request.post('/api/projects', {
-				data: { name: `Lifecycle ${index + 1}`, rootPath }
+				data: { name: `Lifecycle ${index + 1}`, folders: [rootPath], primaryPath: rootPath }
 			});
 			projects.push((await response.json()).project);
 		}

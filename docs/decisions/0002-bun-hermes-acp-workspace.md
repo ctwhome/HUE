@@ -6,6 +6,8 @@
 - **Owners:** Curi / HUE
 - **Supersedes:** the universal personal-agent control-plane alpha scope
 
+> Project identity and folder ownership in this record are superseded by [ADR-0006](0006-hermes-projects-authority.md). Hermes Projects are authoritative; HUE retains only its own linked metadata and delivery truth.
+
 ## Context
 
 The original HUE specification grew into a universal personal operating system spanning Areas, knowledge, artifacts, notifications, routing, multiple worker runtimes, computer use, and source integrations. The immediate product need is much smaller: a fast, reliable, purpose-built web interface for Hermes Projects, reusable Workflows, and Sessions.

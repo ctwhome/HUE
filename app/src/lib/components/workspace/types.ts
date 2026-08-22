@@ -9,10 +9,17 @@ import type {
 export type Project = {
 	id: string;
 	name: string;
-	rootPath: string;
 	icon: string | null;
-	createdAt: string;
+	primaryPath: string;
+	folders: Array<{ path: string; label: string | null; isPrimary: boolean; available: boolean }>;
 	rootAvailable: boolean;
+};
+
+export type WorkspaceProps = {
+	projects: Project[];
+	projectsCapability?: 'available' | 'unavailable' | 'outage';
+	projectsError?: string;
+	reconciliationIssues?: Array<{ legacyProjectId: string; kind: string; message: string }>;
 };
 
 export type Session = {

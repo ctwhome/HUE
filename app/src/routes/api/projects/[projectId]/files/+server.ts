@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import { basename } from 'node:path';
 import { ProjectFiles } from '$lib/server/project-files';
 import type { FileVersion } from '$lib/server/project-files';
-import { services } from '$lib/server/services';
+import { authoritativeProject } from '$lib/server/services';
 import type { RequestHandler } from './$types';
 
 export function _fileMutationAllowed(request: Request, url: URL, clientAddress?: string) {
@@ -73,10 +73,9 @@ export function _filePath(url: URL) {
 	return url.searchParams.get('path') ?? '';
 }
 
-function projectFiles(projectId: string) {
-	const project = services().store.getProject(projectId);
-	if (!project) throw new Error('Project not found');
-	return new ProjectFiles(project.rootPath);
+async function projectFiles(projectId: string) {
+	const project = await authoritativeProject(projectId);
+	return new ProjectFiles(project.primary_path);
 }
 
 function errorResponse(cause: unknown) {
@@ -94,7 +93,7 @@ function errorResponse(cause: unknown) {
 
 export const GET: RequestHandler = async ({ params, url, request }) => {
 	try {
-		const files = projectFiles(params.projectId);
+		const files = await projectFiles(params.projectId);
 		const mode = url.searchParams.get('mode') ?? 'tree';
 		const path = _filePath(url);
 		if (mode === 'tree') {
@@ -158,7 +157,7 @@ export const POST: RequestHandler = async ({ params, request, url, getClientAddr
 			{ status: 403 }
 		);
 	try {
-		const files = projectFiles(params.projectId);
+		const files = await projectFiles(params.projectId);
 		const body = (await request.json()) as Partial<Mutation>;
 		if (typeof body.action !== 'string' || typeof body.path !== 'string')
 			throw new Error('Invalid file mutation');
@@ -192,7 +191,7 @@ export const PUT: RequestHandler = async ({ params, request, url, getClientAddre
 		const path = _filePath(url);
 		if (!path) throw new Error('Upload path is required');
 		const bytes = new Uint8Array(await request.arrayBuffer());
-		return json(projectFiles(params.projectId).upload(path, bytes));
+		return json((await projectFiles(params.projectId)).upload(path, bytes));
 	} catch (cause) {
 		return errorResponse(cause);
 	}

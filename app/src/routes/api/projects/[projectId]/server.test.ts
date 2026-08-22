@@ -1,78 +1,238 @@
-import { expect, mock, test } from 'bun:test';
+import { beforeEach, expect, mock, test } from 'bun:test';
+import { serviceExportStubs } from '$lib/server/services-test-stubs';
+import { HermesProjectMutationError } from '$lib/server/hermes-projects';
 
-const existing = {
-	id: 'project-1',
+const original = {
+	id: 'p_1',
 	name: 'Original',
-	rootPath: '/work/old',
 	icon: null,
-	createdAt: '2026-08-22T00:00:00.000Z'
+	primary_path: '/work/old',
+	folders: [
+		{ path: '/work/old', label: null, is_primary: true, added_at: 1 },
+		{ path: '/work/docs', label: 'Docs', is_primary: false, added_at: 2 }
+	],
+	archived: false
 };
-const mutations: unknown[] = [];
+const readback = { ...original, name: 'Renamed', icon: '🚀' };
+const calls: Array<{ method: string; args: unknown[] }> = [];
 const closedProjects: string[] = [];
+let activeDelivery = false;
+let removeFailure: Error | null = null;
+const activeChecks: string[] = [];
 
-mock.module('$lib/server/services', () => ({
-	projectView: (project: typeof existing) => ({ ...project, rootAvailable: true }),
-	trustedProjectRoot: (rootPath: string) => rootPath,
-	services: () => ({
-		store: {
-			getProject: () => existing,
-			relocateProject: (_id: string, rootPath: string) => {
-				mutations.push({ relocate: rootPath });
-				return { ...existing, rootPath };
+mock.module('$lib/server/route-services', () => ({
+	...serviceExportStubs,
+	projectView: (project: typeof original) => ({
+		id: project.id,
+		name: project.name,
+		icon: project.icon,
+		primaryPath: project.primary_path,
+		folders: project.folders,
+		rootAvailable: true
+	}),
+	trustedProjectRoot: (rootPath: string) => {
+		if (!rootPath.startsWith('/work/')) throw new Error('Project root is outside boundary');
+		return rootPath;
+	},
+	services: () => {
+		const projects = {
+			get: async (id: string) => {
+				calls.push({ method: 'get', args: [id] });
+				return original;
 			},
-			updateProject: (_id: string, input: unknown) => {
-				mutations.push(input);
-				return { ...existing, ...(input as object) };
+			update: async (...args: unknown[]) => {
+				calls.push({ method: 'update', args });
+				return readback;
 			},
-			deleteProject: () => true
-		},
-		terminals: { closeProject: (projectId: string) => closedProjects.push(projectId) }
-	})
+			addFolder: async (...args: unknown[]) => {
+				calls.push({ method: 'addFolder', args });
+				return readback;
+			},
+			removeFolder: async (...args: unknown[]) => {
+				calls.push({ method: 'removeFolder', args });
+				if (removeFailure) throw removeFailure;
+				return readback;
+			},
+			setPrimary: async (...args: unknown[]) => {
+				calls.push({ method: 'setPrimary', args });
+				return { ...readback, primary_path: '/work/docs' };
+			},
+			archive: async (...args: unknown[]) => {
+				calls.push({ method: 'archive', args });
+				return { ...original, archived: true };
+			}
+		};
+		return {
+			projects: {
+				...projects
+			},
+			store: {
+				hasActiveProjectDeliveries: () => activeDelivery,
+				deleteProject: () => {
+					throw new Error('HUE Project metadata must not be deleted');
+				}
+			},
+			terminals: { closeProject: (projectId: string) => closedProjects.push(projectId) },
+			projectOperations: {
+				archive: async (reference: string) => {
+					const project = await projects.get(reference);
+					activeChecks.push(project.id);
+					if (activeDelivery) throw new Error('Project has active message deliveries');
+					return projects.archive(project.id);
+				}
+			}
+		};
+	}
 }));
 
-test('validates every Project PATCH field before any mutation', async () => {
-	mutations.length = 0;
+beforeEach(() => {
+	calls.length = 0;
 	closedProjects.length = 0;
+	activeDelivery = false;
+	removeFailure = null;
+	activeChecks.length = 0;
+});
+
+async function patch(body: unknown, projectId = 'p_1') {
 	const { PATCH } = await import('./+server');
-	const response = await PATCH({
-		params: { projectId: 'project-1' },
-		request: new Request('http://localhost/api/projects/project-1', {
+	return PATCH({
+		params: { projectId },
+		request: new Request('http://localhost/api/projects/p_1', {
 			method: 'PATCH',
-			body: JSON.stringify({
-				name: 'Renamed',
-				icon: 'data:text/html;base64,PHNjcmlwdD4=',
-				rootPath: '/work/new'
-			})
+			body: JSON.stringify(body)
 		})
 	} as never);
+}
+
+test('updates Hermes name and icon and returns authoritative readback', async () => {
+	const response = await patch({ action: 'update', name: 'Renamed', icon: '🚀' });
+
+	expect(response.status).toBe(200);
+	expect(calls).toEqual([{ method: 'update', args: ['p_1', { name: 'Renamed', icon: '🚀' }] }]);
+	expect((await response.json()).project).toMatchObject({ id: 'p_1', name: 'Renamed' });
+});
+
+test('adds a validated backend folder with label and primary choice', async () => {
+	const response = await patch({
+		action: 'add_folder',
+		path: '/work/docs',
+		label: 'Documentation',
+		isPrimary: true
+	});
+
+	expect(response.status).toBe(200);
+	expect(calls).toEqual([
+		{
+			method: 'addFolder',
+			args: ['p_1', '/work/docs', { label: 'Documentation', isPrimary: true }]
+		}
+	]);
+	expect(closedProjects).toEqual(['p_1']);
+});
+
+test('removes a folder only through Hermes with explicit replacement readback', async () => {
+	const response = await patch({
+		action: 'remove_folder',
+		path: '/work/old',
+		replacementPrimary: '/work/docs'
+	});
+
+	expect(response.status).toBe(200);
+	expect(calls).toEqual([{ method: 'removeFolder', args: ['p_1', '/work/old', '/work/docs'] }]);
+	expect(closedProjects).toEqual(['p_1']);
+});
+
+test('returns compensation readback and reconciliation state from partial primary removal', async () => {
+	const partial = {
+		...original,
+		primary_path: '/work/docs',
+		folders: original.folders.map((folder) => ({
+			...folder,
+			is_primary: folder.path === '/work/docs'
+		}))
+	};
+	removeFailure = new HermesProjectMutationError(
+		'remove failed; primary restoration failed; reconciliation required',
+		partial,
+		false,
+		true
+	);
+
+	const response = await patch({
+		action: 'remove_folder',
+		path: '/work/old',
+		replacementPrimary: '/work/docs'
+	});
+	const body = await response.json();
 
 	expect(response.status).toBe(400);
-	expect(mutations).toEqual([]);
-	expect(closedProjects).toEqual([]);
+	expect(body.project.primaryPath).toBe('/work/docs');
+	expect(body).toMatchObject({ restored: false, reconciliationRequired: true });
+	expect(closedProjects).toEqual(['p_1']);
 });
 
-test('applies name icon and root atomically before closing Project PTYs', async () => {
-	mutations.length = 0;
-	closedProjects.length = 0;
-	const { PATCH } = await import('./+server');
-	const response = await PATCH({
-		params: { projectId: 'project-1' },
-		request: new Request('http://localhost/api/projects/project-1', {
-			method: 'PATCH',
-			body: JSON.stringify({ name: 'Renamed', icon: '🚀', rootPath: '/work/new' })
-		})
-	} as never);
+test('sets primary only to a validated backend folder', async () => {
+	const response = await patch({ action: 'set_primary', path: '/work/docs' });
 
 	expect(response.status).toBe(200);
-	expect(mutations).toEqual([{ name: 'Renamed', icon: '🚀', rootPath: '/work/new' }]);
-	expect(closedProjects).toEqual(['project-1']);
+	expect(calls).toEqual([{ method: 'setPrimary', args: ['p_1', '/work/docs'] }]);
+	expect(closedProjects).toEqual(['p_1']);
 });
 
-test('closes Project PTYs after removal', async () => {
-	closedProjects.length = 0;
+test('closes terminals by authoritative mutation readback id when route uses slug', async () => {
+	for (const body of [
+		{ action: 'add_folder', path: '/work/docs', isPrimary: true },
+		{ action: 'remove_folder', path: '/work/old', replacementPrimary: '/work/docs' },
+		{ action: 'set_primary', path: '/work/docs' }
+	]) {
+		calls.length = 0;
+		closedProjects.length = 0;
+		const response = await patch(body, 'project-slug');
+		expect(response.status).toBe(200);
+		expect(closedProjects).toEqual(['p_1']);
+	}
+});
+
+test('rejects malformed folder mutation before Hermes call', async () => {
+	const response = await patch({ action: 'add_folder', path: '../secret', isPrimary: false });
+
+	expect(response.status).toBe(400);
+	expect(calls).toEqual([]);
+});
+
+test('archives Hermes Project without deleting HUE-owned foreign-key metadata', async () => {
 	const { DELETE } = await import('./+server');
-	const response = await DELETE({ params: { projectId: 'project-1' } } as never);
+	const response = await DELETE({ params: { projectId: 'p_1' } } as never);
 
 	expect(response.status).toBe(200);
-	expect(closedProjects).toEqual(['project-1']);
+	expect(calls).toEqual([
+		{ method: 'get', args: ['p_1'] },
+		{ method: 'archive', args: ['p_1'] }
+	]);
+	expect(activeChecks).toEqual(['p_1']);
+	expect(closedProjects).toEqual(['p_1']);
+});
+
+test('DELETE by slug checks queued, running, and unknown deliveries under canonical Hermes id', async () => {
+	const { DELETE } = await import('./+server');
+	for (const status of ['queued', 'running', 'unknown']) {
+		calls.length = 0;
+		activeChecks.length = 0;
+		activeDelivery = true;
+		const response = await DELETE({ params: { projectId: `slug-${status}` } } as never);
+
+		expect(response.status).toBe(409);
+		expect(calls).toEqual([{ method: 'get', args: [`slug-${status}`] }]);
+		expect(activeChecks).toEqual(['p_1']);
+		expect(closedProjects).toEqual([]);
+	}
+});
+
+test('refuses archive while HUE owns unresolved delivery state', async () => {
+	activeDelivery = true;
+	const { DELETE } = await import('./+server');
+	const response = await DELETE({ params: { projectId: 'p_1' } } as never);
+
+	expect(response.status).toBe(409);
+	expect(calls.some(({ method }) => method === 'archive')).toBe(false);
 });

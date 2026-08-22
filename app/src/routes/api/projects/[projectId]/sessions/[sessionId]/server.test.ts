@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'bun:test';
+import { serviceExportStubs } from '$lib/server/services-test-stubs';
 
 const snapshot = {
 	messages: [{ id: 'msg-1', status: 'running' }],
@@ -17,7 +18,17 @@ let lockActive = false;
 let metadataMutated = false;
 let listCalls = 0;
 
-mock.module('$lib/server/services', () => ({
+mock.module('$lib/server/route-services', () => ({
+	...serviceExportStubs,
+	authoritativeProject: async () => ({
+		id: 'project-1',
+		name: 'HUE',
+		icon: null,
+		primary_path: '/work/hue-new',
+		folders: [{ path: '/work/hue-new', label: null, is_primary: true, added_at: 1 }],
+		archived: false
+	}),
+	sessionMatchesProjectFolders: () => true,
 	projectBranch: () => null,
 	sessionMatchesProjectRoot: () => true,
 	services: () => ({
