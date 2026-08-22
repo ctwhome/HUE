@@ -333,6 +333,207 @@ describe('workspace async state', () => {
 		]);
 	});
 
+	it('does not duplicate delivered transcript when a repeated prompt has a queued follow-up', () => {
+		const timeline = workspaceState.timelineFromSession(
+			[
+				{ role: 'user', text: 'Repeat' },
+				{ role: 'assistant', text: 'Earlier answer' },
+				{ role: 'user', text: 'Repeat' },
+				{ role: 'assistant', text: 'Current answer' }
+			],
+			[
+				{ id: 'delivered', text: 'Repeat', images: [], status: 'completed' },
+				{ id: 'queued', text: 'Follow up', images: [], status: 'queued' }
+			],
+			[
+				{ sequence: 1, type: 'message.accepted', payload: { messageId: 'delivered' } },
+				{ sequence: 2, type: 'message.running', payload: { messageId: 'delivered' } },
+				{
+					sequence: 3,
+					type: 'agent.chunk',
+					payload: { messageId: 'delivered', text: 'Current answer' }
+				},
+				{ sequence: 4, type: 'message.completed', payload: { messageId: 'delivered' } },
+				{ sequence: 5, type: 'message.accepted', payload: { messageId: 'queued' } }
+			]
+		);
+
+		expect(
+			timeline.map((item) => [
+				item.kind,
+				'role' in item ? item.role : '',
+				'text' in item ? item.text : ''
+			])
+		).toEqual([
+			['message', 'user', 'Repeat'],
+			['message', 'assistant', 'Earlier answer'],
+			['message', 'user', 'Repeat'],
+			['message', 'assistant', 'Current answer'],
+			['message', 'user', 'Follow up']
+		]);
+	});
+
+	it('keeps an absent unknown repeated prompt once across reconstruction and reconnect replay', () => {
+		const events = [
+			{ sequence: 1, type: 'message.accepted', payload: { messageId: 'completed' } },
+			{ sequence: 2, type: 'message.running', payload: { messageId: 'completed' } },
+			{
+				sequence: 3,
+				type: 'agent.chunk',
+				payload: { messageId: 'completed', text: 'Earlier answer' }
+			},
+			{ sequence: 4, type: 'message.completed', payload: { messageId: 'completed' } },
+			{ sequence: 5, type: 'message.accepted', payload: { messageId: 'unknown' } },
+			{ sequence: 6, type: 'message.running', payload: { messageId: 'unknown' } },
+			{
+				sequence: 7,
+				type: 'message.unknown',
+				payload: { messageId: 'unknown', error: 'Delivery outcome unknown' }
+			}
+		];
+		const timeline = workspaceState.timelineFromSession(
+			[
+				{ role: 'user', text: 'Repeat' },
+				{ role: 'assistant', text: 'Earlier answer' }
+			],
+			[
+				{ id: 'completed', text: 'Repeat', images: [], status: 'completed' },
+				{ id: 'unknown', text: 'Repeat', images: [], status: 'unknown' }
+			],
+			events
+		);
+
+		expect(
+			timeline.map((item) => [
+				item.kind,
+				'role' in item ? item.role : '',
+				'text' in item ? item.text : '',
+				'messageId' in item ? item.messageId : undefined
+			])
+		).toEqual([
+			['message', 'user', 'Repeat', 'completed'],
+			['message', 'assistant', 'Earlier answer', 'completed'],
+			['message', 'user', 'Repeat', 'unknown']
+		]);
+
+		expect(workspaceState.applyTimelineEvents({ cursor: 7, timeline }, events.slice(4))).toEqual({
+			cursor: 7,
+			timeline
+		});
+	});
+
+	it('preserves authoritative timestamps and omits unavailable historical times', () => {
+		const timeline = workspaceState.timelineFromSession(
+			[
+				{ role: 'user', text: 'Undated history' },
+				{
+					role: 'assistant',
+					text: 'Dated history',
+					createdAt: '2026-08-21T09:00:00.000Z'
+				},
+				{ role: 'user', text: 'Current prompt' },
+				{ role: 'assistant', text: 'Current answer' }
+			],
+			[
+				{
+					id: 'current',
+					text: 'Current prompt',
+					images: [],
+					status: 'completed',
+					createdAt: '2026-08-22T10:00:00.000Z'
+				}
+			],
+			[
+				{
+					sequence: 1,
+					type: 'message.accepted',
+					createdAt: '2026-08-22T10:00:00.050Z',
+					payload: { messageId: 'current' }
+				},
+				{
+					sequence: 2,
+					type: 'message.running',
+					createdAt: '2026-08-22T10:00:00.100Z',
+					payload: { messageId: 'current' }
+				},
+				{
+					sequence: 3,
+					type: 'agent.chunk',
+					createdAt: '2026-08-22T10:00:01.000Z',
+					payload: { messageId: 'current', text: 'Current ' }
+				},
+				{
+					sequence: 4,
+					type: 'agent.chunk',
+					createdAt: '2026-08-22T10:00:02.000Z',
+					payload: { messageId: 'current', text: 'answer' }
+				}
+			]
+		);
+
+		expect(timeline[0]).not.toHaveProperty('createdAt');
+		expect(timeline[1]).toMatchObject({ createdAt: '2026-08-21T09:00:00.000Z' });
+		expect(timeline[2]).toMatchObject({
+			role: 'user',
+			createdAt: '2026-08-22T10:00:00.000Z'
+		});
+		expect(timeline[3]).toMatchObject({
+			role: 'assistant',
+			text: 'Current answer',
+			createdAt: '2026-08-22T10:00:01.000Z'
+		});
+
+		const streamed = workspaceState.applyTimelineEvents(
+			{
+				cursor: 0,
+				timeline: [
+					{
+						sequence: Number.MAX_SAFE_INTEGER,
+						kind: 'message',
+						role: 'user',
+						messageId: 'live',
+						text: 'Live'
+					}
+				]
+			},
+			[
+				{
+					sequence: 5,
+					type: 'message.accepted',
+					createdAt: '2026-08-22T11:00:00.000Z',
+					payload: { messageId: 'live' }
+				},
+				{
+					sequence: 6,
+					type: 'agent.chunk',
+					createdAt: '2026-08-22T11:00:01.000Z',
+					payload: { messageId: 'live', text: 'One' }
+				},
+				{
+					sequence: 7,
+					type: 'agent.chunk',
+					createdAt: '2026-08-22T11:00:02.000Z',
+					payload: { messageId: 'live', text: ' two' }
+				}
+			]
+		);
+		expect(streamed.timeline[0]).toMatchObject({ createdAt: '2026-08-22T11:00:00.000Z' });
+		expect(streamed.timeline[1]).toMatchObject({
+			text: 'One two',
+			createdAt: '2026-08-22T11:00:01.000Z'
+		});
+		expect(
+			workspaceState.applyTimelineEvents(streamed, [
+				{
+					sequence: 7,
+					type: 'agent.chunk',
+					createdAt: '2026-08-22T11:00:02.000Z',
+					payload: { messageId: 'live', text: ' two' }
+				}
+			]).timeline
+		).toEqual(streamed.timeline);
+	});
+
 	it('replaces active todo plan and clears it when Hermes removes every item', () => {
 		const initial = workspaceState.applySessionEvents(
 			{

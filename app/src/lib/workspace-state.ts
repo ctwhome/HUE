@@ -4,6 +4,7 @@ export type WorkspaceTranscriptMessage = {
 	role: 'user' | 'assistant';
 	text: string;
 	images?: ImageAttachment[];
+	createdAt?: string;
 };
 export type WorkspaceSubagentTree = {
 	messageId: string;
@@ -55,8 +56,9 @@ export type WorkspaceTimelineItem =
 			kind: 'plan';
 			messageId?: string;
 			entries: WorkspacePlanEntry[];
+			createdAt?: string;
 	  }
-	| { sequence: number; kind: 'thought'; messageId?: string; text: string };
+	| { sequence: number; kind: 'thought'; messageId?: string; text: string; createdAt?: string };
 export type WorkspaceDeliveryState = {
 	cursor: number;
 	activeMessageId: string;
@@ -113,7 +115,11 @@ function applyTimelineEvent(
 		);
 		if (index < 0) return timeline;
 		const next = [...timeline];
-		next[index] = { ...next[index], sequence: event.sequence } as WorkspaceTimelineItem;
+		next[index] = {
+			...next[index],
+			sequence: event.sequence,
+			createdAt: next[index].createdAt ?? event.createdAt
+		} as WorkspaceTimelineItem;
 		return next.sort((left, right) => left.sequence - right.sequence);
 	}
 	if (event.type === 'agent.chunk' || event.type === 'agent.image') {
@@ -138,6 +144,7 @@ function applyTimelineEvent(
 				role: 'assistant',
 				messageId,
 				text: event.type === 'agent.chunk' ? String(event.payload.text ?? '') : '',
+				...(event.createdAt ? { createdAt: event.createdAt } : {}),
 				...(image ? { images: [image] } : {})
 			}
 		];
@@ -158,7 +165,8 @@ function applyTimelineEvent(
 				sequence: event.sequence,
 				kind: 'thought',
 				messageId,
-				text: String(event.payload.text ?? '')
+				text: String(event.payload.text ?? ''),
+				...(event.createdAt ? { createdAt: event.createdAt } : {})
 			}
 		];
 	}
@@ -170,7 +178,8 @@ function applyTimelineEvent(
 			sequence: index < 0 ? event.sequence : timeline[index].sequence,
 			kind: 'plan',
 			messageId,
-			entries: event.payload.entries as WorkspacePlanEntry[]
+			entries: event.payload.entries as WorkspacePlanEntry[],
+			createdAt: index < 0 ? event.createdAt : timeline[index].createdAt
 		};
 		if (index < 0) return [...timeline, item];
 		const next = [...timeline];
@@ -214,17 +223,40 @@ export function applyTimelineEvents(
 
 export function timelineFromSession(
 	transcript: WorkspaceTranscriptMessage[],
-	messages: Array<{ id: string; text: string; images?: ImageAttachment[]; status: string }>,
+	messages: Array<{
+		id: string;
+		text: string;
+		images?: ImageAttachment[];
+		status: string;
+		createdAt?: string;
+	}>,
 	events: WorkspaceSessionEvent[]
 ): WorkspaceTimelineItem[] {
+	const deliveredEvents = new Set(
+		events.flatMap((event) =>
+			(event.type === 'message.running' ||
+				event.type === 'message.completed' ||
+				event.type.startsWith('agent.')) &&
+			typeof event.payload.messageId === 'string'
+				? [event.payload.messageId]
+				: []
+		)
+	);
+	const deliveredMessages = messages.filter(
+		(message) =>
+			(message.status === 'running' || message.status === 'completed') &&
+			deliveredEvents.has(message.id)
+	);
 	const userTurns = transcript
 		.map((message, index) => ({ message, index }))
 		.filter(({ message }) => message.role === 'user');
 	let firstStoredIndex = -1;
-	if (messages.length) {
-		for (let start = 0; start <= userTurns.length - messages.length; start += 1) {
+	if (deliveredMessages.length) {
+		for (let start = 0; start <= userTurns.length - deliveredMessages.length; start += 1) {
 			if (
-				messages.every((message, offset) => userTurns[start + offset].message.text === message.text)
+				deliveredMessages.every(
+					(message, offset) => userTurns[start + offset].message.text === message.text
+				)
 			) {
 				firstStoredIndex = userTurns[start].index;
 			}
@@ -248,6 +280,7 @@ export function timelineFromSession(
 					role: 'user',
 					messageId,
 					text: message.text,
+					createdAt: message.createdAt ?? event.createdAt,
 					...(message.images?.length ? { images: message.images } : {})
 				});
 			}

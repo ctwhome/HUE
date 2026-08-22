@@ -139,26 +139,25 @@ export class MessageState {
 			| { kind: 'clarify'; action: 'accept'; content: Record<string, string | string[]> }
 			| { kind: 'clarify'; action: 'cancel' }
 	) => {
-		const selectedSession = this.options.getSession();
-		if (!selectedSession) return;
+		const navigation = this.options.getNavigation();
+		const selection = navigation.captureSessionSelection();
+		if (!selection) return;
+		const interactionPath = this.sessionPath(selection.sessionId, '/interactions');
 		try {
-			await this.options.api(this.sessionPath(selectedSession.sessionId, '/interactions'), {
+			await this.options.api(interactionPath, {
 				method: 'POST',
 				body: JSON.stringify({ interactionId, response })
 			});
-			this.options.session.timeline = this.options.session.timeline.map((item) =>
-				'id' in item && item.id === interactionId
-					? {
-							...item,
-							status:
-								response.kind === 'clarify' && response.action === 'cancel'
-									? 'cancelled'
-									: 'resolved'
-						}
-					: item
+			this.options.session.resolveInteraction(
+				selection.projectId,
+				selection.sessionId,
+				interactionId,
+				response.kind,
+				response.kind === 'clarify' && response.action === 'cancel' ? 'cancelled' : 'resolved',
+				navigation.isCurrentSessionSelection(selection)
 			);
 		} catch (cause) {
-			this.report(cause);
+			if (navigation.isCurrentSessionSelection(selection)) this.report(cause);
 		}
 	};
 	editMessage = async (message: TranscriptMessage) => {

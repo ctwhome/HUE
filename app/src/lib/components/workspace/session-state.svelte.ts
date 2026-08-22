@@ -51,6 +51,27 @@ export class SessionState {
 		return `${this.getProject()?.id ?? 'none'}:${sessionId}`;
 	}
 
+	private capturedViewKey(projectId: string | null, sessionId: string) {
+		return `${projectId ?? 'none'}:${sessionId}`;
+	}
+
+	resolveInteraction = (
+		projectId: string | null,
+		sessionId: string,
+		interactionId: string,
+		kind: 'permission' | 'clarify',
+		status: 'resolved' | 'cancelled',
+		current: boolean
+	) => {
+		const patch = (timeline: WorkspaceTimelineItem[]) =>
+			timeline.map((item) =>
+				item.kind === kind && 'id' in item && item.id === interactionId ? { ...item, status } : item
+			);
+		const cached = this.views.get(this.capturedViewKey(projectId, sessionId));
+		if (cached) cached.timeline = patch(cached.timeline);
+		if (current) this.timeline = patch(this.timeline);
+	};
+
 	cache = (session: Session | null) => {
 		if (!session) return;
 		this.views.set(this.viewKey(session.sessionId), {
