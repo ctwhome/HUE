@@ -1,0 +1,242 @@
+@media (max-width: 1200px) {
+	.project-workbench {
+		overflow: auto;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-template-rows: minmax(320px, 1fr) minmax(240px, auto) minmax(220px, auto);
+		grid-template-areas: 'browser browser' 'terminal terminal' 'repository worktrees';
+	}
+}
+
+@media (max-width: 950px) and (min-width: 701px) {
+	.workspace {
+		grid-template-columns: 56px 74px 280px minmax(0, 1fr);
+	}
+	.project-rail {
+		padding-inline: 10px;
+	}
+	.brand > div,
+	.section-label,
+	.project-select > span:last-child {
+		display: none;
+	}
+	.brand {
+		flex-direction: column;
+		justify-content: center;
+	}
+	.workspace-session-add {
+		margin-left: 0;
+	}
+	.project-select {
+		justify-content: center;
+		padding-inline: 10px;
+	}
+}
+
+@media (max-width: 700px) {
+	.global-panel button,
+	.add-project-dialog button,
+	.project-workbench button,
+	.project-workbench a,
+	.skill-controls input,
+	.skill-controls select,
+	.inventory-row {
+		min-height: 44px !important;
+	}
+	.workspace {
+		display: block;
+		padding-top: 56px;
+	}
+	.global-rail {
+		display: none;
+	}
+	.mobile-navigation {
+		position: fixed;
+		z-index: 40;
+		inset: 0 0 auto;
+		display: grid;
+		height: 56px;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 8px;
+		border-bottom: 1px solid var(--border);
+		background: #0d1015ee;
+		padding: 6px 10px;
+		backdrop-filter: blur(16px);
+	}
+	.mobile-navigation button {
+		min-height: 44px;
+		border: 1px solid var(--border);
+		border-radius: 9px;
+		background: var(--secondary);
+	}
+	.mobile-navigation button[aria-expanded='true'] {
+		border-color: #4a3c70;
+		background: #29213f;
+	}
+	.drawer-backdrop {
+		position: fixed;
+		z-index: 20;
+		inset: 56px 0 0;
+		display: block;
+		width: 100%;
+		border: 0;
+		background: #0009;
+	}
+	.project-rail,
+	.context-panel {
+		position: fixed;
+		z-index: 30;
+		inset: 56px auto 0 0;
+		width: min(88vw, 320px);
+		min-height: 0;
+		visibility: hidden;
+		transform: translateX(-102%);
+		transition:
+			transform 160ms ease,
+			visibility 160ms;
+	}
+	.project-rail.open,
+	.context-panel.open {
+		visibility: visible;
+		transform: translateX(0);
+	}
+	.project-rail .brand {
+		flex-direction: row;
+		justify-content: flex-start;
+	}
+	.project-rail .brand > div,
+	.project-rail .section-label,
+	.project-rail .project-select > span:last-child {
+		display: initial;
+	}
+	.project-rail .workspace-session-add {
+		width: 44px;
+		height: 44px;
+		margin-left: auto;
+	}
+	.project-select {
+		justify-content: flex-start;
+		min-height: 44px;
+		padding-right: 44px;
+	}
+	.project-edit,
+	.session-edit {
+		right: 0;
+		width: 44px;
+		height: 44px;
+		opacity: 1;
+	}
+	.context-panel .icon-button,
+	.section-heading .icon-button {
+		min-width: 44px;
+		width: 44px;
+		height: 44px;
+	}
+	.tabs button,
+	.workflow-card button,
+	.workflow-form input,
+	.workflow-form textarea,
+	.workflow-form button,
+	.composer button,
+	.attach-button,
+	.context-chip {
+		min-height: 44px;
+	}
+	.composer {
+		margin: 0 8px max(8px, env(safe-area-inset-bottom));
+		padding: 6px;
+	}
+	.composer > textarea {
+		height: 44px;
+		min-height: 44px;
+	}
+	.composer-toolbar {
+		display: grid;
+		grid-template-columns: repeat(3, 44px) minmax(0, 1fr) 44px;
+		gap: 4px;
+		padding-top: 0;
+	}
+	.composer-context {
+		grid-column: 1 / -1;
+		grid-row: 1;
+		width: 100%;
+		margin-left: 0;
+	}
+	.composer-toolbar > .attach-button {
+		grid-row: 2;
+		width: 44px;
+	}
+	.composer-delivery {
+		grid-column: 4;
+		grid-row: 2;
+		min-width: 0;
+		overflow: hidden;
+		text-align: right;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.composer-toolbar > .composer-send {
+		grid-column: 5;
+		grid-row: 2;
+		width: 44px;
+		height: 44px;
+	}
+	.composer-toolbar > .retry-message {
+		grid-column: 1 / -1;
+		grid-row: 3;
+		width: 100%;
+	}
+	.add-project-dialog button,
+	.directory-row,
+	.project-icon-upload label {
+		min-height: 44px;
+	}
+	.project-workbench {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: 360px minmax(220px, auto) minmax(220px, auto) minmax(220px, auto);
+		grid-template-areas: 'browser' 'terminal' 'repository' 'worktrees';
+		padding: 8px;
+	}
+	.browser-address input,
+	.change-list button {
+		min-width: 44px;
+		min-height: 44px;
+	}
+	.change-list li {
+		grid-template-columns: 44px 18px minmax(0, 1fr);
+	}
+	.session-header {
+		min-height: 62px;
+		padding: 10px 14px;
+	}
+	.runtime-pill {
+		display: none;
+	}
+	.transcript {
+		padding: 24px 14px 0;
+	}
+	.message-actions button {
+		min-width: 44px;
+		min-height: 44px;
+	}
+	.subagent-tree > summary,
+	.subagent-child > summary,
+	.agent-thought summary {
+		min-height: 44px;
+	}
+	.context-profile {
+		display: none;
+	}
+	.attachment-list figure {
+		flex-basis: 64px;
+	}
+	.attachment-list img {
+		width: 64px;
+		height: 44px;
+	}
+	.emoji-picker-host emoji-picker {
+		height: 300px;
+		--num-columns: 6;
+		--emoji-size: 1.25rem;
+		--emoji-padding: 0.4rem;
+	}
+}
