@@ -43,7 +43,7 @@ class RecordingRuntime implements PromptRuntime {
 function makeStore() {
 	const store = new HUEStore(':memory:');
 	store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
-	store.upsertProjectSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
+	store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 	return store;
 }
 
@@ -60,7 +60,7 @@ describe('MessageDispatcher', () => {
 		const runtime = new RecordingRuntime();
 		const dispatcher = new MessageDispatcher(store, runtime);
 
-		store.upsertProjectSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
+		store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 		expect(store.getMessage('running')?.status).toBe('running');
 		dispatcher.recover();
 		dispatcher.recover();
@@ -82,7 +82,7 @@ describe('MessageDispatcher', () => {
 	it('does not interrupt live running work during session discovery', async () => {
 		const store = new HUEStore(':memory:');
 		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
-		store.upsertProjectSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
+		store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 		let finishPrompt!: () => void;
 		const runtime = new RecordingRuntime();
 		runtime.prompt = async (input) => {

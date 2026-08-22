@@ -3,6 +3,14 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+const viewports = [
+	{ width: 1440, height: 900 },
+	{ width: 1024, height: 768 },
+	{ width: 390, height: 844 },
+	{ width: 320, height: 844 }
+];
+const mobileViewports = viewports.slice(-2);
+
 async function expectMinimumTouchTargets(locator: import('@playwright/test').Locator) {
 	for (let index = 0; index < (await locator.count()); index += 1) {
 		const target = locator.nth(index);
@@ -86,12 +94,7 @@ test('keeps workspace scrolling inside its panes', async ({ page }) => {
 		})
 	);
 
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await addProject(page);
 		await sessionButton(page, 'Overflow').click();
@@ -167,12 +170,7 @@ test('opens project creation from the Projects heading and dismisses it with Esc
 	});
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await addProject(page);
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await page.goto('/');
 		const projectsMenu = page
@@ -224,12 +222,7 @@ test('renames and removes a project from the projects sidebar', async ({ page })
 			data: { name: currentName, icon: 'data:text/html;base64,PHNjcmlwdD4=' }
 		});
 		expect(invalidIcon.status()).toBe(400);
-		for (const viewport of [
-			{ width: 1440, height: 900 },
-			{ width: 1024, height: 768 },
-			{ width: 390, height: 844 },
-			{ width: 320, height: 844 }
-		]) {
+		for (const viewport of viewports) {
 			await page.setViewportSize(viewport);
 			await page.goto('/');
 			const projectsMenu = page
@@ -349,12 +342,7 @@ test('shows automatic session emojis and allows a custom override', async ({ pag
 	await page.locator('.session-select').click();
 	await expect(page.locator('.selected-session-title .title-icon')).toHaveText('🐛');
 
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
@@ -408,12 +396,7 @@ test('opens distinct Hermes runtime, skills, schedules, commands, profiles, and 
 		})
 	);
 
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await page.goto('/');
 		await expect(page).toHaveURL(/\?project=/);
@@ -515,12 +498,7 @@ test('opens every Hermes administration section from the Settings hub', async ({
 	await page.getByRole('button', { name: 'Overview' }).click();
 	await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
 
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await page.goto('/');
 		await expect(page).toHaveURL(/\?project=/);
@@ -590,12 +568,7 @@ test('summarises, filters, and groups installed skills', async ({ page }) => {
 	await expect(panel.getByText('1 of 4 skills')).toBeVisible();
 	await expect(panel.getByRole('button', { name: 'dogfood' })).toBeVisible();
 
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await page.goto('/');
 		await expect(page).toHaveURL(/\?project=/);
@@ -677,12 +650,7 @@ test('summarises, filters, and groups scheduled jobs', async ({ page }) => {
 	await expect(panel.getByRole('heading', { name: 'Disabled' })).toBeVisible();
 	await expect(panel.getByRole('heading', { name: 'Paused' })).toBeVisible();
 
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await page.goto('/');
 		await expect(page).toHaveURL(/\?project=/);
@@ -844,12 +812,7 @@ test('sends one complete envelope and renders streamed completion', async ({ pag
 			.locator('.transcript')
 			.evaluate((element) => getComputedStyle(element, '::after').content)
 	).toBe('none');
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await expect(assistant.locator('strong')).toBeVisible();
 		if (viewport.width === 320) {
@@ -956,12 +919,7 @@ test('runs a voice call with mute, streaming speech, interruption, and end contr
 	await call.getByRole('button', { name: 'Interrupt Hermes' }).click();
 	await expect(call.locator('.voice-call-state')).toContainText('listening');
 
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
@@ -1061,12 +1019,7 @@ test('records one voice message and submits its transcript directly', async ({ p
 		'recording'
 	);
 	const controls = page.getByRole('region', { name: 'Voice message controls' });
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await expect(controls).toBeVisible();
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
@@ -1117,12 +1070,7 @@ test('follows new chat content until the reader scrolls up', async ({ page }) =>
 		route.fulfill({ json: { events: [] } })
 	);
 
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await addProject(page);
 		await sessionButton(page, 'Sticky').click();
@@ -1260,12 +1208,7 @@ test('copies, edits, and forks transcript messages', async ({ page, context }) =
 	await addProject(page);
 	await sessionButton(page, 'Message actions').click();
 	const userMessage = page.locator('.transcript article.user');
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
@@ -1304,12 +1247,7 @@ test('shows a live timer beside each busy session', async ({ page }) => {
 	const initial = await timer.textContent();
 	await expect.poll(() => timer.textContent()).not.toBe(initial);
 
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		if (!(await timer.isVisible())) {
 			await page.getByRole('button', { name: 'Sessions', exact: true }).click();
@@ -1399,12 +1337,7 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 	await expect(page.getByText('25%', { exact: true })).toBeVisible();
 	const modelTrigger = page.getByLabel('Hermes model', { exact: true });
 	const modelMenu = page.getByRole('menu', { name: 'Choose Hermes model' });
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		const triggerBox = await modelTrigger.boundingBox();
 		expect(triggerBox!.width).toBeLessThanOrEqual(150);
@@ -1461,12 +1394,7 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 	await expect(page.getByRole('option', { name: /compress/ })).toContainText(
 		'Compress conversation context'
 	);
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await expect(page.getByRole('listbox', { name: 'Hermes commands' })).toBeVisible();
 		await expect(modelTrigger).toBeVisible();
@@ -1620,12 +1548,7 @@ test('shows durable delegate_task children as a collapsible status and result tr
 	await tree.getByText('2 subagents', { exact: true }).click();
 	await expect(tree.getByText('Map moved path references')).toBeHidden();
 
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
@@ -1654,12 +1577,7 @@ test('shows loading beside new session without shifting the session list', async
 		});
 	});
 
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		sessionLoad = new Promise<void>((resolve) => (finishSessionLoad = resolve));
 		await page.setViewportSize(viewport);
 		await addProject(page);
@@ -1739,12 +1657,7 @@ test('revisits a loaded session immediately while refreshing it', async ({ page 
 	releaseRefresh();
 	await expect(page.getByRole('status', { name: 'Loading project contents' })).toBeHidden();
 
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await expect(page.getByText('Alpha is ready')).toBeVisible();
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
@@ -1796,12 +1709,7 @@ test('starts a new session without the previous session output', async ({ page }
 	await expect(page.getByLabel('Message Hermes')).toBeFocused();
 	await expect(page.getByText('Previous session wall of text')).toBeHidden();
 	await expect(page.getByText('delivery unknown', { exact: true })).toBeHidden();
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await expect(page.getByRole('heading', { name: 'Start this Hermes Session' })).toBeVisible();
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
@@ -1835,12 +1743,7 @@ test('starts and revisits a session without a project', async ({ page }) => {
 		await route.fulfill({ json: { sessions: [] } });
 	});
 
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await page.goto('/');
 		const projectsMenu = page
@@ -1906,10 +1809,7 @@ test('retries a lost acknowledgement with the same complete envelope', async ({ 
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 	await expect(page.getByText('delivery unknown', { exact: true })).toBeVisible();
 	await expect(page.getByLabel('Message Hermes')).toHaveValue('Execute this exactly once.');
-	for (const viewport of [
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of mobileViewports) {
 		await page.setViewportSize(viewport);
 		const composer = page.locator('.composer');
 		const retry = page.getByRole('button', { name: 'Retry exact message' });
@@ -1984,12 +1884,7 @@ test('reload restores running turn visibility and session-scoped draft', async (
 	await sessionButton(page, 'Main').click();
 	await expect(page.getByLabel('Message Hermes')).toBeEnabled();
 
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await page.reload();
 		await expect(page).toHaveURL(/\?project=[^&]+&session=session-1$/);
@@ -2111,12 +2006,7 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 	await browser.getByRole('button', { name: 'Go' }).click();
 	await expect(browser.getByRole('alert')).toContainText('Enter a valid http or https address');
 
-	for (const viewport of [
-		{ width: 1440, height: 900 },
-		{ width: 1024, height: 768 },
-		{ width: 390, height: 844 },
-		{ width: 320, height: 844 }
-	]) {
+	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await expect(workbench).toBeVisible();
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(

@@ -11,14 +11,13 @@ export const GET: RequestHandler = async ({ params }) => {
 			sessionMatchesProjectRoot(project.rootPath, session.cwd)
 		);
 		for (const session of sessions) {
-			services().store.upsertProjectSession(project.id, session);
+			services().store.upsertSession(project.id, session);
 		}
 		services().dispatcher.recover();
 		const busyStarts = services().store.getBusySessionStarts(project.id);
 		return json({
 			sessions: sessions.map((session) => {
-				const customIcon =
-					services().store.getProjectSession(project.id, session.sessionId)?.icon ?? null;
+				const customIcon = services().store.getSession(project.id, session.sessionId)?.icon ?? null;
 				return {
 					...session,
 					icon: customIcon ?? automaticSessionIcon(session.title),
@@ -40,7 +39,7 @@ export const POST: RequestHandler = async ({ params }) => {
 		if (!sessionMatchesProjectRoot(project.rootPath, session.cwd)) {
 			throw new Error(`Hermes Session ${session.sessionId} is outside the Project root`);
 		}
-		services().store.upsertProjectSession(project.id, session);
+		services().store.upsertSession(project.id, session);
 		services().dispatcher.recover();
 		return json(
 			{

@@ -8,7 +8,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	if (!services().store.getProject(params.projectId)) {
 		return json({ error: 'Project not found' }, { status: 404 });
 	}
-	if (!services().store.hasProjectSession(params.projectId, params.sessionId)) {
+	if (!services().store.hasSession(params.projectId, params.sessionId)) {
 		return json({ error: 'Session not found' }, { status: 404 });
 	}
 	try {
@@ -36,7 +36,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 };
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
-	if (!services().store.hasProjectSession(params.projectId, params.sessionId)) {
+	if (!services().store.hasSession(params.projectId, params.sessionId)) {
 		return json({ error: 'Session not found' }, { status: 404 });
 	}
 	try {

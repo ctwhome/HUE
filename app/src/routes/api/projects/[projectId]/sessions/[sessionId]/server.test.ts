@@ -15,9 +15,9 @@ mock.module('$lib/server/services', () => ({
 	services: () => ({
 		store: {
 			getProject: () => ({ id: 'project-1', rootPath: '/work/hue' }),
-			hasProjectSession: () => associated,
+			hasSession: () => associated,
 			getSessionSnapshot: () => snapshot,
-			upsertProjectSession: (_projectId: string, session: typeof forked) => (storedFork = session)
+			upsertSession: (_projectId: string, session: typeof forked) => (storedFork = session)
 		},
 		runtime: {
 			loadTranscript: async () => {
