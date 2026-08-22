@@ -5,6 +5,7 @@
 	import { Circle } from 'lucide-svelte';
 	import { formatElapsed, isTurnBusy } from '$lib';
 	import { automaticSessionIcon } from '$lib/icon';
+	import { applyPreferences, readPreferences } from '$lib/preferences';
 	import { createVoiceCall } from '$lib/voice/voice-call.svelte';
 	import GlobalNavigation, { type GlobalView } from './GlobalNavigation.svelte';
 	import HermesPanel from './HermesPanel.svelte';
@@ -142,6 +143,7 @@
 	const renderMarkdown = (text: string) => sanitizeHtml(marked.parse(text, { async: false }));
 
 	onMount(async () => {
+		applyPreferences(document.documentElement, readPreferences(localStorage));
 		elapsedTimer = setInterval(() => (now = Date.now()), 1000);
 		await navigation.restoreSelection();
 	});
@@ -183,6 +185,10 @@
 			view={globalView}
 			{commands}
 			onview={(view) => (globalView = view)}
+			oncommand={(command) => {
+				globalView = null;
+				void messageState.sendText(`/${command.name}`);
+			}}
 		/>{/if}
 	{#if navigation.mobileDrawer}<button
 			class="drawer-backdrop"

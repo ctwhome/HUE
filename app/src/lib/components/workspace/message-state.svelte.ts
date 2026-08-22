@@ -1,6 +1,7 @@
 import { tick } from 'svelte';
 import { applySessionEvents, isTurnBusy, runSingleFlight } from '$lib';
 import type { ImageAttachment } from '$lib/message-content';
+import { shouldSendMessage } from '$lib/preferences';
 import type { WorkspaceNavigation } from './navigation.svelte';
 import type { SessionState } from './session-state.svelte';
 import type { TranscriptFollow } from './transcript-follow.svelte';
@@ -345,7 +346,12 @@ export class MessageState {
 			this.chooseCommand(matches[this.commandIndex] ?? matches[0]);
 			return;
 		}
-		if (event.key === 'Enter' && !event.shiftKey) {
+		if (
+			shouldSendMessage(
+				event,
+				document.documentElement.dataset.sendKey === 'mod-enter' ? 'mod-enter' : 'enter'
+			)
+		) {
 			event.preventDefault();
 			(event.currentTarget as HTMLTextAreaElement).form?.requestSubmit();
 		}

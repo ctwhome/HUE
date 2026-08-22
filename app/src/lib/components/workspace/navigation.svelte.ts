@@ -1,5 +1,3 @@
-import { replaceState } from '$app/navigation';
-import { page } from '$app/state';
 import { tick } from 'svelte';
 import { automaticSessionIcon } from '$lib/icon';
 import { isCurrentSessionRequest, isCurrentTabRequest } from '$lib';
@@ -78,7 +76,7 @@ export class WorkspaceNavigation {
 		url.searchParams.set('project', this.selectedProject?.id ?? 'none');
 		if (this.selectedSession) url.searchParams.set('session', this.selectedSession.sessionId);
 		else url.searchParams.delete('session');
-		replaceState(url, page.state);
+		history.replaceState(history.state ?? {}, '', url);
 	}
 
 	restoreSelection = async () => {
