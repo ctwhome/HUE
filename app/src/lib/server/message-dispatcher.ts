@@ -1,5 +1,5 @@
 import type { HUEStore } from './store';
-import type { ImageAttachment } from '$lib/message-content';
+import type { ImageAttachment, InputAttachment } from '$lib/message-content';
 
 export type SubagentChild = {
 	index: number;
@@ -74,6 +74,7 @@ export interface PromptRuntime {
 		sessionId: string;
 		text: string;
 		images: ImageAttachment[];
+		attachments?: InputAttachment[];
 		onChunk: (text: string) => void;
 		onImage?: (image: ImageAttachment) => void;
 		onThought?: (text: string) => void;
@@ -90,6 +91,7 @@ export type MessageEnvelope = {
 	sessionId: string;
 	text: string;
 	images?: ImageAttachment[];
+	attachments?: InputAttachment[];
 };
 
 export class DeliveryUncertainError extends Error {
@@ -102,6 +104,7 @@ export class DeliveryUncertainError extends Error {
 export class MessageDispatcher {
 	private readonly queues = new Map<string, Promise<void>>();
 	private readonly recovering = new Set<string>();
+	private readonly turnAttachments = new Map<string, InputAttachment[]>();
 	private readonly interactions = new Map<
 		string,
 		{
@@ -128,23 +131,48 @@ export class MessageDispatcher {
 	submit(envelope: MessageEnvelope) {
 		const accepted = this.store.acceptMessage(envelope);
 		if (accepted.duplicate) return accepted;
+		if (envelope.attachments?.length) this.turnAttachments.set(envelope.id, envelope.attachments);
 
 		this.enqueue(envelope);
 		return accepted;
 	}
 
+	updateQueuedMessage(id: string, input: Parameters<HUEStore['updateQueuedMessage']>[1]) {
+		if (input.attachments === undefined && !this.turnAttachments.has(id)) {
+			throw new Error('Attachments unavailable after restart; reattach required');
+		}
+		const message = this.store.updateQueuedMessage(id, input);
+		if (input.attachments !== undefined) {
+			input.attachments.length
+				? this.turnAttachments.set(id, input.attachments)
+				: this.turnAttachments.delete(id);
+		}
+		return message;
+	}
+
 	private enqueue(envelope: MessageEnvelope, resumeCwd?: string) {
 		if (this.recovering.has(envelope.id)) return;
 		this.recovering.add(envelope.id);
-		const preceding = this.queues.get(envelope.sessionId) ?? Promise.resolve();
-		const pending = preceding.then(() => this.process(envelope, resumeCwd));
-		this.queues.set(envelope.sessionId, pending);
+		const pending = this.withSessionLock(envelope.sessionId, () =>
+			this.process(envelope, resumeCwd)
+		);
 		void pending.finally(() => {
 			this.recovering.delete(envelope.id);
-			if (this.queues.get(envelope.sessionId) === pending) {
-				this.queues.delete(envelope.sessionId);
-			}
 		});
+	}
+
+	withSessionLock<T>(sessionId: string, operation: () => Promise<T> | T): Promise<T> {
+		const preceding = this.queues.get(sessionId) ?? Promise.resolve();
+		const pending = preceding.then(operation);
+		const tail = pending.then(
+			() => undefined,
+			() => undefined
+		);
+		this.queues.set(sessionId, tail);
+		void tail.finally(() => {
+			if (this.queues.get(sessionId) === tail) this.queues.delete(sessionId);
+		});
+		return pending;
 	}
 
 	async whenIdle(sessionId: string): Promise<void> {
@@ -242,10 +270,19 @@ export class MessageDispatcher {
 
 	private async process(envelope: MessageEnvelope, resumeCwd?: string): Promise<void> {
 		try {
-			if (resumeCwd) await this.runtime.resumeSession(resumeCwd, envelope.sessionId);
 			const queued = this.store.getMessage(envelope.id);
 			if (!queued || queued.status !== 'queued') return;
-			const current = { ...envelope, text: queued.text, images: queued.images };
+			const attachments = this.turnAttachments.get(envelope.id);
+			if (queued.attachments.length && !attachments?.length) {
+				throw new Error('Attachments unavailable after restart; reattach required');
+			}
+			if (resumeCwd) await this.runtime.resumeSession(resumeCwd, envelope.sessionId);
+			const current = {
+				...envelope,
+				text: queued.text,
+				images: queued.images,
+				attachments: attachments ?? []
+			};
 			this.store.transitionMessage(current.id, 'running', {
 				messageId: envelope.id
 			});
@@ -253,6 +290,7 @@ export class MessageDispatcher {
 				sessionId: current.sessionId,
 				text: current.text,
 				images: current.images ?? [],
+				attachments: current.attachments ?? [],
 				onChunk: (text) => {
 					this.store.appendEvent(envelope.projectId, envelope.sessionId, 'agent.chunk', {
 						messageId: envelope.id,
@@ -307,6 +345,8 @@ export class MessageDispatcher {
 				messageId: envelope.id,
 				error: message
 			});
+		} finally {
+			this.turnAttachments.delete(envelope.id);
 		}
 	}
 }

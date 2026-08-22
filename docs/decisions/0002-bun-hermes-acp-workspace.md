@@ -91,6 +91,14 @@ Minimal upstream Hermes handoff:
 
 This change belongs in Hermes Agent, not HUE. HUE must keep its capability gate after upstream support lands because older or alternate ACP agents may still omit the bridge.
 
+### Issue 65 capability and file boundaries
+
+Installed Hermes Agent v0.20.5 reads ACP `resource_link` content only from local file paths or `file://` URIs. HUE therefore stages validated non-image bytes in a private per-turn temporary directory, deletes it after every terminal prompt outcome, and persists only attachment metadata. Reloaded metadata is explicitly unavailable until reattached.
+
+Current ACP exposes full-Session `session/fork`, but no selected-message fork, Session import, authoritative model cost, or compression-state seam. HUE labels these controls unavailable and must not substitute full-Session duplication or inferred usage. Revisit only after Hermes advertises and proves matching ACP behavior.
+
+HUE verifies stable signatures for PDF, Office/ZIP, gzip, tar, 7z, supported images, MP3/WAV/Ogg/M4A, MP4/WebM, and QuickTime. Safe text/code uses strict UTF-8 and NUL rejection. Formats without stable signatures remain unsupported rather than accepted by extension alone.
+
 ## Revisit triggers
 
 - Hermes ACP cannot expose a required Session capability safely.
