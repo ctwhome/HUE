@@ -29,6 +29,19 @@ class RecordingRuntime implements PromptRuntime {
 		input.onChunk('Complete ');
 		input.onImage?.({ name: 'Hermes image', mimeType: 'image/png', data: 'aGVsbG8=' });
 		input.onThought?.('Checking files.');
+		input.onTool?.({
+			id: 'tool-1',
+			name: 'read_file',
+			title: 'Read file',
+			kind: 'read',
+			status: 'completed',
+			args: { path: 'README.md' },
+			result: 'Done',
+			startedAt: 1,
+			completedAt: 3,
+			durationMs: 2
+		});
+		input.onPlan?.([{ content: 'Inspect files', priority: 'high', status: 'completed' }]);
 		input.onSubagent?.({
 			id: 'delegate-1',
 			title: '1 subagent',
@@ -138,6 +151,58 @@ describe('MessageDispatcher', () => {
 		store.close();
 	});
 
+	it('restart atomically cancels every interrupted interaction before replay rejects stale answers', () => {
+		const store = makeStore();
+		store.acceptMessage({
+			id: 'running',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Wait for user input'
+		});
+		store.updateMessageStatus('running', 'running');
+		store.appendEvent('hue', 'session-1', 'agent.permission', {
+			id: 'permission-1',
+			messageId: 'running',
+			status: 'pending'
+		});
+		store.appendEvent('hue', 'session-1', 'agent.clarify', {
+			id: 'clarify-1',
+			messageId: 'running',
+			status: 'pending'
+		});
+
+		const restarted = new MessageDispatcher(store, new RecordingRuntime());
+		const terminalEvents = store
+			.listEvents('hue', 'session-1')
+			.filter((event) =>
+				['agent.permission', 'agent.clarify', 'message.unknown'].includes(event.type)
+			)
+			.slice(-3);
+
+		expect(terminalEvents.map(({ type, payload }) => [type, payload.status])).toEqual([
+			['agent.permission', 'cancelled'],
+			['agent.clarify', 'cancelled'],
+			['message.unknown', undefined]
+		]);
+		expect(store.getSessionSnapshot('hue', 'session-1').activeTurn).toMatchObject({
+			messageId: 'running',
+			status: 'unknown'
+		});
+		expect(
+			restarted.resolveInteraction('hue', 'session-1', 'permission-1', {
+				kind: 'permission',
+				optionId: 'allow_once'
+			})
+		).toBe(false);
+		expect(
+			restarted.resolveInteraction('hue', 'session-1', 'clarify-1', {
+				kind: 'clarify',
+				action: 'cancel'
+			})
+		).toBe(false);
+		store.close();
+	});
+
 	it('records a failed recovered turn when Hermes cannot resume it', async () => {
 		const store = makeStore();
 		store.acceptMessage({
@@ -241,6 +306,239 @@ describe('MessageDispatcher', () => {
 				children: [{ goal: 'Inspect files', status: 'completed', result: 'Found it' }]
 			}
 		});
+		store.close();
+	});
+
+	it('persists redacted tool chronology and current Hermes plan', async () => {
+		const store = makeStore();
+		const dispatcher = new MessageDispatcher(store, new RecordingRuntime());
+
+		dispatcher.submit({ id: 'msg-1', projectId: 'hue', sessionId: 'session-1', text: 'Inspect' });
+		await dispatcher.whenIdle('session-1');
+
+		expect(store.listEvents('hue', 'session-1')).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					type: 'agent.tool',
+					payload: expect.objectContaining({ messageId: 'msg-1', id: 'tool-1' })
+				}),
+				expect.objectContaining({
+					type: 'agent.plan',
+					payload: {
+						messageId: 'msg-1',
+						entries: [{ content: 'Inspect files', priority: 'high', status: 'completed' }]
+					}
+				})
+			])
+		);
+		store.close();
+	});
+
+	it('keeps approval pending across event replay until explicit allowed response', async () => {
+		const store = makeStore();
+		const runtime = new RecordingRuntime();
+		let outcome: unknown;
+		runtime.prompt = async (input) => {
+			outcome = await input.onInteraction?.({
+				kind: 'permission',
+				id: 'perm-1',
+				sessionId: input.sessionId,
+				toolCall: {
+					id: 'perm-1',
+					name: 'terminal',
+					title: 'Run command',
+					kind: 'execute',
+					status: 'pending',
+					args: { command: 'pwd' },
+					startedAt: 1
+				},
+				options: [
+					{ optionId: 'once', name: 'Allow once', kind: 'allow_once' },
+					{ optionId: 'session', name: 'Allow for session', kind: 'allow_always' },
+					{ optionId: 'deny', name: 'Deny', kind: 'reject_once' }
+				]
+			});
+		};
+		const dispatcher = new MessageDispatcher(store, runtime);
+		dispatcher.submit({ id: 'msg-1', projectId: 'hue', sessionId: 'session-1', text: 'Run' });
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(store.listEvents('hue', 'session-1')).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					type: 'agent.permission',
+					payload: expect.objectContaining({ id: 'perm-1', status: 'pending' })
+				})
+			])
+		);
+		expect(
+			dispatcher.resolveInteraction('hue', 'session-1', 'perm-1', {
+				kind: 'permission',
+				optionId: 'not-offered'
+			})
+		).toBe(false);
+		expect(
+			dispatcher.resolveInteraction('hue', 'session-1', 'perm-1', {
+				kind: 'permission',
+				optionId: 'session'
+			})
+		).toBe(true);
+		await dispatcher.whenIdle('session-1');
+
+		expect(outcome).toEqual({ outcome: { outcome: 'selected', optionId: 'session' } });
+		expect(store.listEvents('hue', 'session-1').at(-2)).toMatchObject({
+			type: 'agent.permission',
+			payload: { id: 'perm-1', messageId: 'msg-1', status: 'resolved', decision: 'session' }
+		});
+		store.close();
+	});
+
+	it('rejects oversized clarify answers and preserves message chronology on resolution', async () => {
+		const store = makeStore();
+		const runtime = new RecordingRuntime();
+		let outcome: unknown;
+		runtime.prompt = async (input) => {
+			outcome = await input.onInteraction?.({
+				kind: 'clarify',
+				id: 'clarify-1',
+				sessionId: input.sessionId,
+				message: 'Add context',
+				fields: [{ name: 'note', label: 'Note', control: 'text', required: true }]
+			});
+		};
+		const dispatcher = new MessageDispatcher(store, runtime);
+		dispatcher.submit({ id: 'msg-1', projectId: 'hue', sessionId: 'session-1', text: 'Ask' });
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(
+			dispatcher.resolveInteraction('hue', 'session-1', 'clarify-1', {
+				kind: 'clarify',
+				action: 'accept'
+			} as never)
+		).toBe(false);
+		expect(
+			dispatcher.resolveInteraction('hue', 'session-1', 'clarify-1', {
+				kind: 'clarify',
+				action: 'accept',
+				content: { note: 'x'.repeat(10_001) }
+			})
+		).toBe(false);
+		expect(
+			dispatcher.resolveInteraction('hue', 'session-1', 'clarify-1', {
+				kind: 'clarify',
+				action: 'accept',
+				content: { note: 'Safe context' }
+			})
+		).toBe(true);
+		await dispatcher.whenIdle('session-1');
+
+		expect(outcome).toEqual({ action: 'accept', content: { note: 'Safe context' } });
+		expect(store.listEvents('hue', 'session-1').at(-2)).toMatchObject({
+			type: 'agent.clarify',
+			payload: { id: 'clarify-1', messageId: 'msg-1', status: 'resolved' }
+		});
+		store.close();
+	});
+
+	it('isolates same-id permission requests by Session and rejects malformed replies', async () => {
+		const store = makeStore();
+		store.upsertSession('hue', { sessionId: 'session-2', cwd: '/work/hue' });
+		const runtime = new RecordingRuntime();
+		const outcomes = new Map<string, unknown>();
+		runtime.prompt = async (input) => {
+			outcomes.set(
+				input.sessionId,
+				await input.onInteraction?.({
+					kind: 'permission',
+					id: 'shared-tool-id',
+					sessionId: input.sessionId,
+					toolCall: {
+						id: 'shared-tool-id',
+						name: 'terminal',
+						title: 'Run command',
+						kind: 'execute',
+						status: 'pending',
+						startedAt: 1
+					},
+					options: [{ optionId: 'once', name: 'Allow once', kind: 'allow_once' }]
+				})
+			);
+		};
+		const dispatcher = new MessageDispatcher(store, runtime);
+		dispatcher.submit({ id: 'msg-1', projectId: 'hue', sessionId: 'session-1', text: 'One' });
+		dispatcher.submit({ id: 'msg-2', projectId: 'hue', sessionId: 'session-2', text: 'Two' });
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(
+			dispatcher.resolveInteraction('hue', 'session-1', 'shared-tool-id', {
+				kind: 'clarify',
+				action: 'accept'
+			} as never)
+		).toBe(false);
+		expect(
+			dispatcher.resolveInteraction('hue', 'session-1', 'shared-tool-id', {
+				kind: 'permission',
+				optionId: 'once'
+			})
+		).toBe(true);
+		expect(
+			dispatcher.resolveInteraction('hue', 'session-2', 'shared-tool-id', {
+				kind: 'permission',
+				optionId: 'once'
+			})
+		).toBe(true);
+		await Promise.all([dispatcher.whenIdle('session-1'), dispatcher.whenIdle('session-2')]);
+
+		expect(outcomes.get('session-1')).toEqual({
+			outcome: { outcome: 'selected', optionId: 'once' }
+		});
+		expect(outcomes.get('session-2')).toEqual({
+			outcome: { outcome: 'selected', optionId: 'once' }
+		});
+		store.close();
+	});
+
+	it('cancels unresolved authority prompts when ACP delivery fails', async () => {
+		const store = makeStore();
+		const runtime = new RecordingRuntime();
+		runtime.prompt = async (input) => {
+			void input.onInteraction?.({
+				kind: 'permission',
+				id: 'stale-permission',
+				sessionId: input.sessionId,
+				toolCall: {
+					id: 'stale-permission',
+					name: 'terminal',
+					title: 'Run command',
+					kind: 'execute',
+					status: 'pending',
+					startedAt: 1
+				},
+				options: [{ optionId: 'once', name: 'Allow once', kind: 'allow_once' }]
+			});
+			throw new DeliveryUncertainError('ACP disconnected before acknowledgement');
+		};
+		const dispatcher = new MessageDispatcher(store, runtime);
+		dispatcher.submit({ id: 'msg-1', projectId: 'hue', sessionId: 'session-1', text: 'Run' });
+		await dispatcher.whenIdle('session-1');
+
+		expect(
+			dispatcher.resolveInteraction('hue', 'session-1', 'stale-permission', {
+				kind: 'permission',
+				optionId: 'once'
+			})
+		).toBe(false);
+		expect(store.listEvents('hue', 'session-1')).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					type: 'agent.permission',
+					payload: expect.objectContaining({ id: 'stale-permission', status: 'cancelled' })
+				})
+			])
+		);
 		store.close();
 	});
 

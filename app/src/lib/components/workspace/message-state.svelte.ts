@@ -1,5 +1,5 @@
 import { tick } from 'svelte';
-import { applySessionEvents, isTurnBusy, runSingleFlight } from '$lib';
+import { isTurnBusy, runSingleFlight } from '$lib';
 import type { ImageAttachment } from '$lib/message-content';
 import type { WorkspaceNavigation } from './navigation.svelte';
 import type { SessionState } from './session-state.svelte';
@@ -15,7 +15,7 @@ import type {
 	SessionEvent,
 	TranscriptMessage
 } from './types';
-
+import { copyCode } from './copy-code';
 type MessageStateOptions = {
 	api: Api;
 	getProject: () => Project | null;
@@ -29,9 +29,7 @@ type MessageStateOptions = {
 	setError: (message: string) => void;
 	setLoading: (loading: boolean) => void;
 };
-
 export class ApiError extends Error {}
-
 export class MessageState {
 	composer = $state('');
 	composerElement = $state<HTMLTextAreaElement>();
@@ -44,13 +42,10 @@ export class MessageState {
 	stopping = $state(false);
 	private pollTimer: ReturnType<typeof setInterval> | null = null;
 	private pollFlight: { current: Promise<void> | null } = { current: null };
-
 	constructor(private options: MessageStateOptions) {}
-
 	private sessionPath(sessionId: string, suffix = '') {
 		return this.options.getNavigation().sessionApiPath(sessionId, suffix);
 	}
-
 	clear = () => {
 		this.pendingEnvelope = null;
 		this.editingQueuedMessageId = '';
@@ -135,7 +130,36 @@ export class MessageState {
 			this.messageNotice = 'Copy unavailable';
 		}
 	};
+	copyCode = (code: string) => copyCode(code, (message) => (this.messageNotice = message));
 
+	respondToInteraction = async (
+		interactionId: string,
+		response:
+			| { kind: 'permission'; optionId: string }
+			| { kind: 'clarify'; action: 'accept'; content: Record<string, string | string[]> }
+			| { kind: 'clarify'; action: 'cancel' }
+	) => {
+		const navigation = this.options.getNavigation();
+		const selection = navigation.captureSessionSelection();
+		if (!selection) return;
+		const interactionPath = this.sessionPath(selection.sessionId, '/interactions');
+		try {
+			await this.options.api(interactionPath, {
+				method: 'POST',
+				body: JSON.stringify({ interactionId, response })
+			});
+			this.options.session.resolveInteraction(
+				selection.projectId,
+				selection.sessionId,
+				interactionId,
+				response.kind,
+				response.kind === 'clarify' && response.action === 'cancel' ? 'cancelled' : 'resolved',
+				navigation.isCurrentSessionSelection(selection)
+			);
+		} catch (cause) {
+			if (navigation.isCurrentSessionSelection(selection)) this.report(cause);
+		}
+	};
 	editMessage = async (message: TranscriptMessage) => {
 		this.composer = message.text;
 		this.images = [...(message.images ?? [])];
@@ -143,7 +167,6 @@ export class MessageState {
 		await tick();
 		this.composerElement?.focus();
 	};
-
 	forkSession = async () => {
 		const selectedSession = this.options.getSession();
 		if (!selectedSession || isTurnBusy(this.options.session.delivery)) return;
@@ -241,6 +264,17 @@ export class MessageState {
 			sessionState.transcript = [
 				...sessionState.transcript,
 				{ role: 'user', text, images: envelope.images }
+			];
+			sessionState.timeline = [
+				...sessionState.timeline,
+				{
+					sequence: Number.MAX_SAFE_INTEGER,
+					kind: 'message',
+					role: 'user',
+					messageId: envelope.id,
+					text,
+					images: envelope.images
+				}
 			];
 			await this.options.transcriptFollow.scrollToLatest();
 			sessionState.delivery = 'accepted';
@@ -425,28 +459,7 @@ export class MessageState {
 					return;
 				const state = this.options.session;
 				this.options.applyVoiceEvents(body.events, state.activeMessageId);
-				const next = applySessionEvents(
-					{
-						cursor: state.eventCursor,
-						activeMessageId: state.activeMessageId,
-						pendingAssistant: state.pendingAssistant,
-						pendingImages: state.pendingImages,
-						pendingThought: state.pendingThought,
-						delivery: state.delivery,
-						transcript: state.transcript,
-						subagents: state.subagents
-					},
-					body.events
-				);
-				const wasBusy = isTurnBusy(state.delivery);
-				state.eventCursor = next.cursor;
-				state.pendingAssistant = next.pendingAssistant;
-				state.pendingImages = next.pendingImages ?? [];
-				state.pendingThought = next.pendingThought ?? '';
-				state.delivery = next.delivery;
-				if (wasBusy && !isTurnBusy(state.delivery)) this.options.transcriptFollow.settle();
-				state.transcript = next.transcript;
-				state.subagents = next.subagents ?? [];
+				if (state.applyEvents(body.events)) this.options.transcriptFollow.settle();
 				if (body.runtime) state.runtime = { ...state.runtime, ...body.runtime };
 				if (!isTurnBusy(state.delivery)) {
 					this.options.getNavigation().setSessionBusySince(sessionId, null);

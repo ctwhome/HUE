@@ -19,6 +19,8 @@
 		busySince?: string | null;
 		available?: boolean;
 		recovery?: string | null;
+		attention?: boolean;
+		error?: boolean;
 	};
 	type Workflow = { id: string; name: string; prompt: string; profile: string };
 	let {
@@ -141,7 +143,7 @@
 						class:active={selectedSession?.sessionId === session.sessionId}
 						title={session.available === false
 							? session.recovery
-							: `Open ${session.title || 'Untitled session'}`}
+							: `${session.error ? 'Failed — ' : session.attention ? 'Needs attention — ' : ''}Open ${session.title || 'Untitled session'}`}
 						disabled={session.available === false}
 						onclick={() => onopen(session)}
 					>
@@ -170,6 +172,13 @@
 										: 'New session'}</small
 							>
 						</div>
+						{#if session.error}<span class="session-indicator error" aria-label="Session failed"
+								>!</span
+							>
+						{:else if session.attention}<span
+								class="session-indicator attention"
+								aria-label="Session needs attention">•</span
+							>{/if}
 					</button>
 					{#if session.available !== false}<button
 							class="session-edit absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
