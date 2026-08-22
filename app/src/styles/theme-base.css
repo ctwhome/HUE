@@ -1,0 +1,96 @@
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+}
+
+:root {
+	font-family:
+		Inter,
+		ui-sans-serif,
+		system-ui,
+		-apple-system,
+		BlinkMacSystemFont,
+		'Segoe UI',
+		sans-serif;
+	font-synthesis: none;
+	--background: #0b0d11;
+	--foreground: #e7e9ef;
+	--card: #11141a;
+	--card-foreground: #e7e9ef;
+	--primary: #7c5ce0;
+	--primary-foreground: #ffffff;
+	--secondary: #1b1f27;
+	--secondary-foreground: #e7e9ef;
+	--muted: #20242d;
+	--muted-foreground: #89909e;
+	--accent: #242833;
+	--accent-foreground: #f4f5f7;
+	--destructive: #ff8f9d;
+	--border: #2b303a;
+	--input: #303642;
+	--ring: #8b7bc4;
+}
+
+* {
+	box-sizing: border-box;
+	scrollbar-color: #424956 transparent;
+	scrollbar-width: thin;
+}
+
+body {
+	margin: 0;
+	min-width: 320px;
+	min-height: 100vh;
+	background: radial-gradient(circle at 70% -20%, #241a3b 0, transparent 35%), var(--background);
+}
+
+button,
+input,
+textarea,
+select {
+	font: inherit;
+}
+
+button {
+	color: inherit;
+	cursor: pointer;
+}
+
+button:disabled {
+	cursor: default;
+}
+
+.app-tooltip {
+	position: fixed;
+	z-index: 100;
+	max-width: min(280px, calc(100vw - 16px));
+	padding: 6px 9px;
+	border: 1px solid var(--border);
+	border-radius: 7px;
+	background: #20242c;
+	box-shadow: 0 8px 24px #0008;
+	color: #f4f5f7;
+	font-size: 0.75rem;
+	font-weight: 500;
+	line-height: 1.3;
+	pointer-events: none;
+}
+
+.mobile-navigation,
+.drawer-backdrop {
+	display: none;
+}

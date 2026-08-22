@@ -1,0 +1,202 @@
+.add-project-dialog[open] {
+	display: flex;
+	flex-direction: column;
+}
+
+.add-project-dialog > header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 24px;
+	padding-right: 34px;
+	margin-bottom: 16px;
+}
+
+.add-project-dialog h2,
+.add-project-dialog p {
+	margin: 0;
+}
+
+.add-project-dialog header p,
+.add-project-dialog legend,
+.add-project-dialog label span {
+	color: var(--muted-foreground);
+	font-size: 0.8rem;
+}
+
+.add-project-dialog > .icon-button {
+	position: absolute;
+	top: 12px;
+	right: 12px;
+}
+
+.add-project-dialog form,
+.add-project-dialog form > label {
+	display: grid;
+	gap: 8px;
+}
+
+.add-project-dialog input:not([type='checkbox']),
+.workflow-form input,
+.workflow-form textarea {
+	width: 100%;
+	border: 1px solid var(--input);
+	border-radius: 8px;
+	background: var(--background);
+	padding: 9px 10px;
+	color: var(--foreground);
+	outline: none;
+}
+
+.add-project-dialog input:focus,
+.workflow-form input:focus,
+.workflow-form textarea:focus {
+	box-shadow: 0 0 0 2px var(--ring);
+}
+
+.add-project-dialog button:not(.icon-button),
+.project-icon-upload label,
+.workflow-form button,
+.workflow-card button {
+	min-height: 38px;
+	border-radius: 8px;
+	background: var(--secondary);
+	padding: 8px 11px;
+}
+
+.project-icon-upload label {
+	display: grid;
+	place-items: center;
+	cursor: pointer;
+}
+
+.project-icon-upload input,
+.attach-button input {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.project-icon-preview img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.emoji-picker-host emoji-picker {
+	width: 100%;
+	height: 320px;
+	--background: var(--background);
+	--border-color: var(--border);
+	--border-radius: 12px;
+	--button-active-background: #49377d;
+	--button-hover-background: var(--accent);
+	--indicator-color: #a78bfa;
+	--input-border-color: var(--input);
+	--input-font-color: var(--foreground);
+	--input-placeholder-color: var(--muted-foreground);
+	--outline-color: #a78bfa;
+}
+
+.context-panel > header {
+	display: flex;
+	min-height: 76px;
+	align-items: center;
+	justify-content: space-between;
+	border-bottom: 1px solid var(--border);
+	padding: 14px 18px;
+}
+.brand strong,
+.brand small {
+	display: block;
+}
+.brand strong {
+	font-size: 0.88rem;
+	letter-spacing: 0.14em;
+}
+.brand small {
+	margin-top: 2px;
+	color: var(--muted-foreground);
+	font-size: 0.68rem;
+	white-space: nowrap;
+}
+
+.context-panel header small,
+.session-header small,
+.item-list small,
+.workflow-card p {
+	color: var(--muted-foreground);
+}
+
+.tabs button {
+	border-radius: 8px;
+	padding: 8px;
+	color: var(--muted-foreground);
+}
+
+.tabs button.active {
+	background: var(--accent);
+	color: var(--foreground);
+}
+
+.project-row:hover .project-edit,
+.project-select.active + .project-edit,
+.session-row:hover .session-edit,
+.session-select.active + .session-edit {
+	opacity: 1;
+}
+
+.session-row-title strong {
+	min-width: 0;
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.item-list {
+	overflow-x: hidden;
+}
+
+.workflow-card > div {
+	min-width: 0;
+	flex: 1;
+}
+
+.workflow-card p {
+	max-height: 3.3em;
+	overflow: hidden;
+	font-size: 0.76rem;
+}
+
+.project-workbench {
+	grid-template-columns: minmax(0, 1fr) minmax(240px, 30%);
+	grid-template-rows: minmax(250px, 0.82fr) minmax(250px, 1fr);
+	grid-template-areas: 'browser repository' 'terminal worktrees';
+}
+
+.browser-panel {
+	grid-area: browser;
+}
+.terminal-panel {
+	grid-area: terminal;
+}
+.repository-panel {
+	grid-area: repository;
+}
+.worktrees-panel {
+	grid-area: worktrees;
+}
+.browser-tab.active {
+	background: var(--accent);
+	color: var(--foreground);
+}
+.terminal-tab.active {
+	border-bottom: 2px solid #38a7ff;
+	color: var(--foreground);
+}
+.terminal-screen .xterm,
+.terminal-screen .xterm-screen {
+	height: 100%;
+}
