@@ -17,4 +17,11 @@
 			<pre class="overflow-auto">{JSON.stringify(info.capabilities, null, 2)}</pre>
 		</details>
 	{/if}
+	<article class={`${card} col-span-full grid gap-1`}>
+		<small class="text-muted-foreground">Clarify elicitation</small>
+		<strong>{info.clarify?.status ?? 'unsupported'}</strong>
+		{#if info.clarify?.reason}<span class="text-sm text-muted-foreground"
+				>{info.clarify.reason}</span
+			>{/if}
+	</article>
 </div>

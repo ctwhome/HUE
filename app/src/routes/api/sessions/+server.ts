@@ -12,6 +12,7 @@ export const GET: RequestHandler = async () => {
 		for (const session of sessions) services().store.upsertSession(null, session);
 		services().dispatcher.recover();
 		const busyStarts = services().store.getBusySessionStarts(null);
+		const indicators = services().store.getSessionIndicators(null);
 		return json({
 			sessions: sessions.map((session) => {
 				const customIcon = services().store.getSession(null, session.sessionId)?.icon ?? null;
@@ -19,7 +20,9 @@ export const GET: RequestHandler = async () => {
 					...session,
 					icon: customIcon ?? automaticSessionIcon(session.title),
 					customIcon,
-					busySince: busyStarts[session.sessionId] ?? null
+					busySince: busyStarts[session.sessionId] ?? null,
+					attention: indicators[session.sessionId]?.attention ?? false,
+					error: indicators[session.sessionId]?.error ?? false
 				};
 			})
 		});

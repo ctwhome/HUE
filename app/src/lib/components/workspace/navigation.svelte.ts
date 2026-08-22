@@ -1,5 +1,3 @@
-import { replaceState } from '$app/navigation';
-import { page } from '$app/state';
 import { tick } from 'svelte';
 import { automaticSessionIcon } from '$lib/icon';
 import { isCurrentSessionRequest, isCurrentTabRequest } from '$lib';
@@ -73,12 +71,33 @@ export class WorkspaceNavigation {
 		return `${base}${sessionId ? `/${sessionId}` : ''}${suffix}`;
 	}
 
+	captureSessionSelection() {
+		if (!this.selectedSession) return null;
+		return {
+			generation: this.sessionRequestGeneration,
+			projectId: this.selectedProject?.id ?? null,
+			sessionId: this.selectedSession.sessionId
+		};
+	}
+
+	isCurrentSessionSelection(selection: {
+		generation: number;
+		projectId: string | null;
+		sessionId: string;
+	}) {
+		return (
+			selection.generation === this.sessionRequestGeneration &&
+			selection.projectId === (this.selectedProject?.id ?? null) &&
+			selection.sessionId === this.selectedSession?.sessionId
+		);
+	}
+
 	persistSelection() {
 		const url = new URL(window.location.href);
 		url.searchParams.set('project', this.selectedProject?.id ?? 'none');
 		if (this.selectedSession) url.searchParams.set('session', this.selectedSession.sessionId);
 		else url.searchParams.delete('session');
-		replaceState(url, page.state);
+		window.history.replaceState(window.history.state, '', url);
 	}
 
 	restoreSelection = async () => {

@@ -240,7 +240,7 @@ test('opens project creation from the Projects heading and dismisses it with Esc
 	const browserErrors: string[] = [];
 	let submittedProject: { name: string; rootPath: string } | undefined;
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
-	page.on('pageerror', (error) => browserErrors.push(error.stack ?? error.message));
+	page.on('pageerror', (error) => browserErrors.push(error.message));
 	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
 	await page.route(/\/api\/directories/, (route) => {
 		const url = new URL(route.request().url());
@@ -966,6 +966,8 @@ test('sends one complete envelope and renders streamed completion', async ({ pag
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 
 	await expect(page.getByText('Hermes reasoning')).toBeVisible();
+	await expect(page.getByText('Checking the request before answering.')).toBeHidden();
+	await page.getByText('Hermes reasoning').click();
 	await expect(page.getByText('Checking the request before answering.')).toBeVisible();
 	const assistant = page.locator('.transcript article.assistant');
 	await expect(assistant.locator('strong')).toHaveText('Done');
@@ -1725,6 +1727,372 @@ test('shows durable delegate_task children as a collapsible status and result tr
 	expect(browserErrors).toEqual([]);
 });
 
+test('renders durable ACP activity, todo, approval, clarify, timestamps, and code feedback', async ({
+	page
+}) => {
+	const responses: unknown[] = [];
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({
+			json: {
+				sessions: [
+					{
+						sessionId: 'session-error',
+						cwd: '/work/hue',
+						title: 'Failed background task',
+						attention: false,
+						error: true
+					},
+					{
+						sessionId: 'session-interactions',
+						cwd: '/work/hue',
+						title: 'Interactions',
+						attention: true,
+						error: false
+					}
+				]
+			}
+		})
+	);
+	await page.route(/\/sessions\/session-interactions$/, (route) =>
+		route.fulfill({
+			json: {
+				transcript: [
+					{ role: 'user', text: 'Inspect safely' },
+					{ role: 'assistant', text: 'Before tool.```ts\nconst safe = true;\n```' }
+				],
+				messages: [
+					{
+						id: 'msg-1',
+						status: 'running',
+						text: 'Inspect safely',
+						images: [],
+						createdAt: '2026-08-22T09:59:59.000Z'
+					}
+				],
+				runtime: { profile: 'default', clarify: { status: 'available' } },
+				cursor: 10,
+				activeTurn: {
+					messageId: 'msg-1',
+					status: 'running',
+					thought: 'Private published reasoning',
+					output: '',
+					error: null
+				},
+				events: [
+					{
+						sequence: 1,
+						type: 'message.accepted',
+						createdAt: '2026-08-22T09:59:59.050Z',
+						payload: { messageId: 'msg-1' }
+					},
+					{
+						sequence: 2,
+						type: 'agent.chunk',
+						createdAt: '2026-08-22T10:00:00.000Z',
+						payload: { messageId: 'msg-1', text: 'Before tool.' }
+					},
+					{
+						sequence: 3,
+						type: 'agent.tool',
+						createdAt: '2026-08-22T10:00:00.000Z',
+						payload: {
+							messageId: 'msg-1',
+							id: 'tool-1',
+							name: 'read_file',
+							title: 'Read configuration',
+							status: 'completed',
+							args: { path: 'config.json', apiKey: '[REDACTED]' },
+							result: { ok: true },
+							durationMs: 425
+						}
+					},
+					{
+						sequence: 4,
+						type: 'agent.tool',
+						payload: {
+							messageId: 'msg-1',
+							id: 'tool-1',
+							name: 'read_file',
+							title: 'Read configuration',
+							status: 'completed',
+							result: { ok: true },
+							durationMs: 425
+						}
+					},
+					{
+						sequence: 5,
+						type: 'agent.chunk',
+						payload: { messageId: 'msg-1', text: '```ts\nconst safe = true;\n```' }
+					},
+					{
+						sequence: 6,
+						type: 'agent.plan',
+						payload: {
+							messageId: 'msg-1',
+							entries: [
+								{ content: 'Inspect files', priority: 'high', status: 'completed' },
+								{ content: 'Run checks', priority: 'medium', status: 'in_progress' }
+							]
+						}
+					},
+					{
+						sequence: 7,
+						type: 'agent.permission',
+						createdAt: '2026-08-22T10:00:01.000Z',
+						payload: {
+							messageId: 'msg-1',
+							id: 'perm-1',
+							status: 'pending',
+							toolCall: { title: 'Execute test suite', args: { command: 'bun test' } },
+							options: [
+								{ optionId: 'once', name: 'Allow once', kind: 'allow_once' },
+								{ optionId: 'session', name: 'Allow for session', kind: 'allow_always' },
+								{ optionId: 'deny', name: 'Deny', kind: 'reject_once' }
+							]
+						}
+					},
+					{
+						sequence: 8,
+						type: 'agent.clarify',
+						createdAt: '2026-08-22T10:00:02.000Z',
+						payload: {
+							messageId: 'msg-1',
+							id: 'clarify-1',
+							status: 'pending',
+							message: 'Choose deployment',
+							fields: [
+								{
+									name: 'target',
+									label: 'Target',
+									control: 'single',
+									required: true,
+									options: [
+										{ value: 'staging', label: 'Staging' },
+										{ value: 'production', label: 'Production' }
+									]
+								},
+								{
+									name: 'checks',
+									label: 'Checks',
+									control: 'multi',
+									required: false,
+									options: [{ value: 'e2e', label: 'E2E' }]
+								},
+								{ name: 'note', label: 'Note', control: 'text', required: false }
+							]
+						}
+					},
+					{
+						sequence: 9,
+						type: 'agent.clarify',
+						createdAt: '2026-08-22T10:00:03.000Z',
+						payload: {
+							messageId: 'msg-1',
+							id: 'clarify-cancel',
+							status: 'pending',
+							message: 'Add optional detail',
+							fields: [{ name: 'detail', label: 'Detail', control: 'text', required: false }]
+						}
+					},
+					{
+						sequence: 10,
+						type: 'agent.thought',
+						payload: { messageId: 'msg-1', text: 'Private published reasoning' }
+					}
+				]
+			}
+		})
+	);
+	await page.route(/\/sessions\/session-interactions\/events\?after=10$/, (route) =>
+		route.fulfill({ json: { events: [] } })
+	);
+	await page.route(/\/sessions\/session-interactions\/interactions$/, async (route) => {
+		responses.push(await route.request().postDataJSON());
+		await route.fulfill({ json: { resolved: true } });
+	});
+
+	await addProject(page);
+	await expect(sessionButton(page, 'Failed background task')).toHaveAccessibleDescription(
+		/failed/i
+	);
+	await expect(sessionButton(page, 'Interactions')).toHaveAccessibleDescription(/attention/i);
+	await sessionButton(page, 'Interactions').click();
+	await expect(page.getByText('Hermes ACP · Clarify available')).toBeVisible();
+	expect(
+		await page
+			.locator('[data-timeline-sequence]')
+			.evaluateAll((elements) =>
+				elements.map((element) => Number(element.getAttribute('data-timeline-sequence')))
+			)
+	).toEqual([1, 2, 3, 5, 6, 7, 8, 9, 10]);
+	await expect(page.getByRole('group', { name: 'Read configuration' })).toContainText('425 ms');
+	const conversationTimes = page.locator('.transcript article time');
+	await expect(conversationTimes).toHaveCount(2);
+	await expect(conversationTimes.first()).toHaveAttribute('datetime', '2026-08-22T09:59:59.000Z');
+	await expect(conversationTimes.last()).toHaveAttribute('datetime', '2026-08-22T10:00:00.000Z');
+	for (const time of await conversationTimes.all()) {
+		await expect(time).toHaveText(/^\d{2}:\d{2}$/);
+		await expect(time).toHaveAttribute('title', /2026/);
+	}
+	const toolSummary = page
+		.getByRole('group', { name: 'Read configuration' })
+		.getByText('Read configuration');
+	await toolSummary.focus();
+	await toolSummary.press('Enter');
+	await expect(page.getByRole('group', { name: 'Read configuration' })).toContainText('[REDACTED]');
+	await expect(page.getByRole('region', { name: 'Hermes todo progress' })).toContainText('1 of 2');
+	await expect(
+		page.getByRole('group', { name: 'Permission required: Execute test suite' })
+	).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Allow once' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Deny' })).toBeVisible();
+	await page.getByRole('button', { name: 'Allow for session' }).focus();
+	await page.getByRole('button', { name: 'Allow for session' }).press('Enter');
+	const clarify = page.getByRole('group', { name: 'Clarify: Choose deployment' });
+	await clarify.getByLabel('Staging').check();
+	await clarify.getByLabel('E2E').check();
+	await clarify.getByLabel('Note').fill('Go');
+	await clarify.getByRole('button', { name: 'Submit answer' }).click();
+	await page
+		.getByRole('group', { name: 'Clarify: Add optional detail' })
+		.getByRole('button', { name: 'Cancel' })
+		.click();
+	await expect.poll(() => responses.length).toBe(3);
+	await expect(page.getByText('Private published reasoning')).toBeHidden();
+	await page.getByText('Hermes reasoning').click();
+	await expect(page.getByText('Private published reasoning')).toBeVisible();
+	await page.getByRole('button', { name: 'Copy code' }).focus();
+	await page.getByRole('button', { name: 'Copy code' }).press('Enter');
+	await expect(page.getByText('Code copied')).toBeVisible();
+
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		if (viewport.width <= 390) {
+			await expectMinimumTouchTargets(
+				page.locator('.activity-card button, .activity-card summary, .code-block button')
+			);
+		}
+	}
+});
+
+test('omits unavailable historical conversation timestamps', async ({ page }) => {
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({
+			json: { sessions: [{ sessionId: 'history', cwd: '/work/hue', title: 'History' }] }
+		})
+	);
+	await page.route(/\/sessions\/history$/, (route) =>
+		route.fulfill({
+			json: {
+				transcript: [
+					{ role: 'user', text: 'Undated message' },
+					{
+						role: 'assistant',
+						text: 'Dated message',
+						createdAt: '2026-08-22T10:00:00.000Z'
+					}
+				],
+				messages: [],
+				events: [],
+				cursor: 0,
+				activeTurn: null
+			}
+		})
+	);
+
+	await addProject(page);
+	await sessionButton(page, 'History').click();
+	const articles = page.locator('.transcript article');
+	await expect(articles).toHaveCount(2);
+	await expect(articles.first().locator('time')).toHaveCount(0);
+	await expect(articles.last().locator('time')).toHaveAttribute(
+		'datetime',
+		'2026-08-22T10:00:00.000Z'
+	);
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+	}
+});
+
+test('interaction completion stays with its captured Session across navigation', async ({
+	page
+}) => {
+	let interactionStarted!: () => void;
+	let finishInteraction!: () => void;
+	let finishOriginRefresh!: () => void;
+	const started = new Promise<void>((resolve) => (interactionStarted = resolve));
+	const interaction = new Promise<void>((resolve) => (finishInteraction = resolve));
+	const originRefresh = new Promise<void>((resolve) => (finishOriginRefresh = resolve));
+	let originLoads = 0;
+	const sessionBody = (title: string) => ({
+		transcript: [],
+		messages: [],
+		runtime: { profile: 'default' },
+		cursor: 1,
+		activeTurn: null,
+		events: [
+			{
+				sequence: 1,
+				type: 'agent.permission',
+				payload: {
+					messageId: `message-${title}`,
+					id: 'shared-interaction',
+					status: 'pending',
+					toolCall: { title },
+					options: [{ optionId: 'allow', name: `Allow ${title}`, kind: 'allow_once' }]
+				}
+			}
+		]
+	});
+
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({
+			json: {
+				sessions: [
+					{ sessionId: 'origin', cwd: '/work/hue', title: 'Origin Session' },
+					{ sessionId: 'other', cwd: '/work/hue', title: 'Other Session' }
+				]
+			}
+		})
+	);
+	await page.route(/\/sessions\/(origin|other)$/, async (route) => {
+		const sessionId = new URL(route.request().url()).pathname.split('/').at(-1);
+		if (sessionId === 'origin' && ++originLoads > 1) await originRefresh;
+		await route.fulfill({
+			json: sessionBody(sessionId === 'origin' ? 'Origin tool' : 'Other tool')
+		});
+	});
+	await page.route(/\/sessions\/origin\/interactions$/, async (route) => {
+		interactionStarted();
+		await interaction;
+		await route.fulfill({ json: { resolved: true } });
+	});
+
+	await addProject(page);
+	await sessionButton(page, 'Origin Session').click();
+	await page.getByRole('button', { name: 'Allow Origin tool' }).click();
+	await started;
+	await sessionButton(page, 'Other Session').click();
+	await expect(page.getByRole('button', { name: 'Allow Other tool' })).toBeVisible();
+
+	const completed = page.waitForResponse(/\/sessions\/origin\/interactions$/);
+	finishInteraction();
+	await completed;
+	await expect(page.getByRole('button', { name: 'Allow Other tool' })).toBeVisible();
+	await sessionButton(page, 'Origin Session').click();
+	await expect(
+		page.getByRole('group', { name: 'Permission required: Origin tool' }).getByRole('status')
+	).toHaveText('resolved');
+	await expect(page.getByRole('button', { name: 'Allow Origin tool' })).toHaveCount(0);
+	finishOriginRefresh();
+});
+
 test('shows loading beside new session without shifting the session list', async ({ page }) => {
 	let finishSessionLoad = () => {};
 	let sessionLoad = Promise.resolve();
@@ -1836,7 +2204,7 @@ test('revisits a loaded session immediately while refreshing it', async ({ page 
 test('starts a new session without the previous session output', async ({ page }) => {
 	const browserErrors: string[] = [];
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
-	page.on('pageerror', (error) => browserErrors.push(error.message));
+	page.on('pageerror', (error) => browserErrors.push(error.stack ?? error.message));
 	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
 	await page.route('**/api/projects/*/sessions', async (route) => {
 		if (route.request().method() === 'POST') {
@@ -1854,9 +2222,15 @@ test('starts a new session without the previous session output', async ({ page }
 		route.fulfill({
 			json: {
 				transcript: [],
-				messages: [],
-				events: [],
-				cursor: 0,
+				messages: [{ id: 'old-message', status: 'unknown', text: '', images: [] }],
+				events: [
+					{
+						sequence: 1,
+						type: 'agent.chunk',
+						payload: { messageId: 'old-message', text: 'Previous session wall of text' }
+					}
+				],
+				cursor: 1,
 				activeTurn: {
 					messageId: 'old-message',
 					status: 'unknown',
