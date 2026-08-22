@@ -1,23 +1,47 @@
 import { json } from '@sveltejs/kit';
+import { statSync } from 'node:fs';
 import { automaticSessionIcon } from '$lib/icon';
-import { projectBranch, services, sessionMatchesProjectRoot } from '$lib/server/services';
+import {
+	mergeProjectSessionViews,
+	projectBranch,
+	services,
+	sessionMatchesProjectRoot
+} from '$lib/server/services';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ params }) => {
 	const project = services().store.getProject(params.projectId);
 	if (!project) return json({ error: 'Project not found' }, { status: 404 });
 	try {
-		const sessions = (await services().runtime.listSessions(project.rootPath)).filter((session) =>
-			sessionMatchesProjectRoot(project.rootPath, session.cwd)
-		);
+		const stored = services().store.listStoredSessions(project.id);
+		const roots = new Set([project.rootPath, ...stored.map(({ cwd }) => cwd)]);
+		const availableRoots = new Set<string>();
+		const sessions = [];
+		for (const root of roots) {
+			try {
+				if (!statSync(root).isDirectory()) continue;
+			} catch {
+				continue;
+			}
+			availableRoots.add(root);
+			sessions.push(
+				...(await services().runtime.listSessions(root)).filter((session) =>
+					sessionMatchesProjectRoot(root, session.cwd)
+				)
+			);
+		}
 		for (const session of sessions) {
 			services().store.upsertSession(project.id, session);
 		}
 		services().dispatcher.recover();
 		const busyStarts = services().store.getBusySessionStarts(project.id);
 		return json({
-			sessions: sessions.map((session) => {
-				const customIcon = services().store.getSession(project.id, session.sessionId)?.icon ?? null;
+			sessions: mergeProjectSessionViews(
+				sessions,
+				services().store.listStoredSessions(project.id),
+				availableRoots
+			).map((session) => {
+				const customIcon = session.customIcon;
 				return {
 					...session,
 					icon: customIcon ?? automaticSessionIcon(session.title),

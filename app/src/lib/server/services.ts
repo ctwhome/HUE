@@ -3,11 +3,13 @@ import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { HermesACP } from './hermes-acp';
+import type { HermesSession } from './hermes-acp';
 import { resolveHermesCommand } from './hermes-cli';
 import { HermesServe } from './hermes-serve';
 import { MessageDispatcher } from './message-dispatcher';
-import { ProjectTerminals } from './project-terminals';
+import { ProjectTerminals, resolveTerminalShell } from './project-terminals';
 import { HUEStore } from './store';
+import type { Project } from './store';
 
 type HUEServices = {
 	store: HUEStore;
@@ -72,6 +74,133 @@ export function trustedProjectRoot(input: string): string {
 	}
 	if (!stat.isDirectory()) throw new Error('Project root must be a directory');
 	return realpathSync(canonical);
+}
+
+export function projectView(project: Project): Project & { rootAvailable: boolean } {
+	try {
+		return { ...project, rootAvailable: statSync(project.rootPath).isDirectory() };
+	} catch {
+		return { ...project, rootAvailable: false };
+	}
+}
+
+export function mergeProjectSessionViews(
+	runtimeSessions: HermesSession[],
+	storedSessions: Array<{ sessionId: string; cwd: string; icon: string | null }>,
+	availableRoots: ReadonlySet<string> = new Set(runtimeSessions.map(({ cwd }) => cwd))
+) {
+	const runtimeIds = new Set(runtimeSessions.map(({ sessionId }) => sessionId));
+	const storedById = new Map(storedSessions.map((session) => [session.sessionId, session]));
+	return [
+		...runtimeSessions.map((session) => {
+			const customIcon = storedById.get(session.sessionId)?.icon ?? null;
+			return { ...session, customIcon, available: true, recovery: null };
+		}),
+		...storedSessions
+			.filter(({ sessionId }) => !runtimeIds.has(sessionId))
+			.map((session) => {
+				const available = availableRoots.has(session.cwd);
+				return {
+					...session,
+					title: available ? 'Untitled Hermes Session' : 'Unavailable Hermes Session',
+					customIcon: session.icon,
+					updatedAt: null,
+					available,
+					recovery: available ? null : `Restore the Session folder at ${session.cwd} to resume it.`
+				};
+			})
+	];
+}
+
+export type RuntimeHealthCheck = {
+	id: 'project' | 'git' | 'terminal' | 'preview' | 'acp' | 'admin';
+	label: string;
+	status: 'ready' | 'idle' | 'blocked' | 'unavailable';
+	summary: string;
+	action: string;
+};
+
+export function projectRuntimeHealth(
+	projectRoot: string,
+	runtime: { acp: 'idle' | 'ready' | 'unavailable'; admin: 'idle' | 'ready' | 'unavailable' }
+): RuntimeHealthCheck[] {
+	let rootReady = false;
+	try {
+		rootReady = statSync(projectRoot).isDirectory();
+	} catch {
+		// Missing roots are normal recoverable persisted state.
+	}
+	let repository = false;
+	if (rootReady) repository = projectRepository(projectRoot).isRepository;
+	let shellReady = false;
+	if (rootReady) {
+		try {
+			resolveTerminalShell();
+			shellReady = true;
+		} catch {
+			// Action is returned below without leaking machine paths.
+		}
+	}
+	const runtimeCheck = (
+		id: 'acp' | 'admin',
+		label: string,
+		status: 'idle' | 'ready' | 'unavailable',
+		idleAction: string
+	): RuntimeHealthCheck => ({
+		id,
+		label,
+		status,
+		summary: status === 'ready' ? 'Ready' : status === 'idle' ? 'Not started' : 'Unavailable',
+		action: status === 'ready' ? 'No action needed' : idleAction
+	});
+	return [
+		{
+			id: 'project',
+			label: 'Project',
+			status: rootReady ? 'ready' : 'unavailable',
+			summary: rootReady ? 'Folder available' : 'Folder not found',
+			action: rootReady ? 'No action needed' : 'Locate or remove Project'
+		},
+		{
+			id: 'git',
+			label: 'Git',
+			status: !rootReady ? 'blocked' : repository ? 'ready' : 'idle',
+			summary: !rootReady
+				? 'Project folder unavailable'
+				: repository
+					? 'Repository ready'
+					: 'Not a Git repository',
+			action: !rootReady
+				? 'Recover Project folder first'
+				: repository
+					? 'No action needed'
+					: 'Initialize Git only if needed'
+		},
+		{
+			id: 'terminal',
+			label: 'Terminal',
+			status: !rootReady ? 'blocked' : shellReady ? 'ready' : 'unavailable',
+			summary: !rootReady
+				? 'Project folder unavailable'
+				: shellReady
+					? 'Shell available'
+					: 'No executable shell found',
+			action: !rootReady
+				? 'Recover Project folder first'
+				: shellReady
+					? 'No action needed'
+					: 'Set SHELL to an executable path'
+		},
+		{
+			id: 'preview',
+			label: 'Preview',
+			status: rootReady ? 'idle' : 'blocked',
+			summary: rootReady ? 'Browser-owned state' : 'Project folder unavailable',
+			action: rootReady ? 'Check saved preview in Browser panel' : 'Recover Project folder first'
+		},
+		runtimeCheck('acp', 'Hermes ACP', runtime.acp, 'Start or open a Session'),
+		runtimeCheck('admin', 'Hermes admin', runtime.admin, 'Open Hermes settings')
+	];
 }
 
 export function sessionMatchesProjectRoot(projectRoot: string, sessionCwd: string): boolean {

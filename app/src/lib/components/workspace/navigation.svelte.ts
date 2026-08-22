@@ -63,7 +63,7 @@ export class WorkspaceNavigation {
 		initialProject: Project | null,
 		private effects: NavigationEffects
 	) {
-		this.selectedProject = initialProject;
+		this.selectedProject = initialProject?.rootAvailable ? initialProject : null;
 	}
 
 	sessionApiPath(sessionId?: string, suffix = '') {
@@ -84,11 +84,19 @@ export class WorkspaceNavigation {
 	restoreSelection = async () => {
 		const params = new URL(window.location.href).searchParams;
 		const requestedProject = params.get('project');
+		if (!requestedProject && !this.effects.getProjects().length) {
+			this.persistSelection();
+			return;
+		}
 		this.selectedProject =
 			requestedProject === 'none'
 				? null
 				: (this.effects.getProjects().find(({ id }) => id === requestedProject) ??
 					this.selectedProject);
+		if (this.selectedProject && !this.selectedProject.rootAvailable) {
+			this.persistSelection();
+			return;
+		}
 		await this.loadActiveTab();
 		const session = this.sessions.find(({ sessionId }) => sessionId === params.get('session'));
 		if (session) await this.openSession(session);
@@ -110,6 +118,7 @@ export class WorkspaceNavigation {
 		this.effects.setError('');
 		this.mobileDrawer = 'sessions';
 		this.persistSelection();
+		if (project && !project.rootAvailable) return;
 		await this.loadActiveTab();
 	};
 
@@ -127,6 +136,7 @@ export class WorkspaceNavigation {
 	}
 
 	loadActiveTab = async () => {
+		if (this.selectedProject && !this.selectedProject.rootAvailable) return;
 		const request = {
 			generation: ++this.tabRequestGeneration,
 			projectId: this.selectedProject?.id ?? '',
@@ -202,6 +212,10 @@ export class WorkspaceNavigation {
 	};
 
 	openSession = async (session: Session) => {
+		if (session.available === false) {
+			this.effects.setError(session.recovery ?? 'Hermes Session is unavailable.');
+			return;
+		}
 		if (this.selectedSession?.sessionId !== session.sessionId) this.effects.endVoice();
 		const request = {
 			generation: ++this.sessionRequestGeneration,

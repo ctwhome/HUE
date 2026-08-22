@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ProjectTerminals } from './project-terminals';
+import { ProjectTerminals, resolveTerminalShell } from './project-terminals';
 
 const temporaryDirectories: string[] = [];
 const managers: ProjectTerminals[] = [];
@@ -75,4 +75,34 @@ test('rejects terminal input sequence gaps', () => {
 	expect(() => manager.write('project-1', terminal.terminalId, 2, 'unsafe\r')).toThrow(
 		'Unexpected input sequence'
 	);
+});
+
+test('closes every PTY owned by one Project without closing other Project PTYs', () => {
+	const firstRoot = mkdtempSync(join(tmpdir(), 'hue-terminal-project-first-'));
+	const secondRoot = mkdtempSync(join(tmpdir(), 'hue-terminal-project-second-'));
+	temporaryDirectories.push(firstRoot, secondRoot);
+	const manager = new ProjectTerminals({ shell: '/bin/sh' });
+	managers.push(manager);
+	const first = manager.create('project-1', firstRoot, 80, 24);
+	const second = manager.create('project-2', secondRoot, 80, 24);
+
+	manager.closeProject('project-1');
+
+	expect(() => manager.read('project-1', first.terminalId, 0)).toThrow('Terminal not found');
+	expect(manager.read('project-2', second.terminalId, 0).status).toBe('running');
+});
+
+test('falls back from a stale SHELL path to an executable system shell', () => {
+	expect(resolveTerminalShell('/retired/bin/zsh', ['/bin/sh'])).toBe('/bin/sh');
+});
+
+test('reports an actionable error before spawning in a missing Project root', () => {
+	const manager = new ProjectTerminals({ shell: '/bin/sh' });
+
+	expect(() =>
+		manager.create('project-1', join(tmpdir(), `hue-missing-${crypto.randomUUID()}`), 80, 24)
+	).toThrow(
+		'Project folder is unavailable. Locate or remove the Project before opening a terminal.'
+	);
+	manager.dispose();
 });

@@ -1,17 +1,60 @@
 import { describe, expect, it } from 'bun:test';
-import { HermesACP, normalizeDelegateTaskUpdate } from './hermes-acp';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { HermesACP, isolatedHermesEnvironment, normalizeDelegateTaskUpdate } from './hermes-acp';
 
 const realHermesTest = process.env.HUE_REAL_HERMES === '1' ? it : it.skip;
 
+it('builds an isolated real-smoke environment without provider or private-state variables', () => {
+	expect(
+		isolatedHermesEnvironment(
+			{
+				PATH: '/usr/bin:/bin',
+				TMPDIR: '/tmp',
+				OPENAI_API_KEY: 'must-not-leak',
+				ANTHROPIC_API_KEY: 'must-not-leak',
+				CODEX_HOME: '/private/codex',
+				HERMES_HOME: '/private/hermes'
+			},
+			'/tmp/hue-hermes-isolated'
+		)
+	).toEqual({
+		PATH: '/usr/bin:/bin',
+		TMPDIR: '/tmp',
+		HOME: '/tmp/hue-hermes-isolated',
+		HERMES_HOME: '/tmp/hue-hermes-isolated'
+	});
+});
+
 describe('HermesACP real integration', () => {
 	realHermesTest(
-		'creates a session and streams an ACP-local prompt without an LLM call',
+		'negotiates the pinned ACP contract from an isolated Hermes home',
 		async () => {
-			const runtime = new HermesACP({ command: 'hermes', profile: 'default' });
-			const cwd = process.cwd();
+			const hermesHome = mkdtempSync(join(tmpdir(), 'hue-real-hermes-'));
+			const cwd = join(hermesHome, 'workspace');
+			mkdirSync(cwd);
+			await Bun.write(join(cwd, '.keep'), 'isolated compatibility workspace');
+			await Bun.write(
+				join(hermesHome, 'config.yaml'),
+				'model:\n  default: hue-smoke\n  provider: custom\n  base_url: http://127.0.0.1:1/v1\n'
+			);
+			const options = {
+				command: 'hermes',
+				profile: 'default',
+				env: {
+					...isolatedHermesEnvironment(process.env, hermesHome),
+					OPENAI_API_KEY: 'hue-smoke-no-secret'
+				}
+			};
+			let runtime = new HermesACP(options);
 
 			try {
 				await runtime.start();
+				expect(runtime.getRuntimeInfo()).toMatchObject({
+					protocolVersion: 1,
+					agent: { name: expect.any(String), version: expect.any(String) }
+				});
 				const session = await runtime.createSession(cwd);
 				const state = runtime.getSessionState(session.sessionId);
 				expect(state.models?.currentModelId).toBeTruthy();
@@ -24,17 +67,36 @@ describe('HermesACP real integration', () => {
 					images: [],
 					onChunk: (text) => chunks.push(text)
 				});
+				const persistenceMarker = 'HUE ACP isolated persistence marker';
+				await runtime.prompt({
+					sessionId: session.sessionId,
+					text: persistenceMarker,
+					images: [],
+					onChunk: () => undefined
+				});
 
 				const listed = await runtime.listSessions(cwd);
+				expect(listed.some((candidate) => candidate.sessionId === session.sessionId)).toBe(true);
 				expect(listed.every((candidate) => candidate.cwd === cwd)).toBe(true);
 				expect(chunks.join('').length).toBeGreaterThan(0);
+				await runtime.close();
 
+				runtime = new HermesACP(options);
+				await runtime.start();
+				const restarted = await runtime.listSessions(cwd);
+				expect(restarted.some((candidate) => candidate.sessionId === session.sessionId)).toBe(true);
 				const replay: string[] = [];
 				await runtime.resumeSession(cwd, session.sessionId, (text) => replay.push(text));
-				// ACP intentionally excludes adapter-local slash output from persisted history.
+				expect(runtime.getSessionState(session.sessionId).profile).toBe('default');
+				// ACP excludes adapter-local slash output and failed endpoint output from replay.
 				expect(replay).toEqual([]);
+				expect(replay.join('')).not.toContain(chunks.join(''));
 			} finally {
-				await runtime.close();
+				try {
+					await runtime.close();
+				} finally {
+					rmSync(hermesHome, { recursive: true, force: true });
+				}
 			}
 		},
 		30_000
@@ -42,6 +104,23 @@ describe('HermesACP real integration', () => {
 });
 
 describe('HermesACP update subscriptions', () => {
+	it('reports idle and ready ACP health without exposing process state', () => {
+		const runtime = new HermesACP();
+		const internals = runtime as unknown as { captureInitialization: (response: unknown) => void };
+
+		expect(runtime.healthStatus()).toBe('idle');
+		internals.captureInitialization({ protocolVersion: 1 });
+		expect(runtime.healthStatus()).toBe('ready');
+	});
+
+	it('reports ACP unavailable after startup fails', async () => {
+		const runtime = new HermesACP({ command: '/missing/hue-hermes' });
+
+		await expect(runtime.start()).rejects.toThrow();
+		expect(runtime.healthStatus()).toBe('unavailable');
+		await runtime.close();
+	});
+
 	it('forks a session through the ACP session/fork method', async () => {
 		const runtime = new HermesACP();
 		const requests: Array<{ method: string; params: unknown }> = [];

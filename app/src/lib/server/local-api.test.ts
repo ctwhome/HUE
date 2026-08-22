@@ -11,5 +11,6 @@ test('allows local API clients and rejects remote or rebound requests', () => {
 
 	expect(localApiAllowed(local, localUrl, '127.0.0.1')).toBe(true);
 	expect(localApiAllowed(local, localUrl, '203.0.113.10')).toBe(false);
+	expect(localApiAllowed(local, localUrl, undefined)).toBe(false);
 	expect(localApiAllowed(rebound, reboundUrl, '127.0.0.1')).toBe(false);
 });
