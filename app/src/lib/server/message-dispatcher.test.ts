@@ -27,6 +27,7 @@ class RecordingRuntime implements PromptRuntime {
 			throw this.failure;
 		}
 		input.onChunk('Complete ');
+		input.onImage?.({ name: 'Hermes image', mimeType: 'image/png', data: 'aGVsbG8=' });
 		input.onThought?.('Checking files.');
 		input.onSubagent?.({
 			id: 'delegate-1',
@@ -185,6 +186,12 @@ describe('MessageDispatcher', () => {
 				.filter((event) => event.type === 'agent.chunk')
 				.map((event) => event.payload.text)
 		).toEqual(['Complete ', 'answer.']);
+		expect(
+			store.listEvents('hue', 'session-1').find((event) => event.type === 'agent.image')?.payload
+		).toEqual({
+			messageId: 'msg-1',
+			image: { name: 'Hermes image', mimeType: 'image/png', data: 'aGVsbG8=' }
+		});
 		expect(
 			store.listEvents('hue', 'session-1').find((event) => event.type === 'agent.thought')?.payload
 		).toEqual({ messageId: 'msg-1', text: 'Checking files.' });

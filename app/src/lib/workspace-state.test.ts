@@ -61,6 +61,27 @@ describe('workspace async state', () => {
 		expect(completed.transcript).toEqual([{ role: 'assistant', text: 'Done.' }]);
 	});
 
+	it('keeps streamed assistant images with the completed response', () => {
+		const image = { name: 'Hermes image', mimeType: 'image/png', data: 'aGVsbG8=' };
+		const result = workspaceState.applySessionEvents(
+			{
+				cursor: 0,
+				activeMessageId: 'msg-1',
+				pendingAssistant: '',
+				pendingImages: [],
+				delivery: 'running',
+				transcript: []
+			},
+			[
+				{ sequence: 1, type: 'agent.image', payload: { messageId: 'msg-1', image } },
+				{ sequence: 2, type: 'message.completed', payload: { messageId: 'msg-1' } }
+			]
+		);
+
+		expect(result.pendingImages).toEqual([]);
+		expect(result.transcript).toEqual([{ role: 'assistant', text: '', images: [image] }]);
+	});
+
 	it('replays and merges durable subagent tree updates', () => {
 		const events = [
 			{

@@ -1,8 +1,25 @@
 import { spawnSync } from 'node:child_process';
+import { accessSync, constants } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 export type HermesPanel = 'skills' | 'schedules' | 'profiles';
 
 const clean = (value: string) => value.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
+
+export function resolveHermesCommand(
+	env: Record<string, string | undefined> = process.env,
+	home = homedir()
+) {
+	if (env.HUE_HERMES_COMMAND?.trim()) return env.HUE_HERMES_COMMAND.trim();
+	const localCommand = join(home, '.local', 'bin', 'hermes');
+	try {
+		accessSync(localCommand, constants.X_OK);
+		return localCommand;
+	} catch {
+		return 'hermes';
+	}
+}
 
 export function parseSkills(output: string) {
 	return clean(output)
@@ -60,7 +77,7 @@ export function readHermesPanel(panel: HermesPanel) {
 			: panel === 'schedules'
 				? ['cron', 'list', '--all']
 				: ['profile', 'list'];
-	const result = spawnSync('hermes', args, {
+	const result = spawnSync(resolveHermesCommand(), args, {
 		encoding: 'utf8',
 		timeout: 15_000,
 		maxBuffer: 10 * 1024 * 1024,

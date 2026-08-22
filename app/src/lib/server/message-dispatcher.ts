@@ -23,6 +23,7 @@ export interface PromptRuntime {
 		text: string;
 		images: ImageAttachment[];
 		onChunk: (text: string) => void;
+		onImage?: (image: ImageAttachment) => void;
 		onThought?: (text: string) => void;
 		onSubagent?: (update: SubagentTree) => void;
 	}): Promise<void>;
@@ -30,7 +31,7 @@ export interface PromptRuntime {
 
 export type MessageEnvelope = {
 	id: string;
-	projectId: string;
+	projectId: string | null;
 	sessionId: string;
 	text: string;
 	images?: ImageAttachment[];
@@ -103,6 +104,12 @@ export class MessageDispatcher {
 					this.store.appendEvent(envelope.projectId, envelope.sessionId, 'agent.chunk', {
 						messageId: envelope.id,
 						text
+					});
+				},
+				onImage: (image) => {
+					this.store.appendEvent(envelope.projectId, envelope.sessionId, 'agent.image', {
+						messageId: envelope.id,
+						image
 					});
 				},
 				onThought: (text) => {

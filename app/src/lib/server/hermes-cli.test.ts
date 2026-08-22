@@ -1,5 +1,18 @@
 import { expect, test } from 'bun:test';
-import { parseCronJobs, parseProfiles, parseSkills } from './hermes-cli';
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { parseCronJobs, parseProfiles, parseSkills, resolveHermesCommand } from './hermes-cli';
+
+test('resolves a user-local Hermes install when it is outside PATH', () => {
+	const home = mkdtempSync(join(tmpdir(), 'hue-hermes-command-'));
+	const command = join(home, '.local', 'bin', 'hermes');
+	mkdirSync(join(home, '.local', 'bin'), { recursive: true });
+	writeFileSync(command, '#!/bin/sh\n');
+	chmodSync(command, 0o755);
+
+	expect(resolveHermesCommand({}, home)).toBe(command);
+});
 
 test('parses installed skills from Hermes CLI output', () => {
 	expect(

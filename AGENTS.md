@@ -33,6 +33,7 @@ Run production locally from `app` with `bun run build` followed by `HOST=127.0.0
 - Work on a feature branch; do not merge automatically.
 - Keep the implementation direct and small; no speculative runtime adapters, hosted sync, or broad personal-OS scope without a new decision.
 - Behavior changes use test-first development.
+- Use `lucide-svelte` for interface icons when a matching icon exists. Keep product marks and project/session emoji as-is; icon-only controls require an accessible name and tooltip.
 - Preserve complete-envelope submission, idempotency, per-session serialization, cursor replay, and explicit unknown-delivery state.
 - User-facing shell changes require browser verification at 1440×900, 1024×768, 390×844, and dense 320px mobile where relevant. Check interaction, overflow, console/resources, labels, focus, drawers, and 44px mobile targets.
 - Do not commit generated `node_modules`, `.svelte-kit`, `build`, test output, local databases, credentials, LaunchAgent files, or private session content.
