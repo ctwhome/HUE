@@ -153,17 +153,33 @@ export function normalizeDelegateTaskUpdate(
 type HermesACPOptions = {
 	command?: string;
 	profile?: string;
+	env?: NodeJS.ProcessEnv;
 	onDiagnostic?: (message: string) => void;
 };
+
+export function isolatedHermesEnvironment(
+	base: NodeJS.ProcessEnv,
+	hermesHome: string
+): NodeJS.ProcessEnv {
+	return Object.fromEntries([
+		...['PATH', 'TMPDIR', 'LANG', 'LC_ALL', 'TERM'].flatMap((name) =>
+			base[name] ? [[name, base[name] as string]] : []
+		),
+		['HOME', hermesHome],
+		['HERMES_HOME', hermesHome]
+	]);
+}
 
 export class HermesACP implements PromptRuntime {
 	private readonly command: string;
 	private readonly profile: string;
+	private readonly env: NodeJS.ProcessEnv;
 	private readonly onDiagnostic?: (message: string) => void;
 	private child: ChildProcessWithoutNullStreams | null = null;
 	private connection: acp.ClientConnection | null = null;
 	private starting: Promise<void> | null = null;
 	private closing = false;
+	private unavailable = false;
 	private readonly updateHandlers = new Map<string, Set<(update: acp.SessionUpdate) => void>>();
 	private readonly availableCommands = new Map<string, acp.AvailableCommand[]>();
 	private readonly commandWaiters = new Map<string, Set<() => void>>();
@@ -174,6 +190,7 @@ export class HermesACP implements PromptRuntime {
 	constructor(options: HermesACPOptions = {}) {
 		this.command = options.command ?? 'hermes';
 		this.profile = options.profile ?? 'default';
+		this.env = options.env ?? process.env;
 		this.runtimeInfo = { profile: this.profile };
 		this.onDiagnostic = options.onDiagnostic;
 	}
@@ -185,6 +202,10 @@ export class HermesACP implements PromptRuntime {
 		this.starting = this.open();
 		try {
 			await this.starting;
+			this.unavailable = false;
+		} catch (error) {
+			this.unavailable = true;
+			throw error;
 		} finally {
 			this.starting = null;
 		}
@@ -193,7 +214,7 @@ export class HermesACP implements PromptRuntime {
 	private async open(): Promise<void> {
 		const args = this.profile === 'default' ? ['acp'] : ['--profile', this.profile, 'acp'];
 		const child = spawn(this.command, args, {
-			env: process.env,
+			env: this.env,
 			stdio: ['pipe', 'pipe', 'pipe']
 		}) as ChildProcessWithoutNullStreams;
 		this.child = child;
@@ -227,6 +248,7 @@ export class HermesACP implements PromptRuntime {
 			if (this.connection === connection) this.connection = null;
 			this.clearRuntimeState();
 			if (!this.closing) {
+				this.unavailable = true;
 				const reason = `Hermes ACP exited unexpectedly (code=${String(code)}, signal=${String(signal)})`;
 				this.onDiagnostic?.(reason);
 				connection.close(new Error(reason));
@@ -252,6 +274,11 @@ export class HermesACP implements PromptRuntime {
 			this.child = null;
 			throw error;
 		}
+	}
+
+	healthStatus(): 'idle' | 'ready' | 'unavailable' {
+		if (this.runtimeInfo.protocolVersion === acp.PROTOCOL_VERSION) return 'ready';
+		return this.unavailable ? 'unavailable' : 'idle';
 	}
 
 	private captureInitialization(response: unknown): void {
@@ -596,6 +623,7 @@ export class HermesACP implements PromptRuntime {
 
 	async close(): Promise<void> {
 		this.closing = true;
+		this.unavailable = false;
 		const connection = this.connection;
 		const child = this.child;
 		this.connection = null;

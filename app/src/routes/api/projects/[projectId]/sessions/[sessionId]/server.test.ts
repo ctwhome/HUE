@@ -9,18 +9,21 @@ const snapshot = {
 let associated = true;
 const forked = { sessionId: 'forked-session', cwd: '/work/hue' };
 let storedFork: typeof forked | null = null;
+let transcriptCwd = '';
 
 mock.module('$lib/server/services', () => ({
 	projectBranch: () => null,
 	services: () => ({
 		store: {
-			getProject: () => ({ id: 'project-1', rootPath: '/work/hue' }),
+			getProject: () => ({ id: 'project-1', rootPath: '/work/hue-new' }),
 			hasSession: () => associated,
+			getSession: () => ({ sessionId: 'session-1', cwd: '/work/hue-old', icon: null }),
 			getSessionSnapshot: () => snapshot,
 			upsertSession: (_projectId: string, session: typeof forked) => (storedFork = session)
 		},
 		runtime: {
-			loadTranscript: async () => {
+			loadTranscript: async (cwd: string) => {
+				transcriptCwd = cwd;
 				throw new Error('Hermes ACP reconnecting');
 			},
 			forkSession: async () => forked,
@@ -32,12 +35,14 @@ mock.module('$lib/server/services', () => ({
 
 test('returns stored turn state while Hermes transcript reconnects', async () => {
 	associated = true;
+	transcriptCwd = '';
 	const { GET } = await import('./+server');
 	const response = await GET({
 		params: { projectId: 'project-1', sessionId: 'session-1' }
 	} as never);
 
 	expect(response.status).toBe(200);
+	expect(transcriptCwd).toBe('/work/hue-old');
 	expect(await response.json()).toEqual({
 		transcript: [],
 		transcriptError: 'Hermes ACP reconnecting',

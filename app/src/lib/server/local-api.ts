@@ -1,4 +1,5 @@
-export function localApiAllowed(request: Request, url: URL, clientAddress: string) {
+export function localApiAllowed(request: Request, url: URL, clientAddress?: string) {
+	if (!clientAddress) return false;
 	const address = clientAddress.replace(/^::ffff:/, '');
 	if (!['127.0.0.1', '::1'].includes(address)) return false;
 	const host = request.headers.get('host') ?? url.host;

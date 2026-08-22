@@ -11,6 +11,25 @@ afterEach(async () => {
 });
 
 describe('HermesServe', () => {
+	it('reports idle and ready administration health without exposing its token', () => {
+		const hermes = new HermesServe();
+		expect(hermes.healthStatus()).toBe('idle');
+		Object.assign(hermes as object, {
+			child: {},
+			baseUrl: 'http://127.0.0.1:4174',
+			token: 'must-not-leak'
+		});
+		expect(hermes.healthStatus()).toBe('ready');
+	});
+
+	it('reports administration unavailable after startup fails', async () => {
+		const hermes = new HermesServe({ command: '/missing/hue-hermes' });
+
+		await expect(hermes.start()).rejects.toThrow();
+		expect(hermes.healthStatus()).toBe('unavailable');
+		await hermes.close();
+	});
+
 	it('starts isolated Hermes once and authenticates API requests', async () => {
 		const server = Bun.serve({
 			port: 0,

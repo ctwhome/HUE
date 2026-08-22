@@ -9,9 +9,10 @@ export const GET: RequestHandler = async ({ params }) => {
 	if (!services().store.hasSession(params.projectId, params.sessionId)) {
 		return json({ error: 'Session not found' }, { status: 404 });
 	}
+	const session = services().store.getSession(params.projectId, params.sessionId)!;
 	const snapshot = services().store.getSessionSnapshot(params.projectId, params.sessionId);
 	try {
-		const transcript = await services().runtime.loadTranscript(project.rootPath, params.sessionId);
+		const transcript = await services().runtime.loadTranscript(session.cwd, params.sessionId);
 		return json({
 			transcript,
 			commands: services().runtime.getAvailableCommands(params.sessionId),
@@ -37,11 +38,12 @@ export const POST: RequestHandler = async ({ params }) => {
 	if (!services().store.hasSession(params.projectId, params.sessionId)) {
 		return json({ error: 'Session not found' }, { status: 404 });
 	}
+	const source = services().store.getSession(params.projectId, params.sessionId)!;
 	if (services().store.getSessionSnapshot(params.projectId, params.sessionId).activeTurn) {
 		return json({ error: 'Wait for the active turn to finish' }, { status: 409 });
 	}
 	try {
-		const session = await services().runtime.forkSession(project.rootPath, params.sessionId);
+		const session = await services().runtime.forkSession(source.cwd, params.sessionId);
 		services().store.upsertSession(project.id, session);
 		return json(
 			{

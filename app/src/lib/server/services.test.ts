@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
 	projectBranch,
+	mergeProjectSessionViews,
 	projectRepository,
 	projectRepositoryAction,
+	projectRuntimeHealth,
 	services,
 	sessionMatchesProjectRoot
 } from './services';
@@ -30,6 +32,63 @@ test('matches Hermes session cwd to Project root by canonical path', () => {
 	expect(sessionMatchesProjectRoot(projectRoot, projectAlias)).toBe(true);
 	expect(sessionMatchesProjectRoot(projectRoot, otherRoot)).toBe(false);
 	expect(sessionMatchesProjectRoot(projectRoot, join(temporary, 'missing'))).toBe(false);
+});
+
+test('keeps old-root Sessions visible with an explicit restore contract after Project relocation', () => {
+	const current = [{ sessionId: 'new-session', cwd: '/work/hue-new', title: 'Current' }];
+	const stored = [
+		{ sessionId: 'old-session', cwd: '/work/hue-old', icon: '🕰️' },
+		{ sessionId: 'new-session', cwd: '/work/hue-new', icon: null }
+	];
+
+	expect(mergeProjectSessionViews(current, stored)).toEqual([
+		expect.objectContaining({ sessionId: 'new-session', available: true, recovery: null }),
+		expect.objectContaining({
+			sessionId: 'old-session',
+			cwd: '/work/hue-old',
+			available: false,
+			recovery: 'Restore the Session folder at /work/hue-old to resume it.'
+		})
+	]);
+});
+
+test('keeps a stored zero-history Session available while its cwd exists', () => {
+	const stored = [{ sessionId: 'new-session', cwd: '/work/hue', icon: null }];
+
+	expect(mergeProjectSessionViews([], stored, new Set(['/work/hue']))).toEqual([
+		expect.objectContaining({ sessionId: 'new-session', available: true, recovery: null })
+	]);
+});
+
+test('reports distinct actionable health for a missing Project root', () => {
+	const missing = join(tmpdir(), `hue-missing-${crypto.randomUUID()}`);
+
+	expect(projectRuntimeHealth(missing, { acp: 'idle', admin: 'idle' })).toEqual([
+		expect.objectContaining({
+			id: 'project',
+			status: 'unavailable',
+			action: 'Locate or remove Project'
+		}),
+		expect.objectContaining({ id: 'git', status: 'blocked' }),
+		expect.objectContaining({ id: 'terminal', status: 'blocked' }),
+		expect.objectContaining({ id: 'preview', status: 'blocked' }),
+		expect.objectContaining({ id: 'acp', status: 'idle', action: 'Start or open a Session' }),
+		expect.objectContaining({ id: 'admin', status: 'idle', action: 'Open Hermes settings' })
+	]);
+});
+
+test('distinguishes a healthy Project root from optional Git and idle preview', () => {
+	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-health-'));
+	temporaryDirectories.push(projectRoot);
+
+	expect(projectRuntimeHealth(projectRoot, { acp: 'ready', admin: 'unavailable' })).toEqual([
+		expect.objectContaining({ id: 'project', status: 'ready' }),
+		expect.objectContaining({ id: 'git', status: 'idle', summary: 'Not a Git repository' }),
+		expect.objectContaining({ id: 'terminal', status: 'ready' }),
+		expect.objectContaining({ id: 'preview', status: 'idle' }),
+		expect.objectContaining({ id: 'acp', status: 'ready' }),
+		expect.objectContaining({ id: 'admin', status: 'unavailable' })
+	]);
 });
 
 test('replaces services retained from an older server module', async () => {

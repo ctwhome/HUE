@@ -41,6 +41,7 @@ const hermes = [panel, ...hermesViews].join('\n');
 const workbenchFiles = [
 	'../lib/components/ProjectWorkbench.svelte',
 	'../lib/components/workbench/BrowserPanel.svelte',
+	'../lib/components/workbench/HealthStrip.svelte',
 	'../lib/components/workbench/TerminalPanel.svelte',
 	'../lib/components/workbench/RepositoryPanels.svelte',
 	'../lib/components/workbench/api.ts'
@@ -146,6 +147,27 @@ test('project and session controls preserve accessible editing', () => {
 	expect(page).toContain('aria-label={`Edit ${project.name}`}');
 	expect(page).toContain("method: 'PATCH'");
 	expect(page).toContain("method: 'DELETE'");
+});
+
+test('stale Projects and first run expose direct recovery instead of a broken workbench', () => {
+	for (const label of [
+		'Locate',
+		'Remove',
+		'Open without Project',
+		'Add Project',
+		'Start without Project'
+	]) {
+		expect(page).toContain(label);
+	}
+	expect(page).toContain('selectedProject && !selectedProject.rootAvailable');
+	expect(page).not.toContain('<span>No PTY</span>');
+});
+
+test('workbench reports Project, Git, terminal, preview, ACP, and admin health separately', () => {
+	for (const label of ['Project', 'Git', 'Terminal', 'Preview', 'Hermes ACP', 'Hermes admin']) {
+		expect(workbench).toContain(label);
+	}
+	expect(workbench).toContain('/api/health?projectId=');
 });
 
 test('composer preserves complete-envelope and unknown-delivery controls', () => {

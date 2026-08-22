@@ -6,7 +6,10 @@
 
 	type BrowserTab = { id: string; title: string; url: string; draft: string };
 
-	let { projectId }: { projectId: string } = $props();
+	let {
+		projectId,
+		onpreviewchange
+	}: { projectId: string; onpreviewchange: (url: string) => void } = $props();
 	let browserTabs = $state<BrowserTab[]>([]);
 	let activeBrowserTabId = $state('');
 	let browserError = $state('');
@@ -34,6 +37,7 @@
 		if (!browserTabs.length) browserTabs = [newBrowserTab()];
 		browserTabs = browserTabs.map((tab) => ({ ...tab, draft: tab.url }));
 		activeBrowserTabId = browserTabs[0].id;
+		onpreviewchange(activeBrowserTab()?.url ?? '');
 	}
 	function saveBrowserTabs() {
 		localStorage.setItem(
@@ -65,6 +69,7 @@
 			);
 			browserError = '';
 			saveBrowserTabs();
+			onpreviewchange(url.href);
 		} catch {
 			browserError = 'Enter a valid http or https address';
 		}
@@ -75,6 +80,7 @@
 		activeBrowserTabId = tab.id;
 		browserError = '';
 		saveBrowserTabs();
+		onpreviewchange('');
 	}
 	function closeBrowserTab(event: MouseEvent | KeyboardEvent, id: string) {
 		event.stopPropagation();
@@ -82,6 +88,11 @@
 		browserTabs = remaining.length ? remaining : [newBrowserTab()];
 		if (activeBrowserTabId === id) activeBrowserTabId = browserTabs[0].id;
 		saveBrowserTabs();
+		onpreviewchange(activeBrowserTab()?.url ?? '');
+	}
+	function selectBrowserTab(tab: BrowserTab) {
+		activeBrowserTabId = tab.id;
+		onpreviewchange(tab.url);
 	}
 
 	onMount(restoreBrowserTabs);
@@ -104,7 +115,7 @@
 						role="tab"
 						aria-selected={tab.id === activeBrowserTabId}
 						title={`Open ${tab.title}`}
-						onclick={() => (activeBrowserTabId = tab.id)}>{tab.title}</button
+						onclick={() => selectBrowserTab(tab)}>{tab.title}</button
 					>
 					<button
 						class="grid h-full w-7 place-items-center"
