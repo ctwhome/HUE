@@ -35,6 +35,7 @@ type NavigationEffects = {
 	sendText: (text: string) => Promise<boolean>;
 	setError: (message: string) => void;
 	setLoading: (loading: boolean) => void;
+	guard: (action: () => void) => boolean;
 };
 
 export class WorkspaceNavigation {
@@ -132,6 +133,7 @@ export class WorkspaceNavigation {
 	};
 
 	chooseProject = async (project: Project | null) => {
+		if (this.effects.guard(() => void this.chooseProject(project))) return;
 		this.effects.endVoice();
 		this.effects.cacheSession();
 		this.effects.saveDraft();
@@ -151,6 +153,7 @@ export class WorkspaceNavigation {
 	};
 
 	createProjectlessSession = async () => {
+		if (this.effects.guard(() => void this.createProjectlessSession())) return;
 		await this.chooseProject(null);
 		await this.createSession();
 	};
@@ -225,6 +228,7 @@ export class WorkspaceNavigation {
 	};
 
 	createSession = async (): Promise<Session | null> => {
+		if (this.effects.guard(() => void this.createSession())) return null;
 		this.effects.endVoice();
 		this.effects.saveDraft();
 		this.effects.cacheSession();
@@ -258,6 +262,7 @@ export class WorkspaceNavigation {
 	};
 
 	openSession = async (session: Session) => {
+		if (this.effects.guard(() => void this.openSession(session))) return;
 		if (session.available === false) {
 			this.effects.setError(session.recovery ?? 'Hermes Session is unavailable.');
 			return;
@@ -325,6 +330,7 @@ export class WorkspaceNavigation {
 	};
 
 	runWorkflow = async (workflow: Workflow) => {
+		if (this.effects.guard(() => void this.runWorkflow(workflow))) return;
 		this.activeTab = 'sessions';
 		const session = await this.createSession();
 		if (session) await this.effects.sendText(workflow.prompt);

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { ArrowLeft } from 'lucide-svelte';
 	import type { GlobalView } from './GlobalNavigation.svelte';
 	import AdminResourceView from './hermes/AdminResourceView.svelte';
@@ -9,15 +9,18 @@
 	import SkillsView from './hermes/SkillsView.svelte';
 	import type { Command, HermesSection, Job, Skill } from './hermes/types';
 	import Button from './ui/Button.svelte';
+	import type { DirtyGuard } from './workspace/dirty-guard';
 
 	let {
 		view,
 		commands,
+		dirtyGuard,
 		onview,
 		oncommand
 	}: {
 		view: GlobalView;
 		commands: Command[];
+		dirtyGuard: DirtyGuard;
 		onview: (view: GlobalView | null) => void;
 		oncommand: (command: Command) => void;
 	} = $props();
@@ -159,21 +162,27 @@
 		return Boolean(selectedSkill && skillContent !== originalSkillContent);
 	}
 
-	function navigate(next: GlobalView | null) {
-		if (hasUnsavedSkill() && !window.confirm('Discard unsaved skill changes?')) return;
+	function discardSkillChanges() {
+		skillContent = originalSkillContent;
 		selectedSkill = '';
 		selectedSkillEditable = false;
-		onview(next);
+		skillSaved = false;
 	}
 
-	function beforeunload(event: BeforeUnloadEvent) {
-		if (!hasUnsavedSkill()) return;
-		event.preventDefault();
-		event.returnValue = '';
+	const dirtySource = untrack(() => dirtyGuard.register(discardSkillChanges));
+	$effect(() => dirtySource.setDirty(hasUnsavedSkill()));
+	onDestroy(() => dirtySource.unregister());
+
+	function guarded(action: () => void) {
+		if (!dirtyGuard.block(action)) action();
 	}
 
-	onMount(() => window.addEventListener('beforeunload', beforeunload));
-	onDestroy(() => window.removeEventListener('beforeunload', beforeunload));
+	function navigate(next: GlobalView | null) {
+		guarded(() => {
+			discardSkillChanges();
+			onview(next);
+		});
+	}
 
 	async function openSkill(name: string) {
 		loading = true;
@@ -219,10 +228,7 @@
 	}
 
 	function closeSkill() {
-		if (hasUnsavedSkill() && !window.confirm('Discard unsaved skill changes?')) return;
-		selectedSkill = '';
-		selectedSkillEditable = false;
-		skillSaved = false;
+		guarded(discardSkillChanges);
 	}
 
 	function actionNotice(result: Record<string, any>, target: string) {

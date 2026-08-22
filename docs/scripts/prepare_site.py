@@ -28,6 +28,7 @@ PAGES: list[tuple[Path, Path, str | None, str | None]] = [
     (ROOT / "docs/decisions/0000-template.md", Path("decisions/adr-template.md"), "Architecture decision record template", "The evidence-first template for HUE architecture decisions."),
     (ROOT / "docs/decisions/0001-sveltekit-shadcn-svelte.md", Path("decisions/sveltekit-shadcn-svelte.md"), "ADR-0001 — SvelteKit + shadcn-svelte", "The accepted HUE frontend framework and component-foundation decision."),
     (ROOT / "docs/decisions/0002-bun-hermes-acp-workspace.md", Path("decisions/bun-hermes-acp-workspace.md"), "ADR-0002 — Bun + Hermes ACP workspace", "The accepted focused HUE workspace, storage, transport, and Hermes runtime boundary."),
+    (ROOT / "docs/decisions/0004-project-development-panels.md", Path("decisions/project-development-panels.md"), "ADR-0004 — Project development panels", "The accepted Project-scoped terminal, Git, preview, file, and evidence boundary."),
     (ROOT / "prototype/README.md", Path("prototype/component-map.md"), "Static prototype → Svelte component map", "The shared token, component and migration contract between the functional prototype and future Svelte implementation."),
     (ROOT / "CONTRIBUTING.md", Path("contributing.md"), None, "How to contribute to HUE without silently changing its product contract."),
 ]
@@ -46,6 +47,7 @@ ROUTES: dict[str, str] = {
     "docs/decisions/0000-template.md": "/decisions/adr-template/",
     "docs/decisions/0001-sveltekit-shadcn-svelte.md": "/decisions/sveltekit-shadcn-svelte/",
     "docs/decisions/0002-bun-hermes-acp-workspace.md": "/decisions/bun-hermes-acp-workspace/",
+    "docs/decisions/0004-project-development-panels.md": "/decisions/project-development-panels/",
     "prototype/README.md": "/prototype/component-map/",
     "CONTRIBUTING.md": "/contributing/",
     "docs/roadmap/issues.json": "/data/issues.json",

@@ -1,3 +1,7 @@
+.file-preview-back {
+	display: none;
+}
+
 @media (max-width: 1200px) {
 	.project-workbench {
 		overflow: auto;
@@ -33,6 +37,39 @@
 }
 
 @media (max-width: 700px) {
+	.files-panel {
+		display: block;
+		position: relative;
+		height: 100%;
+	}
+	.file-sidebar {
+		height: 100%;
+		border-right: 0;
+	}
+	.file-preview {
+		position: fixed;
+		z-index: 35;
+		inset: 56px 0 0;
+		visibility: hidden;
+		background: var(--background);
+		transform: translateX(100%);
+		transition:
+			transform 160ms ease,
+			visibility 160ms;
+	}
+	.file-preview.open {
+		visibility: visible;
+		transform: translateX(0);
+	}
+	.file-preview-back {
+		display: inline-flex;
+	}
+	.files-panel button,
+	.files-panel a,
+	.files-panel label,
+	.workbench-tabs button {
+		min-height: 44px;
+	}
 	.global-panel button,
 	.add-project-dialog button,
 	.project-workbench button,
