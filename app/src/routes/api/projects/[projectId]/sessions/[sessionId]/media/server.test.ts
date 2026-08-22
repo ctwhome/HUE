@@ -2,20 +2,30 @@ import { afterAll, expect, mock, test } from 'bun:test';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { serviceExportStubs } from '$lib/server/services-test-stubs';
 
 const root = join(tmpdir(), `hue-media-route-${crypto.randomUUID()}`);
 mkdirSync(root, { recursive: true });
 writeFileSync(join(root, 'report.pdf'), '%PDF-1.7\nroute range proof');
+const projectIds: string[] = [];
 
-mock.module('$lib/server/services', () => ({
+mock.module('$lib/server/route-services', () => ({
+	...serviceExportStubs,
+	authoritativeProject: async () => ({ id: 'canonical-project' }),
 	services: () => ({
-		store: { getSession: () => ({ cwd: root }) }
+		store: {
+			getSession: (projectId: string) => {
+				projectIds.push(projectId);
+				return { cwd: root };
+			}
+		}
 	})
 }));
 
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 test('serves MEDIA with safe headers, HEAD, and bounded byte ranges', async () => {
+	projectIds.length = 0;
 	const { GET, HEAD } = await import('./+server');
 	const url = new URL(
 		'http://hue.test/api/projects/p/sessions/s/media?path=report.pdf&download=true'
@@ -55,4 +65,13 @@ test('serves MEDIA with safe headers, HEAD, and bounded byte ranges', async () =
 	} as never);
 	expect(invalid.status).toBe(416);
 	expect(invalid.headers.get('content-range')).toMatch(/^bytes \*\/\d+$/);
+
+	const invalidAction = await (
+		await import('./+server')
+	).POST({
+		params: { projectId: 'project-slug', sessionId: 's' },
+		request: new Request(url, { method: 'POST', body: JSON.stringify({ action: 'invalid' }) })
+	} as never);
+	expect(invalidAction.status).toBe(400);
+	expect(projectIds).toEqual(Array(5).fill('canonical-project'));
 });

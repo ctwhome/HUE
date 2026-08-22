@@ -1,10 +1,16 @@
 import { json } from '@sveltejs/kit';
-import { services } from '$lib/server/services';
+import { authoritativeProject, services } from '$lib/server/route-services';
 import type { BrowserInteractionResponse } from '$lib/server/message-dispatcher';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ params, request }) => {
-	if (!services().store.hasSession(params.projectId, params.sessionId)) {
+	let project;
+	try {
+		project = await authoritativeProject(params.projectId);
+	} catch (cause) {
+		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 404 });
+	}
+	if (!services().store.hasSession(project.id, params.sessionId)) {
 		return json({ error: 'Session not found' }, { status: 404 });
 	}
 	let body: { interactionId?: unknown; response?: BrowserInteractionResponse };
@@ -17,7 +23,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		return json({ error: 'Invalid interaction response' }, { status: 400 });
 	}
 	const resolved = services().dispatcher.resolveInteraction(
-		params.projectId,
+		project.id,
 		params.sessionId,
 		body.interactionId,
 		body.response

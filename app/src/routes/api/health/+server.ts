@@ -1,13 +1,17 @@
 import { json } from '@sveltejs/kit';
-import { projectRuntimeHealth, services } from '$lib/server/services';
+import { authoritativeProject, projectRuntimeHealth, services } from '$lib/server/services';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = ({ url }) => {
+export const GET: RequestHandler = async ({ url }) => {
 	const projectId = url.searchParams.get('projectId');
-	const project = projectId ? services().store.getProject(projectId) : null;
-	if (projectId && !project) return json({ error: 'Project not found' }, { status: 404 });
+	let project = null;
+	try {
+		project = projectId ? await authoritativeProject(projectId) : null;
+	} catch (cause) {
+		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 404 });
+	}
 	const checks = project
-		? projectRuntimeHealth(project.rootPath, {
+		? projectRuntimeHealth(project.primary_path, {
 				acp: services().runtime.healthStatus(),
 				admin: services().admin.healthStatus()
 			})

@@ -9,6 +9,7 @@ import {
 	projectRepositoryAction,
 	projectRuntimeHealth,
 	services,
+	sessionMatchesProjectFolders,
 	sessionMatchesProjectRoot
 } from './services';
 import { HUEStore } from './store';
@@ -17,6 +18,18 @@ const temporaryDirectories: string[] = [];
 
 afterEach(() => {
 	for (const path of temporaryDirectories.splice(0)) rmSync(path, { recursive: true, force: true });
+});
+
+test('matches Session cwd under any canonical Project folder without prefix confusion', () => {
+	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-folders-'));
+	const docsRoot = mkdtempSync(join(tmpdir(), 'hue-project-docs-'));
+	const nested = join(docsRoot, 'packages', 'site');
+	mkdirSync(nested, { recursive: true });
+	temporaryDirectories.push(projectRoot, docsRoot);
+
+	expect(sessionMatchesProjectFolders([projectRoot, docsRoot], nested)).toBe(true);
+	expect(sessionMatchesProjectFolders([projectRoot], docsRoot)).toBe(false);
+	expect(sessionMatchesProjectFolders([docsRoot], `${docsRoot}-sibling`)).toBe(false);
 });
 
 test('matches Hermes session cwd to Project root by canonical path', () => {
