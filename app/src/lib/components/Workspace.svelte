@@ -19,7 +19,7 @@
 	import { RuntimeState } from './workspace/runtime-state.svelte';
 	import { SessionState } from './workspace/session-state.svelte';
 	import { TranscriptFollow } from './workspace/transcript-follow.svelte';
-	import type { Project, Session, SessionLoad } from './workspace/types';
+	import type { Project, SessionLoad } from './workspace/types';
 
 	let { projects: initialProjects }: { projects: Project[] } = $props();
 	let loading = $state(false);
@@ -140,28 +140,6 @@
 	let messageNotice = $derived(messageState.messageNotice);
 	let runtimeChanging = $derived(runtimeState.changing);
 	let stopping = $derived(messageState.stopping);
-	const createSession = () => navigation.createSession();
-	const openSession = (session: Session) => navigation.openSession(session);
-	const submitMessage = messageState.submit;
-	const editQueuedMessage = messageState.editQueuedMessage;
-	const copyMessage = messageState.copyMessage;
-	const editMessage = messageState.editMessage;
-	const forkSession = messageState.forkSession;
-	const stopTurn = messageState.stopTurn;
-	const retryPendingMessage = messageState.retryPendingMessage;
-	const updateDraft = messageState.updateDraft;
-	const handleComposerKeydown = messageState.handleComposerKeydown;
-	const handleImageInput = messageState.handleImageInput;
-	const handleDrop = messageState.handleDrop;
-	const handlePaste = messageState.handlePaste;
-	const chooseCommand = messageState.chooseCommand;
-	const selectModel = runtimeState.selectModel;
-	const changeRuntime = runtimeState.change;
-	const matchingCommands = messageState.matchingCommands;
-	const currentModel = runtimeState.currentModel;
-	const modelCategories = runtimeState.modelCategories;
-	const contextPercent = runtimeState.contextPercent;
-	const openHermesPanel = (view: GlobalView) => (globalView = view);
 	const renderMarkdown = (text: string) => sanitizeHtml(marked.parse(text, { async: false }));
 
 	onMount(async () => {
@@ -199,7 +177,7 @@
 				(navigation.mobileDrawer = navigation.mobileDrawer === 'sessions' ? null : 'sessions')}
 			>Sessions</button
 		>
-		<button aria-label="Settings" title="Settings" onclick={() => openHermesPanel('settings')}
+		<button aria-label="Settings" title="Settings" onclick={() => (globalView = 'settings')}
 			>Settings</button
 		>
 	</nav>
@@ -264,9 +242,9 @@
 		sessionEditError={navigation.sessionEditError}
 		sessionSaving={navigation.sessionSaving}
 		{now}
-		oncreate={createSession}
+		oncreate={navigation.createSession}
 		ontab={navigation.changeTab}
-		onopen={openSession}
+		onopen={navigation.openSession}
 		onedit={navigation.openEditSession}
 		onrun={navigation.runWorkflow}
 		onworkflow={navigation.addWorkflow}
@@ -329,9 +307,9 @@
 				{messageNotice}
 				busy={isTurnBusy(delivery)}
 				{renderMarkdown}
-				onedit={editMessage}
-				oncopy={copyMessage}
-				onfork={forkSession}
+				onedit={messageState.editMessage}
+				oncopy={messageState.copyMessage}
+				onfork={messageState.forkSession}
 				bind:element={transcriptFollow.element}
 				follow={transcriptFollow.follow}
 			/>
@@ -361,28 +339,28 @@
 				{stopping}
 				showScrollToLatest={transcriptFollow.showScrollToLatest}
 				busy={isTurnBusy(delivery)}
-				onsubmit={submitMessage}
-				ondrop={handleDrop}
-				onpaste={handlePaste}
-				oninput={updateDraft}
-				onkeydown={handleComposerKeydown}
-				onimages={handleImageInput}
+				onsubmit={messageState.submit}
+				ondrop={messageState.handleDrop}
+				onpaste={messageState.handlePaste}
+				oninput={messageState.updateDraft}
+				onkeydown={messageState.handleComposerKeydown}
+				onimages={messageState.handleImageInput}
 				onvoiceMessage={voice.startMessage}
 				onvoiceCall={voice.startCall}
 				onmute={voice.toggleMute}
 				oninterrupt={voice.interrupt}
 				onendcall={() => voice.end()}
-				onstop={stopTurn}
-				onretry={retryPendingMessage}
-				oneditqueued={editQueuedMessage}
-				oncommand={chooseCommand}
-				onmodel={selectModel}
-				onruntime={changeRuntime}
+				onstop={messageState.stopTurn}
+				onretry={messageState.retryPendingMessage}
+				oneditqueued={messageState.editQueuedMessage}
+				oncommand={messageState.chooseCommand}
+				onmodel={runtimeState.selectModel}
+				onruntime={runtimeState.change}
 				onscrolllatest={transcriptFollow.scrollToLatest}
-				{matchingCommands}
-				{currentModel}
-				{modelCategories}
-				{contextPercent}
+				matchingCommands={messageState.matchingCommands}
+				currentModel={runtimeState.currentModel}
+				modelCategories={runtimeState.modelCategories}
+				contextPercent={runtimeState.contextPercent}
 			/>
 		{:else if selectionReady && selectedProject}
 			{#key selectedProject.id}

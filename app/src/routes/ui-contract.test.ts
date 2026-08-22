@@ -151,7 +151,7 @@ test('project and session controls preserve accessible editing', () => {
 test('composer preserves complete-envelope and unknown-delivery controls', () => {
 	expect(page).toContain("'Message Hermes… / for commands'");
 	expect(page).toContain('aria-label="Send"');
-	expect(page).toContain('onretry={retryPendingMessage}');
+	expect(page).toContain('onretry={messageState.retryPendingMessage}');
 	expect(page).toContain('Retry exact message');
 	expect(page).toContain("this.setError(body.transcriptError ?? '');");
 	expect(page).toContain('popover="auto"');

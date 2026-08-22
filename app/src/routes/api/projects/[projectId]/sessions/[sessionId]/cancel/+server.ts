@@ -3,7 +3,7 @@ import { services } from '$lib/server/services';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ params }) => {
-	if (!services().store.hasProjectSession(params.projectId, params.sessionId)) {
+	if (!services().store.hasSession(params.projectId, params.sessionId)) {
 		return json({ error: 'Session not found' }, { status: 404 });
 	}
 	try {

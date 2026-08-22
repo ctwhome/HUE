@@ -18,7 +18,7 @@ function makeStore() {
 function makeDeliveryStore() {
 	const store = makeStore();
 	store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
-	store.upsertProjectSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
+	store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 	return store;
 }
 
@@ -67,7 +67,7 @@ describe('HUEStore project and workflow boundaries', () => {
 	it('updates project names and icons, then removes projects', () => {
 		const store = makeStore();
 		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
-		store.upsertProjectSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
+		store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 		store.acceptMessage({
 			id: 'msg-1',
 			projectId: 'hue',
@@ -112,10 +112,10 @@ describe('HUEStore project and workflow boundaries', () => {
 	it('stores a custom session icon without changing Hermes session data', () => {
 		const store = makeStore();
 		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
-		store.upsertProjectSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
+		store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 
-		expect(store.updateProjectSessionIcon('hue', 'session-1', '🐛')).toBe(true);
-		expect(store.getProjectSession('hue', 'session-1')).toEqual({
+		expect(store.updateSessionIcon('hue', 'session-1', '🐛')).toBe(true);
+		expect(store.getSession('hue', 'session-1')).toEqual({
 			sessionId: 'session-1',
 			cwd: '/work/hue',
 			icon: '🐛'
@@ -129,7 +129,7 @@ describe('HUEStore acknowledged message transport', () => {
 		const store = makeStore();
 		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
 		store.createProject({ id: 'other', name: 'Other', rootPath: '/work/other' });
-		store.upsertProjectSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
+		store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 		store.acceptMessage({
 			id: 'msg-1',
 			projectId: 'hue',
@@ -137,8 +137,8 @@ describe('HUEStore acknowledged message transport', () => {
 			text: 'Project-scoped message.'
 		});
 
-		expect(store.hasProjectSession('hue', 'session-1')).toBe(true);
-		expect(store.hasProjectSession('other', 'session-1')).toBe(false);
+		expect(store.hasSession('hue', 'session-1')).toBe(true);
+		expect(store.hasSession('other', 'session-1')).toBe(false);
 		expect(store.listMessages('hue', 'session-1')).toHaveLength(1);
 		expect(store.listMessages('other', 'session-1')).toEqual([]);
 		expect(store.listEvents('other', 'session-1')).toEqual([]);
@@ -149,13 +149,13 @@ describe('HUEStore acknowledged message transport', () => {
 		const store = makeStore();
 		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
 		store.createProject({ id: 'other', name: 'Other', rootPath: '/work/other' });
-		store.upsertProjectSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
+		store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 
 		expect(() =>
-			store.upsertProjectSession('other', { sessionId: 'session-1', cwd: '/work/other' })
+			store.upsertSession('other', { sessionId: 'session-1', cwd: '/work/other' })
 		).toThrow('already belongs to Project hue');
-		expect(store.hasProjectSession('hue', 'session-1')).toBe(true);
-		expect(store.hasProjectSession('other', 'session-1')).toBe(false);
+		expect(store.hasSession('hue', 'session-1')).toBe(true);
+		expect(store.hasSession('other', 'session-1')).toBe(false);
 		store.close();
 	});
 
@@ -188,7 +188,7 @@ describe('HUEStore acknowledged message transport', () => {
 		legacy.close();
 
 		const store = new HUEStore(filename);
-		store.upsertProjectSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
+		store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 
 		expect(store.listMessages('hue', 'session-1')).toEqual([
 			expect.objectContaining({ id: 'msg-1', text: 'Preserve me', projectId: 'hue' })
@@ -446,7 +446,7 @@ describe('HUEStore acknowledged message transport', () => {
 
 	it('lists start times only for queued and running sessions', () => {
 		const store = makeDeliveryStore();
-		store.upsertProjectSession('hue', { sessionId: 'session-2', cwd: '/work/hue' });
+		store.upsertSession('hue', { sessionId: 'session-2', cwd: '/work/hue' });
 		store.acceptMessage({ id: 'queued', projectId: 'hue', sessionId: 'session-1', text: 'Wait' });
 		store.acceptMessage({ id: 'done', projectId: 'hue', sessionId: 'session-2', text: 'Finish' });
 		store.updateMessageStatus('done', 'running');

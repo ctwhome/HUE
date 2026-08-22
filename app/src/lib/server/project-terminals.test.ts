@@ -37,7 +37,12 @@ test('runs an interactive shell in the project root', async () => {
 	managers.push(manager);
 	const terminal = manager.create('project-1', projectRoot, 80, 24);
 
-	manager.write('project-1', terminal.terminalId, 1, 'pwd; printf "\\nHUE_TERMINAL_READY\\n"\r');
+	manager.write(
+		'project-1',
+		terminal.terminalId,
+		1,
+		'pwd; printf "\\nHUE_TERMINAL_%s\\n" "READY"\r'
+	);
 	const output = await outputUntil(manager, 'project-1', terminal.terminalId, 'HUE_TERMINAL_READY');
 
 	expect(output).toContain(realpathSync(projectRoot));
