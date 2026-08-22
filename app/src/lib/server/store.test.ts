@@ -23,6 +23,264 @@ function makeDeliveryStore() {
 }
 
 describe('HUEStore project and workflow boundaries', () => {
+	it('persists Session rename pin archive folder and optional tags without changing ownership', () => {
+		const store = makeDeliveryStore();
+		store.updateSessionMetadata('hue', 'session-1', {
+			title: 'Release investigation',
+			pinned: true,
+			archived: true,
+			folder: 'Delivery',
+			tags: ['release', 'blocked']
+		});
+
+		expect(store.getSession('hue', 'session-1')).toMatchObject({
+			title: 'Release investigation',
+			pinned: true,
+			archived: true,
+			folder: 'Delivery',
+			tags: ['release', 'blocked']
+		});
+		expect(store.hasSession('hue', 'session-1')).toBe(true);
+		expect(store.hasSession(null, 'session-1')).toBe(false);
+		store.close();
+	});
+
+	it('leaves project and projectless Session metadata unchanged when a combined icon is invalid', () => {
+		const store = makeStore();
+		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.upsertSession('hue', { sessionId: 'project-session', cwd: '/work/hue', title: 'Before' });
+		store.upsertSession(null, {
+			sessionId: 'projectless-session',
+			cwd: '/work/topics',
+			title: 'Before'
+		});
+
+		for (const [projectId, sessionId] of [
+			['hue', 'project-session'],
+			[null, 'projectless-session']
+		] as const) {
+			expect(() =>
+				store.updateSession(projectId, sessionId, {
+					title: 'After',
+					pinned: true,
+					icon: 'data:text/html;base64,PHNjcmlwdD4='
+				})
+			).toThrow('Project icon must be a short emoji');
+			expect(store.getSession(projectId, sessionId)).toMatchObject({
+				title: 'Before',
+				pinned: false,
+				icon: null
+			});
+		}
+		store.close();
+	});
+
+	it('searches Session title and durable user or assistant content with a bounded result limit', () => {
+		const store = makeDeliveryStore();
+		store.upsertSession('hue', { sessionId: 'session-2', cwd: '/work/hue', title: 'Deploy notes' });
+		store.acceptMessage({
+			id: 'msg-1',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Investigate cursor replay'
+		});
+		store.appendEvent('hue', 'session-2', 'agent.chunk', {
+			messageId: 'msg-2',
+			text: 'Compression completed safely'
+		});
+
+		expect(store.searchSessions('hue', 'deploy', 100).map(({ sessionId }) => sessionId)).toEqual([
+			'session-2'
+		]);
+		expect(store.searchSessions('hue', 'cursor').map(({ sessionId }) => sessionId)).toEqual([
+			'session-1'
+		]);
+		expect(store.searchSessions('hue', 'compression').map(({ sessionId }) => sessionId)).toEqual([
+			'session-2'
+		]);
+		expect(store.searchSessions('hue', '', 500)).toHaveLength(2);
+		store.close();
+	});
+
+	it('paginates beyond 500 Sessions and beyond 50 search matches in SQLite', () => {
+		const store = makeStore();
+		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		for (let index = 0; index < 551; index += 1) {
+			store.upsertSession('hue', {
+				sessionId: `session-${index.toString().padStart(3, '0')}`,
+				cwd: '/work/hue',
+				title: index < 80 ? `Needle result ${index}` : `Other ${index}`,
+				updatedAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString()
+			});
+		}
+
+		const deep = store.listSessionPage('hue', {
+			includeArchived: false,
+			query: '',
+			limit: 100,
+			offset: 500
+		});
+		expect(deep.sessions).toHaveLength(51);
+		expect(deep.hasMore).toBe(false);
+
+		const search = store.listSessionPage('hue', {
+			includeArchived: false,
+			query: 'needle',
+			limit: 25,
+			offset: 50
+		});
+		expect(search.sessions).toHaveLength(25);
+		expect(search.hasMore).toBe(true);
+		const searchEnd = store.listSessionPage('hue', {
+			includeArchived: false,
+			query: 'needle',
+			limit: 25,
+			offset: 75
+		});
+		expect(searchEnd.sessions).toHaveLength(5);
+		expect(searchEnd.hasMore).toBe(false);
+		store.close();
+	});
+
+	it('previews exact Session delete impact and blocks deletion with unresolved delivery', () => {
+		const store = makeDeliveryStore();
+		store.acceptMessage({
+			id: 'msg-1',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Queued',
+			images: [{ name: 'screen.png', mimeType: 'image/png', data: 'aGVsbG8=' }]
+		});
+
+		expect(store.previewSessionDelete('hue', 'session-1')).toEqual({
+			sessionId: 'session-1',
+			messages: 1,
+			events: 1,
+			attachments: 1,
+			activeDeliveries: 1,
+			reversibleAlternative: 'archive'
+		});
+		expect(() => store.deleteSession('hue', 'session-1')).toThrow('active message deliveries');
+		store.updateMessageStatus('msg-1', 'failed');
+		expect(store.deleteSession('hue', 'session-1')).toBe(true);
+		expect(store.previewSessionDelete('hue', 'session-1')).toBeNull();
+		store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
+		expect(store.hasSession('hue', 'session-1')).toBe(false);
+		expect(store.isSessionDismissed('hue', 'session-1')).toBe(true);
+		store.close();
+	});
+
+	it('copies only HUE-owned organization metadata when Hermes duplicates a Session', () => {
+		const store = makeDeliveryStore();
+		store.acceptMessage({
+			id: 'source-message',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Review source',
+			attachments: [{ name: 'notes.txt', mimeType: 'text/plain', size: 5, data: 'aGVsbG8=' }]
+		});
+		store.transitionMessage('source-message', 'running', { messageId: 'source-message' });
+		store.transitionMessage('source-message', 'completed', { messageId: 'source-message' });
+		store.updateSessionMetadata('hue', 'session-1', {
+			title: 'Source',
+			pinned: true,
+			archived: true,
+			folder: 'Reviews',
+			tags: ['safe']
+		});
+		store.upsertSession('hue', { sessionId: 'fork-1', cwd: '/work/hue' });
+
+		store.copySessionMetadata('hue', 'session-1', 'fork-1', 'Source copy');
+
+		expect(store.getSession('hue', 'fork-1')).toMatchObject({
+			title: 'Source copy',
+			pinned: false,
+			archived: false,
+			folder: 'Reviews',
+			tags: ['safe']
+		});
+		const copied = store.listMessages('hue', 'fork-1');
+		expect(copied).toHaveLength(1);
+		expect(copied[0]).toMatchObject({
+			text: 'Review source',
+			status: 'completed',
+			attachments: [
+				{
+					name: 'notes.txt',
+					mimeType: 'text/plain',
+					size: 5,
+					available: false,
+					reattachRequired: true
+				}
+			]
+		});
+		expect(copied[0]?.id).not.toBe('source-message');
+		expect(store.listEvents('hue', 'fork-1').map((event) => event.payload.messageId)).not.toContain(
+			'source-message'
+		);
+		expect(
+			store.database
+				.query('SELECT data FROM message_attachments WHERE message_id = ?')
+				.get(copied[0]!.id)
+		).toEqual({ data: '' });
+		store.close();
+	});
+
+	it('validates all duplicate metadata before a Hermes fork can be requested', () => {
+		const store = makeDeliveryStore();
+		store.updateSessionMetadata('hue', 'session-1', {
+			title: 'x'.repeat(200),
+			folder: 'Reviews',
+			tags: ['safe']
+		});
+
+		expect(() => store.prepareSessionCopy('hue', 'session-1')).toThrow(
+			'Session title must be 1-200 characters'
+		);
+		expect(() => store.prepareSessionCopy('hue', 'session-1', 42)).toThrow(
+			'Session title must be 1-200 characters'
+		);
+		expect(store.prepareSessionCopy('hue', 'session-1', 'Valid copy')).toEqual({
+			title: 'Valid copy',
+			pinned: false,
+			archived: false,
+			folder: 'Reviews',
+			tags: ['safe']
+		});
+		store.close();
+	});
+
+	it('derives background attention and error indicators from durable state', () => {
+		const store = makeStore();
+		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.upsertSession('hue', { sessionId: 'waiting', cwd: '/work/hue' });
+		store.upsertSession('hue', { sessionId: 'failed', cwd: '/work/hue' });
+		store.appendEvent('hue', 'waiting', 'agent.permission', {
+			id: 'permission-1',
+			status: 'pending'
+		});
+		store.acceptMessage({ id: 'msg-failed', projectId: 'hue', sessionId: 'failed', text: 'Run' });
+		store.transitionMessage('msg-failed', 'running', { messageId: 'msg-failed' });
+		store.transitionMessage('msg-failed', 'failed', {
+			messageId: 'msg-failed',
+			error: 'Hermes unavailable'
+		});
+
+		expect(store.getSessionIndicators('hue')).toEqual({
+			waiting: { attention: true, error: false },
+			failed: { attention: true, error: true }
+		});
+		store.appendEvent('hue', 'waiting', 'agent.permission', {
+			id: 'permission-1',
+			status: 'resolved'
+		});
+		expect(store.getSessionIndicators('hue').waiting).toEqual({
+			attention: false,
+			error: false
+		});
+		store.close();
+	});
+
 	it('stores a session and its delivery state without a project', () => {
 		const store = makeStore();
 		store.upsertSession(null, { sessionId: 'session-1', cwd: '/work/topics' });
@@ -115,7 +373,7 @@ describe('HUEStore project and workflow boundaries', () => {
 		store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 
 		expect(store.updateSessionIcon('hue', 'session-1', '🐛')).toBe(true);
-		expect(store.getSession('hue', 'session-1')).toEqual({
+		expect(store.getSession('hue', 'session-1')).toMatchObject({
 			sessionId: 'session-1',
 			cwd: '/work/hue',
 			icon: '🐛'
@@ -314,6 +572,50 @@ describe('HUEStore acknowledged message transport', () => {
 		store.close();
 	});
 
+	it('persists generic attachment metadata but never payload bytes', () => {
+		const store = makeDeliveryStore();
+		const attachment = {
+			name: 'notes.md',
+			mimeType: 'text/markdown',
+			size: 5,
+			data: 'aGVsbG8='
+		};
+
+		store.acceptMessage({
+			id: 'msg-file',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Review attached notes',
+			attachments: [attachment]
+		});
+
+		const unavailable = {
+			name: attachment.name,
+			mimeType: attachment.mimeType,
+			size: attachment.size,
+			available: false,
+			reattachRequired: true
+		};
+		expect(store.getMessage('msg-file')?.attachments).toEqual([unavailable]);
+		expect(store.recoverInterruptedMessages()[0]?.attachments).toEqual([unavailable]);
+		expect(
+			store.database
+				.query('SELECT data FROM message_attachments WHERE message_id = ?')
+				.get('msg-file')
+		).toEqual({ data: '' });
+		store.updateQueuedMessage('msg-file', {
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Review updated notes',
+			images: [],
+			attachments: [attachment]
+		});
+		expect(store.getSessionSnapshot('hue', 'session-1').messages[0]?.attachments).toEqual([
+			unavailable
+		]);
+		store.close();
+	});
+
 	it('keeps the running message active when a follow-up is queued', () => {
 		const store = makeDeliveryStore();
 		store.acceptMessage({ id: 'active', projectId: 'hue', sessionId: 'session-1', text: 'First' });
@@ -354,6 +656,148 @@ describe('HUEStore acknowledged message transport', () => {
 
 		expect(replay).toHaveLength(1);
 		expect(replay[0]).toMatchObject({ sequence: 3, type: 'agent.completed' });
+		store.close();
+	});
+
+	it('recursively redacts credential identifiers and credential text at event persistence', () => {
+		const store = makeDeliveryStore();
+		const event = store.appendEvent('hue', 'session-1', 'agent.tool', {
+			messageId: 'msg-1',
+			title: 'Authorization: Bearer title-secret',
+			args: {
+				OPENAI_API_KEY: 'openai-secret',
+				GH_TOKEN: 'github-secret',
+				AWS_SECRET_ACCESS_KEY: 'aws-secret',
+				DEPLOY_TOKEN: 'deploy-secret',
+				SIGNING_SECRET: 'signing-secret',
+				ADMIN_PASSWORD: 'password-secret',
+				command:
+					'curl -H "Authorization: Bearer header-secret" https://user:pass@example.test && export OPENAI_API_KEY=inline-secret'
+			},
+			result: ['Bearer result-secret', { error: 'GH_TOKEN=result-token' }],
+			plan: [{ content: 'Use AWS_SECRET_ACCESS_KEY=plan-secret' }],
+			children: [
+				{ goal: 'Check https://alice:hunter2@example.test', result: 'token=result-secret' }
+			],
+			safe: {
+				tokenCount: 42,
+				passwordless: true,
+				secretariat: 'office',
+				authorizationMode: 'explicit',
+				url: 'https://example.test/path',
+				prose: 'Bearer authentication uses a credential.'
+			}
+		});
+
+		expect(JSON.stringify(event.payload)).not.toContain('title-secret');
+		expect(JSON.stringify(event.payload)).not.toContain('openai-secret');
+		expect(JSON.stringify(event.payload)).not.toContain('github-secret');
+		expect(JSON.stringify(event.payload)).not.toContain('aws-secret');
+		expect(JSON.stringify(event.payload)).not.toContain('header-secret');
+		expect(JSON.stringify(event.payload)).not.toContain('hunter2');
+		expect(event.payload).toMatchObject({
+			title: 'Authorization: [REDACTED]',
+			args: {
+				OPENAI_API_KEY: '[REDACTED]',
+				GH_TOKEN: '[REDACTED]',
+				AWS_SECRET_ACCESS_KEY: '[REDACTED]',
+				DEPLOY_TOKEN: '[REDACTED]',
+				SIGNING_SECRET: '[REDACTED]',
+				ADMIN_PASSWORD: '[REDACTED]'
+			},
+			safe: {
+				tokenCount: 42,
+				passwordless: true,
+				secretariat: 'office',
+				authorizationMode: 'explicit',
+				url: 'https://example.test/path',
+				prose: 'Bearer authentication uses a credential.'
+			}
+		});
+		expect(store.listEvents('hue', 'session-1').at(-1)?.payload).toEqual(event.payload);
+		store.close();
+	});
+
+	it('redacts structured set-cookie keys before persisting events', () => {
+		const store = makeDeliveryStore();
+		store.appendEvent('hue', 'session-1', 'agent.tool', {
+			headers: {
+				'set-cookie': 'session=dash-secret',
+				set_cookie: 'session=underscore-secret',
+				'SET-COOKIE': 'session=case-secret',
+				'content-type': 'application/json'
+			}
+		});
+
+		expect(store.listEvents('hue', 'session-1').at(-1)?.payload).toEqual({
+			headers: {
+				'set-cookie': '[REDACTED]',
+				set_cookie: '[REDACTED]',
+				'SET-COOKIE': '[REDACTED]',
+				'content-type': 'application/json'
+			}
+		});
+		store.close();
+	});
+
+	it('uses recursive redaction for every durable interaction payload surface', () => {
+		const store = makeDeliveryStore();
+		const secret =
+			'-----BEGIN RSA PRIVATE KEY-----\npersisted-secret\n-----END RSA PRIVATE KEY-----';
+		for (const [type, payload] of [
+			[
+				'agent.tool',
+				{ title: 'Cookie: tool-secret', args: { apiKey: 'args-secret' }, result: secret }
+			],
+			['agent.subagents', { id: 'delegate', children: [{ goal: 'Safe goal', result: secret }] }],
+			[
+				'agent.permission',
+				{
+					id: 'permission',
+					toolCall: { title: 'Safe title', args: { clientSecret: 'permission-secret' } }
+				}
+			],
+			[
+				'agent.clarify',
+				{ id: 'clarify', message: 'Safe question', answer: { password: 'clarify-secret' } }
+			],
+			['message.failed', { messageId: 'msg-1', error: 'Set-Cookie: failure-secret' }]
+		] as const) {
+			store.appendEvent('hue', 'session-1', type, payload);
+		}
+
+		const persisted = JSON.stringify(store.listEvents('hue', 'session-1'));
+		for (const value of [
+			'tool-secret',
+			'args-secret',
+			'persisted-secret',
+			'permission-secret',
+			'clarify-secret',
+			'failure-secret'
+		]) {
+			expect(persisted).not.toContain(value);
+		}
+		expect(persisted).toContain('Safe goal');
+		expect(persisted).toContain('Safe title');
+		expect(persisted).toContain('Safe question');
+		store.close();
+	});
+
+	it('redaction preserves safe audit history without depth or item truncation', () => {
+		const store = makeDeliveryStore();
+		let nested: Record<string, unknown> = { value: 'safe' };
+		for (let depth = 0; depth < 20; depth += 1) nested = { child: nested };
+		const values = Array.from({ length: 250 }, (_, index) => `safe-${index}`);
+
+		const event = store.appendEvent('hue', 'session-1', 'agent.subagents', {
+			id: 'delegate-large',
+			nested,
+			values
+		});
+
+		expect(event.payload.values).toEqual(values);
+		expect(JSON.stringify(event.payload.nested)).toContain('"value":"safe"');
+		expect(JSON.stringify(event.payload)).not.toContain('[TRUNCATED]');
 		store.close();
 	});
 
@@ -479,6 +923,42 @@ describe('HUEStore acknowledged message transport', () => {
 			images: [],
 			error: 'ACP disconnected before acknowledgement'
 		});
+		store.close();
+	});
+
+	it('cancels persisted authority prompts when recovering an interrupted turn', () => {
+		const store = makeDeliveryStore();
+		store.acceptMessage({
+			id: 'msg-1',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Ask before acting.'
+		});
+		store.updateMessageStatus('msg-1', 'running');
+		store.appendEvent('hue', 'session-1', 'agent.permission', {
+			id: 'permission-1',
+			messageId: 'msg-1',
+			status: 'pending'
+		});
+		store.appendEvent('hue', 'session-1', 'agent.clarify', {
+			id: 'clarify-1',
+			messageId: 'msg-1',
+			status: 'pending'
+		});
+
+		store.recoverInterruptedMessages();
+
+		const interactions = store
+			.listEvents('hue', 'session-1')
+			.filter((event) => event.type === 'agent.permission' || event.type === 'agent.clarify');
+		expect(
+			interactions.map((event) => [event.type, event.payload.id, event.payload.status])
+		).toEqual([
+			['agent.permission', 'permission-1', 'pending'],
+			['agent.clarify', 'clarify-1', 'pending'],
+			['agent.permission', 'permission-1', 'cancelled'],
+			['agent.clarify', 'clarify-1', 'cancelled']
+		]);
 		store.close();
 	});
 

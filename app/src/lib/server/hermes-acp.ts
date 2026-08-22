@@ -1,13 +1,23 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { chmod, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
+import { pathToFileURL } from 'node:url';
 import * as acp from '@agentclientprotocol/sdk';
 import {
 	DeliveryUncertainError,
 	type PromptRuntime,
+	type PlanEntry,
+	type ClarifyField,
+	type InteractionReply,
+	type InteractionRequest,
 	type SubagentChild,
-	type SubagentTree
+	type SubagentTree,
+	type ToolCall
 } from './message-dispatcher';
-import type { ImageAttachment } from '$lib/message-content';
+import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+import { redactPersistedValue } from './redaction';
 
 export type HermesSession = {
 	sessionId: string;
@@ -29,6 +39,7 @@ type HermesModelState = {
 
 export type HermesSessionState = {
 	profile: string;
+	clarify?: HermesClarifyCapability;
 	models?: HermesModelState | null;
 	modes?: acp.SessionModeState | null;
 	usage?: { used: number; size: number };
@@ -39,6 +50,12 @@ export type HermesRuntimeInfo = {
 	protocolVersion?: number;
 	agent?: { name: string; version: string };
 	capabilities?: Record<string, unknown>;
+	clarify?: HermesClarifyCapability;
+};
+
+type HermesClarifyCapability = {
+	status: 'unsupported' | 'available';
+	reason?: string;
 };
 
 type HermesSessionResponse = {
@@ -46,6 +63,103 @@ type HermesSessionResponse = {
 	models?: HermesModelState | null;
 	modes?: acp.SessionModeState | null;
 };
+
+export const redactToolPayload = redactPersistedValue;
+
+function toolError(value: unknown): string | undefined {
+	if (!value || typeof value !== 'object') return undefined;
+	const error = (value as Record<string, unknown>).error;
+	return typeof error === 'string' && error ? error : undefined;
+}
+
+export function normalizeToolCallUpdate(
+	update: Extract<acp.SessionUpdate, { sessionUpdate: 'tool_call' | 'tool_call_update' }>,
+	previous?: ToolCall,
+	now = Date.now()
+): ToolCall {
+	const startedAt = previous?.startedAt ?? now;
+	const status = update.status ?? previous?.status ?? 'pending';
+	const displayContent = toolText(update) || undefined;
+	const rawResult =
+		update.rawOutput !== undefined
+			? redactToolPayload(update.rawOutput)
+			: update.sessionUpdate === 'tool_call_update' && displayContent
+				? redactToolPayload(displayContent)
+				: previous?.result;
+	const terminal = status === 'completed' || status === 'failed';
+	const completedAt = terminal ? (previous?.completedAt ?? now) : undefined;
+	return {
+		id: update.toolCallId,
+		name: update.name ?? previous?.name ?? 'tool',
+		title: update.title ?? previous?.title ?? update.name ?? 'Tool call',
+		kind: update.kind ?? previous?.kind ?? 'other',
+		status,
+		...(update.rawInput !== undefined || (update.sessionUpdate === 'tool_call' && displayContent)
+			? { args: redactToolPayload(update.rawInput ?? displayContent) }
+			: previous?.args !== undefined
+				? { args: previous.args }
+				: {}),
+		...(rawResult !== undefined ? { result: rawResult } : {}),
+		...(status === 'failed' && toolError(rawResult) ? { error: toolError(rawResult) } : {}),
+		startedAt,
+		...(completedAt !== undefined
+			? { completedAt, durationMs: Math.max(0, completedAt - startedAt) }
+			: {})
+	};
+}
+
+function enumOptions(value: unknown): Array<{ value: string; label: string }> | undefined {
+	if (!value || typeof value !== 'object') return undefined;
+	const schema = value as {
+		enum?: unknown[];
+		oneOf?: Array<{ const?: unknown; title?: unknown }>;
+		anyOf?: Array<{ const?: unknown; title?: unknown }>;
+	};
+	const titled = schema.oneOf ?? schema.anyOf;
+	if (Array.isArray(titled)) {
+		return titled.flatMap((option) =>
+			typeof option.const === 'string'
+				? [{ value: option.const, label: String(option.title ?? option.const) }]
+				: []
+		);
+	}
+	return Array.isArray(schema.enum)
+		? schema.enum.flatMap((option) =>
+				typeof option === 'string' ? [{ value: option, label: option }] : []
+			)
+		: undefined;
+}
+
+function clarifyFields(schema: acp.ElicitationSchema): ClarifyField[] {
+	const required = new Set(schema.required ?? []);
+	const fields: ClarifyField[] = [];
+	for (const [name, property] of Object.entries(schema.properties ?? {})) {
+		if (property.type === 'string') {
+			const options = enumOptions(property);
+			fields.push({
+				name,
+				label: String(property.title ?? name),
+				control: options?.length ? ('single' as const) : ('text' as const),
+				required: required.has(name),
+				...(options?.length ? { options } : {})
+			});
+			continue;
+		}
+		if (property.type === 'array') {
+			const options = enumOptions(property.items);
+			if (options?.length) {
+				fields.push({
+					name,
+					label: String(property.title ?? name),
+					control: 'multi' as const,
+					required: required.has(name),
+					options
+				});
+			}
+		}
+	}
+	return fields;
+}
 
 function toolText(update: acp.SessionUpdate): string {
 	if (update.sessionUpdate !== 'tool_call' && update.sessionUpdate !== 'tool_call_update')
@@ -181,6 +295,10 @@ export class HermesACP implements PromptRuntime {
 	private closing = false;
 	private unavailable = false;
 	private readonly updateHandlers = new Map<string, Set<(update: acp.SessionUpdate) => void>>();
+	private readonly interactionHandlers = new Map<
+		string,
+		(request: InteractionRequest) => Promise<InteractionReply>
+	>();
 	private readonly availableCommands = new Map<string, acp.AvailableCommand[]>();
 	private readonly commandWaiters = new Map<string, Set<() => void>>();
 	private readonly sessionStates = new Map<string, HermesSessionState>();
@@ -234,9 +352,12 @@ export class HermesACP implements PromptRuntime {
 		);
 		const app = acp
 			.client({ name: 'hue-workspace' })
-			.onRequest(acp.methods.client.session.requestPermission, () => ({
-				outcome: { outcome: 'cancelled' }
-			}))
+			.onRequest(acp.methods.client.session.requestPermission, ({ params }) =>
+				this.handlePermission(params)
+			)
+			.onRequest(acp.methods.client.elicitation.create, ({ params }) =>
+				this.handleElicitation(params)
+			)
 			.onNotification(acp.methods.client.session.update, ({ params }) => {
 				this.dispatchUpdate(params.sessionId, params.update);
 			});
@@ -258,7 +379,7 @@ export class HermesACP implements PromptRuntime {
 		try {
 			const initialized = await connection.agent.request(acp.methods.agent.initialize, {
 				protocolVersion: acp.PROTOCOL_VERSION,
-				clientCapabilities: {},
+				clientCapabilities: { elicitation: { form: {} } },
 				clientInfo: { name: 'hue-workspace', version: '0.1.0' }
 			});
 			this.captureInitialization(initialized);
@@ -293,7 +414,11 @@ export class HermesACP implements PromptRuntime {
 			...(value.agentInfo?.name && value.agentInfo.version
 				? { agent: { name: value.agentInfo.name, version: value.agentInfo.version } }
 				: {}),
-			...(value.agentCapabilities ? { capabilities: value.agentCapabilities } : {})
+			...(value.agentCapabilities ? { capabilities: value.agentCapabilities } : {}),
+			clarify: {
+				status: 'unsupported',
+				reason: 'Hermes ACP has not sent elicitation/create'
+			}
 		};
 	}
 
@@ -439,13 +564,56 @@ export class HermesACP implements PromptRuntime {
 		sessionId: string;
 		text: string;
 		images: ImageAttachment[];
+		attachments?: InputAttachment[];
 		onChunk: (text: string) => void;
 		onImage?: (image: ImageAttachment) => void;
 		onThought?: (text: string) => void;
+		onTool?: (update: ToolCall) => void;
+		onPlan?: (entries: PlanEntry[]) => void;
+		onInteraction?: (request: InteractionRequest) => Promise<InteractionReply>;
 		onSubagent?: (update: SubagentTree) => void;
 	}): Promise<void> {
 		const context = await this.context();
+		let stagingRoot: string | null = null;
+		let resources: Array<{
+			type: 'resource_link';
+			uri: string;
+			name: string;
+			mimeType: string;
+			size: number;
+		}> = [];
+		if (input.attachments?.length) {
+			stagingRoot = await mkdtemp(join(tmpdir(), 'hue-turn-'));
+			await chmod(stagingRoot, 0o700);
+			try {
+				resources = await Promise.all(
+					input.attachments.map(async (attachment, index) => {
+						if (!attachment.data || basename(attachment.name) !== attachment.name) {
+							throw new Error(`Attachment ${attachment.name} is unavailable; reattach required`);
+						}
+						const path = join(stagingRoot!, `${index}-${attachment.name}`);
+						await writeFile(path, Buffer.from(attachment.data, 'base64'), {
+							mode: 0o600,
+							flag: 'wx'
+						});
+						await chmod(path, 0o600);
+						return {
+							type: 'resource_link' as const,
+							uri: pathToFileURL(await realpath(path)).href,
+							name: attachment.name,
+							mimeType: attachment.mimeType,
+							size: attachment.size
+						};
+					})
+				);
+			} catch (error) {
+				await rm(stagingRoot, { recursive: true, force: true });
+				throw error;
+			}
+		}
+		if (input.onInteraction) this.interactionHandlers.set(input.sessionId, input.onInteraction);
 		const delegates = new Map<string, SubagentTree>();
+		const tools = new Map<string, ToolCall>();
 		const unsubscribe = this.subscribe(input.sessionId, (update) => {
 			if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'text') {
 				input.onChunk(update.content.text);
@@ -456,6 +624,12 @@ export class HermesACP implements PromptRuntime {
 			if (update.sessionUpdate === 'agent_thought_chunk' && update.content.type === 'text') {
 				input.onThought?.(update.content.text);
 			}
+			if (update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update') {
+				const normalized = normalizeToolCallUpdate(update, tools.get(update.toolCallId));
+				tools.set(normalized.id, normalized);
+				input.onTool?.(normalized);
+			}
+			if (update.sessionUpdate === 'plan') input.onPlan?.(update.entries);
 			if (!input.onSubagent) return;
 			const id =
 				update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update'
@@ -472,7 +646,8 @@ export class HermesACP implements PromptRuntime {
 				sessionId: input.sessionId,
 				prompt: [
 					...(input.text.trim() ? [{ type: 'text' as const, text: input.text }] : []),
-					...input.images.map(({ data, mimeType }) => ({ type: 'image' as const, data, mimeType }))
+					...input.images.map(({ data, mimeType }) => ({ type: 'image' as const, data, mimeType })),
+					...resources
 				]
 			})) as acp.PromptResponse;
 			if (response.stopReason !== 'end_turn') {
@@ -482,11 +657,67 @@ export class HermesACP implements PromptRuntime {
 			if (error instanceof Error && error.message.startsWith('Hermes ended the turn with ')) {
 				throw error;
 			}
-			const message = error instanceof Error ? error.message : String(error);
+			const rawMessage = error instanceof Error ? error.message : String(error);
+			const message = stagingRoot
+				? rawMessage
+						.replaceAll(pathToFileURL(stagingRoot).href, '[staged attachment]')
+						.replaceAll(stagingRoot, '[staged attachment]')
+				: rawMessage;
 			throw new DeliveryUncertainError(`ACP disconnected before acknowledgement: ${message}`);
 		} finally {
 			unsubscribe();
+			if (stagingRoot) await rm(stagingRoot, { recursive: true, force: true });
+			if (this.interactionHandlers.get(input.sessionId) === input.onInteraction) {
+				this.interactionHandlers.delete(input.sessionId);
+			}
 		}
+	}
+
+	private async handlePermission(
+		request: acp.RequestPermissionRequest
+	): Promise<acp.RequestPermissionResponse> {
+		const handler = this.interactionHandlers.get(request.sessionId);
+		if (!handler) return { outcome: { outcome: 'cancelled' } };
+		const toolCall = normalizeToolCallUpdate(
+			{ sessionUpdate: 'tool_call_update', ...request.toolCall },
+			undefined
+		);
+		const response = await handler({
+			kind: 'permission',
+			id: request.toolCall.toolCallId,
+			sessionId: request.sessionId,
+			toolCall,
+			options: request.options
+		});
+		return 'outcome' in response
+			? (response as acp.RequestPermissionResponse)
+			: { outcome: { outcome: 'cancelled' } };
+	}
+
+	private async handleElicitation(
+		request: acp.CreateElicitationRequest
+	): Promise<acp.CreateElicitationResponse> {
+		this.runtimeInfo = { ...this.runtimeInfo, clarify: { status: 'available' } };
+		for (const [sessionId, state] of this.sessionStates) {
+			this.sessionStates.set(sessionId, { ...state, clarify: { status: 'available' } });
+		}
+		if (!acp.CreateElicitationRequest.isForm(request) || !('sessionId' in request)) {
+			return { action: 'cancel' };
+		}
+		const handler = this.interactionHandlers.get(request.sessionId);
+		if (!handler) return { action: 'cancel' };
+		const fields = clarifyFields(request.requestedSchema);
+		if (!fields.length) return { action: 'cancel' };
+		const response = await handler({
+			kind: 'clarify',
+			id: `clarify-${crypto.randomUUID()}`,
+			sessionId: request.sessionId,
+			message: request.message,
+			fields
+		});
+		return 'action' in response
+			? (response as acp.CreateElicitationResponse)
+			: { action: 'cancel' };
 	}
 
 	private image(content: Extract<acp.ContentBlock, { type: 'image' }>): ImageAttachment {
@@ -551,7 +782,11 @@ export class HermesACP implements PromptRuntime {
 	}
 
 	getSessionState(sessionId: string): HermesSessionState {
-		return this.sessionStates.get(sessionId) ?? { profile: this.profile };
+		return {
+			profile: this.profile,
+			...(this.runtimeInfo.clarify ? { clarify: this.runtimeInfo.clarify } : {}),
+			...(this.sessionStates.get(sessionId) ?? {})
+		};
 	}
 
 	async setModel(sessionId: string, modelId: string): Promise<HermesSessionState> {

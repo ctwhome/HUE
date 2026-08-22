@@ -253,9 +253,16 @@ test('chat remains internally scrollable and exposes message actions', () => {
 	expect(page).toContain('class="transcript min-h-0 flex-1 overflow-auto');
 	expect(page).toContain('aria-label="Scroll to latest message"');
 	expect(styles).toContain('white-space: pre-wrap');
-	for (const label of ['Copy message', 'Edit and resend message', 'Fork session']) {
+	for (const label of [
+		'Copy message',
+		'Edit and resend message',
+		'Fork from this message unavailable'
+	]) {
 		expect(page).toContain(`aria-label="${label}"`);
 	}
+	expect(page).toContain(
+		'Hermes ACP can duplicate a full Session but cannot fork from a selected message'
+	);
 	expect(page).toContain('navigator.clipboard.writeText(message.text)');
 });
 
