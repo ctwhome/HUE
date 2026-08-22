@@ -161,6 +161,15 @@ test('Project file workspace stays usable across required viewports', async ({
 			}
 		});
 	});
+	await page.route('**/api/projects/*/workflows', (route) =>
+		route.fulfill({
+			json: {
+				workflows: [
+					{ id: 'evidence', name: 'Collect evidence', prompt: 'Collect release evidence' }
+				]
+			}
+		})
+	);
 	await addProject(page);
 	await page.getByRole('button', { name: 'Files', exact: true }).click();
 	await page.getByRole('treeitem', { name: /README.md/ }).click();
@@ -187,13 +196,34 @@ test('Project file workspace stays usable across required viewports', async ({
 	await page.getByRole('treeitem', { name: /README.md/ }).click();
 	await page.getByRole('button', { name: 'Edit Markdown' }).click();
 	await page.getByLabel('File content').fill('# Unsaved');
+	await page.getByTitle('Workflows').click();
+	await page.getByRole('button', { name: 'Run', exact: true }).click();
+	await expect(page.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
+	expect(
+		await page.evaluate(() =>
+			document
+				.querySelector('.context-panel .tabs button:nth-child(2)')
+				?.classList.contains('active')
+		)
+	).toBe(true);
+	await page.getByRole('button', { name: 'Keep editing' }).click();
 	await page.setViewportSize(viewports[0]);
 	expect(await page.evaluate(() => window.innerWidth)).toBe(viewports[0].width);
 	expect(await page.evaluate(() => matchMedia('(max-width: 700px)').matches)).toBe(false);
 	for (const action of [
 		page.getByRole('button', { name: 'Refresh files' }),
 		page.getByRole('button', { name: 'Develop' }),
-		page.getByRole('button', { name: 'Settings' }),
+		...[
+			'Settings',
+			'Inspect Hermes runtime',
+			'Schedules',
+			'Skills',
+			'Commands',
+			'Profiles',
+			'MCP'
+		].map((name) =>
+			page.getByRole('navigation', { name: 'Global navigation' }).getByRole('button', { name })
+		),
 		page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' }),
 		page.getByRole('button', { name: 'Rename or move file' }),
 		page.getByRole('button', { name: 'Delete file' }),
@@ -209,6 +239,30 @@ test('Project file workspace stays usable across required viewports', async ({
 			return !window.dispatchEvent(event);
 		})
 	).toBe(true);
+	await page
+		.getByRole('navigation', { name: 'Global navigation' })
+		.getByRole('button', { name: 'Settings' })
+		.click();
+	await page.getByRole('button', { name: 'Discard changes' }).click();
+	await expect(page.getByRole('region', { name: 'Settings' })).toBeVisible();
+	await page
+		.getByRole('navigation', { name: 'Global navigation' })
+		.getByRole('button', { name: 'Workspace' })
+		.click();
+	await expect(page.getByRole('region', { name: 'Project files' })).toBeVisible();
+	await expect(
+		page
+			.getByRole('navigation', { name: 'Project workbench views' })
+			.getByRole('button', { name: 'Files', exact: true })
+	).toHaveAttribute('aria-pressed', 'true');
+	await page
+		.getByRole('navigation', { name: 'Global navigation' })
+		.getByRole('button', { name: 'Inspect Hermes runtime' })
+		.click();
+	await expect(page.getByRole('region', { name: 'Hermes management' })).toBeVisible();
+	await page.getByRole('button', { name: 'Back to workspace' }).click();
+	await expect(page.getByRole('region', { name: 'Project files' })).toBeVisible();
+	await page.getByLabel('File content').fill('# Unsaved again');
 	await page.getByRole('treeitem', { name: /src/ }).click();
 	await page.getByRole('treeitem', { name: /main.ts/ }).click();
 	await expect(page.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
@@ -510,7 +564,7 @@ test('opens project creation from the Projects heading and dismisses it with Esc
 	const browserErrors: string[] = [];
 	let submittedProject: { name: string; rootPath: string } | undefined;
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
-	page.on('pageerror', (error) => browserErrors.push(error.stack ?? error.message));
+	page.on('pageerror', (error) => browserErrors.push(error.message));
 	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
 	await page.route(/\/api\/directories/, (route) => {
 		const url = new URL(route.request().url());
@@ -797,18 +851,29 @@ test('opens distinct Hermes runtime, skills, schedules, commands, profiles, and 
 			return route.fulfill({ json: { name: 'browser-use', content: savedSkill } });
 		}
 		return route.fulfill({
-			json: { name: 'browser-use', content: '---\nname: browser-use\n---\n\n# Browser Use\n' }
+			json: {
+				name: 'browser-use',
+				content: '---\nname: browser-use\n---\n\n# Browser Use\n',
+				provenance: 'custom',
+				editable: true
+			}
 		});
 	});
 	await page.route(/\/api\/hermes(?:\?.*)?$/, (route) => {
 		const view = new URL(route.request().url()).searchParams.get('view');
 		const json =
 			view === 'skills'
-				? { skills: [{ name: 'browser-use', category: '', source: 'local', status: 'enabled' }] }
+				? { skills: [{ name: 'browser-use', category: '', provenance: 'agent', enabled: true }] }
 				: view === 'schedules'
 					? {
 							jobs: [
-								{ id: 'job-1', name: 'Monthly check', schedule: '0 9 1 * *', status: 'active' }
+								{
+									id: 'job-1',
+									profile: 'work',
+									name: 'Monthly check',
+									schedule: '0 9 1 * *',
+									status: 'active'
+								}
 							]
 						}
 					: view === 'profiles'
@@ -832,7 +897,6 @@ test('opens distinct Hermes runtime, skills, schedules, commands, profiles, and 
 			}
 		})
 	);
-
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await page.goto('/');
@@ -895,6 +959,80 @@ test('opens distinct Hermes runtime, skills, schedules, commands, profiles, and 
 		);
 		await panel.getByRole('button', { name: 'Back to workspace' }).click();
 		await expect(panel).toBeHidden();
+	}
+});
+
+test('guards unsaved skill edits across workspace and Project navigation', async ({ page }) => {
+	const targetRoot = mkdtempSync(join(tmpdir(), 'hue-dirty-skill-target-'));
+	const created = await page.request.post('/api/projects', {
+		data: { name: 'Dirty skill target', rootPath: targetRoot }
+	});
+	const target = (await created.json()).project as { id: string };
+	await page.route('/api/hermes/skills/browser-use', (route) =>
+		route.fulfill({
+			json: {
+				name: 'browser-use',
+				content: '---\nname: browser-use\n---\n\n# Browser Use\n',
+				provenance: 'custom',
+				editable: true
+			}
+		})
+	);
+	await page.route(/\/api\/hermes(?:\?.*)?$/, (route) =>
+		route.fulfill({
+			json: {
+				skills: [{ name: 'browser-use', category: '', provenance: 'agent', enabled: true }]
+			}
+		})
+	);
+
+	try {
+		await addProject(page);
+		const globalNavigation = page.getByRole('navigation', { name: 'Global navigation' });
+		await globalNavigation.getByRole('button', { name: 'Skills' }).click();
+		const panel = page.getByRole('region', { name: 'Hermes management' });
+		await panel.getByRole('button', { name: 'browser-use' }).click();
+		const editor = panel.getByLabel('Skill content');
+		const edited = '---\nname: browser-use\n---\n\n# Unsaved Browser Use\n';
+		await editor.fill(edited);
+
+		await globalNavigation.getByRole('button', { name: 'Workspace' }).click();
+		await expect(page.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
+		await page.getByRole('button', { name: 'Keep editing' }).click();
+		await expect(editor).toHaveValue(edited);
+
+		await panel.getByRole('button', { name: 'Back to workspace' }).click();
+		await expect(page.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
+		await page.getByRole('button', { name: 'Keep editing' }).click();
+		await expect(editor).toHaveValue(edited);
+
+		await page.setViewportSize({ width: 390, height: 844 });
+		const projectsMenu = page
+			.getByRole('navigation', { name: 'Workspace navigation' })
+			.getByRole('button', { name: 'Projects' });
+		await projectsMenu.click();
+		await page
+			.locator('.project-rail nav .project-select')
+			.filter({ hasText: 'Dirty skill target' })
+			.click();
+		await expect(page.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
+		await page.getByRole('button', { name: 'Keep editing' }).click();
+		await expect(editor).toHaveValue(edited);
+		await projectsMenu.click();
+		expect(
+			await page.evaluate(() => {
+				const event = new Event('beforeunload', { cancelable: true });
+				return !window.dispatchEvent(event);
+			})
+		).toBe(true);
+
+		await panel.getByRole('button', { name: 'Back to workspace' }).click();
+		await expect(page.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
+		await page.getByRole('button', { name: 'Discard changes' }).click();
+		await expect(panel).toBeHidden();
+	} finally {
+		await page.request.delete(`/api/projects/${target.id}`).catch(() => undefined);
+		rmSync(targetRoot, { recursive: true, force: true });
 	}
 });
 
@@ -1145,6 +1283,141 @@ test('keeps the newest Hermes inspector response after closing and reopening', a
 	await expect(panel.getByText('stale', { exact: true })).toBeHidden();
 });
 
+test('capability-gates Hermes v0.20.5 administration and keeps controls responsive', async ({
+	page
+}) => {
+	const browserErrors: string[] = [];
+	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
+	page.on('pageerror', (error) => browserErrors.push(error.stack ?? error.message));
+	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
+	await mockProjectWorkbenchRequests(page);
+	await page.route('/api/hermes/mcp', (route) =>
+		route.fulfill({
+			json: {
+				capabilities: { configure: true, toggle: true, health: true, auth: true, tools: true },
+				servers: [
+					{
+						name: 'remote',
+						transport: 'http',
+						url: 'https://example.test/mcp',
+						auth: 'oauth',
+						enabled: true
+					}
+				]
+			}
+		})
+	);
+	await page.route('/api/hermes/admin', (route) =>
+		route.fulfill({
+			json: {
+				health: { ok: true },
+				tools: [{ name: 'search' }],
+				target: { name: 'remote', enabled: true }
+			}
+		})
+	);
+	await page.route(/\/api\/hermes(?:\?.*)?$/, (route) => {
+		const view = new URL(route.request().url()).searchParams.get('view');
+		const bodies: Record<string, unknown> = {
+			memory: {
+				capabilities: {
+					memoryEditor: false,
+					memoryHistory: false,
+					skillDelete: false,
+					skillLinkedFiles: false
+				},
+				status: { active: 'builtin', builtin_files: { memory: 10, user: 20 } },
+				unsupported: ['Hermes v0.20.5 has no authenticated memory document read/write/history API.']
+			},
+			schedules: {
+				capabilities: { schedules: true },
+				jobs: [
+					{
+						id: 'daily',
+						name: 'Daily',
+						schedule: '0 9 * * *',
+						enabled: true,
+						last_status: 'success'
+					}
+				],
+				deliveryTargets: [{ id: 'local', name: 'Local (save only)', home_target_set: true }]
+			},
+			models: {
+				capabilities: { validatedAssignment: true, browserCredentials: false },
+				options: {
+					providers: [{ slug: 'openai', name: 'OpenAI', models: ['gpt-5'], authenticated: true }]
+				}
+			},
+			profiles: {
+				capabilities: { create: true, clone: true, switch: true, delete: true },
+				profiles: [
+					{
+						name: 'default',
+						is_default: true,
+						provider: 'openai',
+						model: 'gpt-5',
+						skill_count: 12,
+						gateway_running: true
+					}
+				],
+				active: { active: 'default', current: 'default' }
+			},
+			skills: { capabilities: { create: true, edit: true, toggle: true }, skills: [] }
+		};
+		return route.fulfill({
+			json: bodies[view ?? ''] ?? {
+				profile: 'default',
+				protocolVersion: 1,
+				agent: { name: 'hermes-agent', version: '0.20.5' },
+				administration: {
+					health: { ok: true, version: '0.20.5', auth_required: false },
+					status: {
+						gateway_running: true,
+						nous_session_valid: true,
+						config_version: 44,
+						latest_config_version: 44
+					},
+					logs: { lines: [] },
+					update: { message: 'Latest version.' }
+				}
+			}
+		});
+	});
+
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		await page.goto('/');
+		await page.getByRole('button', { name: 'Settings', exact: true }).last().click();
+		let panel = page.getByRole('region', { name: 'Settings' });
+		await expect(panel.getByRole('region', { name: 'HUE preferences' })).toBeVisible();
+		await panel.getByLabel('Theme').selectOption('oled');
+		await expect(page.locator('html')).toHaveAttribute('data-theme', 'oled');
+		await page.reload();
+		await expect(page.locator('html')).toHaveAttribute('data-theme', 'oled');
+		await page.getByRole('button', { name: 'Settings', exact: true }).last().click();
+		panel = page.getByRole('region', { name: 'Settings' });
+		await panel.getByRole('button', { name: 'Memory', exact: true }).click();
+		panel = page.getByRole('region', { name: 'Hermes management' });
+		await expect(panel.getByText('Unavailable upstream')).toBeVisible();
+		await panel.getByRole('button', { name: 'Schedules', exact: true }).click();
+		await expect(panel.getByRole('button', { name: 'Run now' })).toBeVisible();
+		await expect(panel.getByRole('button', { name: 'Run history' })).toBeVisible();
+		await panel.getByRole('button', { name: 'MCP', exact: true }).click();
+		await expect(panel.getByLabel('MCP bearer token')).toHaveAttribute('type', 'password');
+		await panel.getByRole('button', { name: 'Test health & tools' }).click();
+		await expect(panel.getByText('search', { exact: false })).toBeVisible();
+		await panel.getByRole('button', { name: 'Models', exact: true }).click();
+		await expect(
+			panel.getByText('Stored provider credentials never enter HUE browser payloads.')
+		).toBeVisible();
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		if (viewport.width <= 390) await expectMinimumTouchTargets(panel.locator('button'));
+	}
+	expect(browserErrors).toEqual([]);
+});
+
 test('sends one complete envelope and renders streamed completion', async ({ page }) => {
 	const captured: { envelope?: { messageId: string; text: string } } = {};
 	const browserErrors: string[] = [];
@@ -1236,6 +1509,8 @@ test('sends one complete envelope and renders streamed completion', async ({ pag
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 
 	await expect(page.getByText('Hermes reasoning')).toBeVisible();
+	await expect(page.getByText('Checking the request before answering.')).toBeHidden();
+	await page.getByText('Hermes reasoning').click();
 	await expect(page.getByText('Checking the request before answering.')).toBeVisible();
 	const assistant = page.locator('.transcript article.assistant');
 	await expect(assistant.locator('strong')).toHaveText('Done');
@@ -1608,7 +1883,10 @@ test('follows new chat content until the reader scrolls up', async ({ page }) =>
 	expect(browserErrors).toEqual([]);
 });
 
-test('copies, edits, and forks transcript messages', async ({ page, context }) => {
+test('copies and edits messages while selected-message fork stays honestly unavailable', async ({
+	page,
+	context
+}) => {
 	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 	const sessions = [{ sessionId: 'message-actions', cwd: '/work/hue', title: 'Message actions' }];
 	await page.route('**/api/projects/*/sessions', (route) => route.fulfill({ json: { sessions } }));
@@ -1658,8 +1936,12 @@ test('copies, edits, and forks transcript messages', async ({ page, context }) =
 	);
 	await userMessage.getByRole('button', { name: 'Edit and resend message' }).click();
 	await expect(page.getByLabel('Message Hermes')).toHaveValue('Please inspect this message');
-	await userMessage.getByRole('button', { name: 'Fork session' }).click();
-	await expect(page.locator('.selected-session-title')).toContainText('Forked session');
+	const fork = userMessage.getByRole('button', { name: 'Fork from this message unavailable' });
+	await expect(fork).toBeDisabled();
+	await expect(fork).toHaveAttribute(
+		'title',
+		'Hermes ACP can duplicate a full Session but cannot fork from a selected message'
+	);
 });
 
 test('shows a live timer beside each busy session', async ({ page }) => {
@@ -1791,7 +2073,7 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 		if (viewport.width <= 390) {
 			const composer = page.locator('.composer');
 			const context = composer.locator('.composer-context');
-			const attach = page.getByLabel('Attach images');
+			const attach = page.getByLabel('Attach images and files');
 			const voiceMessage = page.getByRole('button', { name: 'Record voice message' });
 			const voiceCall = page.getByRole('button', { name: 'Start voice call' });
 			const send = page.getByRole('button', { name: 'Send', exact: true });
@@ -1848,10 +2130,11 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 	await page.getByRole('option', { name: /compress/ }).click();
 	await expect(page.getByLabel('Message Hermes')).toHaveValue('/compress ');
 
-	await page.getByLabel('Attach images').setInputFiles({
+	const imageBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+	await page.getByLabel('Attach images and files').setInputFiles({
 		name: 'screen.png',
 		mimeType: 'image/png',
-		buffer: Buffer.from('image bytes')
+		buffer: imageBytes
 	});
 	await expect(page.getByRole('img', { name: 'screen.png' })).toBeVisible();
 	await page.getByLabel('Message Hermes').fill('Review this screenshot');
@@ -1859,13 +2142,266 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 
 	expect(envelope!.text).toBe('Review this screenshot');
 	expect(envelope!.images[0]).toMatchObject({ name: 'screen.png', mimeType: 'image/png' });
-	expect(Buffer.from(envelope!.images[0].data, 'base64').toString()).toBe('image bytes');
+	expect(Buffer.from(envelope!.images[0].data, 'base64')).toEqual(imageBytes);
 	expect(browserErrors).toEqual([]);
 });
 
-test('queues and edits messages while streaming, then can send now or stop', async ({ page }) => {
-	let queued: { messageId: string; text: string } | null = null;
+test('runs Workspace commands without disclosing or clearing staged draft attachments', async ({
+	page
+}) => {
+	let envelope!: {
+		text: string;
+		images: unknown[];
+		attachments: unknown[];
+	};
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({
+			json: { sessions: [{ sessionId: 'command', cwd: '/work/hue', title: 'Command' }] }
+		})
+	);
+	await page.route(/\/sessions\/command$/, (route) =>
+		route.fulfill({
+			json: {
+				transcript: [],
+				messages: [],
+				events: [],
+				cursor: 0,
+				activeTurn: null,
+				commands: [{ name: 'help', description: 'List available commands' }]
+			}
+		})
+	);
+	await page.route(/\/sessions\/command\/messages$/, async (route) => {
+		envelope = (await route.request().postDataJSON()) as typeof envelope;
+		await route.fulfill({ status: 202, json: { status: 'queued' } });
+	});
+	await page.route(/\/sessions\/command\/events\?after=0$/, (route) =>
+		route.fulfill({ json: { events: [] } })
+	);
+
+	await addProject(page);
+	await sessionButton(page, 'Command').click();
+	await page.getByLabel('Attach images and files').setInputFiles({
+		name: 'draft.txt',
+		mimeType: 'text/plain',
+		buffer: Buffer.from('private draft attachment')
+	});
+	await expect(page.getByText('draft.txt')).toBeVisible();
+	await page.getByLabel('Commands').click();
+	await page.getByRole('button', { name: /help/ }).click();
+
+	expect(envelope).toEqual({
+		messageId: expect.any(String),
+		text: '/help',
+		images: [],
+		attachments: []
+	});
+	await expect(page.getByText('draft.txt')).toBeVisible();
+});
+
+test('mod-enter sends command text while plain Enter completes selected command', async ({
+	page
+}) => {
+	const envelopes: Array<{ text: string }> = [];
+	await page.addInitScript(() => {
+		localStorage.setItem('hue:preferences', JSON.stringify({ sendKey: 'mod-enter' }));
+	});
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({
+			json: { sessions: [{ sessionId: 'command-keys', cwd: '/work/hue', title: 'Command keys' }] }
+		})
+	);
+	await page.route(/\/sessions\/command-keys$/, (route) =>
+		route.fulfill({
+			json: {
+				transcript: [],
+				messages: [],
+				events: [],
+				cursor: 0,
+				activeTurn: null,
+				commands: [{ name: 'help', description: 'List available commands' }]
+			}
+		})
+	);
+	await page.route(/\/sessions\/command-keys\/messages$/, async (route) => {
+		envelopes.push((await route.request().postDataJSON()) as { text: string });
+		await route.fulfill({ status: 202, json: { status: 'queued' } });
+	});
+	await page.route(/\/sessions\/command-keys\/events\?after=0$/, (route) =>
+		route.fulfill({ json: { events: [] } })
+	);
+
+	await addProject(page);
+	await sessionButton(page, 'Command keys').click();
+	const composer = page.getByLabel('Message Hermes');
+	await composer.fill('/he');
+	await composer.press('Enter');
+	await expect(composer).toHaveValue('/help ');
+	expect(envelopes).toHaveLength(0);
+
+	await composer.fill('/he');
+	await composer.press('ControlOrMeta+Enter');
+	await expect.poll(() => envelopes).toHaveLength(1);
+	expect(envelopes[0].text).toBe('/he');
+});
+
+test('keeps generic attachment bytes transient and restores explicit reattach plus MEDIA controls', async ({
+	page
+}) => {
+	let sent = false;
+	let posts = 0;
+	let envelope: {
+		attachments: Array<{ name: string; mimeType: string; size: number; data: string }>;
+	};
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) =>
+		route.fulfill({
+			json: { sessions: [{ sessionId: 'files', cwd: '/work/hue', title: 'Files' }] }
+		})
+	);
+	await page.route(/\/sessions\/files$/, (route) =>
+		route.fulfill({
+			json: sent
+				? {
+						transcript: [
+							{ role: 'user', text: 'Review notes' },
+							{ role: 'assistant', text: 'Reviewed.\nMEDIA: output/report.pdf' }
+						],
+						messages: [
+							{
+								id: 'file-message',
+								text: 'Review notes',
+								status: 'completed',
+								createdAt: '2026-08-22T10:00:00Z',
+								attachments: [
+									{
+										name: 'notes.txt',
+										mimeType: 'text/plain',
+										size: 5,
+										available: false,
+										reattachRequired: true
+									}
+								]
+							}
+						],
+						events: [
+							{
+								sequence: 1,
+								type: 'message.accepted',
+								payload: { messageId: 'file-message' },
+								createdAt: '2026-08-22T10:00:00Z'
+							},
+							{
+								sequence: 2,
+								type: 'message.running',
+								payload: { messageId: 'file-message' },
+								createdAt: '2026-08-22T10:00:01Z'
+							},
+							{
+								sequence: 3,
+								type: 'agent.chunk',
+								payload: { messageId: 'file-message', text: 'Reviewed.\nMEDIA: output/report.pdf' },
+								createdAt: '2026-08-22T10:00:02Z'
+							},
+							{
+								sequence: 4,
+								type: 'message.completed',
+								payload: { messageId: 'file-message' },
+								createdAt: '2026-08-22T10:00:03Z'
+							}
+						],
+						cursor: 4,
+						activeTurn: null
+					}
+				: { transcript: [], messages: [], events: [], cursor: 0, activeTurn: null }
+		})
+	);
+	await page.route(/\/sessions\/files\/messages$/, async (route) => {
+		posts += 1;
+		envelope = (await route.request().postDataJSON()) as typeof envelope;
+		sent = true;
+		return route.fulfill({ status: 202, json: { status: 'queued' } });
+	});
+	await page.route(/\/sessions\/files\/events\?after=0$/, (route) =>
+		route.fulfill({ json: { events: [] } })
+	);
+	await page.route(/\/sessions\/files\/media\?.*$/, (route) => {
+		const bytes = Buffer.from('%PDF-1.7\nrange');
+		const range = route.request().headers().range;
+		if (range)
+			return route.fulfill({
+				status: 206,
+				headers: {
+					'accept-ranges': 'bytes',
+					'content-range': `bytes 5-11/${bytes.length}`,
+					'content-type': 'application/pdf'
+				},
+				body: bytes.subarray(5, 12)
+			});
+		return route.fulfill({
+			headers: { 'accept-ranges': 'bytes', 'content-type': 'application/pdf' },
+			body: bytes
+		});
+	});
+
+	await addProject(page);
+	await sessionButton(page, 'Files').click();
+	await page.getByLabel('Attach images and files').setInputFiles({
+		name: 'notes.txt',
+		mimeType: 'text/plain',
+		buffer: Buffer.from('hello')
+	});
+	await expect(page.getByLabel('Pending file attachments')).toContainText('notes.txt');
+	await page.getByLabel('Message Hermes').fill('Review notes');
+	await page.getByLabel('Message Hermes').press('Enter');
+	expect(Buffer.from(envelope!.attachments[0].data, 'base64').toString()).toBe('hello');
+	await expect(page.getByText('Reattach required')).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Download notes.txt' })).toHaveCount(0);
+
+	await page.reload();
+	await expect(page.getByText('Reattach required')).toBeVisible();
+	await page
+		.locator('.transcript article.user')
+		.getByRole('button', { name: 'Edit and resend message' })
+		.click();
+	await expect(page.getByRole('alert')).toContainText('reattach files');
+	await page.getByRole('button', { name: 'Retry last response' }).click();
+	await expect(page.getByRole('alert')).toContainText('reattach files');
+	expect(posts).toBe(1);
+
+	const preview = page.getByRole('link', { name: 'Preview output/report.pdf' });
+	const download = page.getByRole('link', { name: 'Download output/report.pdf' });
+	await expect(preview).toHaveAttribute('target', '_blank');
+	await expect(download).toHaveAttribute('href', /download=true/);
+	const ranged = await preview.evaluate(async (link) => {
+		const response = await fetch((link as HTMLAnchorElement).href, {
+			headers: { range: 'bytes=5-11' }
+		});
+		return { status: response.status, contentRange: response.headers.get('content-range') };
+	});
+	expect(ranged.status).toBe(206);
+	expect(ranged.contentRange).toMatch(/^bytes 5-11\//);
+
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		if (viewport.width <= 390)
+			await expectMinimumTouchTargets(
+				page.locator('[aria-label="Generated outputs"] a, [aria-label="Generated outputs"] button')
+			);
+	}
+	await page.getByLabel('Message Hermes').focus();
+	await expect(page.getByLabel('Message Hermes')).toBeFocused();
+});
+
+test('queues and edits messages with attachments while streaming, then can send now or stop', async ({
+	page
+}) => {
+	let queued: { messageId: string; text: string; attachments?: Array<{ data: string }> } | null =
+		null;
 	let edited = '';
+	let preservedAttachment = false;
 	let cancellations = 0;
 	await page.route('**/api/projects/*/sessions', (route) =>
 		route.fulfill({
@@ -1891,9 +2427,15 @@ test('queues and edits messages while streaming, then can send now or stop', asy
 		})
 	);
 	await page.route(/\/sessions\/session-queue\/messages$/, async (route) => {
-		const body = (await route.request().postDataJSON()) as { messageId: string; text: string };
+		const body = (await route.request().postDataJSON()) as {
+			messageId: string;
+			text: string;
+			attachments?: Array<{ data: string }>;
+			preserveAttachments?: boolean;
+		};
 		if (route.request().method() === 'PATCH') {
 			edited = body.text;
+			preservedAttachment = body.preserveAttachments === true && body.attachments === undefined;
 			return route.fulfill({ json: { message: { ...queued, text: edited, status: 'queued' } } });
 		}
 		queued = body;
@@ -1911,6 +2453,12 @@ test('queues and edits messages while streaming, then can send now or stop', asy
 	await sessionButton(page, 'Queue').click();
 	await expect(page.getByLabel('Message Hermes')).toBeEnabled();
 	await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible();
+	await page.getByLabel('Attach images and files').setInputFiles({
+		name: 'queued.txt',
+		mimeType: 'text/plain',
+		buffer: Buffer.from('queue bytes')
+	});
+	await expect(page.getByLabel('Pending file attachments')).toContainText('queued.txt');
 	await page.getByLabel('Message Hermes').fill('Follow up');
 	await page.getByLabel('Message Hermes').press('Enter');
 	await expect(page.getByRole('region', { name: 'Queued messages' })).toContainText('Follow up');
@@ -1918,6 +2466,7 @@ test('queues and edits messages while streaming, then can send now or stop', asy
 	await page.getByLabel('Message Hermes').fill('Edited follow up');
 	await page.getByLabel('Message Hermes').press('Enter');
 	await expect.poll(() => edited).toBe('Edited follow up');
+	expect(preservedAttachment).toBe(true);
 	await page.getByRole('button', { name: 'Send queued message now' }).click();
 	await expect.poll(() => cancellations).toBe(1);
 });
@@ -1993,6 +2542,372 @@ test('shows durable delegate_task children as a collapsible status and result tr
 		if (viewport.width <= 390) await expectMinimumTouchTargets(tree.locator('summary'));
 	}
 	expect(browserErrors).toEqual([]);
+});
+
+test('renders durable ACP activity, todo, approval, clarify, timestamps, and code feedback', async ({
+	page
+}) => {
+	const responses: unknown[] = [];
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({
+			json: {
+				sessions: [
+					{
+						sessionId: 'session-error',
+						cwd: '/work/hue',
+						title: 'Failed background task',
+						attention: false,
+						error: true
+					},
+					{
+						sessionId: 'session-interactions',
+						cwd: '/work/hue',
+						title: 'Interactions',
+						attention: true,
+						error: false
+					}
+				]
+			}
+		})
+	);
+	await page.route(/\/sessions\/session-interactions$/, (route) =>
+		route.fulfill({
+			json: {
+				transcript: [
+					{ role: 'user', text: 'Inspect safely' },
+					{ role: 'assistant', text: 'Before tool.```ts\nconst safe = true;\n```' }
+				],
+				messages: [
+					{
+						id: 'msg-1',
+						status: 'running',
+						text: 'Inspect safely',
+						images: [],
+						createdAt: '2026-08-22T09:59:59.000Z'
+					}
+				],
+				runtime: { profile: 'default', clarify: { status: 'available' } },
+				cursor: 10,
+				activeTurn: {
+					messageId: 'msg-1',
+					status: 'running',
+					thought: 'Private published reasoning',
+					output: '',
+					error: null
+				},
+				events: [
+					{
+						sequence: 1,
+						type: 'message.accepted',
+						createdAt: '2026-08-22T09:59:59.050Z',
+						payload: { messageId: 'msg-1' }
+					},
+					{
+						sequence: 2,
+						type: 'agent.chunk',
+						createdAt: '2026-08-22T10:00:00.000Z',
+						payload: { messageId: 'msg-1', text: 'Before tool.' }
+					},
+					{
+						sequence: 3,
+						type: 'agent.tool',
+						createdAt: '2026-08-22T10:00:00.000Z',
+						payload: {
+							messageId: 'msg-1',
+							id: 'tool-1',
+							name: 'read_file',
+							title: 'Read configuration',
+							status: 'completed',
+							args: { path: 'config.json', apiKey: '[REDACTED]' },
+							result: { ok: true },
+							durationMs: 425
+						}
+					},
+					{
+						sequence: 4,
+						type: 'agent.tool',
+						payload: {
+							messageId: 'msg-1',
+							id: 'tool-1',
+							name: 'read_file',
+							title: 'Read configuration',
+							status: 'completed',
+							result: { ok: true },
+							durationMs: 425
+						}
+					},
+					{
+						sequence: 5,
+						type: 'agent.chunk',
+						payload: { messageId: 'msg-1', text: '```ts\nconst safe = true;\n```' }
+					},
+					{
+						sequence: 6,
+						type: 'agent.plan',
+						payload: {
+							messageId: 'msg-1',
+							entries: [
+								{ content: 'Inspect files', priority: 'high', status: 'completed' },
+								{ content: 'Run checks', priority: 'medium', status: 'in_progress' }
+							]
+						}
+					},
+					{
+						sequence: 7,
+						type: 'agent.permission',
+						createdAt: '2026-08-22T10:00:01.000Z',
+						payload: {
+							messageId: 'msg-1',
+							id: 'perm-1',
+							status: 'pending',
+							toolCall: { title: 'Execute test suite', args: { command: 'bun test' } },
+							options: [
+								{ optionId: 'once', name: 'Allow once', kind: 'allow_once' },
+								{ optionId: 'session', name: 'Allow for session', kind: 'allow_always' },
+								{ optionId: 'deny', name: 'Deny', kind: 'reject_once' }
+							]
+						}
+					},
+					{
+						sequence: 8,
+						type: 'agent.clarify',
+						createdAt: '2026-08-22T10:00:02.000Z',
+						payload: {
+							messageId: 'msg-1',
+							id: 'clarify-1',
+							status: 'pending',
+							message: 'Choose deployment',
+							fields: [
+								{
+									name: 'target',
+									label: 'Target',
+									control: 'single',
+									required: true,
+									options: [
+										{ value: 'staging', label: 'Staging' },
+										{ value: 'production', label: 'Production' }
+									]
+								},
+								{
+									name: 'checks',
+									label: 'Checks',
+									control: 'multi',
+									required: false,
+									options: [{ value: 'e2e', label: 'E2E' }]
+								},
+								{ name: 'note', label: 'Note', control: 'text', required: false }
+							]
+						}
+					},
+					{
+						sequence: 9,
+						type: 'agent.clarify',
+						createdAt: '2026-08-22T10:00:03.000Z',
+						payload: {
+							messageId: 'msg-1',
+							id: 'clarify-cancel',
+							status: 'pending',
+							message: 'Add optional detail',
+							fields: [{ name: 'detail', label: 'Detail', control: 'text', required: false }]
+						}
+					},
+					{
+						sequence: 10,
+						type: 'agent.thought',
+						payload: { messageId: 'msg-1', text: 'Private published reasoning' }
+					}
+				]
+			}
+		})
+	);
+	await page.route(/\/sessions\/session-interactions\/events\?after=10$/, (route) =>
+		route.fulfill({ json: { events: [] } })
+	);
+	await page.route(/\/sessions\/session-interactions\/interactions$/, async (route) => {
+		responses.push(await route.request().postDataJSON());
+		await route.fulfill({ json: { resolved: true } });
+	});
+
+	await addProject(page);
+	await expect(sessionButton(page, 'Failed background task')).toHaveAccessibleDescription(
+		/failed/i
+	);
+	await expect(sessionButton(page, 'Interactions')).toHaveAccessibleDescription(/attention/i);
+	await sessionButton(page, 'Interactions').click();
+	await expect(page.getByText('Hermes ACP · Clarify available')).toBeVisible();
+	expect(
+		await page
+			.locator('[data-timeline-sequence]')
+			.evaluateAll((elements) =>
+				elements.map((element) => Number(element.getAttribute('data-timeline-sequence')))
+			)
+	).toEqual([1, 2, 3, 5, 6, 7, 8, 9, 10]);
+	await expect(page.getByRole('group', { name: 'Read configuration' })).toContainText('425 ms');
+	const conversationTimes = page.locator('.transcript article time');
+	await expect(conversationTimes).toHaveCount(2);
+	await expect(conversationTimes.first()).toHaveAttribute('datetime', '2026-08-22T09:59:59.000Z');
+	await expect(conversationTimes.last()).toHaveAttribute('datetime', '2026-08-22T10:00:00.000Z');
+	for (const time of await conversationTimes.all()) {
+		await expect(time).toHaveText(/^\d{2}:\d{2}$/);
+		await expect(time).toHaveAttribute('title', /2026/);
+	}
+	const toolSummary = page
+		.getByRole('group', { name: 'Read configuration' })
+		.getByText('Read configuration');
+	await toolSummary.focus();
+	await toolSummary.press('Enter');
+	await expect(page.getByRole('group', { name: 'Read configuration' })).toContainText('[REDACTED]');
+	await expect(page.getByRole('region', { name: 'Hermes todo progress' })).toContainText('1 of 2');
+	await expect(
+		page.getByRole('group', { name: 'Permission required: Execute test suite' })
+	).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Allow once' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Deny' })).toBeVisible();
+	await page.getByRole('button', { name: 'Allow for session' }).focus();
+	await page.getByRole('button', { name: 'Allow for session' }).press('Enter');
+	const clarify = page.getByRole('group', { name: 'Clarify: Choose deployment' });
+	await clarify.getByLabel('Staging').check();
+	await clarify.getByLabel('E2E').check();
+	await clarify.getByLabel('Note').fill('Go');
+	await clarify.getByRole('button', { name: 'Submit answer' }).click();
+	await page
+		.getByRole('group', { name: 'Clarify: Add optional detail' })
+		.getByRole('button', { name: 'Cancel' })
+		.click();
+	await expect.poll(() => responses.length).toBe(3);
+	await expect(page.getByText('Private published reasoning')).toBeHidden();
+	await page.getByText('Hermes reasoning').click();
+	await expect(page.getByText('Private published reasoning')).toBeVisible();
+	await page.getByRole('button', { name: 'Copy code' }).focus();
+	await page.getByRole('button', { name: 'Copy code' }).press('Enter');
+	await expect(page.getByText('Code copied')).toBeVisible();
+
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		if (viewport.width <= 390) {
+			await expectMinimumTouchTargets(
+				page.locator('.activity-card button, .activity-card summary, .code-block button')
+			);
+		}
+	}
+});
+
+test('omits unavailable historical conversation timestamps', async ({ page }) => {
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({
+			json: { sessions: [{ sessionId: 'history', cwd: '/work/hue', title: 'History' }] }
+		})
+	);
+	await page.route(/\/sessions\/history$/, (route) =>
+		route.fulfill({
+			json: {
+				transcript: [
+					{ role: 'user', text: 'Undated message' },
+					{
+						role: 'assistant',
+						text: 'Dated message',
+						createdAt: '2026-08-22T10:00:00.000Z'
+					}
+				],
+				messages: [],
+				events: [],
+				cursor: 0,
+				activeTurn: null
+			}
+		})
+	);
+
+	await addProject(page);
+	await sessionButton(page, 'History').click();
+	const articles = page.locator('.transcript article');
+	await expect(articles).toHaveCount(2);
+	await expect(articles.first().locator('time')).toHaveCount(0);
+	await expect(articles.last().locator('time')).toHaveAttribute(
+		'datetime',
+		'2026-08-22T10:00:00.000Z'
+	);
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+	}
+});
+
+test('interaction completion stays with its captured Session across navigation', async ({
+	page
+}) => {
+	let interactionStarted!: () => void;
+	let finishInteraction!: () => void;
+	let finishOriginRefresh!: () => void;
+	const started = new Promise<void>((resolve) => (interactionStarted = resolve));
+	const interaction = new Promise<void>((resolve) => (finishInteraction = resolve));
+	const originRefresh = new Promise<void>((resolve) => (finishOriginRefresh = resolve));
+	let originLoads = 0;
+	const sessionBody = (title: string) => ({
+		transcript: [],
+		messages: [],
+		runtime: { profile: 'default' },
+		cursor: 1,
+		activeTurn: null,
+		events: [
+			{
+				sequence: 1,
+				type: 'agent.permission',
+				payload: {
+					messageId: `message-${title}`,
+					id: 'shared-interaction',
+					status: 'pending',
+					toolCall: { title },
+					options: [{ optionId: 'allow', name: `Allow ${title}`, kind: 'allow_once' }]
+				}
+			}
+		]
+	});
+
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({
+			json: {
+				sessions: [
+					{ sessionId: 'origin', cwd: '/work/hue', title: 'Origin Session' },
+					{ sessionId: 'other', cwd: '/work/hue', title: 'Other Session' }
+				]
+			}
+		})
+	);
+	await page.route(/\/sessions\/(origin|other)$/, async (route) => {
+		const sessionId = new URL(route.request().url()).pathname.split('/').at(-1);
+		if (sessionId === 'origin' && ++originLoads > 1) await originRefresh;
+		await route.fulfill({
+			json: sessionBody(sessionId === 'origin' ? 'Origin tool' : 'Other tool')
+		});
+	});
+	await page.route(/\/sessions\/origin\/interactions$/, async (route) => {
+		interactionStarted();
+		await interaction;
+		await route.fulfill({ json: { resolved: true } });
+	});
+
+	await addProject(page);
+	await sessionButton(page, 'Origin Session').click();
+	await page.getByRole('button', { name: 'Allow Origin tool' }).click();
+	await started;
+	await sessionButton(page, 'Other Session').click();
+	await expect(page.getByRole('button', { name: 'Allow Other tool' })).toBeVisible();
+
+	const completed = page.waitForResponse(/\/sessions\/origin\/interactions$/);
+	finishInteraction();
+	await completed;
+	await expect(page.getByRole('button', { name: 'Allow Other tool' })).toBeVisible();
+	await sessionButton(page, 'Origin Session').click();
+	await expect(
+		page.getByRole('group', { name: 'Permission required: Origin tool' }).getByRole('status')
+	).toHaveText('resolved');
+	await expect(page.getByRole('button', { name: 'Allow Origin tool' })).toHaveCount(0);
+	finishOriginRefresh();
 });
 
 test('shows loading beside new session without shifting the session list', async ({ page }) => {
@@ -2103,10 +3018,145 @@ test('revisits a loaded session immediately while refreshing it', async ({ page 
 	}
 });
 
+test('restores an exact deep-linked session through direct Session lookup', async ({ page }) => {
+	const listRequests: URL[] = [];
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) => {
+		const url = new URL(route.request().url());
+		listRequests.push(url);
+		if (url.searchParams.get('sessionId') !== 'deep-target') {
+			return route.fulfill({ status: 500, json: { error: 'Expected direct Session lookup' } });
+		}
+		return route.fulfill({
+			json: {
+				sessions: [{ sessionId: 'deep-target', cwd: '/work/hue', title: 'Deep target' }],
+				hasMore: false
+			}
+		});
+	});
+	await page.route(/\/sessions\/deep-target$/, (route) =>
+		route.fulfill({
+			json: {
+				transcript: [{ role: 'assistant', text: 'Deep session restored' }],
+				messages: [],
+				events: [],
+				cursor: 0,
+				activeTurn: null
+			}
+		})
+	);
+	await addProject(page);
+	const project = new URL(page.url()).searchParams.get('project');
+	await page.goto(`/?project=${project}&session=deep-target`);
+	await expect(page.getByText('Deep session restored')).toBeVisible();
+	expect(listRequests.at(-1)?.searchParams.get('sessionId')).toBe('deep-target');
+	expect(listRequests.at(-1)?.searchParams.has('offset')).toBe(false);
+});
+
+test('searches and manages rename pin archive duplicate export and delete impact', async ({
+	page
+}) => {
+	let metadata: Record<string, unknown> = {};
+	let searched = '';
+	let confirmedDelete = false;
+	const source = {
+		sessionId: 'manage',
+		cwd: '/work/hue',
+		title: 'Manage me',
+		pinned: false,
+		archived: false
+	};
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) => {
+		searched = new URL(route.request().url()).searchParams.get('q') ?? searched;
+		return route.fulfill({ json: { sessions: [source], hasMore: false } });
+	});
+	await page.route(/\/sessions\/manage(?:\?.*)?$/, async (route) => {
+		const url = new URL(route.request().url());
+		if (url.searchParams.get('format')) {
+			return route.fulfill({
+				headers: {
+					'content-type': 'text/markdown',
+					'content-disposition': 'attachment; filename="manage.md"'
+				},
+				body: '# Managed export'
+			});
+		}
+		if (route.request().method() === 'PATCH') {
+			metadata = (await route.request().postDataJSON()) as Record<string, unknown>;
+			return route.fulfill({ json: { session: { ...source, ...metadata }, icon: null } });
+		}
+		if (route.request().method() === 'POST') {
+			return route.fulfill({
+				status: 201,
+				json: { session: { sessionId: 'manage-copy', cwd: '/work/hue', title: 'Managed copy' } }
+			});
+		}
+		return route.fulfill({
+			json: { transcript: [], messages: [], events: [], cursor: 0, activeTurn: null }
+		});
+	});
+	await page.route(/\/sessions\/manage-copy(?:\?.*)?$/, async (route) => {
+		const url = new URL(route.request().url());
+		if (route.request().method() === 'DELETE' && !url.searchParams.has('confirm')) {
+			return route.fulfill({
+				json: { impact: { messages: 2, events: 5, attachments: 1, activeDeliveries: 0 } }
+			});
+		}
+		if (route.request().method() === 'DELETE') {
+			confirmedDelete = true;
+			return route.fulfill({ json: { deleted: true } });
+		}
+		return route.fulfill({
+			json: { transcript: [], messages: [], events: [], cursor: 0, activeTurn: null }
+		});
+	});
+
+	await addProject(page);
+	await page.getByRole('searchbox', { name: 'Search Sessions' }).fill('Manage');
+	await page.getByRole('button', { name: 'Search', exact: true }).click();
+	expect(searched).toBe('Manage');
+	await sessionButton(page, 'Manage me').click();
+	await page.getByRole('button', { name: 'Edit Manage me' }).click();
+	await expect(page.getByRole('button', { name: 'Import unavailable' })).toBeDisabled();
+	await expect(page.getByRole('button', { name: 'Import unavailable' })).toHaveAttribute(
+		'title',
+		'Hermes ACP does not provide a Session import seam'
+	);
+	await page.getByLabel('Title').fill('Managed');
+	await page.getByLabel('Pinned').check();
+	await page.getByLabel('Archived', { exact: true }).check();
+	await page.getByRole('button', { name: 'Save icon' }).click();
+	expect(metadata).toMatchObject({ title: 'Managed', pinned: true, archived: true });
+	await expect(sessionButton(page, 'Managed')).toBeVisible();
+
+	await page.getByRole('button', { name: 'Edit Managed' }).click();
+	const downloadPromise = page.waitForEvent('download');
+	await page.getByRole('button', { name: 'Export Markdown' }).click();
+	const download = await downloadPromise;
+	expect(download.suggestedFilename()).toBe('hue-manage.md');
+	await page.getByRole('button', { name: 'Duplicate' }).click();
+	await expect(sessionButton(page, 'Managed copy')).toBeVisible();
+
+	await page.getByRole('button', { name: 'Edit Managed copy' }).click();
+	page.once('dialog', async (dialog) => {
+		expect(dialog.message()).toContain('2 messages, 5 events, 1 attachments');
+		await dialog.accept();
+	});
+	await page.getByRole('button', { name: 'Remove', exact: true }).click();
+	await expect(sessionButton(page, 'Managed copy')).toHaveCount(0);
+	expect(confirmedDelete).toBe(true);
+
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+	}
+});
+
 test('starts a new session without the previous session output', async ({ page }) => {
 	const browserErrors: string[] = [];
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
-	page.on('pageerror', (error) => browserErrors.push(error.message));
+	page.on('pageerror', (error) => browserErrors.push(error.stack ?? error.message));
 	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
 	await page.route('**/api/projects/*/sessions', async (route) => {
 		if (route.request().method() === 'POST') {
@@ -2124,9 +3174,15 @@ test('starts a new session without the previous session output', async ({ page }
 		route.fulfill({
 			json: {
 				transcript: [],
-				messages: [],
-				events: [],
-				cursor: 0,
+				messages: [{ id: 'old-message', status: 'unknown', text: '', images: [] }],
+				events: [
+					{
+						sequence: 1,
+						type: 'agent.chunk',
+						payload: { messageId: 'old-message', text: 'Previous session wall of text' }
+					}
+				],
+				cursor: 1,
 				activeTurn: {
 					messageId: 'old-message',
 					status: 'unknown',
@@ -2269,7 +3325,7 @@ test('retries a lost acknowledgement with the same complete envelope', async ({ 
 });
 
 async function mockRunningSession(page: import('@playwright/test').Page) {
-	await page.route('**/api/projects/*/sessions', async (route) => {
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, async (route) => {
 		if (route.request().method() === 'GET') {
 			await route.fulfill({
 				json: {

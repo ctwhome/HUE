@@ -9,21 +9,31 @@
 	let {
 		skills,
 		selectedSkill,
+		selectedSkillEditable,
+		selectedSkillProvenance,
 		skillContent = $bindable(),
 		skillSaving,
 		skillSaved,
 		onopen,
 		onclose,
-		onsave
+		onsave,
+		ondelete,
+		onaction,
+		capabilities
 	}: {
 		skills: Skill[];
 		selectedSkill: string;
+		selectedSkillEditable: boolean;
+		selectedSkillProvenance: string;
 		skillContent: string;
 		skillSaving: boolean;
 		skillSaved: boolean;
 		onopen: (name: string) => void;
 		onclose: () => void;
 		onsave: () => void;
+		ondelete: (name: string) => void;
+		onaction: (action: string, input: Record<string, unknown>) => Promise<unknown>;
+		capabilities: Record<string, boolean>;
 	} = $props();
 
 	let filter = $state('');
@@ -32,6 +42,8 @@
 	let status = $state('all');
 	let group = $state<'none' | 'category' | 'source'>('none');
 	let highlightElement = $state<HTMLElement>();
+	let newSkillName = $state('');
+	let newSkillCategory = $state('general');
 	const inputClass =
 		'h-10 min-w-0 rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring max-[700px]:min-h-11';
 	const card = 'rounded-xl border border-border bg-card p-4';
@@ -80,6 +92,9 @@
 				><ArrowLeft size={15} aria-hidden="true" /> Back to skills</Button
 			>
 			<h2 class="font-semibold">{selectedSkill}</h2>
+			{#if !selectedSkillEditable}<span class="text-sm text-muted-foreground"
+					>Read-only · {selectedSkillProvenance} provenance</span
+				>{/if}
 		</div>
 		<div class="skill-editor-code relative min-h-[420px]">
 			<pre
@@ -91,17 +106,43 @@
 				bind:value={skillContent}
 				aria-label="Skill content"
 				spellcheck="false"
+				disabled={!selectedSkillEditable}
 				onscroll={syncScroll}
 			/>
 		</div>
 		<div class="skill-editor-actions flex items-center justify-end gap-3">
 			{#if skillSaved}<span class="text-emerald-300" role="status">Saved</span>{/if}
-			<Button title="Save skill" onclick={onsave} disabled={skillSaving}
+			<Button title="Save skill" onclick={onsave} disabled={skillSaving || !selectedSkillEditable}
 				>{skillSaving ? 'Saving…' : 'Save skill'}</Button
 			>
 		</div>
 	</div>
 {:else}
+	<form
+		class="mb-4 grid grid-cols-[1fr_1fr_auto] gap-2 rounded-xl border border-border bg-card p-4 max-[700px]:grid-cols-1"
+		onsubmit={(event) => {
+			event.preventDefault();
+			void onaction('skill.create', {
+				name: newSkillName,
+				category: newSkillCategory,
+				content: `---\nname: ${newSkillName}\ndescription: Describe this skill\n---\n\n# ${newSkillName}\n`
+			});
+		}}
+	>
+		<Input
+			bind:value={newSkillName}
+			aria-label="New skill name"
+			placeholder="New skill name"
+			required
+		/>
+		<Input
+			bind:value={newSkillCategory}
+			aria-label="New skill category"
+			placeholder="Category"
+			required
+		/>
+		<Button type="submit" disabled={!capabilities.create}>Create skill</Button>
+	</form>
 	<section
 		class="skill-statistics grid grid-cols-4 gap-2 max-[700px]:grid-cols-2"
 		aria-label="Skill statistics"
@@ -155,21 +196,39 @@
 				{/if}
 				<div class="inventory-list grid gap-2">
 					{#each item.skills as skill}
-						<button
-							class={`${card} inventory-row flex min-h-11 items-center justify-between gap-4 text-left hover:bg-accent`}
-							aria-label={skill.name}
-							title={`Open ${skill.name}`}
-							onclick={() => onopen(skill.name)}
+						<article
+							class={`${card} inventory-row flex min-h-11 items-center justify-between gap-4`}
 						>
-							<div class="grid gap-1">
-								<strong>{skill.name}</strong>
-								<small class="text-muted-foreground">{skillCategory(skill)} · {skill.source}</small>
-							</div>
-							<span
-								class={`rounded-full px-2 py-1 text-xs ${skill.status === 'enabled' ? 'bg-emerald-950 text-emerald-300' : 'bg-amber-950 text-amber-300'}`}
-								>{skill.status}</span
+							<button
+								class="min-w-0 flex-1 text-left"
+								aria-label={skill.name}
+								title={`Open ${skill.name}`}
+								onclick={() => onopen(skill.name)}
 							>
-						</button>
+								<div class="grid gap-1">
+									<strong>{skill.name}</strong>
+									<small class="text-muted-foreground"
+										>{skillCategory(skill)} · {skill.source}</small
+									>
+								</div>
+							</button>
+							<Button
+								variant="outline"
+								size="sm"
+								disabled={!capabilities.toggle}
+								onclick={() =>
+									onaction('skill.toggle', {
+										name: skill.name,
+										enabled: skill.status !== 'enabled'
+									})}>{skill.status === 'enabled' ? 'Disable' : 'Enable'}</Button
+							>
+							{#if skill.source === 'custom'}<Button
+									variant="destructive"
+									size="sm"
+									disabled={!capabilities.delete}
+									onclick={() => ondelete(skill.name)}>Delete</Button
+								>{/if}
+						</article>
 					{/each}
 				</div>
 			</section>

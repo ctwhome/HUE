@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import {
 		ChevronDown,
 		ChevronRight,
@@ -80,6 +80,11 @@
 	const treeItems = new Map<string, HTMLButtonElement>();
 	let dirty = $derived(Boolean(preview?.content !== null && editor !== loadedContent));
 	let contentUrl = $derived(previewContentUrl(projectId, preview?.path));
+	function discardChanges() {
+		editor = loadedContent;
+		externalChange = movedDeleted = false;
+	}
+	const dirtySource = untrack(() => dirtyGuard.register(discardChanges));
 	function clearPreviewSelection() {
 		previewRequests.cancel();
 		preview = null;
@@ -297,22 +302,17 @@
 			error = cause instanceof Error ? cause.message : String(cause);
 		}
 	}
-	$effect(() => dirtyGuard.setDirty(dirty));
+	$effect(() => dirtySource.setDirty(dirty));
 	$effect(() => {
 		if (fileRequest && fileRequest.id !== handledFileRequest) {
 			handledFileRequest = fileRequest.id;
 			requestSelect(fileRequest.path);
 		}
 	});
-
 	onMount(() => {
-		const unregister = dirtyGuard.register(() => {
-			editor = loadedContent;
-			externalChange = movedDeleted = false;
-		});
 		void loadTree();
 		return () => {
-			unregister();
+			dirtySource.unregister();
 			clearTimeout(searchTimer);
 			previewRequests.cancel();
 		};

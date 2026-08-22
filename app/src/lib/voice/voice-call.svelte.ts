@@ -30,6 +30,7 @@ export function createVoiceCall(options: VoiceCallOptions) {
 	let monitorContext: AudioContext | null = null;
 	let speechContext: AudioContext | null = null;
 	let audio: HTMLAudioElement | null = null;
+	let systemUtterance: SpeechSynthesisUtterance | null = null;
 	let speechAbort: AbortController | null = null;
 	let transcribeAbort: AbortController | null = null;
 	let generation = 0;
@@ -41,6 +42,8 @@ export function createVoiceCall(options: VoiceCallOptions) {
 	function stopPlayback() {
 		speechAbort?.abort();
 		speechAbort = null;
+		if (systemUtterance && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+		systemUtterance = null;
 		void speechContext?.close().catch(() => undefined);
 		speechContext = null;
 		if (audio) {
@@ -198,6 +201,10 @@ export function createVoiceCall(options: VoiceCallOptions) {
 		const abort = new AbortController();
 		speechAbort = abort;
 		try {
+			if (document.documentElement.dataset.voice === 'system') {
+				await playSystemSpeech(text, abort.signal);
+				return;
+			}
 			const response = await fetch('/api/voice/speak', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
@@ -217,6 +224,27 @@ export function createVoiceCall(options: VoiceCallOptions) {
 			if (!abort.signal.aborted) error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
 			if (speechAbort === abort) speechAbort = null;
+		}
+	}
+
+	async function playSystemSpeech(text: string, signal: AbortSignal) {
+		if (!('speechSynthesis' in window)) throw new Error('System voice is unavailable');
+		const utterance = new SpeechSynthesisUtterance(text);
+		utterance.lang = document.documentElement.lang;
+		systemUtterance = utterance;
+		try {
+			await new Promise<void>((resolve, reject) => {
+				const stop = () => {
+					window.speechSynthesis.cancel();
+					resolve();
+				};
+				signal.addEventListener('abort', stop, { once: true });
+				utterance.onend = () => resolve();
+				utterance.onerror = (event) => reject(new Error(`System voice failed (${event.error})`));
+				window.speechSynthesis.speak(utterance);
+			});
+		} finally {
+			if (systemUtterance === utterance) systemUtterance = null;
 		}
 	}
 

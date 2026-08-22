@@ -50,6 +50,13 @@ export class WorkspaceNavigation {
 	editSessionDialog = $state<HTMLDialogElement>();
 	editingSession = $state<Session | null>(null);
 	sessionIcon = $state<string | null>(null);
+	sessionTitle = $state('');
+	sessionPinned = $state(false);
+	sessionArchived = $state(false);
+	sessionFolder = $state('');
+	sessionTags = $state('');
+	sessionSearch = $state('');
+	showArchived = $state(false);
 	sessionEmojiPickerOpen = $state(false);
 	sessionEditError = $state('');
 	sessionSaving = $state(false);
@@ -72,12 +79,34 @@ export class WorkspaceNavigation {
 		return `${base}${sessionId ? `/${sessionId}` : ''}${suffix}`;
 	}
 
+	captureSessionSelection() {
+		if (!this.selectedSession) return null;
+		return {
+			generation: this.sessionRequestGeneration,
+			projectId: this.selectedProject?.id ?? null,
+			sessionId: this.selectedSession.sessionId
+		};
+	}
+
+	isCurrentSessionSelection(selection: {
+		generation: number;
+		projectId: string | null;
+		sessionId: string;
+	}) {
+		return (
+			selection.generation === this.sessionRequestGeneration &&
+			selection.projectId === (this.selectedProject?.id ?? null) &&
+			selection.sessionId === this.selectedSession?.sessionId
+		);
+	}
+
 	persistSelection() {
 		const url = new URL(window.location.href);
 		url.searchParams.set('project', this.selectedProject?.id ?? 'none');
 		if (this.selectedSession) url.searchParams.set('session', this.selectedSession.sessionId);
 		else url.searchParams.delete('session');
-		history.replaceState(history.state, '', url);
+		window.history.replaceState(window.history.state ?? {}, '', url);
+		document.title = this.selectedSession?.title ? `${this.selectedSession.title} · HUE` : 'HUE';
 	}
 
 	restoreSelection = async () => {
@@ -96,8 +125,9 @@ export class WorkspaceNavigation {
 			this.persistSelection();
 			return;
 		}
-		await this.loadActiveTab();
-		const session = this.sessions.find(({ sessionId }) => sessionId === params.get('session'));
+		const requestedSession = params.get('session');
+		await this.loadActiveTab(requestedSession);
+		const session = this.sessions.find(({ sessionId }) => sessionId === requestedSession);
 		if (session) await this.openSession(session);
 		else this.persistSelection();
 	};
@@ -136,7 +166,7 @@ export class WorkspaceNavigation {
 		};
 	}
 
-	loadActiveTab = async () => {
+	loadActiveTab = async (targetSessionId: string | null = null) => {
 		if (this.selectedProject && !this.selectedProject.rootAvailable) return;
 		const request = {
 			generation: ++this.tabRequestGeneration,
@@ -147,10 +177,28 @@ export class WorkspaceNavigation {
 		this.effects.setError('');
 		try {
 			if (request.tab === 'sessions') {
-				const body = await this.effects.api<{ sessions: Session[] }>(this.sessionApiPath());
+				const sessions: Session[] = [];
+				let offset = 0;
+				for (;;) {
+					const query = new URLSearchParams();
+					if (targetSessionId) query.set('sessionId', targetSessionId);
+					if (offset) {
+						query.set('limit', '100');
+						query.set('offset', String(offset));
+					}
+					if (this.sessionSearch.trim()) query.set('q', this.sessionSearch.trim());
+					if (this.showArchived) query.set('archived', 'true');
+					const body = await this.effects.api<{ sessions: Session[]; hasMore?: boolean }>(
+						`${this.sessionApiPath()}${query.size ? `?${query}` : ''}`
+					);
+					if (!isCurrentTabRequest(request, this.currentTabRequest())) return;
+					sessions.push(...body.sessions);
+					if (targetSessionId || !body.hasMore || !body.sessions.length) break;
+					offset += body.sessions.length;
+				}
 				if (!isCurrentTabRequest(request, this.currentTabRequest())) return;
-				this.sessions = body.sessions;
-				this.sessionLists.set(request.projectId || 'none', body.sessions);
+				this.sessions = sessions;
+				this.sessionLists.set(request.projectId || 'none', sessions);
 				if (this.selectedSession) {
 					this.selectedSession =
 						this.sessions.find(
@@ -282,6 +330,7 @@ export class WorkspaceNavigation {
 	};
 
 	runWorkflow = async (workflow: Workflow) => {
+		if (this.effects.guard(() => void this.runWorkflow(workflow))) return;
 		this.activeTab = 'sessions';
 		const session = await this.createSession();
 		if (session) await this.effects.sendText(workflow.prompt);
@@ -291,6 +340,11 @@ export class WorkspaceNavigation {
 		event.stopPropagation();
 		this.editingSession = session;
 		this.sessionIcon = session.customIcon ?? null;
+		this.sessionTitle = session.title ?? '';
+		this.sessionPinned = session.pinned ?? false;
+		this.sessionArchived = session.archived ?? false;
+		this.sessionFolder = session.folder ?? '';
+		this.sessionTags = (session.tags ?? []).join(', ');
 		this.sessionEmojiPickerOpen = false;
 		this.sessionEditError = '';
 		this.editSessionDialog?.showModal();
@@ -320,18 +374,32 @@ export class WorkspaceNavigation {
 		this.sessionEditError = '';
 	};
 
-	saveSessionIcon = async (event: SubmitEvent) => {
+	saveSession = async (event: SubmitEvent) => {
 		event.preventDefault();
 		if (!this.editingSession) return;
 		this.sessionSaving = true;
 		this.sessionEditError = '';
 		try {
-			const body = await this.effects.api<{ icon: string | null }>(
+			const body = await this.effects.api<{ session?: Session; icon: string | null }>(
 				this.sessionApiPath(this.editingSession.sessionId),
-				{ method: 'PATCH', body: JSON.stringify({ icon: this.sessionIcon }) }
+				{
+					method: 'PATCH',
+					body: JSON.stringify({
+						icon: this.sessionIcon,
+						title: this.sessionTitle,
+						pinned: this.sessionPinned,
+						archived: this.sessionArchived,
+						folder: this.sessionFolder.trim() || null,
+						tags: this.sessionTags
+							.split(',')
+							.map((tag) => tag.trim())
+							.filter(Boolean)
+					})
+				}
 			);
 			const updated = {
 				...this.editingSession,
+				...(body.session ?? {}),
 				customIcon: body.icon,
 				icon: body.icon ?? automaticSessionIcon(this.editingSession.title)
 			};
@@ -345,6 +413,72 @@ export class WorkspaceNavigation {
 		} finally {
 			this.sessionSaving = false;
 		}
+	};
+
+	searchSessionList = async (event?: SubmitEvent) => {
+		event?.preventDefault();
+		await this.loadActiveTab();
+	};
+
+	duplicateSession = async () => {
+		if (!this.editingSession) return;
+		this.sessionSaving = true;
+		try {
+			const body = await this.effects.api<{ session: Session }>(
+				this.sessionApiPath(this.editingSession.sessionId),
+				{
+					method: 'POST',
+					body: JSON.stringify({ title: `${this.editingSession.title ?? 'Untitled Session'} copy` })
+				}
+			);
+			this.prependSession(body.session);
+			this.editSessionDialog?.close();
+			await this.openSession(body.session);
+		} catch (cause) {
+			this.sessionEditError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			this.sessionSaving = false;
+		}
+	};
+
+	deleteSession = async () => {
+		if (!this.editingSession) return;
+		this.sessionSaving = true;
+		try {
+			const preview = await this.effects.api<{
+				impact: { messages: number; events: number; attachments: number; activeDeliveries: number };
+			}>(this.sessionApiPath(this.editingSession.sessionId), { method: 'DELETE' });
+			const impact = preview.impact;
+			if (
+				!window.confirm(
+					`Remove ${this.editingSession.title ?? 'Untitled Session'} from HUE?\n\n${impact.messages} messages, ${impact.events} events, ${impact.attachments} attachments. ${impact.activeDeliveries} active deliveries. Hermes transcript remains available outside HUE. Archive is reversible; removal is not.`
+				)
+			)
+				return;
+			await this.effects.api(`${this.sessionApiPath(this.editingSession.sessionId)}?confirm=true`, {
+				method: 'DELETE'
+			});
+			const id = this.editingSession.sessionId;
+			this.sessions = this.sessions.filter((session) => session.sessionId !== id);
+			if (this.selectedSession?.sessionId === id) {
+				this.selectedSession = null;
+				this.effects.clearSession();
+				this.persistSelection();
+			}
+			this.editSessionDialog?.close();
+		} catch (cause) {
+			this.sessionEditError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			this.sessionSaving = false;
+		}
+	};
+
+	exportSession = (format: 'markdown' | 'json') => {
+		if (!this.editingSession) return;
+		const link = document.createElement('a');
+		link.href = `${this.sessionApiPath(this.editingSession.sessionId)}?format=${format}`;
+		link.download = `hue-${this.editingSession.sessionId}.${format === 'markdown' ? 'md' : 'json'}`;
+		link.click();
 	};
 
 	prependSession(session: Session) {

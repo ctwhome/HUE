@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { HermesACP } from './hermes-acp';
 import type { HermesSession } from './hermes-acp';
+import { redactHermesValue } from './redaction';
 import { resolveHermesCommand } from './hermes-cli';
 import { HermesServe } from './hermes-serve';
 import { MessageDispatcher } from './message-dispatcher';
@@ -32,12 +33,12 @@ function createServices(): HUEServices {
 	const runtime = new HermesACP({
 		command: hermesCommand,
 		profile: process.env.HUE_HERMES_PROFILE ?? 'default',
-		onDiagnostic: (message) => console.error(`[hermes-acp] ${message}`)
+		onDiagnostic: (message) => console.error(`[hermes-acp] ${String(redactHermesValue(message))}`)
 	});
 	const admin = new HermesServe({
 		command: hermesCommand,
 		profile: process.env.HUE_HERMES_PROFILE ?? 'default',
-		onDiagnostic: (message) => console.error(`[hermes-admin] ${message}`)
+		onDiagnostic: (message) => console.error(`[hermes-admin] ${String(redactHermesValue(message))}`)
 	});
 	return {
 		store,

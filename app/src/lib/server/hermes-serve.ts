@@ -38,6 +38,10 @@ export class HermesServe {
 		return this.unavailable ? 'unavailable' : 'idle';
 	}
 
+	profileName() {
+		return this.profile;
+	}
+
 	async start(): Promise<void> {
 		if (this.child && this.baseUrl && this.token) return;
 		if (this.starting) return this.starting;
