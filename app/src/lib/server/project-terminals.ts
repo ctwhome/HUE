@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { accessSync, constants, statSync } from 'node:fs';
 
 type TerminalChunk = { sequence: number; data: string; bytes: number };
 type TerminalSession = {
@@ -21,13 +22,40 @@ const MAX_OUTPUT_BYTES = 512 * 1024;
 const MAX_INPUT_CHARS = 64 * 1024;
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
+export function resolveTerminalShell(
+	preferred = process.env.SHELL,
+	fallbacks = ['/bin/zsh', '/bin/bash', '/bin/sh']
+): string {
+	for (const shell of [preferred, ...fallbacks]) {
+		if (!shell) continue;
+		try {
+			accessSync(shell, constants.X_OK);
+			return shell;
+		} catch {
+			// Try next known shell.
+		}
+	}
+	throw new Error('No usable shell found. Set SHELL to an executable shell path and retry.');
+}
+
+function validateTerminalCwd(cwd: string): void {
+	try {
+		if (statSync(cwd).isDirectory()) return;
+	} catch {
+		// Report one stable recovery action below.
+	}
+	throw new Error(
+		'Project folder is unavailable. Locate or remove the Project before opening a terminal.'
+	);
+}
+
 export class ProjectTerminals {
 	private sessions = new Map<string, TerminalSession>();
 	private idleSweep: ReturnType<typeof setInterval>;
 	private shell: string;
 
 	constructor(options: { shell?: string } = {}) {
-		this.shell = options.shell ?? process.env.SHELL ?? '/bin/sh';
+		this.shell = resolveTerminalShell(options.shell);
 		this.idleSweep = setInterval(() => this.expireIdle(), 5 * 60 * 1000);
 		this.idleSweep.unref();
 	}
@@ -35,6 +63,7 @@ export class ProjectTerminals {
 	create(projectId: string, cwd: string, cols: number, rows: number) {
 		if (this.sessions.size >= MAX_SESSIONS) throw new Error('Maximum terminal sessions reached');
 		this.validateSize(cols, rows);
+		validateTerminalCwd(cwd);
 		const id = randomUUID();
 		const decoder = new TextDecoder();
 		let session: TerminalSession;
@@ -49,11 +78,17 @@ export class ProjectTerminals {
 				process.env[name] ? [[name, process.env[name] as string]] : []
 			)
 		);
-		const processHandle = Bun.spawn([this.shell], {
-			cwd,
-			env: { ...env, SHELL: this.shell, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
-			terminal
-		});
+		let processHandle: ReturnType<typeof Bun.spawn>;
+		try {
+			processHandle = Bun.spawn([this.shell], {
+				cwd,
+				env: { ...env, SHELL: this.shell, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
+				terminal
+			});
+		} catch {
+			terminal.close();
+			throw new Error('Terminal could not start. Check Project folder and SHELL, then retry.');
+		}
 		session = {
 			id,
 			projectId,
@@ -121,6 +156,14 @@ export class ProjectTerminals {
 		if (session.projectId !== projectId) throw new Error('Terminal not found');
 		this.sessions.delete(terminalId);
 		this.terminate(session);
+	}
+
+	closeProject(projectId: string) {
+		for (const [terminalId, session] of this.sessions) {
+			if (session.projectId !== projectId) continue;
+			this.sessions.delete(terminalId);
+			this.terminate(session);
+		}
 	}
 
 	dispose() {

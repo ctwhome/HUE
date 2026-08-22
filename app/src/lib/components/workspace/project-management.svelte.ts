@@ -40,12 +40,21 @@ export class ProjectManagement {
 	projectEmojiPickerOpen = $state(false);
 	projectEditError = $state('');
 	projectSaving = $state(false);
+	locatingProject = $state<Project | null>(null);
 
 	constructor(private options: ProjectManagementOptions) {
 		this.projects = [...options.initialProjects];
 	}
 
 	openAddProject = () => {
+		this.locatingProject = null;
+		this.directoryError = '';
+		this.addProjectDialog?.showModal();
+		void this.loadDirectory();
+	};
+
+	openLocateProject = (project: Project) => {
+		this.locatingProject = project;
 		this.directoryError = '';
 		this.addProjectDialog?.showModal();
 		void this.loadDirectory();
@@ -82,12 +91,20 @@ export class ProjectManagement {
 	addProject = async (event: SubmitEvent) => {
 		event.preventDefault();
 		try {
-			const body = await this.options.api<{ project: Project }>('/api/projects', {
-				method: 'POST',
-				body: JSON.stringify({ name: this.projectDirectoryName, rootPath: this.projectRoot })
-			});
-			this.projects = [...this.projects, body.project];
+			const body = this.locatingProject
+				? await this.options.api<{ project: Project }>(`/api/projects/${this.locatingProject.id}`, {
+						method: 'PATCH',
+						body: JSON.stringify({ rootPath: this.projectRoot })
+					})
+				: await this.options.api<{ project: Project }>('/api/projects', {
+						method: 'POST',
+						body: JSON.stringify({ name: this.projectDirectoryName, rootPath: this.projectRoot })
+					});
+			this.projects = this.locatingProject
+				? this.projects.map((project) => (project.id === body.project.id ? body.project : project))
+				: [...this.projects, body.project];
 			this.projectRoot = '';
+			this.locatingProject = null;
 			this.addProjectDialog?.close();
 			await this.options.chooseProject(body.project);
 		} catch (cause) {
@@ -150,21 +167,30 @@ export class ProjectManagement {
 	};
 
 	requestRemoveProject = () => {
+		this.projectEditError = '';
 		if (this.editingProject) this.removeProjectDialog?.showModal();
+	};
+
+	requestRemoveStaleProject = (project: Project) => {
+		this.editingProject = project;
+		this.projectEditError = '';
+		this.removeProjectDialog?.showModal();
 	};
 
 	removeProject = async () => {
 		if (!this.editingProject) return;
-		this.removeProjectDialog?.close();
 		this.projectSaving = true;
 		this.projectEditError = '';
 		try {
 			const removedId = this.editingProject.id;
 			await this.options.api(`/api/projects/${removedId}`, { method: 'DELETE' });
+			this.removeProjectDialog?.close();
 			this.projects = this.projects.filter((project) => project.id !== removedId);
 			this.editProjectDialog?.close();
 			if (this.options.getSelectedProject()?.id === removedId) {
-				await this.options.chooseProject(this.projects[0] ?? null);
+				await this.options.chooseProject(
+					this.projects.find(({ rootAvailable }) => rootAvailable) ?? null
+				);
 			}
 		} catch (cause) {
 			this.projectEditError = cause instanceof Error ? cause.message : String(cause);

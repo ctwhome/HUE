@@ -47,3 +47,16 @@ HUE does not need the Hermes Python dashboard server or an xterm/PTY transport. 
 - Persist HUE message IDs and delivery state before submitting prompts.
 - Treat ACP end-of-turn as execution acknowledgement, not browser-delivery acknowledgement.
 - Deny unattended permission requests and expose explicit approval UI before enabling side effects.
+
+## Compatibility baseline
+
+Verified on 2026-08-22 with Bun 1.3.14, `@agentclientprotocol/sdk` 1.3.0, and Hermes Agent 0.20.5 (2026.8.19, upstream `b102999d`). HUE requires negotiated ACP protocol version 1. The compatibility smoke also requires Hermes to advertise a non-empty agent name and version, create and list a Session in one isolated working directory, stop ACP, start a new ACP process against the same isolated `HERMES_HOME`, list the exact Session again, and resume it. It streams the adapter-local `/version` command first. Because Hermes omits zero-history Sessions from `session/list`, the smoke then submits one fixed marker to an unreachable loopback custom endpoint; this creates non-private persistence without reaching an LLM. ACP replays neither adapter-local slash output nor failed endpoint output.
+
+Run:
+
+```bash
+cd app
+HUE_REAL_HERMES=1 bun test src/lib/server/hermes-acp.test.ts
+```
+
+The test creates a unique temporary `HERMES_HOME` and working directory, uses only a dummy key plus `127.0.0.1:1`, then removes all isolated state. It must not use the user's default Hermes home, reach an LLM/provider, write Hermes' normal persistence, or depend on user MCP/provider credentials. A Hermes or SDK upgrade is compatible only after this smoke and the canonical Bun gates pass unchanged.

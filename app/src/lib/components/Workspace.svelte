@@ -27,7 +27,6 @@
 	let globalView = $state<GlobalView | null>(null);
 	let now = $state(Date.now());
 	let elapsedTimer: ReturnType<typeof setInterval> | null = null;
-	let selectionReady = $state(false);
 	const navigationRef: { current: WorkspaceNavigation | null } = { current: null };
 	const voiceRef: { current: ReturnType<typeof createVoiceCall> | null } = { current: null };
 
@@ -67,7 +66,7 @@
 		chooseProject: (project) => navigationRef.current!.chooseProject(project)
 	});
 	const navigation = new WorkspaceNavigation(
-		untrack(() => initialProjects[0] ?? null),
+		untrack(() => initialProjects.find(({ rootAvailable }) => rootAvailable) ?? null),
 		{
 			api,
 			getProjects: () => projectManagement.projects,
@@ -145,7 +144,6 @@
 	onMount(async () => {
 		elapsedTimer = setInterval(() => (now = Date.now()), 1000);
 		await navigation.restoreSelection();
-		selectionReady = true;
 	});
 	onDestroy(() => {
 		voice.end(false);
@@ -212,9 +210,11 @@
 		bind:projectEmojiPickerOpen={projectManagement.projectEmojiPickerOpen}
 		projectEditError={projectManagement.projectEditError}
 		projectSaving={projectManagement.projectSaving}
+		locatingProject={projectManagement.locatingProject}
 		onprojectless={navigation.createProjectlessSession}
 		onaddopen={projectManagement.openAddProject}
 		onchoose={navigation.chooseProject}
+		onlocate={projectManagement.openLocateProject}
 		onedit={projectManagement.openEditProject}
 		onhidden={projectManagement.toggleHiddenDirectories}
 		ondirectory={projectManagement.loadDirectory}
@@ -362,7 +362,33 @@
 				modelCategories={runtimeState.modelCategories}
 				contextPercent={runtimeState.contextPercent}
 			/>
-		{:else if selectionReady && selectedProject}
+		{:else if selectedProject && !selectedProject.rootAvailable}
+			<section
+				class="mx-auto mt-[12vh] grid max-w-xl gap-4 p-8 text-center text-muted-foreground"
+				aria-label="Project folder unavailable"
+			>
+				<h2 class="text-foreground">Project folder unavailable</h2>
+				<p>
+					{selectedProject.name} moved or was removed. Recover its folder before opening Sessions, Git,
+					terminal, or preview tools.
+				</p>
+				<div class="flex flex-wrap justify-center gap-2">
+					<button
+						class="min-h-11 rounded-md bg-primary px-4 text-primary-foreground"
+						onclick={() => projectManagement.openLocateProject(selectedProject)}>Locate</button
+					>
+					<button
+						class="min-h-11 rounded-md border border-border px-4"
+						onclick={() => projectManagement.requestRemoveStaleProject(selectedProject)}
+						>Remove</button
+					>
+					<button
+						class="min-h-11 rounded-md border border-border px-4"
+						onclick={() => navigation.chooseProject(null)}>Open without Project</button
+					>
+				</div>
+			</section>
+		{:else if selectedProject}
 			{#key selectedProject.id}
 				<ProjectWorkbench
 					projectId={selectedProject.id}
@@ -377,13 +403,26 @@
 				>
 					H
 				</div>
-				<h2>A smaller, faster Hermes workspace.</h2>
+				<h2>
+					{projects.length ? 'Projects · Workflows · Sessions' : 'Start your first HUE workspace'}
+				</h2>
 				<p>
-					Select a Project to load only its Sessions, or save a reusable Workflow. Nothing else is
-					hiding behind the interface.
+					{projects.length
+						? 'Choose a Project, or continue without one for a general Hermes Session.'
+						: 'Add a trusted local folder for project work, or start a private projectless Session.'}
 				</p>
+				<div class="mt-5 flex flex-wrap justify-center gap-2">
+					<button
+						class="min-h-11 rounded-md bg-primary px-4 text-primary-foreground"
+						onclick={projectManagement.openAddProject}>Add Project</button
+					>
+					<button
+						class="min-h-11 rounded-md border border-border px-4"
+						onclick={navigation.createProjectlessSession}>Start without Project</button
+					>
+				</div>
 				<div class="principles mt-6 flex flex-wrap justify-center gap-2">
-					<span>Local SQLite</span><span>ACP v1</span><span>No PTY</span><span
+					<span>Local SQLite</span><span>ACP v1</span><span>Project terminals</span><span
 						>Reconnect cursors</span
 					>
 				</div>

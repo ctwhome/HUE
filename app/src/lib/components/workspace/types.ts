@@ -7,6 +7,7 @@ export type Project = {
 	rootPath: string;
 	icon: string | null;
 	createdAt: string;
+	rootAvailable: boolean;
 };
 
 export type Session = {
@@ -17,6 +18,8 @@ export type Session = {
 	customIcon?: string | null;
 	updatedAt?: string | null;
 	busySince?: string | null;
+	available?: boolean;
+	recovery?: string | null;
 };
 
 export type Workflow = { id: string; name: string; prompt: string; profile: string };
