@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from 'svelte';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { marked } from 'marked';
 	import sanitizeHtml from 'sanitize-html';
 	import { Circle } from 'lucide-svelte';
@@ -16,6 +17,8 @@
 	import { WorkspaceNavigation } from './workspace/navigation.svelte';
 	import { isImageIcon, ProjectManagement } from './workspace/project-management.svelte';
 	import ProjectRail from './workspace/ProjectRail.svelte';
+	import DirtyGuardDialog from './workspace/DirtyGuardDialog.svelte';
+	import { DirtyGuard } from './workspace/dirty-guard';
 	import { RuntimeState } from './workspace/runtime-state.svelte';
 	import { SessionState } from './workspace/session-state.svelte';
 	import { TranscriptFollow } from './workspace/transcript-follow.svelte';
@@ -26,6 +29,18 @@
 	let error = $state('');
 	let globalView = $state<GlobalView | null>(null);
 	let now = $state(Date.now());
+	let dirtyGuardOpen = $state(false);
+	let dirtyGuardDirty = $state(false);
+	const dirtyGuard = new DirtyGuard((guard) => {
+		dirtyGuardOpen = guard.open;
+		dirtyGuardDirty = guard.dirty;
+	});
+	function guarded(action: () => void) {
+		if (!dirtyGuard.block(action)) action();
+	}
+	function setGlobalView(view: GlobalView | null) {
+		guarded(() => (globalView = view));
+	}
 	let elapsedTimer: ReturnType<typeof setInterval> | null = null;
 	const navigationRef: { current: WorkspaceNavigation | null } = { current: null };
 	const voiceRef: { current: ReturnType<typeof createVoiceCall> | null } = { current: null };
@@ -95,7 +110,8 @@
 			getDelivery: () => sessionState.delivery,
 			sendText: messageState.sendText,
 			setError: (message) => (error = message),
-			setLoading: (value) => (loading = value)
+			setLoading: (value) => (loading = value),
+			guard: (action) => dirtyGuard.block(action)
 		}
 	);
 	navigationRef.current = navigation;
@@ -150,14 +166,28 @@
 		messageState.stopPolling();
 		if (elapsedTimer) clearInterval(elapsedTimer);
 	});
+	beforeNavigate((navigation) => {
+		if (!navigation.to || !dirtyGuard.dirty) return;
+		navigation.cancel();
+		const target = navigation.to.url;
+		dirtyGuard.block(() => {
+			if (navigation.to?.route.id) void goto(target);
+			else window.location.assign(target);
+		});
+	});
 </script>
 
-<svelte:window onkeydown={(event) => event.key === 'Escape' && (navigation.mobileDrawer = null)} />
+<svelte:window
+	onkeydown={(event) => event.key === 'Escape' && (navigation.mobileDrawer = null)}
+	onbeforeunload={(event) => {
+		if (dirtyGuardDirty) event.preventDefault();
+	}}
+/>
 
 <div
 	class="workspace grid h-dvh grid-cols-[56px_220px_320px_minmax(0,1fr)] overflow-hidden bg-background text-foreground"
 >
-	<GlobalNavigation view={globalView} onview={(view) => (globalView = view)} />
+	<GlobalNavigation view={globalView} onview={setGlobalView} />
 	<nav class="mobile-navigation" aria-label="Workspace navigation">
 		<button
 			aria-controls="project-drawer"
@@ -175,7 +205,7 @@
 				(navigation.mobileDrawer = navigation.mobileDrawer === 'sessions' ? null : 'sessions')}
 			>Sessions</button
 		>
-		<button aria-label="Settings" title="Settings" onclick={() => (globalView = 'settings')}
+		<button aria-label="Settings" title="Settings" onclick={() => setGlobalView('settings')}
 			>Settings</button
 		>
 	</nav>
@@ -394,6 +424,7 @@
 					projectId={selectedProject.id}
 					projectName={selectedProject.name}
 					onbranch={(value) => (branch = value)}
+					{dirtyGuard}
 				/>
 			{/key}
 		{:else}
@@ -430,3 +461,9 @@
 		{/if}
 	</main>
 </div>
+
+<DirtyGuardDialog
+	open={dirtyGuardOpen}
+	onkeep={() => dirtyGuard.keepEditing()}
+	ondiscard={() => dirtyGuard.discardAndContinue()}
+/>

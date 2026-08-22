@@ -2,11 +2,11 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-21
-- **Supersedes:** ADR-0002's terminal and source-control UI non-goals only
+- **Supersedes:** ADR-0002's terminal, source-control, and Project file-management UI non-goals only
 
 ## Context
 
-Projects need a compact local development workbench alongside Hermes Sessions: an interactive terminal, repository status and mutations, linked worktrees, and browser previews. These are Project-scoped panels, not new product objects or alternate agent runtimes.
+Projects need a compact local development workbench alongside Hermes Sessions: an interactive terminal, repository status and mutations, linked worktrees, browser previews, and bounded access to files under each trusted Project root. These are Project-scoped panels, not new product objects or alternate agent runtimes.
 
 ## Decision
 
@@ -17,8 +17,11 @@ HUE may expose development panels inside a trusted Project boundary:
 - Git status, stage, unstage, commit, and push through argument-array processes;
 - linked-worktree inspection and repository links;
 - sandboxed browser previews with an external-browser fallback.
+- a bounded file tree, path search, safe previews, explicit file mutations, and honest artifact/evidence classification rooted inside the trusted Project directory.
 
 Terminal access is loopback-only. The browser cannot supply a terminal working directory. PTYs are process-local, inherit an allowlisted environment, expire when idle, and are not persisted across server restarts. Git mutations require direct user actions and never run commands through a shell.
+
+Project file paths are untrusted input even when emitted by a tool. Server-side descriptor and no-follow validation must precede access or link activation. Mutations require loopback same-origin access, bounded payloads, atomic writes, optimistic concurrency, and exact recursive-delete impact confirmation. Filename heuristics may classify evidence but must never claim independent verification.
 
 ## Consequences
 

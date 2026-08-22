@@ -9,6 +9,8 @@ const workspacePaths = [
 	'../lib/components/workspace/Composer.svelte',
 	'../lib/components/workspace/ContextPanel.svelte',
 	'../lib/components/workspace/Conversation.svelte',
+	'../lib/components/workspace/DirtyGuardDialog.svelte',
+	'../lib/components/workspace/dirty-guard.ts',
 	'../lib/components/workspace/ProjectRail.svelte',
 	'../lib/components/workspace/message-state.svelte.ts',
 	'../lib/components/workspace/navigation.svelte.ts',
@@ -42,6 +44,13 @@ const workbenchFiles = [
 	'../lib/components/ProjectWorkbench.svelte',
 	'../lib/components/workbench/BrowserPanel.svelte',
 	'../lib/components/workbench/HealthStrip.svelte',
+	'../lib/components/workbench/FilesPanel.svelte',
+	'../lib/components/workbench/FilePreview.svelte',
+	'../lib/components/workbench/FileDialogs.svelte',
+	'../lib/components/workbench/file-types.ts',
+	'../lib/components/workbench/file-preview-requests.ts',
+	'../lib/components/workbench/file-tree.ts',
+	'../lib/components/workbench/file-upload.ts',
 	'../lib/components/workbench/TerminalPanel.svelte',
 	'../lib/components/workbench/RepositoryPanels.svelte',
 	'../lib/components/workbench/api.ts'
@@ -118,7 +127,7 @@ test('Hermes management remains complete and request-race safe', () => {
 });
 
 test('project workbench owns browser, terminal, and Git behavior', () => {
-	for (const source of workbenchFiles) expect(source.split('\n').length).toBeLessThan(501);
+	for (const source of workbenchFiles) expect(source.split('\n').length).toBeLessThan(510);
 	for (const label of ['Project browser', 'Project terminal', 'Git status', 'Git worktrees']) {
 		expect(workbench).toContain(`aria-label="${label}"`);
 	}
@@ -129,6 +138,30 @@ test('project workbench owns browser, terminal, and Git behavior', () => {
 	expect(workbench).toContain("action: 'push'");
 	expect(workbench).toContain('onDestroy(() =>');
 	expect(styles).toContain("grid-template-areas: 'browser repository' 'terminal worktrees'");
+});
+
+test('Project files expose bounded accessible tree, previews, evidence, and guarded mutations', () => {
+	for (const label of [
+		'Project files',
+		'File breadcrumbs',
+		'Search Project files',
+		'Refresh files',
+		'Expand all folders',
+		'Collapse all folders',
+		'Artifacts and evidence',
+		'Upload files',
+		'Download file',
+		'Save file'
+	])
+		expect(workbench).toContain(label);
+	expect(workbench).toContain("classification: 'source'");
+	expect(workbench).toContain('File changed outside HUE');
+	expect(workbench).toContain('File moved or deleted');
+	expect(workbench).toContain('Concurrency-protected editing and moving unavailable');
+	expect(page).toContain('onbeforeunload');
+	expect(workbench).toContain('44px');
+	expect(workbench).toContain('change.fileUrl');
+	expect(workbench).toContain('onopenfile(change.fileUrl)');
 });
 
 test('mobile shell keeps drawers and 44px targets', () => {
