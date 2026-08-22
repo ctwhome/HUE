@@ -1,5 +1,45 @@
 import { describe, expect, it } from 'bun:test';
-import { redactPersistedValue } from './redaction';
+import { redactHermesValue, redactPersistedValue } from './redaction';
+
+for (const [name, redact] of [
+	['redactHermesValue', redactHermesValue],
+	['redactPersistedValue', redactPersistedValue]
+] as const) {
+	describe(name, () => {
+		it('redacts secret semantic key parts across naming conventions and suffixes', () => {
+			expect(
+				redact({
+					tokenValue: 'camel-token',
+					token_value: 'snake-token',
+					'token-value': 'kebab-token',
+					passwordHash: 'password-hash',
+					clientSecretValue: 'client-secret',
+					credentialId: 'credential-id'
+				})
+			).toEqual({
+				tokenValue: '[REDACTED]',
+				token_value: '[REDACTED]',
+				'token-value': '[REDACTED]',
+				passwordHash: '[REDACTED]',
+				clientSecretValue: '[REDACTED]',
+				credentialId: '[REDACTED]'
+			});
+		});
+
+		it('preserves safe words containing secret-like substrings', () => {
+			const safe = {
+				tokenizerValue: 'keep tokenizer',
+				tokenCount: 42,
+				passwordlessMode: 'keep passwordless',
+				secretariatName: 'keep secretariat',
+				credentialingStatus: 'keep credentialing',
+				'x-cookie-policy': 'keep cookie policy'
+			};
+
+			expect(redact(safe)).toEqual(safe);
+		});
+	});
+}
 
 describe('redactPersistedValue', () => {
 	it('redacts structured set-cookie keys while preserving safe header names', () => {

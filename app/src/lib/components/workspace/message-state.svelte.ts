@@ -1,6 +1,7 @@
 import { tick } from 'svelte';
-import { isTurnBusy, runSingleFlight } from '$lib';
+import { applySessionEvents, isTurnBusy, runSingleFlight } from '$lib';
 import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+import { shouldSendMessage } from '$lib/preferences';
 import type { WorkspaceNavigation } from './navigation.svelte';
 import type { SessionState } from './session-state.svelte';
 import type { TranscriptFollow } from './transcript-follow.svelte';
@@ -385,18 +386,21 @@ export class MessageState {
 	};
 	handleComposerKeydown = (event: KeyboardEvent) => {
 		const matches = this.matchingCommands();
+		const sendKey =
+			document.documentElement.dataset.sendKey === 'mod-enter' ? 'mod-enter' : 'enter';
+		const sendNow = sendKey === 'mod-enter' && shouldSendMessage(event, sendKey);
 		if (matches.length && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
 			event.preventDefault();
 			const step = event.key === 'ArrowDown' ? 1 : -1;
 			this.commandIndex = (this.commandIndex + step + matches.length) % matches.length;
 			return;
 		}
-		if (matches.length && (event.key === 'Tab' || event.key === 'Enter')) {
+		if (matches.length && (event.key === 'Tab' || (event.key === 'Enter' && !sendNow))) {
 			event.preventDefault();
 			this.chooseCommand(matches[this.commandIndex] ?? matches[0]);
 			return;
 		}
-		if (event.key === 'Enter' && !event.shiftKey) {
+		if (shouldSendMessage(event, sendKey)) {
 			event.preventDefault();
 			(event.currentTarget as HTMLTextAreaElement).form?.requestSubmit();
 		}
