@@ -48,8 +48,14 @@ export type TranscriptMessage = {
 	role: 'user' | 'assistant';
 	text: string;
 	images?: ImageAttachment[];
+	createdAt?: string;
 };
-export type SessionEvent = { sequence: number; type: string; payload: Record<string, unknown> };
+export type SessionEvent = {
+	sequence: number;
+	type: string;
+	payload: Record<string, unknown>;
+	createdAt?: string;
+};
 export type PendingEnvelope = {
 	id: string;
 	projectId: string | null;
@@ -94,7 +100,13 @@ export type SessionLoad = {
 	cursor: number;
 	activeTurn: ActiveTurn | null;
 	events: SessionEvent[];
-	messages: Array<{ id: string; text: string; images: ImageAttachment[]; status: string }>;
+	messages: Array<{
+		id: string;
+		text: string;
+		images: ImageAttachment[];
+		status: string;
+		createdAt?: string;
+	}>;
 	commands?: HermesCommand[];
 	runtime?: HermesRuntime;
 	branch?: string | null;

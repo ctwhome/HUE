@@ -1760,7 +1760,15 @@ test('renders durable ACP activity, todo, approval, clarify, timestamps, and cod
 					{ role: 'user', text: 'Inspect safely' },
 					{ role: 'assistant', text: 'Before tool.```ts\nconst safe = true;\n```' }
 				],
-				messages: [{ id: 'msg-1', status: 'running', text: 'Inspect safely', images: [] }],
+				messages: [
+					{
+						id: 'msg-1',
+						status: 'running',
+						text: 'Inspect safely',
+						images: [],
+						createdAt: '2026-08-22T09:59:59.000Z'
+					}
+				],
 				runtime: { profile: 'default', clarify: { status: 'available' } },
 				cursor: 10,
 				activeTurn: {
@@ -1771,10 +1779,16 @@ test('renders durable ACP activity, todo, approval, clarify, timestamps, and cod
 					error: null
 				},
 				events: [
-					{ sequence: 1, type: 'message.accepted', payload: { messageId: 'msg-1' } },
+					{
+						sequence: 1,
+						type: 'message.accepted',
+						createdAt: '2026-08-22T09:59:59.050Z',
+						payload: { messageId: 'msg-1' }
+					},
 					{
 						sequence: 2,
 						type: 'agent.chunk',
+						createdAt: '2026-08-22T10:00:00.000Z',
 						payload: { messageId: 'msg-1', text: 'Before tool.' }
 					},
 					{
@@ -1912,6 +1926,14 @@ test('renders durable ACP activity, todo, approval, clarify, timestamps, and cod
 			)
 	).toEqual([1, 2, 3, 5, 6, 7, 8, 9, 10]);
 	await expect(page.getByRole('group', { name: 'Read configuration' })).toContainText('425 ms');
+	const conversationTimes = page.locator('.transcript article time');
+	await expect(conversationTimes).toHaveCount(2);
+	await expect(conversationTimes.first()).toHaveAttribute('datetime', '2026-08-22T09:59:59.000Z');
+	await expect(conversationTimes.last()).toHaveAttribute('datetime', '2026-08-22T10:00:00.000Z');
+	for (const time of await conversationTimes.all()) {
+		await expect(time).toHaveText(/^\d{2}:\d{2}$/);
+		await expect(time).toHaveAttribute('title', /2026/);
+	}
 	const toolSummary = page
 		.getByRole('group', { name: 'Read configuration' })
 		.getByText('Read configuration');
@@ -1954,6 +1976,121 @@ test('renders durable ACP activity, todo, approval, clarify, timestamps, and cod
 			);
 		}
 	}
+});
+
+test('omits unavailable historical conversation timestamps', async ({ page }) => {
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({
+			json: { sessions: [{ sessionId: 'history', cwd: '/work/hue', title: 'History' }] }
+		})
+	);
+	await page.route(/\/sessions\/history$/, (route) =>
+		route.fulfill({
+			json: {
+				transcript: [
+					{ role: 'user', text: 'Undated message' },
+					{
+						role: 'assistant',
+						text: 'Dated message',
+						createdAt: '2026-08-22T10:00:00.000Z'
+					}
+				],
+				messages: [],
+				events: [],
+				cursor: 0,
+				activeTurn: null
+			}
+		})
+	);
+
+	await addProject(page);
+	await sessionButton(page, 'History').click();
+	const articles = page.locator('.transcript article');
+	await expect(articles).toHaveCount(2);
+	await expect(articles.first().locator('time')).toHaveCount(0);
+	await expect(articles.last().locator('time')).toHaveAttribute(
+		'datetime',
+		'2026-08-22T10:00:00.000Z'
+	);
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+	}
+});
+
+test('interaction completion stays with its captured Session across navigation', async ({
+	page
+}) => {
+	let interactionStarted!: () => void;
+	let finishInteraction!: () => void;
+	let finishOriginRefresh!: () => void;
+	const started = new Promise<void>((resolve) => (interactionStarted = resolve));
+	const interaction = new Promise<void>((resolve) => (finishInteraction = resolve));
+	const originRefresh = new Promise<void>((resolve) => (finishOriginRefresh = resolve));
+	let originLoads = 0;
+	const sessionBody = (title: string) => ({
+		transcript: [],
+		messages: [],
+		runtime: { profile: 'default' },
+		cursor: 1,
+		activeTurn: null,
+		events: [
+			{
+				sequence: 1,
+				type: 'agent.permission',
+				payload: {
+					messageId: `message-${title}`,
+					id: 'shared-interaction',
+					status: 'pending',
+					toolCall: { title },
+					options: [{ optionId: 'allow', name: `Allow ${title}`, kind: 'allow_once' }]
+				}
+			}
+		]
+	});
+
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({
+			json: {
+				sessions: [
+					{ sessionId: 'origin', cwd: '/work/hue', title: 'Origin Session' },
+					{ sessionId: 'other', cwd: '/work/hue', title: 'Other Session' }
+				]
+			}
+		})
+	);
+	await page.route(/\/sessions\/(origin|other)$/, async (route) => {
+		const sessionId = new URL(route.request().url()).pathname.split('/').at(-1);
+		if (sessionId === 'origin' && ++originLoads > 1) await originRefresh;
+		await route.fulfill({
+			json: sessionBody(sessionId === 'origin' ? 'Origin tool' : 'Other tool')
+		});
+	});
+	await page.route(/\/sessions\/origin\/interactions$/, async (route) => {
+		interactionStarted();
+		await interaction;
+		await route.fulfill({ json: { resolved: true } });
+	});
+
+	await addProject(page);
+	await sessionButton(page, 'Origin Session').click();
+	await page.getByRole('button', { name: 'Allow Origin tool' }).click();
+	await started;
+	await sessionButton(page, 'Other Session').click();
+	await expect(page.getByRole('button', { name: 'Allow Other tool' })).toBeVisible();
+
+	const completed = page.waitForResponse(/\/sessions\/origin\/interactions$/);
+	finishInteraction();
+	await completed;
+	await expect(page.getByRole('button', { name: 'Allow Other tool' })).toBeVisible();
+	await sessionButton(page, 'Origin Session').click();
+	await expect(
+		page.getByRole('group', { name: 'Permission required: Origin tool' }).getByRole('status')
+	).toHaveText('resolved');
+	await expect(page.getByRole('button', { name: 'Allow Origin tool' })).toHaveCount(0);
+	finishOriginRefresh();
 });
 
 test('shows loading beside new session without shifting the session list', async ({ page }) => {

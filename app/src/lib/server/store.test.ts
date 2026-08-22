@@ -447,6 +447,71 @@ describe('HUEStore acknowledged message transport', () => {
 		store.close();
 	});
 
+	it('redacts structured set-cookie keys before persisting events', () => {
+		const store = makeDeliveryStore();
+		store.appendEvent('hue', 'session-1', 'agent.tool', {
+			headers: {
+				'set-cookie': 'session=dash-secret',
+				set_cookie: 'session=underscore-secret',
+				'SET-COOKIE': 'session=case-secret',
+				'content-type': 'application/json'
+			}
+		});
+
+		expect(store.listEvents('hue', 'session-1').at(-1)?.payload).toEqual({
+			headers: {
+				'set-cookie': '[REDACTED]',
+				set_cookie: '[REDACTED]',
+				'SET-COOKIE': '[REDACTED]',
+				'content-type': 'application/json'
+			}
+		});
+		store.close();
+	});
+
+	it('uses recursive redaction for every durable interaction payload surface', () => {
+		const store = makeDeliveryStore();
+		const secret =
+			'-----BEGIN RSA PRIVATE KEY-----\npersisted-secret\n-----END RSA PRIVATE KEY-----';
+		for (const [type, payload] of [
+			[
+				'agent.tool',
+				{ title: 'Cookie: tool-secret', args: { apiKey: 'args-secret' }, result: secret }
+			],
+			['agent.subagents', { id: 'delegate', children: [{ goal: 'Safe goal', result: secret }] }],
+			[
+				'agent.permission',
+				{
+					id: 'permission',
+					toolCall: { title: 'Safe title', args: { clientSecret: 'permission-secret' } }
+				}
+			],
+			[
+				'agent.clarify',
+				{ id: 'clarify', message: 'Safe question', answer: { password: 'clarify-secret' } }
+			],
+			['message.failed', { messageId: 'msg-1', error: 'Set-Cookie: failure-secret' }]
+		] as const) {
+			store.appendEvent('hue', 'session-1', type, payload);
+		}
+
+		const persisted = JSON.stringify(store.listEvents('hue', 'session-1'));
+		for (const value of [
+			'tool-secret',
+			'args-secret',
+			'persisted-secret',
+			'permission-secret',
+			'clarify-secret',
+			'failure-secret'
+		]) {
+			expect(persisted).not.toContain(value);
+		}
+		expect(persisted).toContain('Safe goal');
+		expect(persisted).toContain('Safe title');
+		expect(persisted).toContain('Safe question');
+		store.close();
+	});
+
 	it('redaction preserves safe audit history without depth or item truncation', () => {
 		const store = makeDeliveryStore();
 		let nested: Record<string, unknown> = { value: 'safe' };

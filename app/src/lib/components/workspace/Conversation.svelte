@@ -3,7 +3,12 @@
 	import type { ImageAttachment } from '$lib/message-content';
 	import type { WorkspaceActivity, WorkspacePlanEntry, WorkspaceTimelineItem } from '$lib';
 
-	type Message = { role: 'user' | 'assistant'; text: string; images?: ImageAttachment[] };
+	type Message = {
+		role: 'user' | 'assistant';
+		text: string;
+		images?: ImageAttachment[];
+		createdAt?: string;
+	};
 
 	let {
 		timeline,
@@ -41,8 +46,16 @@
 		typeof value === 'string' ? value : JSON.stringify(value, null, 2);
 	const progress = (plan: WorkspacePlanEntry[]) =>
 		plan.filter(({ status }) => status === 'completed').length;
-	const timestamp = (value?: string) =>
-		value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+	const validTimestamp = (value?: string): value is string =>
+		!!value && !Number.isNaN(Date.parse(value));
+	const timestamp = (value: string) =>
+		new Date(value).toLocaleTimeString([], {
+			hour: '2-digit',
+			minute: '2-digit',
+			hourCycle: 'h23'
+		});
+	const timestampTitle = (value: string) =>
+		new Date(value).toLocaleString([], { dateStyle: 'full', timeStyle: 'long' });
 	function handleTranscriptClick(event: MouseEvent) {
 		const button = (event.target as Element).closest<HTMLButtonElement>('[data-copy-code]');
 		if (!button) return;
@@ -144,6 +157,13 @@
 								disabled={busy}
 								onclick={onfork}><GitFork size={14} aria-hidden="true" /></button
 							>
+							{#if validTimestamp(message.createdAt)}<time
+									class="ml-1 text-xs text-muted-foreground"
+									datetime={message.createdAt}
+									title={timestampTitle(message.createdAt)}
+									aria-label={timestampTitle(message.createdAt)}
+									>{timestamp(message.createdAt)}</time
+								>{/if}
 						</div>
 					</div>
 				</article>
@@ -155,7 +175,11 @@
 					<header class="flex items-center justify-between gap-3">
 						<strong>Hermes todo</strong><span
 							>{progress(item.entries)} of {item.entries.length}</span
-						>
+						>{#if validTimestamp(item.createdAt)}<time
+								datetime={item.createdAt}
+								title={timestampTitle(item.createdAt)}
+								aria-label={timestampTitle(item.createdAt)}>{timestamp(item.createdAt)}</time
+							>{/if}
 					</header>
 					<progress class="w-full" value={progress(item.entries)} max={item.entries.length}
 						>{progress(item.entries)} of {item.entries.length}</progress
@@ -177,7 +201,14 @@
 					data-timeline-sequence={item.sequence}
 					class="agent-thought mx-auto mb-6 max-w-[774px] border-l-2 border-border text-muted-foreground"
 				>
-					<summary>Hermes reasoning</summary>
+					<summary
+						>Hermes reasoning{#if validTimestamp(item.createdAt)}
+							<time
+								datetime={item.createdAt}
+								title={timestampTitle(item.createdAt)}
+								aria-label={timestampTitle(item.createdAt)}>{timestamp(item.createdAt)}</time
+							>{/if}</summary
+					>
 					<div class="markdown">{@html renderMarkdown(item.text)}</div>
 				</details>
 			{:else if item.kind === 'tool'}<details
@@ -190,8 +221,10 @@
 							>{item.title ?? item.name ?? 'Tool call'}</strong
 						><span class="activity-status">{item.status.replace('_', ' ')}</span
 						>{#if item.durationMs !== undefined}<span>{item.durationMs} ms</span
-							>{/if}{#if item.createdAt}<time datetime={item.createdAt}
-								>{timestamp(item.createdAt)}</time
+							>{/if}{#if validTimestamp(item.createdAt)}<time
+								datetime={item.createdAt}
+								title={timestampTitle(item.createdAt)}
+								aria-label={timestampTitle(item.createdAt)}>{timestamp(item.createdAt)}</time
 							>{/if}</summary
 					>
 					<div class="activity-body">
@@ -214,8 +247,10 @@
 					aria-label={`Permission required: ${item.toolCall?.title ?? 'Hermes tool'}`}
 				>
 					<header>
-						<strong>Permission required</strong>{#if item.createdAt}<time datetime={item.createdAt}
-								>{timestamp(item.createdAt)}</time
+						<strong>Permission required</strong>{#if validTimestamp(item.createdAt)}<time
+								datetime={item.createdAt}
+								title={timestampTitle(item.createdAt)}
+								aria-label={timestampTitle(item.createdAt)}>{timestamp(item.createdAt)}</time
 							>{/if}
 					</header>
 					<p>{item.toolCall?.title ?? 'Hermes requests permission.'}</p>
@@ -237,8 +272,11 @@
 					onsubmit={(event) => submitClarify(event, item)}
 				>
 					<header>
-						<strong>{item.message ?? 'Hermes needs input'}</strong>{#if item.createdAt}<time
-								datetime={item.createdAt}>{timestamp(item.createdAt)}</time
+						<strong>{item.message ?? 'Hermes needs input'}</strong
+						>{#if validTimestamp(item.createdAt)}<time
+								datetime={item.createdAt}
+								title={timestampTitle(item.createdAt)}
+								aria-label={timestampTitle(item.createdAt)}>{timestamp(item.createdAt)}</time
 							>{/if}
 					</header>
 					{#if item.status === 'pending'}{#each item.fields ?? [] as field}<fieldset>
@@ -280,7 +318,11 @@
 						/><span class="subagent-tree-title min-w-0 text-sm font-bold">{item.title}</span><span
 							class="subagent-status ml-auto shrink-0 text-xs text-muted-foreground capitalize"
 							class:active={item.status === 'in_progress'}>{item.status.replace('_', ' ')}</span
-						></summary
+						>{#if validTimestamp(item.createdAt)}<time
+								datetime={item.createdAt}
+								title={timestampTitle(item.createdAt)}
+								aria-label={timestampTitle(item.createdAt)}>{timestamp(item.createdAt)}</time
+							>{/if}</summary
 					>
 					<div class="subagent-children py-1">
 						{#each item.children ?? [] as child (child.index)}<details class="subagent-child">

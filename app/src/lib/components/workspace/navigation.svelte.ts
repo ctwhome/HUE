@@ -71,6 +71,27 @@ export class WorkspaceNavigation {
 		return `${base}${sessionId ? `/${sessionId}` : ''}${suffix}`;
 	}
 
+	captureSessionSelection() {
+		if (!this.selectedSession) return null;
+		return {
+			generation: this.sessionRequestGeneration,
+			projectId: this.selectedProject?.id ?? null,
+			sessionId: this.selectedSession.sessionId
+		};
+	}
+
+	isCurrentSessionSelection(selection: {
+		generation: number;
+		projectId: string | null;
+		sessionId: string;
+	}) {
+		return (
+			selection.generation === this.sessionRequestGeneration &&
+			selection.projectId === (this.selectedProject?.id ?? null) &&
+			selection.sessionId === this.selectedSession?.sessionId
+		);
+	}
+
 	persistSelection() {
 		const url = new URL(window.location.href);
 		url.searchParams.set('project', this.selectedProject?.id ?? 'none');
