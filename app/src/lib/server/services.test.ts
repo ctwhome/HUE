@@ -137,13 +137,15 @@ test('reports read-only repository status, remotes, and worktrees', () => {
 	Bun.spawnSync(['git', 'worktree', 'add', '-b', 'review', worktreeRoot], { cwd: projectRoot });
 	writeFileSync(join(projectRoot, 'tracked.txt'), 'changed\n');
 	writeFileSync(join(projectRoot, 'new file.txt'), 'new\n');
+	symlinkSync('/etc/passwd', join(projectRoot, 'unsafe-link'));
 
 	expect(projectRepository(projectRoot)).toEqual({
 		isRepository: true,
 		branch: 'main',
 		changes: [
-			{ path: 'new file.txt', index: '?', worktree: '?' },
-			{ path: 'tracked.txt', index: ' ', worktree: 'M' }
+			{ path: 'new file.txt', index: '?', worktree: '?', fileUrl: 'new file.txt' },
+			{ path: 'tracked.txt', index: ' ', worktree: 'M', fileUrl: 'tracked.txt' },
+			{ path: 'unsafe-link', index: '?', worktree: '?', fileUrl: null }
 		],
 		worktrees: [
 			{ path: realpathSync(projectRoot), branch: 'main', head: expect.any(String) },
