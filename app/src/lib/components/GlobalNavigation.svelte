@@ -14,7 +14,15 @@
 	import Button from './ui/Button.svelte';
 
 	export type GlobalView =
-		'settings' | 'runtime' | 'skills' | 'schedules' | 'commands' | 'profiles' | 'mcp';
+		| 'settings'
+		| 'runtime'
+		| 'memory'
+		| 'skills'
+		| 'schedules'
+		| 'commands'
+		| 'profiles'
+		| 'mcp'
+		| 'models';
 
 	let { view, onview }: { view: GlobalView | null; onview: (view: GlobalView | null) => void } =
 		$props();

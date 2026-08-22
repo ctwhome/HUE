@@ -32,8 +32,11 @@ const styleFiles = [
 const styles = [appStyles, ...styleFiles].join('\n');
 const navigation = read('../lib/components/GlobalNavigation.svelte');
 const panel = read('../lib/components/HermesPanel.svelte');
+const voiceCall = read('../lib/voice/voice-call.svelte.ts');
 const hermesViews = [
+	'AdminResourceView',
 	'InventoryView',
+	'PreferencesView',
 	'RuntimeView',
 	'SchedulesView',
 	'SettingsView',
@@ -117,13 +120,80 @@ test('global navigation exposes workspace and Hermes administration', () => {
 });
 
 test('Hermes management remains complete and request-race safe', () => {
-	for (const section of ['Runtime', 'Skills', 'Schedules', 'Commands', 'Profiles', 'MCP']) {
+	for (const section of [
+		'Runtime',
+		'Memory',
+		'Skills',
+		'Schedules',
+		'Commands',
+		'Profiles',
+		'MCP',
+		'Models'
+	]) {
 		expect(hermes).toContain(`label: '${section}'`);
 	}
 	expect(hermes).toContain('requestGeneration');
 	expect(hermes).toContain('request !== requestGeneration');
 	expect(hermes).toContain('aria-label="Skill content"');
-	expect(hermes).toContain("method: 'PUT'");
+	expect(hermes).toContain('confirmDestructive');
+	expect(hermes).toContain('runtime.restart-admin');
+	expect(hermes).toContain('runtime.reconnect-acp');
+	expect(hermes).toContain('oncommand');
+	for (const action of ['Create schedule', 'Run now', 'Run history', 'Pause', 'Resume', 'Delete']) {
+		expect(hermes).toContain(action);
+	}
+	expect(hermes).toContain("window.prompt('Schedule prompt', job.prompt ?? '')");
+	expect(hermes).toContain("window.prompt('Cron schedule', job.schedule ?? '')");
+	expect(hermes).toContain("window.prompt('Delivery target', job.deliver ?? 'local')");
+	for (const capability of ['memoryEditor', 'memoryHistory', 'skillDelete', 'skillLinkedFiles']) {
+		expect(hermes).toContain(capability);
+	}
+	expect(hermes).toContain('dirtyGuard.register(discardSkillChanges)');
+	expect(hermes).not.toContain("window.confirm('Discard unsaved skill changes?')");
+	expect(hermes).not.toContain("addEventListener('beforeunload'");
+	expect(hermes).not.toContain('notice = `Verified ${target || action}`');
+	for (const outcome of [
+		'Confirmation required',
+		'Health or authentication failed',
+		'Could not verify absence',
+		'Reconciliation required',
+		'Unsupported'
+	]) {
+		expect(hermes).toContain(outcome);
+	}
+	expect(hermes).toContain('Next-launch default');
+	expect(hermes).toContain('Running admin profile');
+	expect(hermes).toContain('Running ACP profile');
+	expect(hermes).toContain('Use next launch');
+	expect(hermes).toContain('Nous provider/bootstrap session');
+	expect(hermes).toContain('Dashboard auth gate');
+	expect(hermes).toContain('Gateway state');
+	expect(hermes).toContain('Open authorization');
+	expect(hermes).toContain('Check authorization status');
+	expect(hermes).toContain('Cancel authorization');
+	expect(hermes).toContain('Read-only');
+	expect(hermes).toContain('profile: job.profile');
+});
+
+test('preferences expose supported appearance, input, language, voice, usage, and CLI controls', () => {
+	const preferences = read('../lib/components/hermes/PreferencesView.svelte');
+	for (const label of [
+		'Send key',
+		'Theme',
+		'Density',
+		'Language',
+		'Voice',
+		'Show usage',
+		'Show CLI Sessions'
+	]) {
+		expect(preferences).toContain(label);
+	}
+	expect(preferences).toContain('hue:preferences');
+	expect(preferences).toContain('disabled');
+	expect(preferences).toContain('Unsupported: Hermes session origin/source metadata unavailable');
+	expect(preferences).not.toContain('bind:checked={showCliSessions}');
+	expect(voiceCall).toContain("dataset.voice === 'system'");
+	expect(voiceCall).toContain('SpeechSynthesisUtterance');
 });
 
 test('project workbench owns browser, terminal, and Git behavior', () => {
@@ -218,9 +288,16 @@ test('chat remains internally scrollable and exposes message actions', () => {
 	expect(page).toContain('class="transcript min-h-0 flex-1 overflow-auto');
 	expect(page).toContain('aria-label="Scroll to latest message"');
 	expect(styles).toContain('white-space: pre-wrap');
-	for (const label of ['Copy message', 'Edit and resend message', 'Fork session']) {
+	for (const label of [
+		'Copy message',
+		'Edit and resend message',
+		'Fork from this message unavailable'
+	]) {
 		expect(page).toContain(`aria-label="${label}"`);
 	}
+	expect(page).toContain(
+		'Hermes ACP can duplicate a full Session but cannot fork from a selected message'
+	);
 	expect(page).toContain('navigator.clipboard.writeText(message.text)');
 });
 

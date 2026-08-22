@@ -1,4 +1,16 @@
-import { subagentTreesFromEvents, type WorkspaceSubagentTree } from '$lib';
+import {
+	activityFromEvents,
+	applySessionEvents,
+	applyTimelineEvents,
+	isTurnBusy,
+	planFromEvents,
+	subagentTreesFromEvents,
+	timelineFromSession,
+	type WorkspaceActivity,
+	type WorkspacePlanEntry,
+	type WorkspaceSubagentTree,
+	type WorkspaceTimelineItem
+} from '$lib';
 import type { ImageAttachment } from '$lib/message-content';
 import type {
 	CachedSessionView,
@@ -7,13 +19,17 @@ import type {
 	Project,
 	QueuedMessage,
 	Session,
+	SessionEvent,
 	SessionLoad,
 	TranscriptMessage
 } from './types';
 
 export class SessionState {
+	timeline = $state<WorkspaceTimelineItem[]>([]);
 	transcript = $state<TranscriptMessage[]>([]);
 	subagents = $state<WorkspaceSubagentTree[]>([]);
+	activity = $state<WorkspaceActivity[]>([]);
+	plan = $state<WorkspacePlanEntry[]>([]);
 	commands = $state<HermesCommand[]>([]);
 	runtime = $state<HermesRuntime>({ profile: 'default' });
 	branch = $state<string | null>(null);
@@ -35,11 +51,35 @@ export class SessionState {
 		return `${this.getProject()?.id ?? 'none'}:${sessionId}`;
 	}
 
+	private capturedViewKey(projectId: string | null, sessionId: string) {
+		return `${projectId ?? 'none'}:${sessionId}`;
+	}
+
+	resolveInteraction = (
+		projectId: string | null,
+		sessionId: string,
+		interactionId: string,
+		kind: 'permission' | 'clarify',
+		status: 'resolved' | 'cancelled',
+		current: boolean
+	) => {
+		const patch = (timeline: WorkspaceTimelineItem[]) =>
+			timeline.map((item) =>
+				item.kind === kind && 'id' in item && item.id === interactionId ? { ...item, status } : item
+			);
+		const cached = this.views.get(this.capturedViewKey(projectId, sessionId));
+		if (cached) cached.timeline = patch(cached.timeline);
+		if (current) this.timeline = patch(this.timeline);
+	};
+
 	cache = (session: Session | null) => {
 		if (!session) return;
 		this.views.set(this.viewKey(session.sessionId), {
+			timeline: [...this.timeline],
 			transcript: [...this.transcript],
 			subagents: [...this.subagents],
+			activity: [...this.activity],
+			plan: [...this.plan],
 			commands: [...this.commands],
 			runtime: { ...this.runtime },
 			branch: this.branch,
@@ -55,8 +95,11 @@ export class SessionState {
 
 	showCached = (session: Session) => {
 		const cached = this.views.get(this.viewKey(session.sessionId));
+		this.timeline = cached?.timeline ?? [];
 		this.transcript = cached?.transcript ?? [];
 		this.subagents = cached?.subagents ?? [];
+		this.activity = cached?.activity ?? [];
+		this.plan = cached?.plan ?? [];
 		this.commands = cached?.commands ?? [];
 		this.runtime = cached?.runtime ?? { profile: 'default' };
 		this.branch = cached?.branch ?? null;
@@ -70,8 +113,11 @@ export class SessionState {
 	};
 
 	clear = () => {
+		this.timeline = [];
 		this.transcript = [];
 		this.subagents = [];
+		this.activity = [];
+		this.plan = [];
 		this.commands = [];
 		this.runtime = { profile: 'default' };
 		this.branch = null;
@@ -96,8 +142,11 @@ export class SessionState {
 	};
 
 	applyLoaded = (body: SessionLoad) => {
+		this.timeline = timelineFromSession(body.transcript, body.messages, body.events ?? []);
 		this.transcript = body.transcript;
 		this.subagents = subagentTreesFromEvents(body.events ?? []);
+		this.activity = activityFromEvents(body.events ?? []);
+		this.plan = planFromEvents(body.events ?? []);
 		this.commands = body.commands ?? [];
 		this.runtime = body.runtime ?? { profile: 'default' };
 		this.branch = body.branch ?? null;
@@ -118,5 +167,39 @@ export class SessionState {
 					: 'running'
 			: '';
 		this.setError(body.transcriptError ?? '');
+	};
+
+	applyEvents = (events: SessionEvent[]) => {
+		const next = applySessionEvents(
+			{
+				cursor: this.eventCursor,
+				activeMessageId: this.activeMessageId,
+				pendingAssistant: this.pendingAssistant,
+				pendingImages: this.pendingImages,
+				pendingThought: this.pendingThought,
+				delivery: this.delivery,
+				transcript: this.transcript,
+				subagents: this.subagents,
+				activity: this.activity,
+				plan: this.plan
+			},
+			events
+		);
+		const timeline = applyTimelineEvents(
+			{ cursor: this.eventCursor, timeline: this.timeline },
+			events
+		);
+		const settled = isTurnBusy(this.delivery) && !isTurnBusy(next.delivery);
+		this.eventCursor = next.cursor;
+		this.timeline = timeline.timeline;
+		this.pendingAssistant = next.pendingAssistant;
+		this.pendingImages = next.pendingImages ?? [];
+		this.pendingThought = next.pendingThought ?? '';
+		this.delivery = next.delivery;
+		this.transcript = next.transcript;
+		this.subagents = next.subagents ?? [];
+		this.activity = next.activity ?? [];
+		this.plan = next.plan ?? [];
+		return settled;
 	};
 }

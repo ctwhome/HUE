@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { beforeNavigate, goto } from '$app/navigation';
-	import { marked } from 'marked';
-	import sanitizeHtml from 'sanitize-html';
 	import { Circle } from 'lucide-svelte';
 	import { formatElapsed, isTurnBusy } from '$lib';
 	import { automaticSessionIcon } from '$lib/icon';
+	import { applyPreferences, readPreferences } from '$lib/preferences';
+	import { renderMessageMarkdown } from '$lib/message-markdown';
 	import { createVoiceCall } from '$lib/voice/voice-call.svelte';
 	import GlobalNavigation, { type GlobalView } from './GlobalNavigation.svelte';
 	import HermesPanel from './HermesPanel.svelte';
@@ -138,8 +138,7 @@
 	let workflows = $derived(navigation.workflows);
 	let selectedSession = $derived(navigation.selectedSession);
 	let activeTab = $derived(navigation.activeTab);
-	let transcript = $derived(sessionState.transcript);
-	let subagents = $derived(sessionState.subagents);
+	let timeline = $derived(sessionState.timeline);
 	let commands = $derived(sessionState.commands);
 	let runtime = $derived(sessionState.runtime);
 	let branch = $derived(sessionState.branch);
@@ -155,9 +154,10 @@
 	let messageNotice = $derived(messageState.messageNotice);
 	let runtimeChanging = $derived(runtimeState.changing);
 	let stopping = $derived(messageState.stopping);
-	const renderMarkdown = (text: string) => sanitizeHtml(marked.parse(text, { async: false }));
+	const renderMarkdown = renderMessageMarkdown;
 
 	onMount(async () => {
+		applyPreferences(document.documentElement, readPreferences(localStorage));
 		elapsedTimer = setInterval(() => (now = Date.now()), 1000);
 		await navigation.restoreSelection();
 	});
@@ -170,8 +170,9 @@
 		if (!navigation.to || !dirtyGuard.dirty) return;
 		navigation.cancel();
 		const target = navigation.to.url;
+		const internal = Boolean(navigation.to.route.id);
 		dirtyGuard.block(() => {
-			if (navigation.to?.route.id) void goto(target);
+			if (internal) void goto(target);
 			else window.location.assign(target);
 		});
 	});
@@ -212,7 +213,14 @@
 	{#if globalView}<HermesPanel
 			view={globalView}
 			{commands}
-			onview={(view) => (globalView = view)}
+			{dirtyGuard}
+			onview={setGlobalView}
+			oncommand={(command) => {
+				guarded(() => {
+					globalView = null;
+					void messageState.sendText(`/${command.name}`, [], []);
+				});
+			}}
 		/>{/if}
 	{#if navigation.mobileDrawer}<button
 			class="drawer-backdrop"
@@ -268,6 +276,13 @@
 		bind:editSessionDialog={navigation.editSessionDialog}
 		editingSession={navigation.editingSession}
 		bind:sessionIcon={navigation.sessionIcon}
+		bind:sessionTitle={navigation.sessionTitle}
+		bind:sessionPinned={navigation.sessionPinned}
+		bind:sessionArchived={navigation.sessionArchived}
+		bind:sessionFolder={navigation.sessionFolder}
+		bind:sessionTags={navigation.sessionTags}
+		bind:sessionSearch={navigation.sessionSearch}
+		bind:showArchived={navigation.showArchived}
 		bind:sessionEmojiPickerOpen={navigation.sessionEmojiPickerOpen}
 		sessionEditError={navigation.sessionEditError}
 		sessionSaving={navigation.sessionSaving}
@@ -279,7 +294,11 @@
 		onrun={navigation.runWorkflow}
 		onworkflow={navigation.addWorkflow}
 		onimage={navigation.chooseSessionImage}
-		onsave={navigation.saveSessionIcon}
+		onsave={navigation.saveSession}
+		onsearch={navigation.searchSessionList}
+		onduplicate={navigation.duplicateSession}
+		ondelete={navigation.deleteSession}
+		onexport={navigation.exportSession}
 		isImage={isImageIcon}
 		iconPreview={navigation.sessionIconPreview}
 		automaticIcon={automaticSessionIcon}
@@ -316,8 +335,11 @@
 			</div>
 			<div
 				class="runtime-pill rounded-full border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground"
+				title={runtime.clarify?.reason ??
+					`Clarify elicitation ${runtime.clarify?.status ?? 'unsupported'}`}
 			>
-				<Circle size={7} fill="currentColor" aria-hidden="true" /> Hermes ACP
+				<Circle size={7} fill="currentColor" aria-hidden="true" /> Hermes ACP · Clarify {runtime
+					.clarify?.status ?? 'unsupported'}
 			</div>
 		</header>
 		{#if error}<div
@@ -328,18 +350,17 @@
 			</div>{/if}
 		{#if selectedSession}
 			<Conversation
-				messages={transcript}
-				{subagents}
-				{pendingThought}
-				{pendingAssistant}
-				{pendingImages}
-				{delivery}
+				{timeline}
 				{messageNotice}
 				busy={isTurnBusy(delivery)}
+				mediaPath={navigation.sessionApiPath(selectedSession.sessionId, '/media')}
 				{renderMarkdown}
 				onedit={messageState.editMessage}
 				oncopy={messageState.copyMessage}
-				onfork={messageState.forkSession}
+				oncopycode={messageState.copyCode}
+				oninteraction={messageState.respondToInteraction}
+				onmedia={messageState.openMedia}
+				onretrylast={messageState.retryLastResponse}
 				bind:element={transcriptFollow.element}
 				follow={transcriptFollow.follow}
 			/>
@@ -348,6 +369,7 @@
 				bind:composerElement={messageState.composerElement}
 				bind:draggingImages={messageState.draggingImages}
 				bind:images={messageState.images}
+				bind:attachments={messageState.attachments}
 				{delivery}
 				{pendingEnvelope}
 				{queuedMessages}
