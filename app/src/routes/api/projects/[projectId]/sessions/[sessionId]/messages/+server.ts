@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { services } from '$lib/server/services';
 import { MessageConflictError } from '$lib/server/store';
-import { validateImageAttachments } from '$lib/message-content';
+import { validateMessageAttachments } from '$lib/message-content';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ params, request }) => {
@@ -12,11 +12,16 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		return json({ error: 'Session not found' }, { status: 404 });
 	}
 	try {
-		const body = (await request.json()) as { messageId?: string; text?: string; images?: unknown };
+		const body = (await request.json()) as {
+			messageId?: string;
+			text?: string;
+			images?: unknown;
+			attachments?: unknown;
+		};
 		const messageId = body.messageId?.trim();
 		const text = body.text ?? '';
-		const images = validateImageAttachments(body.images);
-		if (!messageId || (!text.trim() && !images.length)) {
+		const { images, attachments } = validateMessageAttachments(body.images, body.attachments);
+		if (!messageId || (!text.trim() && !images.length && !attachments.length)) {
 			return json({ error: 'messageId and message content are required' }, { status: 400 });
 		}
 		const accepted = services().dispatcher.submit({
@@ -24,7 +29,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			projectId: params.projectId,
 			sessionId: params.sessionId,
 			text,
-			images
+			images,
+			attachments
 		});
 		return json({ messageId, ...accepted }, { status: 202 });
 	} catch (error) {
@@ -40,18 +46,29 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		return json({ error: 'Session not found' }, { status: 404 });
 	}
 	try {
-		const body = (await request.json()) as { messageId?: string; text?: string; images?: unknown };
+		const body = (await request.json()) as {
+			messageId?: string;
+			text?: string;
+			images?: unknown;
+			attachments?: unknown;
+			preserveAttachments?: boolean;
+		};
 		const messageId = body.messageId?.trim();
 		const text = body.text ?? '';
-		const images = validateImageAttachments(body.images);
-		if (!messageId || (!text.trim() && !images.length)) {
+		const preserveAttachments = body.preserveAttachments === true;
+		const { images, attachments } = validateMessageAttachments(
+			body.images,
+			preserveAttachments ? [] : body.attachments
+		);
+		if (!messageId || (!text.trim() && !images.length && !attachments.length)) {
 			return json({ error: 'messageId and message content are required' }, { status: 400 });
 		}
-		const message = services().store.updateQueuedMessage(messageId, {
+		const message = services().dispatcher.updateQueuedMessage(messageId, {
 			projectId: params.projectId,
 			sessionId: params.sessionId,
 			text,
-			images
+			images: preserveAttachments ? [] : images,
+			attachments: preserveAttachments ? undefined : attachments
 		});
 		return json({ message });
 	} catch (cause) {

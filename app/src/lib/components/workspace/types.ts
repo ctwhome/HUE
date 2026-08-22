@@ -1,4 +1,4 @@
-import type { ImageAttachment } from '$lib/message-content';
+import type { ImageAttachment, InputAttachment } from '$lib/message-content';
 import type {
 	WorkspaceActivity,
 	WorkspacePlanEntry,
@@ -27,6 +27,10 @@ export type Session = {
 	recovery?: string | null;
 	attention?: boolean;
 	error?: boolean;
+	pinned?: boolean;
+	archived?: boolean;
+	folder?: string | null;
+	tags?: string[];
 };
 
 export type Workflow = { id: string; name: string; prompt: string; profile: string };
@@ -48,6 +52,7 @@ export type TranscriptMessage = {
 	role: 'user' | 'assistant';
 	text: string;
 	images?: ImageAttachment[];
+	attachments?: InputAttachment[];
 	createdAt?: string;
 };
 export type SessionEvent = {
@@ -62,11 +67,13 @@ export type PendingEnvelope = {
 	sessionId: string;
 	text: string;
 	images: ImageAttachment[];
+	attachments: InputAttachment[];
 };
 export type QueuedMessage = {
 	id: string;
 	text: string;
 	images: ImageAttachment[];
+	attachments: InputAttachment[];
 	status: 'queued';
 };
 export type ActiveTurn = {
@@ -104,6 +111,7 @@ export type SessionLoad = {
 		id: string;
 		text: string;
 		images: ImageAttachment[];
+		attachments: InputAttachment[];
 		status: string;
 		createdAt?: string;
 	}>;

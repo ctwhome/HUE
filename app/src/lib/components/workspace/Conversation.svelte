@@ -1,12 +1,21 @@
 <script lang="ts">
-	import { ChevronRight, Copy, GitFork, Pencil } from 'lucide-svelte';
-	import type { ImageAttachment } from '$lib/message-content';
+	import {
+		ChevronRight,
+		Copy,
+		Download,
+		ExternalLink,
+		FolderOpen,
+		GitFork,
+		Pencil
+	} from 'lucide-svelte';
+	import type { ImageAttachment, InputAttachment } from '$lib/message-content';
 	import type { WorkspaceActivity, WorkspacePlanEntry, WorkspaceTimelineItem } from '$lib';
 
 	type Message = {
 		role: 'user' | 'assistant';
 		text: string;
 		images?: ImageAttachment[];
+		attachments?: InputAttachment[];
 		createdAt?: string;
 	};
 
@@ -19,7 +28,9 @@
 		oncopy,
 		oncopycode,
 		oninteraction,
-		onfork,
+		mediaPath,
+		onmedia,
+		onretrylast,
 		element = $bindable(),
 		follow
 	}: {
@@ -37,10 +48,20 @@
 				| { kind: 'clarify'; action: 'accept'; content: Record<string, string | string[]> }
 				| { kind: 'clarify'; action: 'cancel' }
 		) => void;
-		onfork: () => void;
+		mediaPath: string;
+		onmedia: (path: string, action: 'open' | 'reveal') => void;
+		onretrylast: () => void;
 		element?: HTMLElement;
 		follow: (node: HTMLElement) => { destroy: () => void };
 	} = $props();
+
+	function mediaOutputs(text: string): string[] {
+		return [
+			...new Set(
+				text.split(/\r?\n/).flatMap((line) => line.match(/^MEDIA:\s*(.+?)\s*$/)?.[1] ?? [])
+			)
+		];
+	}
 
 	const serialized = (value: unknown) =>
 		typeof value === 'string' ? value : JSON.stringify(value, null, 2);
@@ -106,6 +127,73 @@
 						{message.role === 'assistant' ? 'H' : 'You'}
 					</div>
 					<div class="message-stack grid min-w-0">
+						{#if message.attachments?.length}<div
+								class="mb-2 grid gap-1.5"
+								aria-label="Message attachments"
+							>
+								{#each message.attachments as attachment}<article
+										class="flex min-h-11 items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"
+									>
+										<span
+											class="min-w-0 flex-1 truncate"
+											title={`${attachment.name} · ${attachment.mimeType}`}>{attachment.name}</span
+										>
+										<small
+											>{Math.max(1, Math.ceil(attachment.size / 1024))} KB · {attachment.data
+												? 'User attachment'
+												: 'Reattach required'}</small
+										>
+										{#if attachment.data}<a
+												class="grid min-h-11 min-w-11 place-items-center"
+												href={`data:${attachment.mimeType};base64,${attachment.data}`}
+												download={attachment.name}
+												aria-label={`Download ${attachment.name}`}
+												title={`Download ${attachment.name}`}>Download</a
+											>{/if}
+									</article>{/each}
+							</div>{/if}
+						{#if message.role === 'assistant' && mediaOutputs(message.text).length}<div
+								class="mb-2 grid gap-1.5"
+								aria-label="Generated outputs"
+							>
+								{#each mediaOutputs(message.text) as path}<article
+										class="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"
+									>
+										<div class="min-w-0">
+											<strong class="block truncate">{path.split('/').at(-1)}</strong><small
+												title={`Hermes MEDIA: ${path}`}>Hermes MEDIA output · {path}</small
+											>
+										</div>
+										<div class="flex">
+											<a
+												class="grid min-h-11 min-w-11 place-items-center"
+												href={`${mediaPath}?path=${encodeURIComponent(path)}`}
+												target="_blank"
+												rel="noreferrer"
+												aria-label={`Preview ${path}`}
+												title={`Preview ${path}`}><ExternalLink size={16} aria-hidden="true" /></a
+											><a
+												class="grid min-h-11 min-w-11 place-items-center"
+												href={`${mediaPath}?path=${encodeURIComponent(path)}&download=true`}
+												download
+												aria-label={`Download ${path}`}
+												title={`Download ${path}`}><Download size={16} aria-hidden="true" /></a
+											><button
+												type="button"
+												class="grid min-h-11 min-w-11 place-items-center"
+												onclick={() => onmedia(path, 'open')}
+												aria-label={`Open ${path}`}
+												title={`Open ${path}`}><ExternalLink size={16} aria-hidden="true" /></button
+											><button
+												type="button"
+												class="grid min-h-11 min-w-11 place-items-center"
+												onclick={() => onmedia(path, 'reveal')}
+												aria-label={`Reveal ${path}`}
+												title={`Reveal ${path}`}><FolderOpen size={16} aria-hidden="true" /></button
+											>
+										</div>
+									</article>{/each}
+							</div>{/if}
 						{#if message.role === 'assistant'}
 							<div
 								class="message markdown rounded-2xl rounded-tl-md border border-border bg-card px-4 py-3 leading-relaxed"
@@ -152,11 +240,17 @@
 							>
 							<button
 								type="button"
-								aria-label="Fork session"
-								title="Fork current session"
-								disabled={busy}
-								onclick={onfork}><GitFork size={14} aria-hidden="true" /></button
+								aria-label="Fork from this message unavailable"
+								title="Hermes ACP can duplicate a full Session but cannot fork from a selected message"
+								disabled><GitFork size={14} aria-hidden="true" /></button
 							>
+							{#if message.role === 'assistant' && index === timeline.length - 1}<button
+									type="button"
+									aria-label="Retry last response"
+									title="Retry last response by resending previous user message"
+									disabled={busy}
+									onclick={onretrylast}>Retry</button
+								>{/if}
 							{#if validTimestamp(message.createdAt)}<time
 									class="ml-1 text-xs text-muted-foreground"
 									datetime={message.createdAt}

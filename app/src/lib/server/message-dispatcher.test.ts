@@ -7,7 +7,8 @@ import {
 import { HUEStore } from './store';
 
 class RecordingRuntime implements PromptRuntime {
-	calls: Array<{ sessionId: string; text: string; images?: unknown[] }> = [];
+	calls: Array<{ sessionId: string; text: string; images?: unknown[]; attachments?: unknown[] }> =
+		[];
 	resumes: Array<{ cwd: string; sessionId: string }> = [];
 	active = 0;
 	maxActive = 0;
@@ -18,7 +19,12 @@ class RecordingRuntime implements PromptRuntime {
 	}
 
 	async prompt(input: Parameters<PromptRuntime['prompt']>[0]): Promise<void> {
-		this.calls.push({ sessionId: input.sessionId, text: input.text, images: input.images });
+		this.calls.push({
+			sessionId: input.sessionId,
+			text: input.text,
+			images: input.images,
+			...(input.attachments?.length ? { attachments: input.attachments } : {})
+		});
 		this.active += 1;
 		this.maxActive = Math.max(this.maxActive, this.active);
 		await Promise.resolve();
@@ -281,6 +287,41 @@ describe('MessageDispatcher', () => {
 
 		expect(runtime.calls).toEqual([{ sessionId: 'session-1', text: envelope.text, images }]);
 		expect(store.getMessage(envelope.id)?.images).toEqual(images);
+		store.close();
+	});
+
+	it('keeps generic bytes only in turn memory while persisting unavailable metadata', async () => {
+		const store = makeStore();
+		const runtime = new RecordingRuntime();
+		const dispatcher = new MessageDispatcher(store, runtime);
+		const attachment = {
+			name: 'notes.md',
+			mimeType: 'text/markdown',
+			size: 5,
+			data: 'aGVsbG8='
+		};
+
+		dispatcher.submit({
+			id: 'file-message',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Review this',
+			attachments: [attachment]
+		});
+		await dispatcher.whenIdle('session-1');
+
+		expect(runtime.calls).toEqual([
+			{ sessionId: 'session-1', text: 'Review this', images: [], attachments: [attachment] }
+		]);
+		expect(store.getMessage('file-message')?.attachments).toEqual([
+			{
+				name: attachment.name,
+				mimeType: attachment.mimeType,
+				size: attachment.size,
+				available: false,
+				reattachRequired: true
+			}
+		]);
 		store.close();
 	});
 
@@ -556,20 +597,99 @@ describe('MessageDispatcher', () => {
 		store.close();
 	});
 
+	it('prevents delivery from starting during a Session-exclusive operation', async () => {
+		const store = makeStore();
+		const runtime = new RecordingRuntime();
+		const dispatcher = new MessageDispatcher(store, runtime);
+		let release!: () => void;
+		const exclusive = dispatcher.withSessionLock(
+			'session-1',
+			() => new Promise<void>((resolve) => (release = resolve))
+		);
+		await Promise.resolve();
+
+		dispatcher.submit({
+			id: 'msg-after-lock',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Wait for snapshot'
+		});
+		await Promise.resolve();
+		expect(runtime.calls).toEqual([]);
+
+		release();
+		await exclusive;
+		await dispatcher.whenIdle('session-1');
+		expect(runtime.calls.map(({ text }) => text)).toEqual(['Wait for snapshot']);
+		store.close();
+	});
+
 	it('uses the latest explicitly edited queued envelope when its turn starts', async () => {
 		const store = makeStore();
 		const runtime = new RecordingRuntime();
 		let releaseFirst!: () => void;
 		runtime.prompt = async (input) => {
-			runtime.calls.push({ sessionId: input.sessionId, text: input.text, images: input.images });
+			runtime.calls.push({
+				sessionId: input.sessionId,
+				text: input.text,
+				images: input.images,
+				attachments: input.attachments
+			});
 			if (input.text === 'First') await new Promise<void>((resolve) => (releaseFirst = resolve));
 		};
 		const dispatcher = new MessageDispatcher(store, runtime);
 
 		dispatcher.submit({ id: 'msg-1', projectId: 'hue', sessionId: 'session-1', text: 'First' });
-		dispatcher.submit({ id: 'msg-2', projectId: 'hue', sessionId: 'session-1', text: 'Original' });
+		dispatcher.submit({
+			id: 'msg-2',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Original',
+			attachments: [{ name: 'old.txt', mimeType: 'text/plain', size: 3, data: 'b2xk' }]
+		});
 		await Promise.resolve();
-		store.updateQueuedMessage('msg-2', {
+		dispatcher.updateQueuedMessage('msg-2', {
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Edited',
+			images: [],
+			attachments: [{ name: 'new.txt', mimeType: 'text/plain', size: 3, data: 'bmV3' }]
+		});
+		releaseFirst();
+		await dispatcher.whenIdle('session-1');
+
+		expect(runtime.calls.map(({ text }) => text)).toEqual(['First', 'Edited']);
+		expect(runtime.calls[1]?.attachments).toEqual([
+			{ name: 'new.txt', mimeType: 'text/plain', size: 3, data: 'bmV3' }
+		]);
+		store.close();
+	});
+
+	it('preserves turn-memory attachment bytes during a metadata-only queued edit', async () => {
+		const store = makeStore();
+		const runtime = new RecordingRuntime();
+		let releaseFirst!: () => void;
+		runtime.prompt = async (input) => {
+			runtime.calls.push({
+				sessionId: input.sessionId,
+				text: input.text,
+				images: input.images,
+				attachments: input.attachments
+			});
+			if (input.text === 'First') await new Promise<void>((resolve) => (releaseFirst = resolve));
+		};
+		const dispatcher = new MessageDispatcher(store, runtime);
+
+		dispatcher.submit({ id: 'msg-1', projectId: 'hue', sessionId: 'session-1', text: 'First' });
+		dispatcher.submit({
+			id: 'msg-2',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Original',
+			attachments: [{ name: 'notes.txt', mimeType: 'text/plain', size: 5, data: 'aGVsbG8=' }]
+		});
+		await Promise.resolve();
+		dispatcher.updateQueuedMessage('msg-2', {
 			projectId: 'hue',
 			sessionId: 'session-1',
 			text: 'Edited',
@@ -578,7 +698,39 @@ describe('MessageDispatcher', () => {
 		releaseFirst();
 		await dispatcher.whenIdle('session-1');
 
-		expect(runtime.calls.map(({ text }) => text)).toEqual(['First', 'Edited']);
+		expect(runtime.calls[1]).toMatchObject({
+			text: 'Edited',
+			attachments: [{ name: 'notes.txt', mimeType: 'text/plain', size: 5, data: 'aGVsbG8=' }]
+		});
+		expect(store.getMessage('msg-2')?.attachments).toEqual([
+			{
+				name: 'notes.txt',
+				mimeType: 'text/plain',
+				size: 5,
+				available: false,
+				reattachRequired: true
+			}
+		]);
+		store.close();
+	});
+
+	it('fails recovered generic attachments without sending metadata as content', async () => {
+		const store = makeStore();
+		store.acceptMessage({
+			id: 'file',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Review',
+			attachments: [{ name: 'notes.txt', mimeType: 'text/plain', size: 5, data: 'aGVsbG8=' }]
+		});
+		const runtime = new RecordingRuntime();
+		const dispatcher = new MessageDispatcher(store, runtime);
+		await dispatcher.whenIdle('session-1');
+		expect(runtime.calls).toEqual([]);
+		expect(store.getMessage('file')?.status).toBe('failed');
+		expect(store.listEvents('hue', 'session-1').at(-1)?.payload.error).toBe(
+			'Attachments unavailable after restart; reattach required'
+		);
 		store.close();
 	});
 
