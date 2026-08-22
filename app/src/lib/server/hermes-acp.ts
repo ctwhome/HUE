@@ -1,5 +1,9 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { chmod, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
+import { pathToFileURL } from 'node:url';
 import * as acp from '@agentclientprotocol/sdk';
 import {
 	DeliveryUncertainError,
@@ -12,7 +16,7 @@ import {
 	type SubagentTree,
 	type ToolCall
 } from './message-dispatcher';
-import type { ImageAttachment } from '$lib/message-content';
+import type { ImageAttachment, InputAttachment } from '$lib/message-content';
 import { redactPersistedValue } from './redaction';
 
 export type HermesSession = {
@@ -560,6 +564,7 @@ export class HermesACP implements PromptRuntime {
 		sessionId: string;
 		text: string;
 		images: ImageAttachment[];
+		attachments?: InputAttachment[];
 		onChunk: (text: string) => void;
 		onImage?: (image: ImageAttachment) => void;
 		onThought?: (text: string) => void;
@@ -569,6 +574,43 @@ export class HermesACP implements PromptRuntime {
 		onSubagent?: (update: SubagentTree) => void;
 	}): Promise<void> {
 		const context = await this.context();
+		let stagingRoot: string | null = null;
+		let resources: Array<{
+			type: 'resource_link';
+			uri: string;
+			name: string;
+			mimeType: string;
+			size: number;
+		}> = [];
+		if (input.attachments?.length) {
+			stagingRoot = await mkdtemp(join(tmpdir(), 'hue-turn-'));
+			await chmod(stagingRoot, 0o700);
+			try {
+				resources = await Promise.all(
+					input.attachments.map(async (attachment, index) => {
+						if (!attachment.data || basename(attachment.name) !== attachment.name) {
+							throw new Error(`Attachment ${attachment.name} is unavailable; reattach required`);
+						}
+						const path = join(stagingRoot!, `${index}-${attachment.name}`);
+						await writeFile(path, Buffer.from(attachment.data, 'base64'), {
+							mode: 0o600,
+							flag: 'wx'
+						});
+						await chmod(path, 0o600);
+						return {
+							type: 'resource_link' as const,
+							uri: pathToFileURL(await realpath(path)).href,
+							name: attachment.name,
+							mimeType: attachment.mimeType,
+							size: attachment.size
+						};
+					})
+				);
+			} catch (error) {
+				await rm(stagingRoot, { recursive: true, force: true });
+				throw error;
+			}
+		}
 		if (input.onInteraction) this.interactionHandlers.set(input.sessionId, input.onInteraction);
 		const delegates = new Map<string, SubagentTree>();
 		const tools = new Map<string, ToolCall>();
@@ -604,7 +646,8 @@ export class HermesACP implements PromptRuntime {
 				sessionId: input.sessionId,
 				prompt: [
 					...(input.text.trim() ? [{ type: 'text' as const, text: input.text }] : []),
-					...input.images.map(({ data, mimeType }) => ({ type: 'image' as const, data, mimeType }))
+					...input.images.map(({ data, mimeType }) => ({ type: 'image' as const, data, mimeType })),
+					...resources
 				]
 			})) as acp.PromptResponse;
 			if (response.stopReason !== 'end_turn') {
@@ -614,10 +657,16 @@ export class HermesACP implements PromptRuntime {
 			if (error instanceof Error && error.message.startsWith('Hermes ended the turn with ')) {
 				throw error;
 			}
-			const message = error instanceof Error ? error.message : String(error);
+			const rawMessage = error instanceof Error ? error.message : String(error);
+			const message = stagingRoot
+				? rawMessage
+						.replaceAll(pathToFileURL(stagingRoot).href, '[staged attachment]')
+						.replaceAll(stagingRoot, '[staged attachment]')
+				: rawMessage;
 			throw new DeliveryUncertainError(`ACP disconnected before acknowledgement: ${message}`);
 		} finally {
 			unsubscribe();
+			if (stagingRoot) await rm(stagingRoot, { recursive: true, force: true });
 			if (this.interactionHandlers.get(input.sessionId) === input.onInteraction) {
 				this.interactionHandlers.delete(input.sessionId);
 			}

@@ -3,28 +3,72 @@ import { automaticSessionIcon } from '$lib/icon';
 import { services, sessionMatchesProjectRoot, unprojectedSessionRoot } from '$lib/server/services';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async ({ url }) => {
 	const root = unprojectedSessionRoot();
 	try {
-		const sessions = (await services().runtime.listSessions(root)).filter((session) =>
-			sessionMatchesProjectRoot(root, session.cwd)
+		const requestedSessionId = url.searchParams.get('sessionId');
+		if (requestedSessionId) {
+			const stored =
+				requestedSessionId.length <= 500
+					? services().store.getSession(null, requestedSessionId)
+					: null;
+			if (!stored) return json({ sessions: [], hasMore: false });
+			const busyStarts = services().store.getBusySessionStarts(null);
+			const indicators = services().store.getSessionIndicators(null);
+			const title = stored.title ?? 'Untitled Hermes Session';
+			const available = sessionMatchesProjectRoot(root, stored.cwd);
+			return json({
+				sessions: [
+					{
+						...stored,
+						title,
+						icon: stored.icon ?? automaticSessionIcon(title),
+						customIcon: stored.icon,
+						available,
+						recovery: available
+							? null
+							: `Restore the Session folder at ${stored.cwd} to resume it.`,
+						busySince: busyStarts[stored.sessionId] ?? null,
+						attention: indicators[stored.sessionId]?.attention ?? false,
+						error: indicators[stored.sessionId]?.error ?? false
+					}
+				],
+				hasMore: false
+			});
+		}
+		const sessions = (await services().runtime.listSessions(root)).filter(
+			(session) =>
+				sessionMatchesProjectRoot(root, session.cwd) &&
+				!services().store.isSessionDismissed(null, session.sessionId)
 		);
 		for (const session of sessions) services().store.upsertSession(null, session);
 		services().dispatcher.recover();
 		const busyStarts = services().store.getBusySessionStarts(null);
 		const indicators = services().store.getSessionIndicators(null);
+		const runtimeById = new Map(sessions.map((session) => [session.sessionId, session]));
+		const query = url.searchParams.get('q')?.trim() ?? '';
+		const includeArchived = url.searchParams.get('archived') === 'true';
+		const limit = Math.max(1, Math.min(Number(url.searchParams.get('limit') ?? 100) || 100, 100));
+		const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0) || 0);
+		const page = services().store.listSessionPage(null, { includeArchived, query, limit, offset });
 		return json({
-			sessions: sessions.map((session) => {
-				const customIcon = services().store.getSession(null, session.sessionId)?.icon ?? null;
+			sessions: page.sessions.map((stored) => {
+				const runtime = runtimeById.get(stored.sessionId);
+				const title = stored.title ?? runtime?.title ?? 'Untitled Hermes Session';
 				return {
-					...session,
-					icon: customIcon ?? automaticSessionIcon(session.title),
-					customIcon,
-					busySince: busyStarts[session.sessionId] ?? null,
-					attention: indicators[session.sessionId]?.attention ?? false,
-					error: indicators[session.sessionId]?.error ?? false
+					...runtime,
+					...stored,
+					title,
+					icon: stored.icon ?? automaticSessionIcon(title),
+					customIcon: stored.icon,
+					available: !!runtime,
+					recovery: runtime ? null : `Restore the Session folder at ${stored.cwd} to resume it.`,
+					busySince: busyStarts[stored.sessionId] ?? null,
+					attention: indicators[stored.sessionId]?.attention ?? false,
+					error: indicators[stored.sessionId]?.error ?? false
 				};
-			})
+			}),
+			hasMore: page.hasMore
 		});
 	} catch (cause) {
 		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 503 });

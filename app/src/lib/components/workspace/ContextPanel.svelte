@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { Ellipsis, LoaderCircle, Plus, X } from 'lucide-svelte';
-	import EmojiPicker from '$lib/components/EmojiPicker.svelte';
+	import { Ellipsis, LoaderCircle, Pin, Plus, Search } from 'lucide-svelte';
+	import SessionManagerDialog from './SessionManagerDialog.svelte';
 	type Project = {
 		id: string;
 		name: string;
@@ -21,6 +21,10 @@
 		recovery?: string | null;
 		attention?: boolean;
 		error?: boolean;
+		pinned?: boolean;
+		archived?: boolean;
+		folder?: string | null;
+		tags?: string[];
 	};
 	type Workflow = { id: string; name: string; prompt: string; profile: string };
 	let {
@@ -36,6 +40,13 @@
 		editSessionDialog = $bindable(),
 		editingSession,
 		sessionIcon = $bindable(),
+		sessionTitle = $bindable(),
+		sessionPinned = $bindable(),
+		sessionArchived = $bindable(),
+		sessionFolder = $bindable(),
+		sessionTags = $bindable(),
+		sessionSearch = $bindable(),
+		showArchived = $bindable(),
 		sessionEmojiPickerOpen = $bindable(),
 		sessionEditError,
 		sessionSaving,
@@ -48,6 +59,10 @@
 		onworkflow,
 		onimage,
 		onsave,
+		onsearch,
+		onduplicate,
+		ondelete,
+		onexport,
 		isImage,
 		iconPreview,
 		automaticIcon,
@@ -65,6 +80,13 @@
 		editSessionDialog?: HTMLDialogElement;
 		editingSession: Session | null;
 		sessionIcon: string | null;
+		sessionTitle: string;
+		sessionPinned: boolean;
+		sessionArchived: boolean;
+		sessionFolder: string;
+		sessionTags: string;
+		sessionSearch: string;
+		showArchived: boolean;
 		sessionEmojiPickerOpen: boolean;
 		sessionEditError: string;
 		sessionSaving: boolean;
@@ -77,11 +99,23 @@
 		onworkflow: (event: SubmitEvent) => void;
 		onimage: (event: Event) => void;
 		onsave: (event: SubmitEvent) => void;
+		onsearch: (event?: SubmitEvent) => void;
+		onduplicate: () => void;
+		ondelete: () => void;
+		onexport: (format: 'markdown' | 'json') => void;
 		isImage: (icon: string | null) => boolean;
 		iconPreview: () => string;
 		automaticIcon: (title?: string | null) => string;
 		elapsed: (startedAt: string, now: number) => string;
 	} = $props();
+
+	function group(session: Session): string {
+		if (session.pinned) return 'Pinned';
+		if (session.archived) return 'Archived';
+		if (!session.updatedAt) return 'Older';
+		const days = Math.floor((Date.now() - new Date(session.updatedAt).getTime()) / 86_400_000);
+		return days <= 0 ? 'Today' : days === 1 ? 'Yesterday' : days < 7 ? 'This week' : 'Older';
+	}
 </script>
 
 <aside
@@ -135,8 +169,29 @@
 			>{/if}
 	</div>
 	{#if activeTab === 'sessions'}
+		<form class="flex gap-2 border-b border-border p-2" role="search" onsubmit={onsearch}>
+			<label
+				class="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border px-3"
+			>
+				<Search size={16} aria-hidden="true" /><span class="sr-only">Search Sessions</span><input
+					class="min-w-0 flex-1 border-0 bg-transparent"
+					bind:value={sessionSearch}
+					type="search"
+					placeholder="Search Sessions"
+				/>
+			</label>
+			<button class="min-h-11 px-3" type="submit" title="Search Sessions">Search</button>
+		</form>
+		<label class="flex min-h-11 items-center gap-2 border-b border-border px-3 text-sm"
+			><input bind:checked={showArchived} onchange={() => onsearch()} type="checkbox" /> Show archived</label
+		>
 		<div class="item-list grid gap-1 overflow-auto p-2">
-			{#each sessions as session}
+			{#each sessions as session, index}
+				{#if index === 0 || group(sessions[index - 1]) !== group(session)}<h2
+						class="px-2 pt-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+					>
+						{group(session)}
+					</h2>{/if}
 				<div class="session-row relative">
 					<button
 						class="session-select flex min-h-12 w-full items-center gap-2.5 rounded-lg border border-transparent bg-transparent p-2.5 pr-10 text-left hover:border-border hover:bg-accent [&.active]:border-border [&.active]:bg-accent"
@@ -157,7 +212,10 @@
 							>{/if}
 						<div class="session-row-copy min-w-0 flex-1">
 							<div class="session-row-title flex items-baseline gap-2">
-								<strong>{session.title || 'Untitled session'}</strong>
+								<strong>{session.title || 'Untitled session'}</strong>{#if session.pinned}<Pin
+										size={12}
+										aria-label="Pinned"
+									/>{/if}
 								{#if session.busySince}<span
 										class="busy-timer text-xs whitespace-nowrap text-sky-400 tabular-nums"
 										aria-label={`Busy for ${elapsed(session.busySince, now)}`}
@@ -169,7 +227,10 @@
 									? new Date(session.updatedAt).toLocaleString()
 									: session.available === false
 										? session.recovery
-										: 'New session'}</small
+										: 'New session'}{session.folder ? ` · ${session.folder}` : ''}{session.tags
+									?.length
+									? ` · ${session.tags.join(', ')}`
+									: ''}</small
 							>
 						</div>
 						{#if session.error}<span class="session-indicator error" aria-label="Session failed"
@@ -218,75 +279,23 @@
 			<button type="submit" title="Save workflow">Save workflow</button>
 		</form>
 	{/if}
-	<dialog
-		bind:this={editSessionDialog}
-		class="add-project-dialog edit-project-dialog fixed top-1/2 left-1/2 m-0 max-h-[calc(100dvh-32px)] w-[min(460px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-xl border border-border bg-card p-4 text-foreground shadow-2xl backdrop:bg-black/60"
-		aria-labelledby="edit-session-icon-title"
-		onclick={(event) => event.target === event.currentTarget && editSessionDialog?.close()}
-	>
-		<header>
-			<div>
-				<h2 id="edit-session-icon-title">Edit session icon</h2>
-				<p>Choose an icon for {editingSession?.title || 'this session'}.</p>
-			</div>
-		</header>
-		<form onsubmit={onsave}>
-			<fieldset class="project-icon-field m-0 min-w-0 border-0 p-0">
-				<legend>Session icon</legend>
-				<div
-					class="project-icon-editor mt-2 grid grid-cols-[58px_minmax(0,1fr)] items-center gap-3"
-				>
-					<div
-						class="project-icon-preview grid size-[58px] place-items-center overflow-hidden rounded-xl border border-border bg-background text-3xl"
-					>
-						{#if isImage(iconPreview())}<img src={iconPreview()} alt="Session icon preview" />
-						{:else}<span>{iconPreview()}</span>{/if}
-					</div>
-					<div class="project-icon-options grid gap-2">
-						<div class="project-icon-upload flex gap-1.5">
-							<button
-								type="button"
-								aria-label="Choose session emoji"
-								title="Choose session emoji"
-								onclick={() => (sessionEmojiPickerOpen = !sessionEmojiPickerOpen)}
-								>Choose emoji</button
-							>
-							<label title="Choose a custom session image">
-								<span>Choose image</span>
-								<input
-									type="file"
-									accept="image/png,image/jpeg,image/gif,image/webp"
-									aria-label="Session icon image"
-									onchange={onimage}
-								/>
-							</label>
-							<button
-								type="button"
-								title="Use automatic session icon"
-								onclick={() => (sessionIcon = null)}>Automatic</button
-							>
-						</div>
-					</div>
-				</div>
-				{#if sessionEmojiPickerOpen}<EmojiPicker
-						onselect={(emoji) => {
-							sessionIcon = emoji;
-							sessionEmojiPickerOpen = false;
-						}}
-					/>{/if}
-			</fieldset>
-			{#if sessionEditError}<p class="directory-error text-sm text-destructive" role="alert">
-					{sessionEditError}
-				</p>{/if}
-			<div class="edit-project-actions session-icon-actions flex justify-end gap-3">
-				<button type="submit" title="Save icon" disabled={sessionSaving}>Save icon</button>
-			</div>
-		</form>
-		<button
-			class="icon-button grid size-8 shrink-0 place-items-center rounded-md border border-border bg-secondary hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-			aria-label="Close session icon"
-			title="Close session icon"
-			onclick={() => editSessionDialog?.close()}><X size={18} aria-hidden="true" /></button
-		>
-	</dialog>
+	<SessionManagerDialog
+		bind:dialog={editSessionDialog}
+		bind:title={sessionTitle}
+		bind:pinned={sessionPinned}
+		bind:archived={sessionArchived}
+		bind:folder={sessionFolder}
+		bind:tags={sessionTags}
+		bind:icon={sessionIcon}
+		bind:emojiOpen={sessionEmojiPickerOpen}
+		error={sessionEditError}
+		saving={sessionSaving}
+		{onimage}
+		{onsave}
+		{onduplicate}
+		{ondelete}
+		{onexport}
+		{isImage}
+		{iconPreview}
+	/>
 </aside>

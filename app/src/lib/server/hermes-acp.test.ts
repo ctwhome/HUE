@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
 	HermesACP,
 	isolatedHermesEnvironment,
@@ -34,6 +35,48 @@ it('builds an isolated real-smoke environment without provider or private-state 
 });
 
 describe('HermesACP real integration', () => {
+	realHermesTest(
+		'inlines an isolated staged file through installed Hermes prompt processing',
+		async () => {
+			const hermesHome = mkdtempSync(join(tmpdir(), 'hue-real-hermes-resource-'));
+			const file = join(hermesHome, 'proof.txt');
+			const marker = `HUE_RESOURCE_${crypto.randomUUID()}`;
+			await Bun.write(file, marker);
+			const install = join(homedir(), '.hermes', 'hermes-agent');
+			const child = Bun.spawn(
+				[
+					join(install, 'venv', 'bin', 'python'),
+					'-c',
+					`import json,sys
+from acp.schema import ResourceContentBlock
+from acp_adapter.server import _content_blocks_to_openai_user_content
+block=ResourceContentBlock.model_validate({'type':'resource_link','uri':sys.argv[1],'name':'proof.txt','mimeType':'text/plain','size':int(sys.argv[2])})
+print(json.dumps(_content_blocks_to_openai_user_content([block])))`,
+					pathToFileURL(file).href,
+					String(marker.length)
+				],
+				{
+					cwd: install,
+					env: isolatedHermesEnvironment(process.env, hermesHome),
+					stdout: 'pipe',
+					stderr: 'pipe'
+				}
+			);
+			try {
+				const [status, stdout, stderr] = await Promise.all([
+					child.exited,
+					new Response(child.stdout).text(),
+					new Response(child.stderr).text()
+				]);
+				expect(status, stderr).toBe(0);
+				expect(stdout).toContain(marker);
+			} finally {
+				rmSync(hermesHome, { recursive: true, force: true });
+			}
+		},
+		15_000
+	);
+
 	realHermesTest(
 		'reports installed clarify capability without provider credentials or private Hermes state',
 		async () => {
@@ -475,6 +518,81 @@ describe('HermesACP update subscriptions', () => {
 		});
 
 		expect(images).toEqual([{ name: 'Hermes image', mimeType: 'image/png', data: 'aGVsbG8=' }]);
+	});
+
+	it('stages non-image inputs as private readable files and removes them after prompt', async () => {
+		const runtime = new HermesACP();
+		let prompt: unknown;
+		let stagedPath = '';
+		const internals = runtime as unknown as {
+			context: () => Promise<{
+				request: (
+					_method: unknown,
+					params: { prompt: unknown }
+				) => Promise<{ stopReason: 'end_turn' }>;
+			}>;
+		};
+		internals.context = async () => ({
+			request: async (_method, params) => {
+				prompt = params.prompt;
+				stagedPath = fileURLToPath(((prompt as unknown[])[1] as { uri: string }).uri);
+				expect(readFileSync(stagedPath, 'utf8')).toBe('hello');
+				expect(statSync(stagedPath).mode & 0o777).toBe(0o600);
+				expect(statSync(join(stagedPath, '..')).mode & 0o777).toBe(0o700);
+				return { stopReason: 'end_turn' };
+			}
+		});
+
+		await runtime.prompt({
+			sessionId: 'session-1',
+			text: 'Review file',
+			images: [],
+			attachments: [{ name: 'notes.md', mimeType: 'text/markdown', size: 5, data: 'aGVsbG8=' }],
+			onChunk: () => {}
+		});
+
+		expect(prompt).toEqual([
+			{ type: 'text', text: 'Review file' },
+			{
+				type: 'resource_link',
+				uri: expect.stringMatching(/^file:\/\//),
+				name: 'notes.md',
+				mimeType: 'text/markdown',
+				size: 5
+			}
+		]);
+		expect(existsSync(stagedPath)).toBe(false);
+	});
+
+	it('removes staged attachment files when Hermes prompt errors', async () => {
+		const runtime = new HermesACP();
+		let stagedPath = '';
+		const internals = runtime as unknown as {
+			context: () => Promise<{
+				request: (_method: unknown, params: { prompt: unknown[] }) => Promise<never>;
+			}>;
+		};
+		internals.context = async () => ({
+			request: async (_method, params) => {
+				stagedPath = fileURLToPath((params.prompt[0] as { uri: string }).uri);
+				throw new Error(`transport failed while reading ${stagedPath}`);
+			}
+		});
+		let failure = '';
+		try {
+			await runtime.prompt({
+				sessionId: 'session-1',
+				text: '',
+				images: [],
+				attachments: [{ name: 'notes.txt', mimeType: 'text/plain', size: 5, data: 'aGVsbG8=' }],
+				onChunk: () => {}
+			});
+		} catch (error) {
+			failure = error instanceof Error ? error.message : String(error);
+		}
+		expect(failure).toContain('ACP disconnected before acknowledgement');
+		expect(failure).not.toContain(stagedPath);
+		expect(existsSync(stagedPath)).toBe(false);
 	});
 
 	it('exposes only the connected ACP runtime metadata and configured profile', () => {

@@ -236,6 +236,13 @@
 		bind:editSessionDialog={navigation.editSessionDialog}
 		editingSession={navigation.editingSession}
 		bind:sessionIcon={navigation.sessionIcon}
+		bind:sessionTitle={navigation.sessionTitle}
+		bind:sessionPinned={navigation.sessionPinned}
+		bind:sessionArchived={navigation.sessionArchived}
+		bind:sessionFolder={navigation.sessionFolder}
+		bind:sessionTags={navigation.sessionTags}
+		bind:sessionSearch={navigation.sessionSearch}
+		bind:showArchived={navigation.showArchived}
 		bind:sessionEmojiPickerOpen={navigation.sessionEmojiPickerOpen}
 		sessionEditError={navigation.sessionEditError}
 		sessionSaving={navigation.sessionSaving}
@@ -247,7 +254,11 @@
 		onrun={navigation.runWorkflow}
 		onworkflow={navigation.addWorkflow}
 		onimage={navigation.chooseSessionImage}
-		onsave={navigation.saveSessionIcon}
+		onsave={navigation.saveSession}
+		onsearch={navigation.searchSessionList}
+		onduplicate={navigation.duplicateSession}
+		ondelete={navigation.deleteSession}
+		onexport={navigation.exportSession}
 		isImage={isImageIcon}
 		iconPreview={navigation.sessionIconPreview}
 		automaticIcon={automaticSessionIcon}
@@ -302,12 +313,14 @@
 				{timeline}
 				{messageNotice}
 				busy={isTurnBusy(delivery)}
+				mediaPath={navigation.sessionApiPath(selectedSession.sessionId, '/media')}
 				{renderMarkdown}
 				onedit={messageState.editMessage}
 				oncopy={messageState.copyMessage}
 				oncopycode={messageState.copyCode}
 				oninteraction={messageState.respondToInteraction}
-				onfork={messageState.forkSession}
+				onmedia={messageState.openMedia}
+				onretrylast={messageState.retryLastResponse}
 				bind:element={transcriptFollow.element}
 				follow={transcriptFollow.follow}
 			/>
@@ -316,6 +329,7 @@
 				bind:composerElement={messageState.composerElement}
 				bind:draggingImages={messageState.draggingImages}
 				bind:images={messageState.images}
+				bind:attachments={messageState.attachments}
 				{delivery}
 				{pendingEnvelope}
 				{queuedMessages}

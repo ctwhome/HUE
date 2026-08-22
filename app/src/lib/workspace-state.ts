@@ -1,9 +1,10 @@
-import type { ImageAttachment } from './message-content';
+import type { ImageAttachment, InputAttachment } from './message-content';
 
 export type WorkspaceTranscriptMessage = {
 	role: 'user' | 'assistant';
 	text: string;
 	images?: ImageAttachment[];
+	attachments?: InputAttachment[];
 	createdAt?: string;
 };
 export type WorkspaceSubagentTree = {
@@ -227,6 +228,7 @@ export function timelineFromSession(
 		id: string;
 		text: string;
 		images?: ImageAttachment[];
+		attachments?: InputAttachment[];
 		status: string;
 		createdAt?: string;
 	}>,
@@ -281,7 +283,8 @@ export function timelineFromSession(
 					messageId,
 					text: message.text,
 					createdAt: message.createdAt ?? event.createdAt,
-					...(message.images?.length ? { images: message.images } : {})
+					...(message.images?.length ? { images: message.images } : {}),
+					...(message.attachments?.length ? { attachments: message.attachments } : {})
 				});
 			}
 			continue;
