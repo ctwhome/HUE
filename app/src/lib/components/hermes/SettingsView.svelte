@@ -2,6 +2,7 @@
 	import { ChevronRight } from 'lucide-svelte';
 	import type { GlobalView } from '../GlobalNavigation.svelte';
 	import type { HermesSection } from './types';
+	import PreferencesView from './PreferencesView.svelte';
 
 	let {
 		sections,
@@ -32,4 +33,5 @@
 			</button>
 		{/each}
 	</div>
+	<PreferencesView />
 </div>

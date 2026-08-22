@@ -104,7 +104,7 @@ export class WorkspaceNavigation {
 		url.searchParams.set('project', this.selectedProject?.id ?? 'none');
 		if (this.selectedSession) url.searchParams.set('session', this.selectedSession.sessionId);
 		else url.searchParams.delete('session');
-		window.history.replaceState(window.history.state, '', url);
+		window.history.replaceState(window.history.state ?? {}, '', url);
 		document.title = this.selectedSession?.title ? `${this.selectedSession.title} · HUE` : 'HUE';
 	}
 
