@@ -1340,7 +1340,10 @@ test('follows new chat content until the reader scrolls up', async ({ page }) =>
 	expect(browserErrors).toEqual([]);
 });
 
-test('copies, edits, and forks transcript messages', async ({ page, context }) => {
+test('copies and edits messages while selected-message fork stays honestly unavailable', async ({
+	page,
+	context
+}) => {
 	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 	const sessions = [{ sessionId: 'message-actions', cwd: '/work/hue', title: 'Message actions' }];
 	await page.route('**/api/projects/*/sessions', (route) => route.fulfill({ json: { sessions } }));
@@ -1390,8 +1393,12 @@ test('copies, edits, and forks transcript messages', async ({ page, context }) =
 	);
 	await userMessage.getByRole('button', { name: 'Edit and resend message' }).click();
 	await expect(page.getByLabel('Message Hermes')).toHaveValue('Please inspect this message');
-	await userMessage.getByRole('button', { name: 'Fork session' }).click();
-	await expect(page.locator('.selected-session-title')).toContainText('Forked session');
+	const fork = userMessage.getByRole('button', { name: 'Fork from this message unavailable' });
+	await expect(fork).toBeDisabled();
+	await expect(fork).toHaveAttribute(
+		'title',
+		'Hermes ACP can duplicate a full Session but cannot fork from a selected message'
+	);
 });
 
 test('shows a live timer beside each busy session', async ({ page }) => {
@@ -1523,7 +1530,7 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 		if (viewport.width <= 390) {
 			const composer = page.locator('.composer');
 			const context = composer.locator('.composer-context');
-			const attach = page.getByLabel('Attach images');
+			const attach = page.getByLabel('Attach images and files');
 			const voiceMessage = page.getByRole('button', { name: 'Record voice message' });
 			const voiceCall = page.getByRole('button', { name: 'Start voice call' });
 			const send = page.getByRole('button', { name: 'Send', exact: true });
@@ -1580,10 +1587,11 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 	await page.getByRole('option', { name: /compress/ }).click();
 	await expect(page.getByLabel('Message Hermes')).toHaveValue('/compress ');
 
-	await page.getByLabel('Attach images').setInputFiles({
+	const imageBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+	await page.getByLabel('Attach images and files').setInputFiles({
 		name: 'screen.png',
 		mimeType: 'image/png',
-		buffer: Buffer.from('image bytes')
+		buffer: imageBytes
 	});
 	await expect(page.getByRole('img', { name: 'screen.png' })).toBeVisible();
 	await page.getByLabel('Message Hermes').fill('Review this screenshot');
@@ -1591,13 +1599,167 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 
 	expect(envelope!.text).toBe('Review this screenshot');
 	expect(envelope!.images[0]).toMatchObject({ name: 'screen.png', mimeType: 'image/png' });
-	expect(Buffer.from(envelope!.images[0].data, 'base64').toString()).toBe('image bytes');
+	expect(Buffer.from(envelope!.images[0].data, 'base64')).toEqual(imageBytes);
 	expect(browserErrors).toEqual([]);
 });
 
-test('queues and edits messages while streaming, then can send now or stop', async ({ page }) => {
-	let queued: { messageId: string; text: string } | null = null;
+test('keeps generic attachment bytes transient and restores explicit reattach plus MEDIA controls', async ({
+	page
+}) => {
+	let sent = false;
+	let posts = 0;
+	let envelope: {
+		attachments: Array<{ name: string; mimeType: string; size: number; data: string }>;
+	};
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) =>
+		route.fulfill({
+			json: { sessions: [{ sessionId: 'files', cwd: '/work/hue', title: 'Files' }] }
+		})
+	);
+	await page.route(/\/sessions\/files$/, (route) =>
+		route.fulfill({
+			json: sent
+				? {
+						transcript: [
+							{ role: 'user', text: 'Review notes' },
+							{ role: 'assistant', text: 'Reviewed.\nMEDIA: output/report.pdf' }
+						],
+						messages: [
+							{
+								id: 'file-message',
+								text: 'Review notes',
+								status: 'completed',
+								createdAt: '2026-08-22T10:00:00Z',
+								attachments: [
+									{
+										name: 'notes.txt',
+										mimeType: 'text/plain',
+										size: 5,
+										available: false,
+										reattachRequired: true
+									}
+								]
+							}
+						],
+						events: [
+							{
+								sequence: 1,
+								type: 'message.accepted',
+								payload: { messageId: 'file-message' },
+								createdAt: '2026-08-22T10:00:00Z'
+							},
+							{
+								sequence: 2,
+								type: 'message.running',
+								payload: { messageId: 'file-message' },
+								createdAt: '2026-08-22T10:00:01Z'
+							},
+							{
+								sequence: 3,
+								type: 'agent.chunk',
+								payload: { messageId: 'file-message', text: 'Reviewed.\nMEDIA: output/report.pdf' },
+								createdAt: '2026-08-22T10:00:02Z'
+							},
+							{
+								sequence: 4,
+								type: 'message.completed',
+								payload: { messageId: 'file-message' },
+								createdAt: '2026-08-22T10:00:03Z'
+							}
+						],
+						cursor: 4,
+						activeTurn: null
+					}
+				: { transcript: [], messages: [], events: [], cursor: 0, activeTurn: null }
+		})
+	);
+	await page.route(/\/sessions\/files\/messages$/, async (route) => {
+		posts += 1;
+		envelope = (await route.request().postDataJSON()) as typeof envelope;
+		sent = true;
+		return route.fulfill({ status: 202, json: { status: 'queued' } });
+	});
+	await page.route(/\/sessions\/files\/events\?after=0$/, (route) =>
+		route.fulfill({ json: { events: [] } })
+	);
+	await page.route(/\/sessions\/files\/media\?.*$/, (route) => {
+		const bytes = Buffer.from('%PDF-1.7\nrange');
+		const range = route.request().headers().range;
+		if (range)
+			return route.fulfill({
+				status: 206,
+				headers: {
+					'accept-ranges': 'bytes',
+					'content-range': `bytes 5-11/${bytes.length}`,
+					'content-type': 'application/pdf'
+				},
+				body: bytes.subarray(5, 12)
+			});
+		return route.fulfill({
+			headers: { 'accept-ranges': 'bytes', 'content-type': 'application/pdf' },
+			body: bytes
+		});
+	});
+
+	await addProject(page);
+	await sessionButton(page, 'Files').click();
+	await page.getByLabel('Attach images and files').setInputFiles({
+		name: 'notes.txt',
+		mimeType: 'text/plain',
+		buffer: Buffer.from('hello')
+	});
+	await expect(page.getByLabel('Pending file attachments')).toContainText('notes.txt');
+	await page.getByLabel('Message Hermes').fill('Review notes');
+	await page.getByLabel('Message Hermes').press('Enter');
+	expect(Buffer.from(envelope!.attachments[0].data, 'base64').toString()).toBe('hello');
+	await expect(page.getByText('Reattach required')).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Download notes.txt' })).toHaveCount(0);
+
+	await page.reload();
+	await expect(page.getByText('Reattach required')).toBeVisible();
+	await page
+		.locator('.transcript article.user')
+		.getByRole('button', { name: 'Edit and resend message' })
+		.click();
+	await expect(page.getByRole('alert')).toContainText('reattach files');
+	await page.getByRole('button', { name: 'Retry last response' }).click();
+	await expect(page.getByRole('alert')).toContainText('reattach files');
+	expect(posts).toBe(1);
+
+	const preview = page.getByRole('link', { name: 'Preview output/report.pdf' });
+	const download = page.getByRole('link', { name: 'Download output/report.pdf' });
+	await expect(preview).toHaveAttribute('target', '_blank');
+	await expect(download).toHaveAttribute('href', /download=true/);
+	const ranged = await preview.evaluate(async (link) => {
+		const response = await fetch((link as HTMLAnchorElement).href, {
+			headers: { range: 'bytes=5-11' }
+		});
+		return { status: response.status, contentRange: response.headers.get('content-range') };
+	});
+	expect(ranged.status).toBe(206);
+	expect(ranged.contentRange).toMatch(/^bytes 5-11\//);
+
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		if (viewport.width <= 390)
+			await expectMinimumTouchTargets(
+				page.locator('[aria-label="Generated outputs"] a, [aria-label="Generated outputs"] button')
+			);
+	}
+	await page.getByLabel('Message Hermes').focus();
+	await expect(page.getByLabel('Message Hermes')).toBeFocused();
+});
+
+test('queues and edits messages with attachments while streaming, then can send now or stop', async ({
+	page
+}) => {
+	let queued: { messageId: string; text: string; attachments?: Array<{ data: string }> } | null =
+		null;
 	let edited = '';
+	let preservedAttachment = false;
 	let cancellations = 0;
 	await page.route('**/api/projects/*/sessions', (route) =>
 		route.fulfill({
@@ -1623,9 +1785,15 @@ test('queues and edits messages while streaming, then can send now or stop', asy
 		})
 	);
 	await page.route(/\/sessions\/session-queue\/messages$/, async (route) => {
-		const body = (await route.request().postDataJSON()) as { messageId: string; text: string };
+		const body = (await route.request().postDataJSON()) as {
+			messageId: string;
+			text: string;
+			attachments?: Array<{ data: string }>;
+			preserveAttachments?: boolean;
+		};
 		if (route.request().method() === 'PATCH') {
 			edited = body.text;
+			preservedAttachment = body.preserveAttachments === true && body.attachments === undefined;
 			return route.fulfill({ json: { message: { ...queued, text: edited, status: 'queued' } } });
 		}
 		queued = body;
@@ -1643,6 +1811,12 @@ test('queues and edits messages while streaming, then can send now or stop', asy
 	await sessionButton(page, 'Queue').click();
 	await expect(page.getByLabel('Message Hermes')).toBeEnabled();
 	await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible();
+	await page.getByLabel('Attach images and files').setInputFiles({
+		name: 'queued.txt',
+		mimeType: 'text/plain',
+		buffer: Buffer.from('queue bytes')
+	});
+	await expect(page.getByLabel('Pending file attachments')).toContainText('queued.txt');
 	await page.getByLabel('Message Hermes').fill('Follow up');
 	await page.getByLabel('Message Hermes').press('Enter');
 	await expect(page.getByRole('region', { name: 'Queued messages' })).toContainText('Follow up');
@@ -1650,6 +1824,7 @@ test('queues and edits messages while streaming, then can send now or stop', asy
 	await page.getByLabel('Message Hermes').fill('Edited follow up');
 	await page.getByLabel('Message Hermes').press('Enter');
 	await expect.poll(() => edited).toBe('Edited follow up');
+	expect(preservedAttachment).toBe(true);
 	await page.getByRole('button', { name: 'Send queued message now' }).click();
 	await expect.poll(() => cancellations).toBe(1);
 });
@@ -2201,6 +2376,141 @@ test('revisits a loaded session immediately while refreshing it', async ({ page 
 	}
 });
 
+test('restores an exact deep-linked session through direct Session lookup', async ({ page }) => {
+	const listRequests: URL[] = [];
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) => {
+		const url = new URL(route.request().url());
+		listRequests.push(url);
+		if (url.searchParams.get('sessionId') !== 'deep-target') {
+			return route.fulfill({ status: 500, json: { error: 'Expected direct Session lookup' } });
+		}
+		return route.fulfill({
+			json: {
+				sessions: [{ sessionId: 'deep-target', cwd: '/work/hue', title: 'Deep target' }],
+				hasMore: false
+			}
+		});
+	});
+	await page.route(/\/sessions\/deep-target$/, (route) =>
+		route.fulfill({
+			json: {
+				transcript: [{ role: 'assistant', text: 'Deep session restored' }],
+				messages: [],
+				events: [],
+				cursor: 0,
+				activeTurn: null
+			}
+		})
+	);
+	await addProject(page);
+	const project = new URL(page.url()).searchParams.get('project');
+	await page.goto(`/?project=${project}&session=deep-target`);
+	await expect(page.getByText('Deep session restored')).toBeVisible();
+	expect(listRequests.at(-1)?.searchParams.get('sessionId')).toBe('deep-target');
+	expect(listRequests.at(-1)?.searchParams.has('offset')).toBe(false);
+});
+
+test('searches and manages rename pin archive duplicate export and delete impact', async ({
+	page
+}) => {
+	let metadata: Record<string, unknown> = {};
+	let searched = '';
+	let confirmedDelete = false;
+	const source = {
+		sessionId: 'manage',
+		cwd: '/work/hue',
+		title: 'Manage me',
+		pinned: false,
+		archived: false
+	};
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) => {
+		searched = new URL(route.request().url()).searchParams.get('q') ?? searched;
+		return route.fulfill({ json: { sessions: [source], hasMore: false } });
+	});
+	await page.route(/\/sessions\/manage(?:\?.*)?$/, async (route) => {
+		const url = new URL(route.request().url());
+		if (url.searchParams.get('format')) {
+			return route.fulfill({
+				headers: {
+					'content-type': 'text/markdown',
+					'content-disposition': 'attachment; filename="manage.md"'
+				},
+				body: '# Managed export'
+			});
+		}
+		if (route.request().method() === 'PATCH') {
+			metadata = (await route.request().postDataJSON()) as Record<string, unknown>;
+			return route.fulfill({ json: { session: { ...source, ...metadata }, icon: null } });
+		}
+		if (route.request().method() === 'POST') {
+			return route.fulfill({
+				status: 201,
+				json: { session: { sessionId: 'manage-copy', cwd: '/work/hue', title: 'Managed copy' } }
+			});
+		}
+		return route.fulfill({
+			json: { transcript: [], messages: [], events: [], cursor: 0, activeTurn: null }
+		});
+	});
+	await page.route(/\/sessions\/manage-copy(?:\?.*)?$/, async (route) => {
+		const url = new URL(route.request().url());
+		if (route.request().method() === 'DELETE' && !url.searchParams.has('confirm')) {
+			return route.fulfill({
+				json: { impact: { messages: 2, events: 5, attachments: 1, activeDeliveries: 0 } }
+			});
+		}
+		if (route.request().method() === 'DELETE') {
+			confirmedDelete = true;
+			return route.fulfill({ json: { deleted: true } });
+		}
+		return route.fulfill({
+			json: { transcript: [], messages: [], events: [], cursor: 0, activeTurn: null }
+		});
+	});
+
+	await addProject(page);
+	await page.getByRole('searchbox', { name: 'Search Sessions' }).fill('Manage');
+	await page.getByRole('button', { name: 'Search', exact: true }).click();
+	expect(searched).toBe('Manage');
+	await sessionButton(page, 'Manage me').click();
+	await page.getByRole('button', { name: 'Edit Manage me' }).click();
+	await expect(page.getByRole('button', { name: 'Import unavailable' })).toBeDisabled();
+	await expect(page.getByRole('button', { name: 'Import unavailable' })).toHaveAttribute(
+		'title',
+		'Hermes ACP does not provide a Session import seam'
+	);
+	await page.getByLabel('Title').fill('Managed');
+	await page.getByLabel('Pinned').check();
+	await page.getByLabel('Archived', { exact: true }).check();
+	await page.getByRole('button', { name: 'Save icon' }).click();
+	expect(metadata).toMatchObject({ title: 'Managed', pinned: true, archived: true });
+	await expect(sessionButton(page, 'Managed')).toBeVisible();
+
+	await page.getByRole('button', { name: 'Edit Managed' }).click();
+	const downloadPromise = page.waitForEvent('download');
+	await page.getByRole('button', { name: 'Export Markdown' }).click();
+	const download = await downloadPromise;
+	expect(download.suggestedFilename()).toBe('hue-manage.md');
+	await page.getByRole('button', { name: 'Duplicate' }).click();
+	await expect(sessionButton(page, 'Managed copy')).toBeVisible();
+
+	await page.getByRole('button', { name: 'Edit Managed copy' }).click();
+	page.once('dialog', async (dialog) => {
+		expect(dialog.message()).toContain('2 messages, 5 events, 1 attachments');
+		await dialog.accept();
+	});
+	await page.getByRole('button', { name: 'Remove', exact: true }).click();
+	await expect(sessionButton(page, 'Managed copy')).toHaveCount(0);
+	expect(confirmedDelete).toBe(true);
+
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+	}
+});
+
 test('starts a new session without the previous session output', async ({ page }) => {
 	const browserErrors: string[] = [];
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
@@ -2373,7 +2683,7 @@ test('retries a lost acknowledgement with the same complete envelope', async ({ 
 });
 
 async function mockRunningSession(page: import('@playwright/test').Page) {
-	await page.route('**/api/projects/*/sessions', async (route) => {
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, async (route) => {
 		if (route.request().method() === 'GET') {
 			await route.fulfill({
 				json: {

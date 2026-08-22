@@ -10,25 +10,80 @@ let associated = true;
 const forked = { sessionId: 'forked-session', cwd: '/work/hue' };
 let storedFork: typeof forked | null = null;
 let transcriptCwd = '';
+let sourceTitle = 'Source';
+let forkCalls = 0;
+let failCopy = false;
+let lockActive = false;
+let metadataMutated = false;
+let listCalls = 0;
 
 mock.module('$lib/server/services', () => ({
 	projectBranch: () => null,
+	sessionMatchesProjectRoot: () => true,
 	services: () => ({
 		store: {
 			getProject: () => ({ id: 'project-1', rootPath: '/work/hue-new' }),
 			hasSession: () => associated,
-			getSession: () => ({ sessionId: 'session-1', cwd: '/work/hue-old', icon: null }),
+			getSession: () => ({
+				sessionId: 'session-1',
+				cwd: '/work/hue-old',
+				icon: null,
+				title: sourceTitle,
+				pinned: false,
+				archived: false,
+				folder: null,
+				tags: []
+			}),
 			getSessionSnapshot: () => snapshot,
-			upsertSession: (_projectId: string, session: typeof forked) => (storedFork = session)
+			upsertSession: (_projectId: string, session: typeof forked) => (storedFork = session),
+			prepareSessionCopy: (_projectId: string, _sessionId: string, title?: unknown) => {
+				const value = title === undefined ? `${sourceTitle} copy` : title;
+				if (typeof value !== 'string' || !value.trim() || value.trim().length > 200) {
+					throw new Error('Session title must be 1-200 characters');
+				}
+				return { title: value.trim(), pinned: false, archived: false, folder: null, tags: [] };
+			},
+			copySessionMetadata: () => {
+				if (failCopy) throw new Error('SQLite disk full');
+				return forked;
+			},
+			updateSessionMetadata: () => {
+				metadataMutated = true;
+				return { title: 'After', icon: null };
+			},
+			updateSession: () => {
+				metadataMutated = true;
+				return { title: 'After', icon: null };
+			},
+			getBusySessionStarts: () => ({}),
+			getSessionIndicators: () => ({})
 		},
 		runtime: {
 			loadTranscript: async (cwd: string) => {
 				transcriptCwd = cwd;
 				throw new Error('Hermes ACP reconnecting');
 			},
-			forkSession: async () => forked,
+			forkSession: async () => {
+				forkCalls += 1;
+				if (!lockActive) throw new Error('fork escaped Session delivery lock');
+				return forked;
+			},
+			listSessions: async () => {
+				listCalls += 1;
+				return [];
+			},
 			getAvailableCommands: () => [],
 			getSessionState: () => ({ profile: 'default' })
+		},
+		dispatcher: {
+			withSessionLock: async (_sessionId: string, operation: () => Promise<unknown>) => {
+				lockActive = true;
+				try {
+					return await operation();
+				} finally {
+					lockActive = false;
+				}
+			}
 		}
 	})
 }));
@@ -73,6 +128,47 @@ test('does not fork while the source session has an active turn', async () => {
 	expect(storedFork).toBeNull();
 });
 
+test('rejects explicit and derived overlong duplicate titles before Hermes fork', async () => {
+	associated = true;
+	snapshot.activeTurn = null as never;
+	forkCalls = 0;
+	const { POST } = await import('./+server');
+	const explicit = await POST({
+		params: { projectId: 'project-1', sessionId: 'session-1' },
+		request: new Request('http://hue.test', {
+			method: 'POST',
+			body: JSON.stringify({ title: 'x'.repeat(201) })
+		})
+	} as never);
+	expect(explicit.status).toBe(400);
+
+	sourceTitle = 'x'.repeat(200);
+	const derived = await POST({
+		params: { projectId: 'project-1', sessionId: 'session-1' },
+		request: new Request('http://hue.test', { method: 'POST', body: '{}' })
+	} as never);
+	expect(derived.status).toBe(400);
+	expect(forkCalls).toBe(0);
+	sourceTitle = 'Source';
+});
+
+test('rejects an invalid duplicate title type before Hermes fork', async () => {
+	associated = true;
+	snapshot.activeTurn = null as never;
+	forkCalls = 0;
+	const { POST } = await import('./+server');
+	const response = await POST({
+		params: { projectId: 'project-1', sessionId: 'session-1' },
+		request: new Request('http://hue.test', {
+			method: 'POST',
+			body: JSON.stringify({ title: 42 })
+		})
+	} as never);
+
+	expect(response.status).toBe(400);
+	expect(forkCalls).toBe(0);
+});
+
 test('forks an associated Hermes session and stores its project ownership', async () => {
 	associated = true;
 	snapshot.activeTurn = null as never;
@@ -89,4 +185,61 @@ test('forks an associated Hermes session and stores its project ownership', asyn
 		commands: [],
 		runtime: { profile: 'default' }
 	});
+});
+
+test('returns the retained Hermes fork visibly when metadata persistence needs reconciliation', async () => {
+	associated = true;
+	snapshot.activeTurn = null as never;
+	storedFork = null;
+	failCopy = true;
+	const { POST } = await import('./+server');
+	const response = await POST({
+		params: { projectId: 'project-1', sessionId: 'session-1' },
+		request: new Request('http://hue.test', { method: 'POST', body: '{}' })
+	} as never);
+	failCopy = false;
+
+	expect(response.status).toBe(202);
+	expect(storedFork as unknown).toEqual(forked);
+	expect(await response.json()).toEqual({
+		session: forked,
+		reconciliationRequired: true,
+		error: 'SQLite disk full'
+	});
+});
+
+test('does not mutate valid metadata when a combined icon is invalid', async () => {
+	associated = true;
+	metadataMutated = false;
+	const { PATCH } = await import('./+server');
+	const response = await PATCH({
+		params: { projectId: 'project-1', sessionId: 'session-1' },
+		request: new Request('http://hue.test', {
+			method: 'PATCH',
+			body: JSON.stringify({
+				title: 'After',
+				pinned: true,
+				icon: 'data:text/html;base64,PHNjcmlwdD4='
+			})
+		})
+	} as never);
+
+	expect(response.status).toBe(400);
+	expect(metadataMutated).toBe(false);
+});
+
+test('looks up a deep-linked Session directly without listing Hermes Sessions', async () => {
+	associated = true;
+	listCalls = 0;
+	const { GET } = await import('../+server');
+	const response = await GET({
+		params: { projectId: 'project-1' },
+		url: new URL('http://hue.test/api/projects/project-1/sessions?sessionId=session-1')
+	} as never);
+
+	expect(response.status).toBe(200);
+	expect((await response.json()).sessions).toEqual([
+		expect.objectContaining({ sessionId: 'session-1', title: 'Source' })
+	]);
+	expect(listCalls).toBe(0);
 });

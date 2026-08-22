@@ -17,10 +17,16 @@
 		Square,
 		X
 	} from 'lucide-svelte';
-	import type { ImageAttachment } from '$lib/message-content';
+	import type { ImageAttachment, InputAttachment } from '$lib/message-content';
 
 	type Command = { name: string; description: string; input?: { hint: string } | null };
-	type QueuedMessage = { id: string; text: string; images: ImageAttachment[]; status: 'queued' };
+	type QueuedMessage = {
+		id: string;
+		text: string;
+		images: ImageAttachment[];
+		attachments: InputAttachment[];
+		status: 'queued';
+	};
 	type Runtime = {
 		profile: string;
 		models?: {
@@ -37,6 +43,7 @@
 		composerElement = $bindable(),
 		draggingImages = $bindable(),
 		images = $bindable(),
+		attachments = $bindable(),
 		delivery,
 		pendingEnvelope,
 		queuedMessages,
@@ -85,6 +92,7 @@
 		composerElement?: HTMLTextAreaElement;
 		draggingImages: boolean;
 		images: ImageAttachment[];
+		attachments: InputAttachment[];
 		delivery: string;
 		pendingEnvelope: object | null;
 		queuedMessages: QueuedMessage[];
@@ -178,8 +186,13 @@
 			{#each queuedMessages as message}<article>
 					<div class="queued-copy flex min-w-0 flex-1 items-center gap-2 text-sm">
 						<GripVertical class="queue-handle text-muted-foreground" size={16} aria-hidden="true" />
-						<span>{message.text || `${message.images.length} image(s)`}</span>
-						{#if message.images.length}<small>+{message.images.length} file(s)</small>{/if}
+						<span
+							>{message.text ||
+								`${message.images.length + message.attachments.length} file(s)`}</span
+						>
+						{#if message.images.length || message.attachments.length}<small
+								>+{message.images.length + message.attachments.length} file(s)</small
+							>{/if}
 					</div>
 					<div class="queue-actions flex shrink-0 items-center gap-1.5">
 						<span>Waiting</span>
@@ -210,6 +223,23 @@
 						><X size={14} aria-hidden="true" /></button
 					>
 				</figure>{/each}
+		</div>{/if}
+	{#if attachments.length}<div class="grid gap-1.5 px-1 pb-2" aria-label="Pending file attachments">
+			{#each attachments as attachment, index}<article
+					class="flex min-h-11 items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm"
+				>
+					<span class="min-w-0 flex-1 truncate">{attachment.name}</span><small
+						>{Math.max(1, Math.ceil(attachment.size / 1024))} KB</small
+					>
+					<button
+						type="button"
+						class="grid min-h-11 min-w-11 place-items-center"
+						aria-label={`Remove ${attachment.name}`}
+						title={`Remove ${attachment.name}`}
+						onclick={() => (attachments = attachments.filter((_, item) => item !== index))}
+						><X size={14} aria-hidden="true" /></button
+					>
+				</article>{/each}
 		</div>{/if}
 	{#if callActive}<section
 			class="voice-call mb-1.5 flex min-w-0 items-center gap-2.5 rounded-xl border border-violet-900 bg-violet-950/40 p-2"
@@ -281,13 +311,13 @@
 	<div class="composer-toolbar flex min-w-0 items-center gap-2 pt-1">
 		<label
 			class="attach-button grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-			aria-label="Attach images"
-			title="Attach images"
+			aria-label="Attach images and files"
+			title="Attach documents, audio, video, archives, text, code, or images"
 		>
 			<Paperclip size={20} aria-hidden="true" />
 			<input
 				type="file"
-				accept="image/png,image/jpeg,image/gif,image/webp"
+				accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.mp3,.wav,.ogg,.oga,.m4a,.mp4,.m4v,.webm,.mov,.zip,.gz,.tgz,.tar,.7z,.txt,.log,.md,.markdown,.csv,.json,.xml,.css,.ts,.mts,.cts,.tsx,.py,.rs,.go,.java"
 				multiple
 				onchange={onimages}
 			/>
@@ -431,7 +461,7 @@
 				class="composer-send grid size-9 place-items-center rounded-lg hover:bg-accent disabled:opacity-40"
 				aria-label="Send"
 				title="Send message"
-				disabled={!composer.trim() && !images.length}
+				disabled={!composer.trim() && !images.length && !attachments.length}
 			>
 				<Send size={20} aria-hidden="true" /></button
 			>{/if}
