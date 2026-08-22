@@ -35,6 +35,7 @@ export const GET: RequestHandler = async ({ params }) => {
 		}
 		services().dispatcher.recover();
 		const busyStarts = services().store.getBusySessionStarts(project.id);
+		const indicators = services().store.getSessionIndicators(project.id);
 		return json({
 			sessions: mergeProjectSessionViews(
 				sessions,
@@ -46,7 +47,9 @@ export const GET: RequestHandler = async ({ params }) => {
 					...session,
 					icon: customIcon ?? automaticSessionIcon(session.title),
 					customIcon,
-					busySince: busyStarts[session.sessionId] ?? null
+					busySince: busyStarts[session.sessionId] ?? null,
+					attention: indicators[session.sessionId]?.attention ?? false,
+					error: indicators[session.sessionId]?.error ?? false
 				};
 			})
 		});

@@ -1,5 +1,10 @@
 import type { ImageAttachment } from '$lib/message-content';
-import type { WorkspaceSubagentTree } from '$lib';
+import type {
+	WorkspaceActivity,
+	WorkspacePlanEntry,
+	WorkspaceSubagentTree,
+	WorkspaceTimelineItem
+} from '$lib';
 
 export type Project = {
 	id: string;
@@ -20,12 +25,15 @@ export type Session = {
 	busySince?: string | null;
 	available?: boolean;
 	recovery?: string | null;
+	attention?: boolean;
+	error?: boolean;
 };
 
 export type Workflow = { id: string; name: string; prompt: string; profile: string };
 export type HermesCommand = { name: string; description: string; input?: { hint: string } | null };
 export type HermesRuntime = {
 	profile: string;
+	clarify?: { status: 'unsupported' | 'available'; reason?: string };
 	models?: {
 		currentModelId: string;
 		availableModels: Array<{ modelId: string; name: string; description?: string | null }>;
@@ -64,8 +72,11 @@ export type ActiveTurn = {
 	error: string | null;
 };
 export type CachedSessionView = {
+	timeline: WorkspaceTimelineItem[];
 	transcript: TranscriptMessage[];
 	subagents: WorkspaceSubagentTree[];
+	activity: WorkspaceActivity[];
+	plan: WorkspacePlanEntry[];
 	commands: HermesCommand[];
 	runtime: HermesRuntime;
 	branch: string | null;
@@ -83,7 +94,7 @@ export type SessionLoad = {
 	cursor: number;
 	activeTurn: ActiveTurn | null;
 	events: SessionEvent[];
-	messages: Array<QueuedMessage | { id: string; status: string }>;
+	messages: Array<{ id: string; text: string; images: ImageAttachment[]; status: string }>;
 	commands?: HermesCommand[];
 	runtime?: HermesRuntime;
 	branch?: string | null;

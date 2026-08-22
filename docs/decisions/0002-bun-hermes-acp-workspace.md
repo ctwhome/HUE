@@ -77,6 +77,20 @@ These may be reconsidered only through a new product decision; they are not impl
 - ACP startup loads the selected Hermes profile and can take several seconds; the service must supervise and reuse the process.
 - Permission prompts require an explicit HUE UI before approval-capable tool flows can be considered complete. The initial adapter cancels permission requests rather than granting silently.
 
+### External blocker: Hermes clarify bridge
+
+Hermes Agent v0.20.5 does not expose its installed `clarify` tool through ACP. `acp_adapter/server.py` creates the per-turn permission callback with `conn.request_permission`, but never assigns `agent.clarify_callback`. The core tool executor passes that unset callback to `clarify_tool`, so HUE cannot truthfully offer clarify elicitation for this adapter version. HUE reports clarify as unsupported until it observes an actual inbound ACP `elicitation/create` request; only an observed request may create an answerable HUE interaction.
+
+Minimal upstream Hermes handoff:
+
+1. Upgrade or extend Hermes' Python ACP SDK seam so `AgentSideConnection` can send typed `elicitation/create` requests and receive `CreateElicitationResponse`. The SDK bundled with Hermes v0.20.5 exposes `request_permission` but no elicitation method; do not call its private connection from HUE.
+2. In `acp_adapter/server.py::initialize`, retain whether `client_capabilities.elicitation.form` was advertised.
+3. In `acp_adapter/server.py::prompt`, build a per-session synchronous `clarify_callback` beside `make_approval_callback`. Convert Hermes single/batch questions and choices into a form `requestedSchema`, submit `elicitation/create` on the ACP event loop with `asyncio.run_coroutine_threadsafe`, and map accepted content or cancel back to the return shape expected by `clarify_tool`.
+4. Assign and restore `agent.clarify_callback` inside `_run_agent`, on the executor thread and within the same per-session context used by approval callbacks. Cancellation, timeout, client disconnect, unsupported schema, and absent client form capability must return cancel rather than block or auto-answer.
+5. Add Hermes adapter tests proving single choice, multi-select, free text, batch questions, cancellation, timeout, concurrent-session isolation, and no callback leakage after a turn.
+
+This change belongs in Hermes Agent, not HUE. HUE must keep its capability gate after upstream support lands because older or alternate ACP agents may still omit the bridge.
+
 ## Revisit triggers
 
 - Hermes ACP cannot expose a required Session capability safely.
