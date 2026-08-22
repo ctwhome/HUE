@@ -25,7 +25,7 @@ export type Workflow = {
 
 export type StoredMessage = {
 	id: string;
-	projectId: string;
+	projectId: string | null;
 	sessionId: string;
 	text: string;
 	images: ImageAttachment[];
@@ -36,7 +36,7 @@ export type StoredMessage = {
 
 export type SessionEvent = {
 	sequence: number;
-	projectId: string;
+	projectId: string | null;
 	sessionId: string;
 	type: string;
 	payload: Record<string, unknown>;
@@ -92,8 +92,9 @@ export class HUEStore {
 
 			CREATE TABLE IF NOT EXISTS project_sessions (
 				session_id TEXT PRIMARY KEY,
-				project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+				project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
 				cwd TEXT NOT NULL,
+				icon TEXT,
 				updated_at TEXT NOT NULL,
 				UNIQUE (project_id, session_id)
 			);
@@ -136,6 +137,38 @@ export class HUEStore {
 		if (!projectColumns.some((column) => column.name === 'icon')) {
 			this.database.exec('ALTER TABLE projects ADD COLUMN icon TEXT');
 		}
+		let sessionColumns = this.database.query('PRAGMA table_info(project_sessions)').all() as Array<{
+			name: string;
+			notnull: number;
+		}>;
+		if (!sessionColumns.some((column) => column.name === 'icon')) {
+			this.database.exec('ALTER TABLE project_sessions ADD COLUMN icon TEXT');
+			sessionColumns = this.database.query('PRAGMA table_info(project_sessions)').all() as Array<{
+				name: string;
+				notnull: number;
+			}>;
+		}
+		if (sessionColumns.find((column) => column.name === 'project_id')?.notnull) {
+			this.database.transaction(() => {
+				this.database.exec(`
+					CREATE TABLE project_sessions_migrated (
+						session_id TEXT PRIMARY KEY,
+						project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+						cwd TEXT NOT NULL,
+						icon TEXT,
+						updated_at TEXT NOT NULL
+					);
+					INSERT INTO project_sessions_migrated (session_id, project_id, cwd, icon, updated_at)
+						SELECT session_id, project_id, cwd, icon, updated_at FROM project_sessions;
+					DROP TABLE project_sessions;
+					ALTER TABLE project_sessions_migrated RENAME TO project_sessions;
+				`);
+			})();
+			sessionColumns = this.database.query('PRAGMA table_info(project_sessions)').all() as Array<{
+				name: string;
+				notnull: number;
+			}>;
+		}
 		const messageColumns = this.database.query('PRAGMA table_info(messages)').all() as Array<{
 			name: string;
 		}>;
@@ -158,13 +191,13 @@ export class HUEStore {
 		`);
 	}
 
-	upsertProjectSession(projectId: string, session: { sessionId: string; cwd: string }): void {
+	upsertSession(projectId: string | null, session: { sessionId: string; cwd: string }): void {
 		const existing = this.database
 			.query('SELECT project_id FROM project_sessions WHERE session_id = ?')
-			.get(session.sessionId) as { project_id: string } | null;
+			.get(session.sessionId) as { project_id: string | null } | null;
 		if (existing && existing.project_id !== projectId) {
 			throw new Error(
-				`Session ${session.sessionId} already belongs to Project ${existing.project_id}`
+				`Session ${session.sessionId} already belongs to ${existing.project_id ? `Project ${existing.project_id}` : 'No project'}`
 			);
 		}
 		const now = new Date().toISOString();
@@ -177,31 +210,75 @@ export class HUEStore {
 					 project_id = excluded.project_id, cwd = excluded.cwd, updated_at = excluded.updated_at`
 				)
 				.run(session.sessionId, projectId, session.cwd, now);
-			this.database
-				.query('UPDATE messages SET project_id = ? WHERE session_id = ? AND project_id IS NULL')
-				.run(projectId, session.sessionId);
-			this.database
-				.query(
-					'UPDATE session_events SET project_id = ? WHERE session_id = ? AND project_id IS NULL'
-				)
-				.run(projectId, session.sessionId);
+			if (projectId) {
+				this.database
+					.query('UPDATE messages SET project_id = ? WHERE session_id = ? AND project_id IS NULL')
+					.run(projectId, session.sessionId);
+				this.database
+					.query(
+						'UPDATE session_events SET project_id = ? WHERE session_id = ? AND project_id IS NULL'
+					)
+					.run(projectId, session.sessionId);
+			}
 		})();
 	}
 
-	hasProjectSession(projectId: string, sessionId: string): boolean {
+	upsertProjectSession(projectId: string, session: { sessionId: string; cwd: string }): void {
+		this.upsertSession(projectId, session);
+	}
+
+	hasSession(projectId: string | null, sessionId: string): boolean {
 		return !!this.database
-			.query('SELECT 1 FROM project_sessions WHERE project_id = ? AND session_id = ?')
+			.query('SELECT 1 FROM project_sessions WHERE project_id IS ? AND session_id = ?')
 			.get(projectId, sessionId);
+	}
+
+	hasProjectSession(projectId: string, sessionId: string): boolean {
+		return this.hasSession(projectId, sessionId);
+	}
+
+	getSession(
+		projectId: string | null,
+		sessionId: string
+	): { sessionId: string; cwd: string; icon: string | null } | null {
+		const row = this.database
+			.query(
+				'SELECT session_id, cwd, icon FROM project_sessions WHERE project_id IS ? AND session_id = ?'
+			)
+			.get(projectId, sessionId) as { session_id: string; cwd: string; icon: string | null } | null;
+		return row ? { sessionId: row.session_id, cwd: row.cwd, icon: row.icon } : null;
+	}
+
+	listStoredSessions(projectId: string | null): Array<{
+		sessionId: string;
+		cwd: string;
+		icon: string | null;
+	}> {
+		const rows = this.database
+			.query(
+				'SELECT session_id, cwd, icon FROM project_sessions WHERE project_id IS ? ORDER BY updated_at DESC, session_id'
+			)
+			.all(projectId) as Array<{ session_id: string; cwd: string; icon: string | null }>;
+		return rows.map((row) => ({ sessionId: row.session_id, cwd: row.cwd, icon: row.icon }));
 	}
 
 	getProjectSession(
 		projectId: string,
 		sessionId: string
-	): { sessionId: string; cwd: string } | null {
-		const row = this.database
-			.query('SELECT session_id, cwd FROM project_sessions WHERE project_id = ? AND session_id = ?')
-			.get(projectId, sessionId) as { session_id: string; cwd: string } | null;
-		return row ? { sessionId: row.session_id, cwd: row.cwd } : null;
+	): { sessionId: string; cwd: string; icon: string | null } | null {
+		return this.getSession(projectId, sessionId);
+	}
+
+	updateSessionIcon(projectId: string | null, sessionId: string, icon: string | null): boolean {
+		return (
+			this.database
+				.query('UPDATE project_sessions SET icon = ? WHERE project_id IS ? AND session_id = ?')
+				.run(icon, projectId, sessionId).changes > 0
+		);
+	}
+
+	updateProjectSessionIcon(projectId: string, sessionId: string, icon: string | null): boolean {
+		return this.updateSessionIcon(projectId, sessionId, icon);
 	}
 
 	recoverInterruptedMessages(
@@ -210,10 +287,11 @@ export class HUEStore {
 		return this.database.transaction(() => {
 			const running = this.database
 				.query(
-					`SELECT id, project_id, session_id FROM messages
-					 WHERE status = 'running' AND project_id IS NOT NULL`
+					`SELECT m.id, m.project_id, m.session_id FROM messages m
+					 JOIN project_sessions ps ON ps.project_id IS m.project_id AND ps.session_id = m.session_id
+					 WHERE m.status = 'running'`
 				)
-				.all() as Array<{ id: string; project_id: string; session_id: string }>;
+				.all() as Array<{ id: string; project_id: string | null; session_id: string }>;
 			for (const message of running) {
 				if (activeMessageIds.has(message.id)) continue;
 				this.transitionMessage(message.id, 'unknown', {
@@ -226,13 +304,13 @@ export class HUEStore {
 				.query(
 					`SELECT m.id, m.project_id, m.session_id, m.text, m.status, m.created_at, m.updated_at, ps.cwd
 					 FROM messages m
-					 JOIN project_sessions ps ON ps.project_id = m.project_id AND ps.session_id = m.session_id
+					 JOIN project_sessions ps ON ps.project_id IS m.project_id AND ps.session_id = m.session_id
 					 WHERE m.status = 'queued'
 					 ORDER BY m.created_at, m.id`
 				)
 				.all() as Array<{
 				id: string;
-				project_id: string;
+				project_id: string | null;
 				session_id: string;
 				text: string;
 				status: MessageStatus;
@@ -300,7 +378,17 @@ export class HUEStore {
 	}
 
 	deleteProject(id: string): boolean {
-		return this.database.query('DELETE FROM projects WHERE id = ?').run(id).changes > 0;
+		return this.database.transaction(() => {
+			const active = this.database
+				.query(
+					"SELECT 1 FROM messages WHERE project_id = ? AND status IN ('queued', 'running', 'unknown') LIMIT 1"
+				)
+				.get(id);
+			if (active) throw new Error('Project has active message deliveries');
+			this.database.query('DELETE FROM session_events WHERE project_id = ?').run(id);
+			this.database.query('DELETE FROM messages WHERE project_id = ?').run(id);
+			return this.database.query('DELETE FROM projects WHERE id = ?').run(id).changes > 0;
+		})();
 	}
 
 	createWorkflow(input: {
@@ -345,7 +433,7 @@ export class HUEStore {
 
 	acceptMessage(input: {
 		id: string;
-		projectId: string;
+		projectId: string | null;
 		sessionId: string;
 		text: string;
 		images?: ImageAttachment[];
@@ -353,9 +441,9 @@ export class HUEStore {
 		duplicate: boolean;
 		status: MessageStatus;
 	} {
-		if (!this.hasProjectSession(input.projectId, input.sessionId)) {
+		if (!this.hasSession(input.projectId, input.sessionId)) {
 			throw new Error(
-				`Session ${input.sessionId} is not associated with Project ${input.projectId}`
+				`Session ${input.sessionId} is not associated with ${input.projectId ? `Project ${input.projectId}` : 'No project'}`
 			);
 		}
 		const existing = this.getMessage(input.id);
@@ -407,7 +495,7 @@ export class HUEStore {
 			)
 			.get(id) as {
 			id: string;
-			project_id: string;
+			project_id: string | null;
 			session_id: string;
 			text: string;
 			status: MessageStatus;
@@ -417,14 +505,14 @@ export class HUEStore {
 		return row ? this.mapMessage(row) : null;
 	}
 
-	listMessages(projectId: string, sessionId: string): StoredMessage[] {
+	listMessages(projectId: string | null, sessionId: string): StoredMessage[] {
 		const rows = this.database
 			.query(
-				'SELECT id, project_id, session_id, text, status, created_at, updated_at FROM messages WHERE project_id = ? AND session_id = ? ORDER BY created_at, id'
+				'SELECT id, project_id, session_id, text, status, created_at, updated_at FROM messages WHERE project_id IS ? AND session_id = ? ORDER BY created_at, id'
 			)
 			.all(projectId, sessionId) as Array<{
 			id: string;
-			project_id: string;
+			project_id: string | null;
 			session_id: string;
 			text: string;
 			status: MessageStatus;
@@ -436,7 +524,7 @@ export class HUEStore {
 
 	updateQueuedMessage(
 		id: string,
-		input: { projectId: string; sessionId: string; text: string; images: ImageAttachment[] }
+		input: { projectId: string | null; sessionId: string; text: string; images: ImageAttachment[] }
 	): StoredMessage {
 		const message = this.getMessage(id);
 		if (
@@ -464,10 +552,10 @@ export class HUEStore {
 		return this.getMessage(id)!;
 	}
 
-	getBusySessionStarts(projectId: string): Record<string, string> {
+	getBusySessionStarts(projectId: string | null): Record<string, string> {
 		const rows = this.database
 			.query(
-				"SELECT session_id, MIN(created_at) AS started_at FROM messages WHERE project_id = ? AND status IN ('queued', 'running') GROUP BY session_id"
+				"SELECT session_id, MIN(created_at) AS started_at FROM messages WHERE project_id IS ? AND status IN ('queued', 'running') GROUP BY session_id"
 			)
 			.all(projectId) as Array<{ session_id: string; started_at: string }>;
 		return Object.fromEntries(rows.map((row) => [row.session_id, row.started_at]));
@@ -475,7 +563,7 @@ export class HUEStore {
 
 	private mapMessage(row: {
 		id: string;
-		project_id: string;
+		project_id: string | null;
 		session_id: string;
 		text: string;
 		status: MessageStatus;
@@ -523,7 +611,7 @@ export class HUEStore {
 	}
 
 	appendEvent(
-		projectId: string,
+		projectId: string | null,
 		sessionId: string,
 		type: string,
 		payload: Record<string, unknown>
@@ -544,14 +632,14 @@ export class HUEStore {
 		};
 	}
 
-	listEvents(projectId: string, sessionId: string, after = 0): SessionEvent[] {
+	listEvents(projectId: string | null, sessionId: string, after = 0): SessionEvent[] {
 		const rows = this.database
 			.query(
-				'SELECT sequence, project_id, session_id, type, payload, created_at FROM session_events WHERE project_id = ? AND session_id = ? AND sequence > ? ORDER BY sequence'
+				'SELECT sequence, project_id, session_id, type, payload, created_at FROM session_events WHERE project_id IS ? AND session_id = ? AND sequence > ? ORDER BY sequence'
 			)
 			.all(projectId, sessionId, after) as Array<{
 			sequence: number;
-			project_id: string;
+			project_id: string | null;
 			session_id: string;
 			type: string;
 			payload: string;
@@ -568,7 +656,7 @@ export class HUEStore {
 	}
 
 	getSessionSnapshot(
-		projectId: string,
+		projectId: string | null,
 		sessionId: string
 	): {
 		messages: StoredMessage[];
@@ -579,6 +667,7 @@ export class HUEStore {
 			status: 'queued' | 'running' | 'unknown';
 			thought: string;
 			output: string;
+			images: ImageAttachment[];
 			error: string | null;
 		} | null;
 	} {
@@ -605,6 +694,12 @@ export class HUEStore {
 						)
 						.map((event) => String(event.payload.text ?? ''))
 						.join(''),
+					images: events
+						.filter(
+							(event) =>
+								event.type === 'agent.image' && event.payload.messageId === activeMessageRecord.id
+						)
+						.map((event) => event.payload.image as ImageAttachment),
 					error:
 						(events.findLast(
 							(event) =>

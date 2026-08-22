@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { automaticSessionIcon } from '$lib/icon';
 import { projectBranch, services, sessionMatchesProjectRoot } from '$lib/server/services';
 import type { RequestHandler } from './$types';
 
@@ -15,10 +16,16 @@ export const GET: RequestHandler = async ({ params }) => {
 		services().dispatcher.recover();
 		const busyStarts = services().store.getBusySessionStarts(project.id);
 		return json({
-			sessions: sessions.map((session) => ({
-				...session,
-				busySince: busyStarts[session.sessionId] ?? null
-			}))
+			sessions: sessions.map((session) => {
+				const customIcon =
+					services().store.getProjectSession(project.id, session.sessionId)?.icon ?? null;
+				return {
+					...session,
+					icon: customIcon ?? automaticSessionIcon(session.title),
+					customIcon,
+					busySince: busyStarts[session.sessionId] ?? null
+				};
+			})
 		});
 	} catch (error) {
 		return json({ error: error instanceof Error ? error.message : String(error) }, { status: 503 });
@@ -37,7 +44,7 @@ export const POST: RequestHandler = async ({ params }) => {
 		services().dispatcher.recover();
 		return json(
 			{
-				session,
+				session: { ...session, icon: automaticSessionIcon(session.title), customIcon: null },
 				commands: services().runtime.getAvailableCommands(session.sessionId),
 				runtime: services().runtime.getSessionState(session.sessionId),
 				branch: projectBranch(project.rootPath)

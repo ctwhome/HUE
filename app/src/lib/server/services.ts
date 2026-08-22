@@ -3,13 +3,18 @@ import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { HermesACP } from './hermes-acp';
+import { resolveHermesCommand } from './hermes-cli';
+import { HermesServe } from './hermes-serve';
 import { MessageDispatcher } from './message-dispatcher';
+import { ProjectTerminals } from './project-terminals';
 import { HUEStore } from './store';
 
 type HUEServices = {
 	store: HUEStore;
 	runtime: HermesACP;
+	admin: HermesServe;
 	dispatcher: MessageDispatcher;
+	terminals: ProjectTerminals;
 };
 
 const globalServices = globalThis as typeof globalThis & {
@@ -20,16 +25,37 @@ function createServices(): HUEServices {
 	const databasePath = process.env.HUE_DATABASE_PATH ?? join(homedir(), '.hue', 'hue.db');
 	if (databasePath !== ':memory:') mkdirSync(dirname(databasePath), { recursive: true });
 	const store = new HUEStore(databasePath);
+	const hermesCommand = resolveHermesCommand();
 	const runtime = new HermesACP({
+		command: hermesCommand,
 		profile: process.env.HUE_HERMES_PROFILE ?? 'default',
 		onDiagnostic: (message) => console.error(`[hermes-acp] ${message}`)
 	});
-	return { store, runtime, dispatcher: new MessageDispatcher(store, runtime) };
+	const admin = new HermesServe({
+		command: hermesCommand,
+		profile: process.env.HUE_HERMES_PROFILE ?? 'default',
+		onDiagnostic: (message) => console.error(`[hermes-admin] ${message}`)
+	});
+	return {
+		store,
+		runtime,
+		admin,
+		dispatcher: new MessageDispatcher(store, runtime),
+		terminals: new ProjectTerminals()
+	};
 }
 
 export function services(): HUEServices {
-	globalServices.__hueServices ??= createServices();
+	if (!(globalServices.__hueServices?.store instanceof HUEStore)) {
+		globalServices.__hueServices = createServices();
+	}
 	return globalServices.__hueServices;
+}
+
+export function unprojectedSessionRoot(): string {
+	const root = join(homedir(), '.hue', 'sessions');
+	mkdirSync(root, { recursive: true });
+	return realpathSync(root);
 }
 
 export function trustedProjectRoot(input: string): string {
@@ -63,4 +89,145 @@ export function projectBranch(projectRoot: string): string | null {
 	});
 	const branch = result.status === 0 ? result.stdout.trim() : '';
 	return branch || null;
+}
+
+export type ProjectRepository = {
+	isRepository: boolean;
+	branch: string | null;
+	changes: Array<{ path: string; index: string; worktree: string }>;
+	worktrees: Array<{ path: string; branch: string | null; head: string }>;
+	remotes: Array<{ name: string; webUrl: string | null }>;
+};
+
+export type ProjectRepositoryAction =
+	| { action: 'stage' | 'unstage'; path: string }
+	| { action: 'stageAll' | 'unstageAll' | 'push' }
+	| { action: 'commit'; message: string };
+
+function git(projectRoot: string, args: string[], allowFailure = false): string | null {
+	const result = spawnSync('git', ['-C', projectRoot, ...args], {
+		encoding: 'utf8',
+		timeout: 2_000
+	});
+	if (result.status === 0) return result.stdout;
+	if (allowFailure) return null;
+	throw new Error(`Git ${args[0]} failed`);
+}
+
+function repositoryWebUrl(remote: string): string | null {
+	const ssh = remote.match(/^git@([^:]+):(.+)$/);
+	if (ssh) return `https://${ssh[1]}/${ssh[2].replace(/\.git$/, '')}`;
+	try {
+		const url = new URL(remote);
+		if (url.protocol === 'ssh:') {
+			return `https://${url.hostname}/${url.pathname.replace(/^\//, '').replace(/\.git$/, '')}`;
+		}
+		if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+		url.username = '';
+		url.password = '';
+		url.search = '';
+		url.hash = '';
+		return url
+			.toString()
+			.replace(/\/$/, '')
+			.replace(/\.git$/, '');
+	} catch {
+		return null;
+	}
+}
+
+export function projectRepository(projectRoot: string): ProjectRepository {
+	if (git(projectRoot, ['rev-parse', '--is-inside-work-tree'], true)?.trim() !== 'true') {
+		return { isRepository: false, branch: null, changes: [], worktrees: [], remotes: [] };
+	}
+
+	const statusEntries = git(projectRoot, [
+		'status',
+		'--porcelain=v1',
+		'-z',
+		'--untracked-files=all'
+	])!
+		.split('\0')
+		.filter(Boolean);
+	const changes: ProjectRepository['changes'] = [];
+	for (let index = 0; index < statusEntries.length; index += 1) {
+		const entry = statusEntries[index];
+		changes.push({ path: entry.slice(3), index: entry[0], worktree: entry[1] });
+		if (entry[0] === 'R' || entry[0] === 'C' || entry[1] === 'R' || entry[1] === 'C') index += 1;
+	}
+	changes.sort((left, right) => left.path.localeCompare(right.path));
+
+	const worktrees = (git(projectRoot, ['worktree', 'list', '--porcelain']) ?? '')
+		.trim()
+		.split(/\n\n+/)
+		.filter(Boolean)
+		.map((block) => {
+			const values = new Map(
+				block.split('\n').map((line) => {
+					const separator = line.indexOf(' ');
+					return separator === -1
+						? [line, '']
+						: [line.slice(0, separator), line.slice(separator + 1)];
+				})
+			);
+			return {
+				path: values.get('worktree') ?? '',
+				branch: values.get('branch')?.replace('refs/heads/', '') ?? null,
+				head: values.get('HEAD') ?? ''
+			};
+		});
+
+	const remotes = (git(projectRoot, ['remote']) ?? '')
+		.trim()
+		.split('\n')
+		.filter(Boolean)
+		.map((name) => ({
+			name,
+			webUrl: repositoryWebUrl(git(projectRoot, ['remote', 'get-url', name])!.trim())
+		}));
+
+	return { isRepository: true, branch: projectBranch(projectRoot), changes, worktrees, remotes };
+}
+
+export function projectRepositoryAction(
+	projectRoot: string,
+	operation: ProjectRepositoryAction
+): ProjectRepository {
+	let args: string[];
+	if (operation.action === 'stage') {
+		if (!operation.path) throw new Error('File path is required');
+		args = ['add', '--', operation.path];
+	} else if (operation.action === 'unstage') {
+		if (!operation.path) throw new Error('File path is required');
+		args = ['restore', '--staged', '--', operation.path];
+	} else if (operation.action === 'stageAll') {
+		args = ['add', '--all'];
+	} else if (operation.action === 'unstageAll') {
+		args = ['reset', '--mixed'];
+	} else if (operation.action === 'commit') {
+		const message = operation.message.trim();
+		if (!message) throw new Error('Commit message is required');
+		if (message.length > 5_000) throw new Error('Commit message is too long');
+		args = ['commit', '-m', message];
+	} else if (operation.action === 'push') {
+		const upstream = git(projectRoot, ['rev-parse', '--abbrev-ref', '@{upstream}'], true)?.trim();
+		if (upstream) {
+			args = ['push'];
+		} else {
+			const remote = git(projectRoot, ['remote'])?.trim().split('\n')[0];
+			const branch = projectBranch(projectRoot);
+			if (!remote) throw new Error('No Git remote is configured');
+			if (!branch) throw new Error('Cannot push a detached HEAD');
+			args = ['push', '--set-upstream', remote, branch];
+		}
+	} else {
+		throw new Error('Unknown Git action');
+	}
+
+	const result = spawnSync('git', ['-C', projectRoot, ...args], {
+		encoding: 'utf8',
+		timeout: operation.action === 'push' ? 60_000 : 15_000
+	});
+	if (result.status !== 0) throw new Error(`Git ${operation.action} failed`);
+	return projectRepository(projectRoot);
 }

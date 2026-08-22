@@ -19,6 +19,7 @@ export type HermesSession = {
 export type HermesTranscriptMessage = {
 	role: 'user' | 'assistant';
 	text: string;
+	images?: ImageAttachment[];
 };
 
 type HermesModelState = {
@@ -310,6 +311,18 @@ export class HermesACP implements PromptRuntime {
 		return { sessionId: response.sessionId, cwd };
 	}
 
+	async forkSession(cwd: string, sessionId: string): Promise<HermesSession> {
+		const context = await this.context();
+		const response = await this.requestRaw<HermesSessionResponse>(
+			context,
+			acp.methods.agent.session.fork,
+			{ cwd, sessionId, mcpServers: [] }
+		);
+		if (!response.sessionId) throw new Error('Hermes did not return a forked Session id');
+		this.captureSessionResponse(response.sessionId, response);
+		return { sessionId: response.sessionId, cwd };
+	}
+
 	async listSessions(cwd: string): Promise<HermesSession[]> {
 		const context = await this.context();
 		const sessions: acp.SessionInfo[] = [];
@@ -371,6 +384,9 @@ export class HermesACP implements PromptRuntime {
 			if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'text') {
 				transcript.push({ role: 'assistant', text: update.content.text });
 			}
+			if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'image') {
+				transcript.push({ role: 'assistant', text: '', images: [this.image(update.content)] });
+			}
 		});
 		try {
 			const response = await this.requestRaw<HermesSessionResponse | null>(
@@ -397,6 +413,7 @@ export class HermesACP implements PromptRuntime {
 		text: string;
 		images: ImageAttachment[];
 		onChunk: (text: string) => void;
+		onImage?: (image: ImageAttachment) => void;
 		onThought?: (text: string) => void;
 		onSubagent?: (update: SubagentTree) => void;
 	}): Promise<void> {
@@ -405,6 +422,9 @@ export class HermesACP implements PromptRuntime {
 		const unsubscribe = this.subscribe(input.sessionId, (update) => {
 			if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'text') {
 				input.onChunk(update.content.text);
+			}
+			if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'image') {
+				input.onImage?.(this.image(update.content));
 			}
 			if (update.sessionUpdate === 'agent_thought_chunk' && update.content.type === 'text') {
 				input.onThought?.(update.content.text);
@@ -440,6 +460,10 @@ export class HermesACP implements PromptRuntime {
 		} finally {
 			unsubscribe();
 		}
+	}
+
+	private image(content: Extract<acp.ContentBlock, { type: 'image' }>): ImageAttachment {
+		return { name: 'Hermes image', mimeType: content.mimeType, data: content.data };
 	}
 
 	private setTextHandler(sessionId: string, onChunk?: (text: string) => void): () => void {

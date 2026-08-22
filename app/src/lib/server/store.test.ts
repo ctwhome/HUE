@@ -23,6 +23,23 @@ function makeDeliveryStore() {
 }
 
 describe('HUEStore project and workflow boundaries', () => {
+	it('stores a session and its delivery state without a project', () => {
+		const store = makeStore();
+		store.upsertSession(null, { sessionId: 'session-1', cwd: '/work/topics' });
+
+		expect(store.hasSession(null, 'session-1')).toBe(true);
+		store.acceptMessage({
+			id: 'msg-1',
+			projectId: null,
+			sessionId: 'session-1',
+			text: 'Keep this topic independent.'
+		});
+		expect(store.getSessionSnapshot(null, 'session-1').messages).toEqual([
+			expect.objectContaining({ id: 'msg-1', projectId: null })
+		]);
+		store.close();
+	});
+
 	it('lists workflows only for the selected project', () => {
 		const store = makeStore();
 		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
@@ -50,6 +67,14 @@ describe('HUEStore project and workflow boundaries', () => {
 	it('updates project names and icons, then removes projects', () => {
 		const store = makeStore();
 		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.upsertProjectSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
+		store.acceptMessage({
+			id: 'msg-1',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Project-scoped message.'
+		});
+		store.updateMessageStatus('msg-1', 'failed');
 
 		expect(store.updateProject('hue', { name: 'Hue workspace', icon: '🚀' })).toMatchObject({
 			id: 'hue',
@@ -59,7 +84,42 @@ describe('HUEStore project and workflow boundaries', () => {
 		});
 		expect(store.deleteProject('hue')).toBe(true);
 		expect(store.listProjects()).toEqual([]);
+		expect(store.database.query('SELECT COUNT(*) AS count FROM messages').get()).toEqual({
+			count: 0
+		});
+		expect(store.database.query('SELECT COUNT(*) AS count FROM session_events').get()).toEqual({
+			count: 0
+		});
 		expect(store.deleteProject('hue')).toBe(false);
+		store.close();
+	});
+
+	it('refuses to remove a project with active deliveries', () => {
+		const store = makeDeliveryStore();
+		store.acceptMessage({
+			id: 'msg-1',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Do not lose this.'
+		});
+
+		expect(() => store.deleteProject('hue')).toThrow('active message deliveries');
+		expect(store.getProject('hue')).not.toBeNull();
+		expect(store.getMessage('msg-1')?.status).toBe('queued');
+		store.close();
+	});
+
+	it('stores a custom session icon without changing Hermes session data', () => {
+		const store = makeStore();
+		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.upsertProjectSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
+
+		expect(store.updateProjectSessionIcon('hue', 'session-1', '🐛')).toBe(true);
+		expect(store.getProjectSession('hue', 'session-1')).toEqual({
+			sessionId: 'session-1',
+			cwd: '/work/hue',
+			icon: '🐛'
+		});
 		store.close();
 	});
 });
@@ -314,6 +374,10 @@ describe('HUEStore acknowledged message transport', () => {
 			messageId: 'msg-1',
 			text: 'Still working'
 		});
+		store.appendEvent('hue', 'session-1', 'agent.image', {
+			messageId: 'msg-1',
+			image: { name: 'Hermes image', mimeType: 'image/png', data: 'aGVsbG8=' }
+		});
 
 		const snapshot = store.getSessionSnapshot('hue', 'session-1');
 
@@ -324,7 +388,8 @@ describe('HUEStore acknowledged message transport', () => {
 			'message.accepted',
 			'message.running',
 			'agent.thought',
-			'agent.chunk'
+			'agent.chunk',
+			'agent.image'
 		]);
 		expect(snapshot.cursor).toBe(snapshot.events.at(-1)!.sequence);
 		expect(snapshot.activeTurn).toEqual({
@@ -332,6 +397,7 @@ describe('HUEStore acknowledged message transport', () => {
 			status: 'running',
 			thought: 'Inspecting state. ',
 			output: 'Still working',
+			images: [{ name: 'Hermes image', mimeType: 'image/png', data: 'aGVsbG8=' }],
 			error: null
 		});
 		store.close();
@@ -357,6 +423,7 @@ describe('HUEStore acknowledged message transport', () => {
 			status: 'unknown',
 			thought: '',
 			output: '',
+			images: [],
 			error: 'ACP disconnected before acknowledgement'
 		});
 		store.close();

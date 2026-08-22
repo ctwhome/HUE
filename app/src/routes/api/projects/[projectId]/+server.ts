@@ -1,26 +1,7 @@
 import { json } from '@sveltejs/kit';
+import { validateIcon } from '$lib/icon';
 import { services } from '$lib/server/services';
 import type { RequestHandler } from './$types';
-
-function projectIcon(input: unknown): string | null {
-	if (input == null || input === '') return null;
-	if (typeof input !== 'string') throw new Error('Project icon must be an emoji or image');
-	const icon = input.trim();
-	if (!icon) return null;
-	const image = icon.match(
-		/^data:(image\/(?:png|jpeg|gif|webp));base64,((?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?)$/
-	);
-	if (image) {
-		if (Math.ceil((image[2].length * 3) / 4) > 1024 * 1024) {
-			throw new Error('Project icon image must be 1 MB or smaller');
-		}
-		return icon;
-	}
-	if (icon.startsWith('data:') || Array.from(icon).length > 8) {
-		throw new Error('Project icon must be a short emoji or a PNG, JPEG, GIF, or WebP image');
-	}
-	return icon;
-}
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	try {
@@ -31,7 +12,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		if (!existing) return json({ error: 'Project not found' }, { status: 404 });
 		const project = services().store.updateProject(params.projectId, {
 			name,
-			icon: 'icon' in body ? projectIcon(body.icon) : existing.icon
+			icon: 'icon' in body ? validateIcon(body.icon) : existing.icon
 		});
 		return json({ project });
 	} catch (error) {
@@ -40,7 +21,11 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 };
 
 export const DELETE: RequestHandler = ({ params }) => {
-	return services().store.deleteProject(params.projectId)
-		? json({ deleted: true })
-		: json({ error: 'Project not found' }, { status: 404 });
+	try {
+		return services().store.deleteProject(params.projectId)
+			? json({ deleted: true })
+			: json({ error: 'Project not found' }, { status: 404 });
+	} catch (error) {
+		return json({ error: error instanceof Error ? error.message : String(error) }, { status: 409 });
+	}
 };

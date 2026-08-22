@@ -1,4 +1,10 @@
-export type WorkspaceTranscriptMessage = { role: 'user' | 'assistant'; text: string };
+import type { ImageAttachment } from './message-content';
+
+export type WorkspaceTranscriptMessage = {
+	role: 'user' | 'assistant';
+	text: string;
+	images?: ImageAttachment[];
+};
 export type WorkspaceSubagentTree = {
 	messageId: string;
 	id: string;
@@ -15,6 +21,7 @@ export type WorkspaceDeliveryState = {
 	cursor: number;
 	activeMessageId: string;
 	pendingAssistant: string;
+	pendingImages?: ImageAttachment[];
 	pendingThought?: string;
 	delivery: string;
 	transcript: WorkspaceTranscriptMessage[];
@@ -59,6 +66,9 @@ export function applySessionEvents(
 		if (event.type === 'agent.chunk') {
 			next.pendingAssistant += String(event.payload.text ?? '');
 		}
+		if (event.type === 'agent.image') {
+			next.pendingImages = [...(next.pendingImages ?? []), event.payload.image as ImageAttachment];
+		}
 		if (event.type === 'agent.thought') {
 			next.pendingThought = (next.pendingThought ?? '') + String(event.payload.text ?? '');
 		}
@@ -72,10 +82,15 @@ export function applySessionEvents(
 					: event.type === 'message.failed'
 						? 'failed'
 						: 'delivery unknown';
-			if (next.pendingAssistant) {
-				next.transcript.push({ role: 'assistant', text: next.pendingAssistant });
+			if (next.pendingAssistant || next.pendingImages?.length) {
+				next.transcript.push({
+					role: 'assistant',
+					text: next.pendingAssistant,
+					...(next.pendingImages?.length ? { images: next.pendingImages } : {})
+				});
 			}
 			next.pendingAssistant = '';
+			next.pendingImages = [];
 			next.pendingThought = '';
 		}
 	}

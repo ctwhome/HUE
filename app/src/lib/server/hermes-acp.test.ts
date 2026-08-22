@@ -42,6 +42,35 @@ describe('HermesACP real integration', () => {
 });
 
 describe('HermesACP update subscriptions', () => {
+	it('forks a session through the ACP session/fork method', async () => {
+		const runtime = new HermesACP();
+		const requests: Array<{ method: string; params: unknown }> = [];
+		const internals = runtime as unknown as {
+			context: () => Promise<object>;
+			requestRaw: (
+				context: object,
+				method: string,
+				params: unknown
+			) => Promise<{ sessionId: string }>;
+		};
+		internals.context = async () => ({});
+		internals.requestRaw = async (_context, method, params) => {
+			requests.push({ method, params });
+			return { sessionId: 'forked-session' };
+		};
+
+		expect(await runtime.forkSession('/work/hue', 'session-1')).toEqual({
+			sessionId: 'forked-session',
+			cwd: '/work/hue'
+		});
+		expect(requests).toEqual([
+			{
+				method: 'session/fork',
+				params: { cwd: '/work/hue', sessionId: 'session-1', mcpServers: [] }
+			}
+		]);
+	});
+
 	it('forwards ACP-published thought chunks separately from answer chunks', async () => {
 		const runtime = new HermesACP();
 		const internals = runtime as unknown as {
@@ -74,6 +103,34 @@ describe('HermesACP update subscriptions', () => {
 
 		expect(thoughts).toEqual(['Inspecting the project.']);
 		expect(chunks).toEqual(['Found it.']);
+	});
+
+	it('forwards ACP-published images from the assistant', async () => {
+		const runtime = new HermesACP();
+		const internals = runtime as unknown as {
+			context: () => Promise<{ request: () => Promise<{ stopReason: 'end_turn' }> }>;
+			dispatchUpdate: (sessionId: string, update: unknown) => void;
+		};
+		internals.context = async () => ({
+			request: async () => {
+				internals.dispatchUpdate('session-1', {
+					sessionUpdate: 'agent_message_chunk',
+					content: { type: 'image', mimeType: 'image/png', data: 'aGVsbG8=' }
+				});
+				return { stopReason: 'end_turn' };
+			}
+		});
+		const images: unknown[] = [];
+
+		await runtime.prompt({
+			sessionId: 'session-1',
+			text: 'Show the screenshot',
+			images: [],
+			onChunk: () => {},
+			onImage: (image) => images.push(image)
+		});
+
+		expect(images).toEqual([{ name: 'Hermes image', mimeType: 'image/png', data: 'aGVsbG8=' }]);
 	});
 
 	it('exposes only the connected ACP runtime metadata and configured profile', () => {
