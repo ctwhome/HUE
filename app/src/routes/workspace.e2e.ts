@@ -53,6 +53,13 @@ async function mockTerminalRequests(page: import('@playwright/test').Page) {
 	});
 }
 
+async function mockDefaultSessionRequests(page: import('@playwright/test').Page) {
+	await page.route(/\/api\/(?:projects\/[^/]+\/)?sessions(?:\?.*)?$/, async (route) => {
+		if (route.request().method() === 'GET') return route.fulfill({ json: { sessions: [] } });
+		return route.fulfill({ status: 503, json: { error: 'Test must define its Session fixture' } });
+	});
+}
+
 async function addProject(page: import('@playwright/test').Page) {
 	await page.goto('/');
 	const projectsMenu = page.locator('.mobile-navigation').getByRole('button', { name: 'Projects' });
@@ -71,7 +78,125 @@ async function addProject(page: import('@playwright/test').Page) {
 	await page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' }).click();
 }
 
-test.beforeEach(async ({ page }) => mockTerminalRequests(page));
+async function removeProjects(page: import('@playwright/test').Page) {
+	const response = await page.request.get('/api/projects');
+	const body = (await response.json()) as { projects: Array<{ id: string }> };
+	for (const project of body.projects) await page.request.delete(`/api/projects/${project.id}`);
+}
+
+test.beforeEach(async ({ page }) => {
+	await mockTerminalRequests(page);
+	await mockDefaultSessionRequests(page);
+});
+
+test('shows honest first-run actions without persisted Projects', async ({ page }) => {
+	await removeProjects(page);
+	await page.goto('/');
+
+	await expect(page.getByRole('heading', { name: 'Start your first HUE workspace' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Add Project', exact: true })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Start without Project' })).toBeVisible();
+	await expect(page.getByText('No PTY', { exact: true })).toHaveCount(0);
+
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		if (viewport.width <= 390)
+			await expectMinimumTouchTargets(page.getByRole('main').locator('button'));
+	}
+});
+
+test('recovers missing Project roots with Locate, Remove, or projectless continuation', async ({
+	page
+}) => {
+	await removeProjects(page);
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({ json: { sessions: [] } })
+	);
+	for (const [index, viewport] of viewports.entries()) {
+		const retiredRoot = mkdtempSync(join(tmpdir(), 'hue-retired-project-'));
+		const replacementRoot = mkdtempSync(join(tmpdir(), 'hue-located-project-'));
+		const created = await page.request.post('/api/projects', {
+			data: { name: `Missing ${viewport.width}`, rootPath: retiredRoot }
+		});
+		const project = (await created.json()).project as { id: string };
+		rmSync(retiredRoot, { recursive: true, force: true });
+
+		try {
+			await page.setViewportSize(viewport);
+			await page.goto(`/?project=${project.id}`);
+			const recovery = page.getByRole('region', { name: 'Project folder unavailable' });
+			await expect(recovery).toBeVisible();
+			await expect(page.getByRole('region', { name: /workbench/ })).toHaveCount(0);
+			for (const label of ['Locate', 'Remove', 'Open without Project'])
+				await expect(recovery.getByRole('button', { name: label, exact: true })).toBeVisible();
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+				viewport.width
+			);
+			if (viewport.width <= 390) await expectMinimumTouchTargets(recovery.locator('button'));
+
+			if (index === 0) {
+				await recovery.getByRole('button', { name: 'Open without Project' }).click();
+				await expect(page).toHaveURL(/project=none/);
+			} else if (index === 1) {
+				await recovery.getByRole('button', { name: 'Remove', exact: true }).click();
+				await page
+					.getByRole('dialog', { name: 'Remove project?' })
+					.getByRole('button', { name: 'Remove project' })
+					.click();
+				await expect(page.getByText(`Missing ${viewport.width}`, { exact: true })).toHaveCount(0);
+			} else {
+				await page.route(/\/api\/directories/, (route) =>
+					route.fulfill({
+						json: {
+							path: replacementRoot,
+							name: `Located ${viewport.width}`,
+							parent: null,
+							entries: []
+						}
+					})
+				);
+				await recovery.getByRole('button', { name: 'Locate' }).click();
+				await page
+					.getByRole('dialog', { name: 'Locate project directory' })
+					.getByRole('button', { name: 'Use this directory' })
+					.click();
+				await expect(page.getByRole('region', { name: /workbench/ })).toBeVisible();
+				const health = page.getByRole('region', { name: 'Runtime health' });
+				for (const label of ['Project', 'Git', 'Terminal', 'Preview', 'Hermes ACP', 'Hermes admin'])
+					await expect(health.getByText(label, { exact: true })).toBeVisible();
+				await page.unroute(/\/api\/directories/);
+			}
+		} finally {
+			await page.request.delete(`/api/projects/${project.id}`).catch(() => undefined);
+			rmSync(replacementRoot, { recursive: true, force: true });
+		}
+	}
+});
+
+test('reports current saved Preview address with visible touch-safe action text', async ({
+	page
+}) => {
+	await page.route('http://preview.test/**', (route) =>
+		route.fulfill({ contentType: 'text/html', body: '<h1>Preview ready</h1>' })
+	);
+	await addProject(page);
+	const health = page.getByRole('region', { name: 'Runtime health' });
+	const preview = health.locator('[data-health-id="preview"]');
+
+	await expect(preview).toContainText('No saved address');
+	await expect(preview).toContainText('Enter address in Browser panel');
+	await page.getByLabel('Browser address').fill('http://preview.test');
+	await page.getByRole('button', { name: 'Go', exact: true }).click();
+
+	await expect(preview).toContainText('preview.test');
+	await expect(preview).toContainText('Preview saved in Browser panel');
+	await page.setViewportSize({ width: 320, height: 844 });
+	await expect(preview).toBeVisible();
+	expect((await preview.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+});
 
 test('keeps workspace scrolling inside its panes', async ({ page }) => {
 	await page.route('**/api/projects/*/sessions', (route) =>
@@ -298,6 +423,48 @@ test('renames and removes a project from the projects sidebar', async ({ page })
 		await expect(page.locator('.project-select', { hasText: currentName })).toHaveCount(0);
 	} finally {
 		if (project) await page.request.delete(`/api/projects/${project.id}`).catch(() => undefined);
+		rmSync(rootPath, { recursive: true, force: true });
+	}
+});
+
+test('keeps unresolved-delivery removal conflict visible with a Locate recovery path', async ({
+	page
+}) => {
+	const rootPath = mkdtempSync(join(tmpdir(), 'hue-project-unknown-delivery-'));
+	const created = await page.request.post('/api/projects', {
+		data: { name: 'Unknown delivery project', rootPath }
+	});
+	const project = (await created.json()).project as { id: string };
+	await page.route(`**/api/projects/${project.id}`, async (route) => {
+		if (route.request().method() === 'DELETE') {
+			return route.fulfill({
+				status: 409,
+				json: { error: 'Project has unresolved message delivery' }
+			});
+		}
+		return route.continue();
+	});
+
+	try {
+		await page.goto(`/?project=${project.id}`);
+		await page.getByRole('button', { name: 'Edit Unknown delivery project' }).click();
+		await page
+			.getByRole('dialog', { name: 'Edit project' })
+			.getByRole('button', { name: 'Remove project' })
+			.click();
+		const confirmation = page.getByRole('dialog', { name: 'Remove project?' });
+		await confirmation.getByRole('button', { name: 'Remove project' }).click();
+
+		await expect(confirmation).toBeVisible();
+		await expect(confirmation.getByRole('alert')).toContainText(
+			'Project has unresolved message delivery'
+		);
+		await expect(
+			confirmation.getByRole('button', { name: 'Locate Project instead' })
+		).toBeVisible();
+	} finally {
+		await page.unroute(`**/api/projects/${project.id}`);
+		await page.request.delete(`/api/projects/${project.id}`).catch(() => undefined);
 		rmSync(rootPath, { recursive: true, force: true });
 	}
 });

@@ -25,11 +25,17 @@ export class HermesServe {
 	private token: string | null = null;
 	private starting: Promise<void> | null = null;
 	private closing = false;
+	private unavailable = false;
 
 	constructor(options: HermesServeOptions = {}) {
 		this.command = options.command ?? 'hermes';
 		this.profile = options.profile ?? 'default';
 		this.onDiagnostic = options.onDiagnostic;
+	}
+
+	healthStatus(): 'idle' | 'ready' | 'unavailable' {
+		if (this.child && this.baseUrl && this.token) return 'ready';
+		return this.unavailable ? 'unavailable' : 'idle';
 	}
 
 	async start(): Promise<void> {
@@ -39,6 +45,10 @@ export class HermesServe {
 		this.starting = this.open();
 		try {
 			await this.starting;
+			this.unavailable = false;
+		} catch (error) {
+			this.unavailable = true;
+			throw error;
 		} finally {
 			this.starting = null;
 		}
@@ -92,6 +102,7 @@ export class HermesServe {
 			this.baseUrl = null;
 			this.token = null;
 			if (!this.closing) {
+				this.unavailable = true;
 				this.onDiagnostic?.(
 					`Hermes admin exited unexpectedly (code=${String(code)}, signal=${String(signal)})`
 				);
@@ -323,6 +334,7 @@ export class HermesServe {
 
 	async close(): Promise<void> {
 		this.closing = true;
+		this.unavailable = false;
 		if (this.starting) await this.starting.catch(() => undefined);
 		const child = this.child;
 		if (!child) return;

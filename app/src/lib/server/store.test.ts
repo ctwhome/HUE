@@ -122,6 +122,59 @@ describe('HUEStore project and workflow boundaries', () => {
 		});
 		store.close();
 	});
+
+	it('relocates a Project without rewriting Hermes-owned Session cwd', () => {
+		const store = makeStore();
+		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/HUE-bun-workspace' });
+		store.upsertSession('hue', {
+			sessionId: 'project-session',
+			cwd: '/work/HUE-bun-workspace'
+		});
+		store.upsertSession(null, { sessionId: 'projectless-session', cwd: '/private/hue/sessions' });
+
+		expect(store.relocateProject('hue', '/work/HUE')).toMatchObject({
+			id: 'hue',
+			rootPath: '/work/HUE'
+		});
+		expect(store.getSession('hue', 'project-session')?.cwd).toBe('/work/HUE-bun-workspace');
+		expect(store.getSession(null, 'projectless-session')?.cwd).toBe('/private/hue/sessions');
+		store.close();
+	});
+
+	it('refuses to relocate a Project while delivery state is active', () => {
+		const store = makeDeliveryStore();
+		store.acceptMessage({
+			id: 'msg-1',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Keep cwd stable while this is queued.'
+		});
+
+		expect(() => store.relocateProject('hue', '/work/moved-hue')).toThrow(
+			'active message deliveries'
+		);
+		expect(store.getProject('hue')?.rootPath).toBe('/work/hue');
+		store.close();
+	});
+
+	it('allows stale Project recovery without erasing unknown delivery truth', () => {
+		const store = makeDeliveryStore();
+		store.acceptMessage({
+			id: 'msg-1',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Outcome is unknown.'
+		});
+		store.updateMessageStatus('msg-1', 'running');
+		store.updateMessageStatus('msg-1', 'unknown');
+
+		expect(store.relocateProject('hue', '/work/recovered-hue')?.rootPath).toBe(
+			'/work/recovered-hue'
+		);
+		expect(store.getMessage('msg-1')?.status).toBe('unknown');
+		expect(store.getSession('hue', 'session-1')?.cwd).toBe('/work/hue');
+		store.close();
+	});
 });
 
 describe('HUEStore acknowledged message transport', () => {

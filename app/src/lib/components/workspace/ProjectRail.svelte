@@ -7,6 +7,7 @@
 		rootPath: string;
 		icon: string | null;
 		createdAt: string;
+		rootAvailable: boolean;
 	};
 	type Directory = { name: string; path: string };
 	let {
@@ -29,9 +30,11 @@
 		projectEmojiPickerOpen = $bindable(),
 		projectEditError,
 		projectSaving,
+		locatingProject,
 		onprojectless,
 		onaddopen,
 		onchoose,
+		onlocate,
 		onedit,
 		onhidden,
 		ondirectory,
@@ -61,9 +64,11 @@
 		projectEmojiPickerOpen: boolean;
 		projectEditError: string;
 		projectSaving: boolean;
+		locatingProject: Project | null;
 		onprojectless: () => void;
 		onaddopen: () => void;
 		onchoose: (project: Project | null) => void;
+		onlocate: (project: Project) => void;
 		onedit: (event: MouseEvent, project: Project) => void;
 		onhidden: (event: Event) => void;
 		ondirectory: (path?: string) => void;
@@ -141,7 +146,9 @@
 						>
 					{:else}<span
 							class="project-dot size-2 shrink-0 rounded-full bg-muted-foreground [.active_&]:bg-violet-400"
-						></span>{/if}<span>{project.name}</span>
+						></span>{/if}<span>{project.name}</span>{#if !project.rootAvailable}<small
+							class="text-amber-400">Missing</small
+						>{/if}
 				</button>
 				<button
 					class="project-edit absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent [.project-row:focus-within_&]:opacity-100"
@@ -161,8 +168,14 @@
 	>
 		<header>
 			<div>
-				<h2 id="add-project-title">Add project directory</h2>
-				<p>Choose a folder to add as a project.</p>
+				<h2 id="add-project-title">
+					{locatingProject ? 'Locate project directory' : 'Add project directory'}
+				</h2>
+				<p>
+					{locatingProject
+						? `Choose the new folder for ${locatingProject.name}.`
+						: 'Choose a folder to add as a project.'}
+				</p>
 			</div>
 			<label>
 				<input type="checkbox" checked={showHiddenDirectories} onchange={onhidden} />
@@ -211,10 +224,16 @@
 				title="Add this directory"
 				disabled={directoryLoading ||
 					!projectRoot ||
-					projects.some((project) => project.rootPath === projectRoot)}
-				>{projects.some((project) => project.rootPath === projectRoot)
+					projects.some(
+						(project) => project.id !== locatingProject?.id && project.rootPath === projectRoot
+					)}
+				>{projects.some(
+					(project) => project.id !== locatingProject?.id && project.rootPath === projectRoot
+				)
 					? 'Already added'
-					: 'Add this directory'}</button
+					: locatingProject
+						? 'Use this directory'
+						: 'Add this directory'}</button
 			>
 		</form>
 		<button
@@ -327,6 +346,19 @@
 				</p>
 			</div>
 		</header>
+		{#if projectEditError}<p class="directory-error text-sm text-destructive" role="alert">
+				{projectEditError}
+			</p>
+			<button
+				type="button"
+				title="Locate Project instead"
+				onclick={() => {
+					removeProjectDialog?.close();
+					editProjectDialog?.close();
+					if (editingProject) onlocate(editingProject);
+				}}>Locate Project instead</button
+			>
+		{/if}
 		<div class="confirmation-actions flex justify-end gap-2.5">
 			<button type="button" title="Keep project" onclick={() => removeProjectDialog?.close()}
 				>Cancel</button
@@ -335,6 +367,7 @@
 				type="button"
 				class="danger-button text-destructive"
 				title="Remove project"
+				disabled={projectSaving}
 				onclick={onremove}>Remove project</button
 			>
 		</div>

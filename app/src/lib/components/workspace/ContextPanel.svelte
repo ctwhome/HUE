@@ -7,6 +7,7 @@
 		rootPath: string;
 		icon: string | null;
 		createdAt: string;
+		rootAvailable: boolean;
 	};
 	type Session = {
 		sessionId: string;
@@ -16,6 +17,8 @@
 		customIcon?: string | null;
 		updatedAt?: string | null;
 		busySince?: string | null;
+		available?: boolean;
+		recovery?: string | null;
 	};
 	type Workflow = { id: string; name: string; prompt: string; profile: string };
 	let {
@@ -111,7 +114,9 @@
 					class="icon-button grid size-8 shrink-0 place-items-center rounded-md border border-border bg-secondary hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
 					onclick={oncreate}
 					aria-label="New session"
-					title="New session"><Plus size={18} aria-hidden="true" /></button
+					title="New session"
+					disabled={selectedProject?.rootAvailable === false}
+					><Plus size={18} aria-hidden="true" /></button
 				>{/if}
 		</div>
 	</header>
@@ -121,7 +126,7 @@
 			class:active={activeTab === 'sessions'}
 			onclick={() => ontab('sessions')}>Sessions</button
 		>
-		{#if selectedProject}<button
+		{#if selectedProject?.rootAvailable}<button
 				title="Workflows"
 				class:active={activeTab === 'workflows'}
 				onclick={() => ontab('workflows')}>Workflows</button
@@ -134,7 +139,10 @@
 					<button
 						class="session-select flex min-h-12 w-full items-center gap-2.5 rounded-lg border border-transparent bg-transparent p-2.5 pr-10 text-left hover:border-border hover:bg-accent [&.active]:border-border [&.active]:bg-accent"
 						class:active={selectedSession?.sessionId === session.sessionId}
-						title={`Open ${session.title || 'Untitled session'}`}
+						title={session.available === false
+							? session.recovery
+							: `Open ${session.title || 'Untitled session'}`}
+						disabled={session.available === false}
 						onclick={() => onopen(session)}
 					>
 						{#if isImage(session.icon ?? null)}<img
@@ -154,20 +162,22 @@
 										>{elapsed(session.busySince, now)}</span
 									>{/if}
 							</div>
-							<small
+							<small class:text-amber-400={session.available === false}
 								>{session.updatedAt
 									? new Date(session.updatedAt).toLocaleString()
-									: 'New session'}</small
+									: session.available === false
+										? session.recovery
+										: 'New session'}</small
 							>
 						</div>
 					</button>
-					<button
-						class="session-edit absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
-						aria-label={`Edit ${session.title || 'Untitled session'}`}
-						title={`Edit ${session.title || 'Untitled session'}`}
-						onclick={(event) => onedit(event, session)}
-						><Ellipsis size={16} aria-hidden="true" /></button
-					>
+					{#if session.available !== false}<button
+							class="session-edit absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
+							aria-label={`Edit ${session.title || 'Untitled session'}`}
+							title={`Edit ${session.title || 'Untitled session'}`}
+							onclick={(event) => onedit(event, session)}
+							><Ellipsis size={16} aria-hidden="true" /></button
+						>{/if}
 				</div>
 			{/each}
 			{#if !loading && sessions.length === 0}<p

@@ -1,8 +1,9 @@
 import { json } from '@sveltejs/kit';
-import { services, trustedProjectRoot } from '$lib/server/services';
+import { projectView, services, trustedProjectRoot } from '$lib/server/services';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = () => json({ projects: services().store.listProjects() });
+export const GET: RequestHandler = () =>
+	json({ projects: services().store.listProjects().map(projectView) });
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
@@ -15,7 +16,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			name,
 			rootPath
 		});
-		return json({ project }, { status: 201 });
+		return json({ project: projectView(project) }, { status: 201 });
 	} catch (error) {
 		return json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
 	}

@@ -351,11 +351,32 @@ export class HUEStore {
 			: null;
 	}
 
-	updateProject(id: string, input: { name: string; icon: string | null }): Project | null {
-		const result = this.database
-			.query('UPDATE projects SET name = ?, icon = ? WHERE id = ?')
-			.run(input.name, input.icon, id);
-		return result.changes ? this.getProject(id) : null;
+	updateProject(
+		id: string,
+		input: { name: string; icon: string | null; rootPath?: string }
+	): Project | null {
+		return this.database.transaction(() => {
+			const project = this.getProject(id);
+			if (!project) return null;
+			const rootPath = input.rootPath ?? project.rootPath;
+			if (rootPath !== project.rootPath) {
+				const active = this.database
+					.query(
+						"SELECT 1 FROM messages WHERE project_id = ? AND status IN ('queued', 'running') LIMIT 1"
+					)
+					.get(id);
+				if (active) throw new Error('Project has active message deliveries');
+			}
+			this.database
+				.query('UPDATE projects SET name = ?, icon = ?, root_path = ? WHERE id = ?')
+				.run(input.name, input.icon, rootPath, id);
+			return this.getProject(id);
+		})();
+	}
+
+	relocateProject(id: string, rootPath: string): Project | null {
+		const project = this.getProject(id);
+		return project ? this.updateProject(id, { ...project, rootPath }) : null;
 	}
 
 	deleteProject(id: string): boolean {
