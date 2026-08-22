@@ -223,18 +223,10 @@ export class HUEStore {
 		})();
 	}
 
-	upsertProjectSession(projectId: string, session: { sessionId: string; cwd: string }): void {
-		this.upsertSession(projectId, session);
-	}
-
 	hasSession(projectId: string | null, sessionId: string): boolean {
 		return !!this.database
 			.query('SELECT 1 FROM project_sessions WHERE project_id IS ? AND session_id = ?')
 			.get(projectId, sessionId);
-	}
-
-	hasProjectSession(projectId: string, sessionId: string): boolean {
-		return this.hasSession(projectId, sessionId);
 	}
 
 	getSession(
@@ -262,23 +254,12 @@ export class HUEStore {
 		return rows.map((row) => ({ sessionId: row.session_id, cwd: row.cwd, icon: row.icon }));
 	}
 
-	getProjectSession(
-		projectId: string,
-		sessionId: string
-	): { sessionId: string; cwd: string; icon: string | null } | null {
-		return this.getSession(projectId, sessionId);
-	}
-
 	updateSessionIcon(projectId: string | null, sessionId: string, icon: string | null): boolean {
 		return (
 			this.database
 				.query('UPDATE project_sessions SET icon = ? WHERE project_id IS ? AND session_id = ?')
 				.run(icon, projectId, sessionId).changes > 0
 		);
-	}
-
-	updateProjectSessionIcon(projectId: string, sessionId: string, icon: string | null): boolean {
-		return this.updateSessionIcon(projectId, sessionId, icon);
 	}
 
 	recoverInterruptedMessages(

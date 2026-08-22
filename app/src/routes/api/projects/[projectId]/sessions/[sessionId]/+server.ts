@@ -6,7 +6,7 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = async ({ params }) => {
 	const project = services().store.getProject(params.projectId);
 	if (!project) return json({ error: 'Project not found' }, { status: 404 });
-	if (!services().store.hasProjectSession(params.projectId, params.sessionId)) {
+	if (!services().store.hasSession(params.projectId, params.sessionId)) {
 		return json({ error: 'Session not found' }, { status: 404 });
 	}
 	const snapshot = services().store.getSessionSnapshot(params.projectId, params.sessionId);
@@ -34,7 +34,7 @@ export const GET: RequestHandler = async ({ params }) => {
 export const POST: RequestHandler = async ({ params }) => {
 	const project = services().store.getProject(params.projectId);
 	if (!project) return json({ error: 'Project not found' }, { status: 404 });
-	if (!services().store.hasProjectSession(params.projectId, params.sessionId)) {
+	if (!services().store.hasSession(params.projectId, params.sessionId)) {
 		return json({ error: 'Session not found' }, { status: 404 });
 	}
 	if (services().store.getSessionSnapshot(params.projectId, params.sessionId).activeTurn) {
@@ -42,7 +42,7 @@ export const POST: RequestHandler = async ({ params }) => {
 	}
 	try {
 		const session = await services().runtime.forkSession(project.rootPath, params.sessionId);
-		services().store.upsertProjectSession(project.id, session);
+		services().store.upsertSession(project.id, session);
 		return json(
 			{
 				session,
@@ -59,7 +59,7 @@ export const POST: RequestHandler = async ({ params }) => {
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const project = services().store.getProject(params.projectId);
 	if (!project) return json({ error: 'Project not found' }, { status: 404 });
-	if (!services().store.hasProjectSession(params.projectId, params.sessionId)) {
+	if (!services().store.hasSession(params.projectId, params.sessionId)) {
 		return json({ error: 'Session not found' }, { status: 404 });
 	}
 	try {
@@ -72,7 +72,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		}
 		if (hasIcon) {
 			const icon = validateIcon(body.icon);
-			services().store.updateProjectSessionIcon(params.projectId, params.sessionId, icon);
+			services().store.updateSessionIcon(params.projectId, params.sessionId, icon);
 			return json({ icon });
 		}
 		if (services().store.getSessionSnapshot(params.projectId, params.sessionId).activeTurn) {
