@@ -74,6 +74,36 @@
 .markdown pre code {
 	padding: 0;
 }
+.code-block {
+	position: relative;
+}
+.code-block > button {
+	position: absolute;
+	top: 6px;
+	right: 6px;
+	min-height: 44px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--secondary);
+	padding: 4px 8px;
+	font-size: 0.72rem;
+}
+.code-block > pre {
+	padding-top: 56px;
+}
+.copy-notice {
+	position: sticky;
+	top: 8px;
+	z-index: 2;
+	display: block;
+	width: fit-content;
+	margin: 0 auto 8px;
+	border-radius: 999px;
+	background: var(--foreground);
+	padding: 5px 10px;
+	color: var(--background);
+	font-size: 0.75rem;
+}
 .markdown a {
 	color: #c4b5fd;
 }
@@ -112,6 +142,93 @@
 }
 .subagent-status.active {
 	color: #59c3ff;
+}
+.activity-card summary,
+.activity-card header {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	gap: 9px;
+}
+.activity-card summary {
+	min-height: 44px;
+	cursor: pointer;
+	list-style: none;
+	padding: 8px 12px;
+	background: var(--secondary);
+}
+.activity-card summary .activity-status {
+	margin-left: auto;
+	text-transform: capitalize;
+}
+.activity-card time {
+	margin-left: auto;
+	color: var(--muted-foreground);
+	font-size: 0.72rem;
+}
+.tool-card[open] > summary > .disclosure-icon {
+	transform: rotate(90deg);
+}
+.activity-body {
+	display: grid;
+	gap: 6px;
+	padding: 12px;
+}
+.activity-card pre {
+	max-height: 240px;
+	overflow: auto;
+	border-radius: 7px;
+	background: var(--background);
+	padding: 9px;
+	font-size: 0.76rem;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+.todo-progress progress {
+	height: 6px;
+	accent-color: #8b5cf6;
+}
+.todo-progress ul {
+	display: grid;
+	gap: 5px;
+	margin: 8px 0 0;
+	padding: 0;
+	list-style: none;
+}
+.todo-progress li.completed {
+	color: var(--muted-foreground);
+	text-decoration: line-through;
+}
+.interaction-actions button,
+.clarify-card input {
+	min-height: 44px;
+	border: 1px solid var(--border);
+	border-radius: 7px;
+	padding: 8px 11px;
+}
+.clarify-card fieldset {
+	display: grid;
+	gap: 6px;
+	border: 0;
+	padding: 0;
+}
+.clarify-card label {
+	display: flex;
+	min-height: 44px;
+	align-items: center;
+	gap: 8px;
+}
+.clarify-card label input {
+	min-height: auto;
+}
+.session-indicator {
+	font-weight: 900;
+}
+.session-indicator.attention {
+	color: #fbbf24;
+}
+.session-indicator.error {
+	color: var(--destructive);
 }
 .agent-thought summary {
 	padding: 8px 12px;

@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import type { Database as BunDatabase } from 'bun:sqlite';
 import type { ImageAttachment } from '$lib/message-content';
+import { redactPersistedValue } from './redaction';
 
 const runtimeRequire = createRequire(import.meta.url);
 
@@ -563,6 +564,25 @@ export class HUEStore {
 		return Object.fromEntries(rows.map((row) => [row.session_id, row.started_at]));
 	}
 
+	getSessionIndicators(
+		projectId: string | null
+	): Record<string, { attention: boolean; error: boolean }> {
+		return Object.fromEntries(
+			this.listStoredSessions(projectId).map(({ sessionId }) => {
+				const events = this.listEvents(projectId, sessionId);
+				const pending = new Map<string, boolean>();
+				for (const event of events) {
+					if (!['agent.permission', 'agent.clarify'].includes(event.type)) continue;
+					const id = String(event.payload.id ?? '');
+					if (id) pending.set(id, event.payload.status === 'pending');
+				}
+				const latest = this.listMessages(projectId, sessionId).at(-1);
+				const error = latest?.status === 'failed' || latest?.status === 'unknown';
+				return [sessionId, { attention: error || [...pending.values()].some(Boolean), error }];
+			})
+		);
+	}
+
 	private mapMessage(row: {
 		id: string;
 		project_id: string | null;
@@ -608,6 +628,25 @@ export class HUEStore {
 		if (!message) throw new Error(`Message ${id} was not found`);
 		this.database.transaction(() => {
 			this.updateMessageStatus(id, status);
+			if (status === 'failed' || status === 'unknown') {
+				const pending = new Map<string, SessionEvent>();
+				for (const event of this.listEvents(message.projectId, message.sessionId)) {
+					if (
+						!['agent.permission', 'agent.clarify'].includes(event.type) ||
+						event.payload.messageId !== id
+					)
+						continue;
+					pending.set(`${event.type}\0${String(event.payload.id ?? '')}`, event);
+				}
+				for (const event of pending.values()) {
+					if (event.payload.status !== 'pending') continue;
+					this.appendEvent(message.projectId, message.sessionId, event.type, {
+						id: event.payload.id,
+						messageId: id,
+						status: 'cancelled'
+					});
+				}
+			}
 			this.appendEvent(message.projectId, message.sessionId, `message.${status}`, payload);
 		})();
 	}
@@ -618,18 +657,19 @@ export class HUEStore {
 		type: string,
 		payload: Record<string, unknown>
 	): SessionEvent {
+		const redactedPayload = redactPersistedValue(payload) as Record<string, unknown>;
 		const createdAt = new Date().toISOString();
 		const result = this.database
 			.query(
 				'INSERT INTO session_events (project_id, session_id, type, payload, created_at) VALUES (?, ?, ?, ?, ?)'
 			)
-			.run(projectId, sessionId, type, JSON.stringify(payload), createdAt);
+			.run(projectId, sessionId, type, JSON.stringify(redactedPayload), createdAt);
 		return {
 			sequence: Number(result.lastInsertRowid),
 			projectId,
 			sessionId,
 			type,
-			payload,
+			payload: redactedPayload,
 			createdAt
 		};
 	}

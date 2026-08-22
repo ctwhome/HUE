@@ -43,6 +43,7 @@
 		"emoji-picker-element-data": "1.8.0",
 		"lucide-svelte": "^1.0.1",
 		"marked": "^18.0.10",
+		"prismjs": "1.30.0",
 		"sanitize-html": "^2.17.7"
 	}
 }

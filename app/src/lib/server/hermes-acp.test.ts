@@ -2,7 +2,13 @@ import { describe, expect, it } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { HermesACP, isolatedHermesEnvironment, normalizeDelegateTaskUpdate } from './hermes-acp';
+import {
+	HermesACP,
+	isolatedHermesEnvironment,
+	normalizeDelegateTaskUpdate,
+	normalizeToolCallUpdate,
+	redactToolPayload
+} from './hermes-acp';
 
 const realHermesTest = process.env.HUE_REAL_HERMES === '1' ? it : it.skip;
 
@@ -28,6 +34,31 @@ it('builds an isolated real-smoke environment without provider or private-state 
 });
 
 describe('HermesACP real integration', () => {
+	realHermesTest(
+		'reports installed clarify capability without provider credentials or private Hermes state',
+		async () => {
+			const hermesHome = mkdtempSync(join(tmpdir(), 'hue-real-hermes-capability-'));
+			const runtime = new HermesACP({
+				command: 'hermes',
+				env: isolatedHermesEnvironment(process.env, hermesHome)
+			});
+			try {
+				await runtime.start();
+				expect(runtime.getRuntimeInfo()).toMatchObject({
+					agent: { name: 'hermes-agent', version: '0.20.5' },
+					clarify: {
+						status: 'unsupported',
+						reason: 'Hermes ACP has not sent elicitation/create'
+					}
+				});
+			} finally {
+				await runtime.close();
+				rmSync(hermesHome, { recursive: true, force: true });
+			}
+		},
+		15_000
+	);
+
 	realHermesTest(
 		'negotiates the pinned ACP contract from an isolated Hermes home',
 		async () => {
@@ -104,6 +135,240 @@ describe('HermesACP real integration', () => {
 });
 
 describe('HermesACP update subscriptions', () => {
+	it('redacts secrets recursively without changing safe tool data', () => {
+		expect(
+			redactToolPayload({
+				command: 'curl -H "Authorization: Bearer abc123" https://example.test',
+				shell: 'deploy --api-key supersecret TOKEN=hidden https://user:pass@example.test',
+				apiKey: 'secret-key',
+				nested: { password: 'hunter2', path: 'src/routes/+page.svelte' }
+			})
+		).toEqual({
+			command: 'curl -H "Authorization: [REDACTED]" https://example.test',
+			shell: 'deploy --api-key [REDACTED] TOKEN=[REDACTED] https://[REDACTED]@example.test',
+			apiKey: '[REDACTED]',
+			nested: { password: '[REDACTED]', path: 'src/routes/+page.svelte' }
+		});
+	});
+
+	it('merges ACP tool patches and records duration from first sight', () => {
+		const started = normalizeToolCallUpdate(
+			{
+				sessionUpdate: 'tool_call',
+				toolCallId: 'tool-1',
+				name: 'terminal',
+				title: 'Run tests',
+				kind: 'execute',
+				status: 'in_progress',
+				rawInput: { command: 'bun test', token: 'must-hide' }
+			},
+			undefined,
+			1_000
+		);
+		const completed = normalizeToolCallUpdate(
+			{
+				sessionUpdate: 'tool_call_update',
+				toolCallId: 'tool-1',
+				status: 'failed',
+				rawOutput: { error: 'Timed out', authorization: 'Bearer must-hide' }
+			},
+			started,
+			1_425
+		);
+
+		expect(completed).toEqual({
+			id: 'tool-1',
+			name: 'terminal',
+			title: 'Run tests',
+			kind: 'execute',
+			status: 'failed',
+			args: { command: 'bun test', token: '[REDACTED]' },
+			result: { error: 'Timed out', authorization: '[REDACTED]' },
+			error: 'Timed out',
+			startedAt: 1_000,
+			completedAt: 1_425,
+			durationMs: 425
+		});
+		expect(
+			normalizeToolCallUpdate(
+				{ sessionUpdate: 'tool_call_update', toolCallId: 'tool-1', status: 'failed' },
+				completed,
+				2_000
+			)
+		).toMatchObject({ completedAt: 1_425, durationMs: 425 });
+	});
+
+	it('uses ACP display content when Hermes intentionally omits polished raw payloads', () => {
+		const started = normalizeToolCallUpdate(
+			{
+				sessionUpdate: 'tool_call',
+				toolCallId: 'tool-content',
+				name: 'read_file',
+				title: 'read: config.json',
+				status: 'in_progress',
+				content: [{ type: 'content', content: { type: 'text', text: '{"path":"config.json"}' } }]
+			},
+			undefined,
+			10
+		);
+		const completed = normalizeToolCallUpdate(
+			{
+				sessionUpdate: 'tool_call_update',
+				toolCallId: 'tool-content',
+				status: 'completed',
+				content: [
+					{ type: 'content', content: { type: 'text', text: 'Read config.json successfully.' } }
+				]
+			},
+			started,
+			20
+		);
+
+		expect(completed.args).toBe('{"path":"config.json"}');
+		expect(completed.result).toBe('Read config.json successfully.');
+	});
+
+	it('forwards chronological tool and active plan updates from ACP', async () => {
+		const runtime = new HermesACP();
+		const internals = runtime as unknown as {
+			context: () => Promise<{ request: () => Promise<{ stopReason: 'end_turn' }> }>;
+			dispatchUpdate: (sessionId: string, update: unknown) => void;
+		};
+		internals.context = async () => ({
+			request: async () => {
+				internals.dispatchUpdate('session-1', {
+					sessionUpdate: 'tool_call',
+					toolCallId: 'tool-1',
+					name: 'read_file',
+					title: 'Read file',
+					status: 'in_progress',
+					rawInput: { path: 'README.md' }
+				});
+				internals.dispatchUpdate('session-1', {
+					sessionUpdate: 'plan',
+					entries: [
+						{ content: 'Inspect files', priority: 'high', status: 'in_progress' },
+						{ content: 'Report result', priority: 'medium', status: 'pending' }
+					]
+				});
+				return { stopReason: 'end_turn' };
+			}
+		});
+		const tools: unknown[] = [];
+		const plans: unknown[] = [];
+
+		await runtime.prompt({
+			sessionId: 'session-1',
+			text: 'Inspect',
+			images: [],
+			onChunk: () => {},
+			onTool: (tool) => tools.push(tool),
+			onPlan: (plan) => plans.push(plan)
+		});
+
+		expect(tools).toMatchObject([
+			{ id: 'tool-1', name: 'read_file', status: 'in_progress', args: { path: 'README.md' } }
+		]);
+		expect(plans).toEqual([
+			[
+				{ content: 'Inspect files', priority: 'high', status: 'in_progress' },
+				{ content: 'Report result', priority: 'medium', status: 'pending' }
+			]
+		]);
+	});
+
+	it('never grants permission without an active explicit interaction handler', async () => {
+		const runtime = new HermesACP();
+		const internals = runtime as unknown as {
+			handlePermission: (request: unknown) => Promise<unknown>;
+		};
+
+		expect(
+			await internals.handlePermission({
+				sessionId: 'session-1',
+				toolCall: {
+					toolCallId: 'perm-check-1',
+					title: 'Run command',
+					kind: 'execute',
+					status: 'pending',
+					rawInput: { command: 'rm file.txt' }
+				},
+				options: [{ optionId: 'allow_once', name: 'Allow once', kind: 'allow_once' }]
+			})
+		).toEqual({ outcome: { outcome: 'cancelled' } });
+	});
+
+	it('bridges permission and form elicitation only while their Session turn is active', async () => {
+		const runtime = new HermesACP();
+		const internals = runtime as unknown as {
+			context: () => Promise<{ request: () => Promise<{ stopReason: 'end_turn' }> }>;
+			handlePermission: (request: unknown) => Promise<unknown>;
+			handleElicitation: (request: unknown) => Promise<unknown>;
+		};
+		const interactions: unknown[] = [];
+		internals.context = async () => ({
+			request: async () => {
+				expect(
+					await internals.handlePermission({
+						sessionId: 'session-1',
+						toolCall: { toolCallId: 'perm-1', title: 'Execute', rawInput: { command: 'pwd' } },
+						options: [
+							{ optionId: 'once', name: 'Allow once', kind: 'allow_once' },
+							{ optionId: 'session', name: 'Allow for session', kind: 'allow_always' },
+							{ optionId: 'deny', name: 'Deny', kind: 'reject_once' }
+						]
+					})
+				).toEqual({ outcome: { outcome: 'selected', optionId: 'session' } });
+				expect(
+					await internals.handleElicitation({
+						mode: 'form',
+						sessionId: 'session-1',
+						message: 'Choose deployment',
+						requestedSchema: {
+							type: 'object',
+							properties: {
+								target: { type: 'string', enum: ['staging', 'production'] },
+								checks: { type: 'array', items: { type: 'string', enum: ['unit', 'e2e'] } },
+								note: { type: 'string' }
+							}
+						}
+					})
+				).toEqual({
+					action: 'accept',
+					content: { target: 'staging', checks: ['unit'], note: 'Go' }
+				});
+				return { stopReason: 'end_turn' };
+			}
+		});
+
+		await runtime.prompt({
+			sessionId: 'session-1',
+			text: 'Deploy',
+			images: [],
+			onChunk: () => {},
+			onInteraction: async (request) => {
+				interactions.push(request);
+				return request.kind === 'permission'
+					? { outcome: { outcome: 'selected', optionId: 'session' } }
+					: { action: 'accept', content: { target: 'staging', checks: ['unit'], note: 'Go' } };
+			}
+		});
+
+		expect(interactions).toEqual([
+			expect.objectContaining({ kind: 'permission', id: 'perm-1', sessionId: 'session-1' }),
+			expect.objectContaining({
+				kind: 'clarify',
+				sessionId: 'session-1',
+				message: 'Choose deployment',
+				fields: [
+					expect.objectContaining({ name: 'target', control: 'single' }),
+					expect.objectContaining({ name: 'checks', control: 'multi' }),
+					expect.objectContaining({ name: 'note', control: 'text' })
+				]
+			})
+		]);
+		expect(runtime.getRuntimeInfo().clarify).toEqual({ status: 'available' });
+	});
 	it('reports idle and ready ACP health without exposing process state', () => {
 		const runtime = new HermesACP();
 		const internals = runtime as unknown as { captureInitialization: (response: unknown) => void };
@@ -233,6 +498,10 @@ describe('HermesACP update subscriptions', () => {
 			capabilities: {
 				loadSession: true,
 				promptCapabilities: { image: true }
+			},
+			clarify: {
+				status: 'unsupported',
+				reason: 'Hermes ACP has not sent elicitation/create'
 			}
 		});
 	});

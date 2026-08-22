@@ -23,6 +23,37 @@ function makeDeliveryStore() {
 }
 
 describe('HUEStore project and workflow boundaries', () => {
+	it('derives background attention and error indicators from durable state', () => {
+		const store = makeStore();
+		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.upsertSession('hue', { sessionId: 'waiting', cwd: '/work/hue' });
+		store.upsertSession('hue', { sessionId: 'failed', cwd: '/work/hue' });
+		store.appendEvent('hue', 'waiting', 'agent.permission', {
+			id: 'permission-1',
+			status: 'pending'
+		});
+		store.acceptMessage({ id: 'msg-failed', projectId: 'hue', sessionId: 'failed', text: 'Run' });
+		store.transitionMessage('msg-failed', 'running', { messageId: 'msg-failed' });
+		store.transitionMessage('msg-failed', 'failed', {
+			messageId: 'msg-failed',
+			error: 'Hermes unavailable'
+		});
+
+		expect(store.getSessionIndicators('hue')).toEqual({
+			waiting: { attention: true, error: false },
+			failed: { attention: true, error: true }
+		});
+		store.appendEvent('hue', 'waiting', 'agent.permission', {
+			id: 'permission-1',
+			status: 'resolved'
+		});
+		expect(store.getSessionIndicators('hue').waiting).toEqual({
+			attention: false,
+			error: false
+		});
+		store.close();
+	});
+
 	it('stores a session and its delivery state without a project', () => {
 		const store = makeStore();
 		store.upsertSession(null, { sessionId: 'session-1', cwd: '/work/topics' });
@@ -357,6 +388,83 @@ describe('HUEStore acknowledged message transport', () => {
 		store.close();
 	});
 
+	it('recursively redacts credential identifiers and credential text at event persistence', () => {
+		const store = makeDeliveryStore();
+		const event = store.appendEvent('hue', 'session-1', 'agent.tool', {
+			messageId: 'msg-1',
+			title: 'Authorization: Bearer title-secret',
+			args: {
+				OPENAI_API_KEY: 'openai-secret',
+				GH_TOKEN: 'github-secret',
+				AWS_SECRET_ACCESS_KEY: 'aws-secret',
+				DEPLOY_TOKEN: 'deploy-secret',
+				SIGNING_SECRET: 'signing-secret',
+				ADMIN_PASSWORD: 'password-secret',
+				command:
+					'curl -H "Authorization: Bearer header-secret" https://user:pass@example.test && export OPENAI_API_KEY=inline-secret'
+			},
+			result: ['Bearer result-secret', { error: 'GH_TOKEN=result-token' }],
+			plan: [{ content: 'Use AWS_SECRET_ACCESS_KEY=plan-secret' }],
+			children: [
+				{ goal: 'Check https://alice:hunter2@example.test', result: 'token=result-secret' }
+			],
+			safe: {
+				tokenCount: 42,
+				passwordless: true,
+				secretariat: 'office',
+				authorizationMode: 'explicit',
+				url: 'https://example.test/path',
+				prose: 'Bearer authentication uses a credential.'
+			}
+		});
+
+		expect(JSON.stringify(event.payload)).not.toContain('title-secret');
+		expect(JSON.stringify(event.payload)).not.toContain('openai-secret');
+		expect(JSON.stringify(event.payload)).not.toContain('github-secret');
+		expect(JSON.stringify(event.payload)).not.toContain('aws-secret');
+		expect(JSON.stringify(event.payload)).not.toContain('header-secret');
+		expect(JSON.stringify(event.payload)).not.toContain('hunter2');
+		expect(event.payload).toMatchObject({
+			title: 'Authorization: [REDACTED]',
+			args: {
+				OPENAI_API_KEY: '[REDACTED]',
+				GH_TOKEN: '[REDACTED]',
+				AWS_SECRET_ACCESS_KEY: '[REDACTED]',
+				DEPLOY_TOKEN: '[REDACTED]',
+				SIGNING_SECRET: '[REDACTED]',
+				ADMIN_PASSWORD: '[REDACTED]'
+			},
+			safe: {
+				tokenCount: 42,
+				passwordless: true,
+				secretariat: 'office',
+				authorizationMode: 'explicit',
+				url: 'https://example.test/path',
+				prose: 'Bearer authentication uses a credential.'
+			}
+		});
+		expect(store.listEvents('hue', 'session-1').at(-1)?.payload).toEqual(event.payload);
+		store.close();
+	});
+
+	it('redaction preserves safe audit history without depth or item truncation', () => {
+		const store = makeDeliveryStore();
+		let nested: Record<string, unknown> = { value: 'safe' };
+		for (let depth = 0; depth < 20; depth += 1) nested = { child: nested };
+		const values = Array.from({ length: 250 }, (_, index) => `safe-${index}`);
+
+		const event = store.appendEvent('hue', 'session-1', 'agent.subagents', {
+			id: 'delegate-large',
+			nested,
+			values
+		});
+
+		expect(event.payload.values).toEqual(values);
+		expect(JSON.stringify(event.payload.nested)).toContain('"value":"safe"');
+		expect(JSON.stringify(event.payload)).not.toContain('[TRUNCATED]');
+		store.close();
+	});
+
 	it('records explicit queued, running, and terminal message states', () => {
 		const store = makeDeliveryStore();
 		store.acceptMessage({
@@ -479,6 +587,42 @@ describe('HUEStore acknowledged message transport', () => {
 			images: [],
 			error: 'ACP disconnected before acknowledgement'
 		});
+		store.close();
+	});
+
+	it('cancels persisted authority prompts when recovering an interrupted turn', () => {
+		const store = makeDeliveryStore();
+		store.acceptMessage({
+			id: 'msg-1',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Ask before acting.'
+		});
+		store.updateMessageStatus('msg-1', 'running');
+		store.appendEvent('hue', 'session-1', 'agent.permission', {
+			id: 'permission-1',
+			messageId: 'msg-1',
+			status: 'pending'
+		});
+		store.appendEvent('hue', 'session-1', 'agent.clarify', {
+			id: 'clarify-1',
+			messageId: 'msg-1',
+			status: 'pending'
+		});
+
+		store.recoverInterruptedMessages();
+
+		const interactions = store
+			.listEvents('hue', 'session-1')
+			.filter((event) => event.type === 'agent.permission' || event.type === 'agent.clarify');
+		expect(
+			interactions.map((event) => [event.type, event.payload.id, event.payload.status])
+		).toEqual([
+			['agent.permission', 'permission-1', 'pending'],
+			['agent.clarify', 'clarify-1', 'pending'],
+			['agent.permission', 'permission-1', 'cancelled'],
+			['agent.clarify', 'clarify-1', 'cancelled']
+		]);
 		store.close();
 	});
 
