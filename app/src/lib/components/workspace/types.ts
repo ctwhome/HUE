@@ -1,5 +1,10 @@
-import type { ImageAttachment } from '$lib/message-content';
-import type { WorkspaceSubagentTree } from '$lib';
+import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+import type {
+	WorkspaceActivity,
+	WorkspacePlanEntry,
+	WorkspaceSubagentTree,
+	WorkspaceTimelineItem
+} from '$lib';
 
 export type Project = {
 	id: string;
@@ -20,12 +25,19 @@ export type Session = {
 	busySince?: string | null;
 	available?: boolean;
 	recovery?: string | null;
+	attention?: boolean;
+	error?: boolean;
+	pinned?: boolean;
+	archived?: boolean;
+	folder?: string | null;
+	tags?: string[];
 };
 
 export type Workflow = { id: string; name: string; prompt: string; profile: string };
 export type HermesCommand = { name: string; description: string; input?: { hint: string } | null };
 export type HermesRuntime = {
 	profile: string;
+	clarify?: { status: 'unsupported' | 'available'; reason?: string };
 	models?: {
 		currentModelId: string;
 		availableModels: Array<{ modelId: string; name: string; description?: string | null }>;
@@ -40,19 +52,28 @@ export type TranscriptMessage = {
 	role: 'user' | 'assistant';
 	text: string;
 	images?: ImageAttachment[];
+	attachments?: InputAttachment[];
+	createdAt?: string;
 };
-export type SessionEvent = { sequence: number; type: string; payload: Record<string, unknown> };
+export type SessionEvent = {
+	sequence: number;
+	type: string;
+	payload: Record<string, unknown>;
+	createdAt?: string;
+};
 export type PendingEnvelope = {
 	id: string;
 	projectId: string | null;
 	sessionId: string;
 	text: string;
 	images: ImageAttachment[];
+	attachments: InputAttachment[];
 };
 export type QueuedMessage = {
 	id: string;
 	text: string;
 	images: ImageAttachment[];
+	attachments: InputAttachment[];
 	status: 'queued';
 };
 export type ActiveTurn = {
@@ -64,8 +85,11 @@ export type ActiveTurn = {
 	error: string | null;
 };
 export type CachedSessionView = {
+	timeline: WorkspaceTimelineItem[];
 	transcript: TranscriptMessage[];
 	subagents: WorkspaceSubagentTree[];
+	activity: WorkspaceActivity[];
+	plan: WorkspacePlanEntry[];
 	commands: HermesCommand[];
 	runtime: HermesRuntime;
 	branch: string | null;
@@ -83,7 +107,14 @@ export type SessionLoad = {
 	cursor: number;
 	activeTurn: ActiveTurn | null;
 	events: SessionEvent[];
-	messages: Array<QueuedMessage | { id: string; status: string }>;
+	messages: Array<{
+		id: string;
+		text: string;
+		images: ImageAttachment[];
+		attachments: InputAttachment[];
+		status: string;
+		createdAt?: string;
+	}>;
 	commands?: HermesCommand[];
 	runtime?: HermesRuntime;
 	branch?: string | null;

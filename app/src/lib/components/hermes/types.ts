@@ -5,6 +5,7 @@ export type HermesInfo = {
 	protocolVersion?: number;
 	agent?: { name: string; version: string };
 	capabilities?: Record<string, unknown>;
+	clarify?: { status: 'unsupported' | 'available'; reason?: string };
 };
 
 export type Skill = {

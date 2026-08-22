@@ -1,6 +1,6 @@
 import { tick } from 'svelte';
 import { applySessionEvents, isTurnBusy, runSingleFlight } from '$lib';
-import type { ImageAttachment } from '$lib/message-content';
+import type { ImageAttachment, InputAttachment } from '$lib/message-content';
 import { shouldSendMessage } from '$lib/preferences';
 import type { WorkspaceNavigation } from './navigation.svelte';
 import type { SessionState } from './session-state.svelte';
@@ -16,7 +16,9 @@ import type {
 	SessionEvent,
 	TranscriptMessage
 } from './types';
-
+import { copyCode } from './copy-code';
+import { readAttachmentFiles, unavailableAttachmentMetadata } from './attachment-files';
+import { MessagePersistence } from './message-persistence';
 type MessageStateOptions = {
 	api: Api;
 	getProject: () => Project | null;
@@ -30,13 +32,12 @@ type MessageStateOptions = {
 	setError: (message: string) => void;
 	setLoading: (loading: boolean) => void;
 };
-
 export class ApiError extends Error {}
-
 export class MessageState {
 	composer = $state('');
 	composerElement = $state<HTMLTextAreaElement>();
 	images = $state<ImageAttachment[]>([]);
+	attachments = $state<InputAttachment[]>([]);
 	draggingImages = $state(false);
 	pendingEnvelope = $state<PendingEnvelope | null>(null);
 	editingQueuedMessageId = $state('');
@@ -45,23 +46,23 @@ export class MessageState {
 	stopping = $state(false);
 	private pollTimer: ReturnType<typeof setInterval> | null = null;
 	private pollFlight: { current: Promise<void> | null } = { current: null };
-
-	constructor(private options: MessageStateOptions) {}
-
+	private persistence: MessagePersistence;
+	constructor(private options: MessageStateOptions) {
+		this.persistence = new MessagePersistence(options.getProject, options.getSession);
+	}
 	private sessionPath(sessionId: string, suffix = '') {
 		return this.options.getNavigation().sessionApiPath(sessionId, suffix);
 	}
-
 	clear = () => {
 		this.pendingEnvelope = null;
 		this.editingQueuedMessageId = '';
 		this.images = [];
+		this.attachments = [];
 	};
-
 	submit = async (event: SubmitEvent) => {
 		event.preventDefault();
 		const text = this.composer;
-		if (!text.trim() && !this.images.length) return;
+		if (!text.trim() && !this.images.length && !this.attachments.length) return;
 		const sent = this.editingQueuedMessageId
 			? await this.updateQueuedMessage(text)
 			: isTurnBusy(this.options.session.delivery)
@@ -70,11 +71,11 @@ export class MessageState {
 		if (sent) {
 			this.composer = '';
 			this.images = [];
+			this.attachments = [];
 			this.editingQueuedMessageId = '';
 			this.clearCurrentDraft();
 		}
 	};
-
 	private async queueMessage(text: string): Promise<boolean> {
 		const selectedSession = this.options.getSession();
 		if (!selectedSession) return false;
@@ -82,11 +83,25 @@ export class MessageState {
 		try {
 			await this.options.api<{ status: string }>(
 				this.sessionPath(selectedSession.sessionId, '/messages'),
-				{ method: 'POST', body: JSON.stringify({ messageId, text, images: this.images }) }
+				{
+					method: 'POST',
+					body: JSON.stringify({
+						messageId,
+						text,
+						images: this.images,
+						attachments: this.attachments
+					})
+				}
 			);
 			this.options.session.queuedMessages = [
 				...this.options.session.queuedMessages,
-				{ id: messageId, text, images: [...this.images], status: 'queued' }
+				{
+					id: messageId,
+					text,
+					images: [...this.images],
+					attachments: this.attachments.map(unavailableAttachmentMetadata),
+					status: 'queued'
+				}
 			];
 			return true;
 		} catch (cause) {
@@ -99,6 +114,9 @@ export class MessageState {
 		const selectedSession = this.options.getSession();
 		if (!selectedSession || !this.editingQueuedMessageId) return false;
 		try {
+			const preserveAttachments =
+				this.attachments.length > 0 &&
+				this.attachments.every((attachment) => attachment.reattachRequired && !attachment.data);
 			const body = await this.options.api<{ message: QueuedMessage }>(
 				this.sessionPath(selectedSession.sessionId, '/messages'),
 				{
@@ -106,7 +124,9 @@ export class MessageState {
 					body: JSON.stringify({
 						messageId: this.editingQueuedMessageId,
 						text,
-						images: this.images
+						images: this.images,
+						attachments: preserveAttachments ? undefined : this.attachments,
+						preserveAttachments
 					})
 				}
 			);
@@ -124,6 +144,7 @@ export class MessageState {
 		this.editingQueuedMessageId = message.id;
 		this.composer = message.text;
 		this.images = [...message.images];
+		this.attachments = [...(message.attachments ?? [])];
 		await tick();
 		this.composerElement?.focus();
 	};
@@ -136,38 +157,72 @@ export class MessageState {
 			this.messageNotice = 'Copy unavailable';
 		}
 	};
+	copyCode = (code: string) => copyCode(code, (message) => (this.messageNotice = message));
 
+	respondToInteraction = async (
+		interactionId: string,
+		response:
+			| { kind: 'permission'; optionId: string }
+			| { kind: 'clarify'; action: 'accept'; content: Record<string, string | string[]> }
+			| { kind: 'clarify'; action: 'cancel' }
+	) => {
+		const navigation = this.options.getNavigation();
+		const selection = navigation.captureSessionSelection();
+		if (!selection) return;
+		const interactionPath = this.sessionPath(selection.sessionId, '/interactions');
+		try {
+			await this.options.api(interactionPath, {
+				method: 'POST',
+				body: JSON.stringify({ interactionId, response })
+			});
+			this.options.session.resolveInteraction(
+				selection.projectId,
+				selection.sessionId,
+				interactionId,
+				response.kind,
+				response.kind === 'clarify' && response.action === 'cancel' ? 'cancelled' : 'resolved',
+				navigation.isCurrentSessionSelection(selection)
+			);
+		} catch (cause) {
+			if (navigation.isCurrentSessionSelection(selection)) this.report(cause);
+		}
+	};
 	editMessage = async (message: TranscriptMessage) => {
 		this.composer = message.text;
 		this.images = [...(message.images ?? [])];
+		this.attachments = (message.attachments ?? []).filter((attachment) => attachment.data);
+		if ((message.attachments ?? []).some((attachment) => !attachment.data)) {
+			this.options.setError('Attachment bytes are unavailable; reattach files before sending.');
+		}
 		this.saveCurrentDraft();
 		await tick();
 		this.composerElement?.focus();
 	};
-
-	forkSession = async () => {
+	openMedia = async (path: string, action: 'open' | 'reveal') => {
 		const selectedSession = this.options.getSession();
-		if (!selectedSession || isTurnBusy(this.options.session.delivery)) return;
-		const projectId = this.options.getProject()?.id ?? null;
-		const sessionId = selectedSession.sessionId;
-		this.options.setLoading(true);
-		this.options.setError('');
+		if (!selectedSession) return;
 		try {
-			const body = await this.options.api<{ session: Session }>(this.sessionPath(sessionId), {
-				method: 'POST'
+			await this.options.api(this.sessionPath(selectedSession.sessionId, '/media'), {
+				method: 'POST',
+				body: JSON.stringify({ path, action })
 			});
-			if (
-				(this.options.getProject()?.id ?? null) !== projectId ||
-				this.options.getSession()?.sessionId !== sessionId
-			)
-				return;
-			this.options.getNavigation().prependSession(body.session);
-			await this.options.getNavigation().openSession(body.session);
+			this.messageNotice =
+				action === 'reveal' ? 'Revealed generated file' : 'Opened generated file';
 		} catch (cause) {
 			this.report(cause);
-		} finally {
-			this.options.setLoading(false);
 		}
+	};
+
+	retryLastResponse = async () => {
+		const messages = this.options.session.timeline.filter((item) => item.kind === 'message');
+		const lastAssistant = messages.findLastIndex((message) => message.role === 'assistant');
+		const user = messages.slice(0, lastAssistant).findLast((message) => message.role === 'user');
+		if (!user) return;
+		if ((user.attachments ?? []).some((attachment) => !attachment.data)) {
+			this.options.setError('Attachment bytes are unavailable; reattach files before retrying.');
+			return;
+		}
+		await this.sendText(user.text, user.images ?? [], user.attachments ?? []);
 	};
 
 	stopTurn = async () => {
@@ -187,24 +242,32 @@ export class MessageState {
 
 	sendText = async (
 		text: string,
-		attachments: ImageAttachment[] = this.images
+		imageAttachments: ImageAttachment[] = this.images,
+		fileAttachments: InputAttachment[] = this.attachments
 	): Promise<boolean> => {
 		const selectedSession = this.options.getSession();
 		const sessionState = this.options.session;
 		if (!selectedSession || isTurnBusy(sessionState.delivery)) return false;
+		if (fileAttachments.some((attachment) => !attachment.data)) {
+			this.options.setError('Attachment bytes are unavailable; reattach files before sending.');
+			return false;
+		}
 		this.options.prepareVoice();
 		const projectId = this.options.getProject()?.id ?? null;
 		const envelope =
 			this.pendingEnvelope?.projectId === projectId &&
 			this.pendingEnvelope.sessionId === selectedSession.sessionId &&
-			this.pendingEnvelope.text === text
+			this.pendingEnvelope.text === text &&
+			JSON.stringify(this.pendingEnvelope.images) === JSON.stringify(imageAttachments) &&
+			JSON.stringify(this.pendingEnvelope.attachments) === JSON.stringify(fileAttachments)
 				? this.pendingEnvelope
 				: {
 						id: crypto.randomUUID(),
 						projectId,
 						sessionId: selectedSession.sessionId,
 						text,
-						images: attachments
+						images: imageAttachments,
+						attachments: fileAttachments
 					};
 		sessionState.activeMessageId = envelope.id;
 		sessionState.pendingAssistant = '';
@@ -222,7 +285,8 @@ export class MessageState {
 					body: JSON.stringify({
 						messageId: envelope.id,
 						text: envelope.text,
-						images: envelope.images
+						images: envelope.images,
+						attachments: envelope.attachments
 					})
 				}
 			);
@@ -239,9 +303,22 @@ export class MessageState {
 				this.startPolling();
 				return true;
 			}
+			const attachmentMetadata = envelope.attachments.map(unavailableAttachmentMetadata);
 			sessionState.transcript = [
 				...sessionState.transcript,
-				{ role: 'user', text, images: envelope.images }
+				{ role: 'user', text, images: envelope.images, attachments: attachmentMetadata }
+			];
+			sessionState.timeline = [
+				...sessionState.timeline,
+				{
+					sequence: Number.MAX_SAFE_INTEGER,
+					kind: 'message',
+					role: 'user',
+					messageId: envelope.id,
+					text,
+					images: envelope.images,
+					attachments: attachmentMetadata
+				}
 			];
 			await this.options.transcriptFollow.scrollToLatest();
 			sessionState.delivery = 'accepted';
@@ -259,66 +336,42 @@ export class MessageState {
 			return false;
 		}
 	};
-
 	retryPendingMessage = async () => {
 		if (!this.pendingEnvelope || isTurnBusy(this.options.session.delivery)) return;
-		if (await this.sendText(this.pendingEnvelope.text, this.pendingEnvelope.images)) {
+		if (
+			await this.sendText(
+				this.pendingEnvelope.text,
+				this.pendingEnvelope.images,
+				this.pendingEnvelope.attachments
+			)
+		) {
 			this.composer = '';
 			this.images = [];
+			this.attachments = [];
 			this.clearCurrentDraft();
 		}
 	};
-
-	private storageKey(kind: 'draft' | 'pending') {
-		const selectedSession = this.options.getSession();
-		return selectedSession
-			? `hue:${kind}:${this.options.getProject()?.id ?? 'none'}:${selectedSession.sessionId}`
-			: '';
-	}
-
 	saveCurrentDraft = () => {
-		const key = this.storageKey('draft');
-		if (!key) return;
-		if (this.composer) localStorage.setItem(key, this.composer);
-		else localStorage.removeItem(key);
+		this.persistence.draft(this.composer);
 	};
-
 	restoreDraft = () => {
-		const key = this.storageKey('draft');
-		this.composer = key ? (localStorage.getItem(key) ?? '') : '';
-		const pending = this.storageKey('pending');
-		try {
-			const saved = pending
-				? (JSON.parse(localStorage.getItem(pending) ?? 'null') as PendingEnvelope | null)
-				: null;
-			this.pendingEnvelope = saved ? { ...saved, images: saved.images ?? [] } : null;
-		} catch {
-			this.pendingEnvelope = null;
-			if (pending) localStorage.removeItem(pending);
-		}
+		this.composer = this.persistence.draft();
+		this.pendingEnvelope = this.persistence.pending();
 	};
-
 	private savePendingEnvelope(envelope: PendingEnvelope) {
-		const key = this.storageKey('pending');
-		if (key) localStorage.setItem(key, JSON.stringify(envelope));
+		this.persistence.pending(envelope);
 	}
-
 	private clearPendingEnvelope() {
-		const key = this.storageKey('pending');
-		if (key) localStorage.removeItem(key);
+		this.persistence.pending(null);
 	}
-
 	private clearCurrentDraft() {
-		const key = this.storageKey('draft');
-		if (key) localStorage.removeItem(key);
+		this.persistence.draft('');
 	}
-
 	updateDraft = (event: Event) => {
 		this.composer = (event.currentTarget as HTMLTextAreaElement).value;
 		this.commandIndex = 0;
 		this.saveCurrentDraft();
 	};
-
 	matchingCommands = () => {
 		const match = this.composer.match(/^\/([^\s]*)$/);
 		if (!match) return [];
@@ -326,77 +379,65 @@ export class MessageState {
 			name.toLowerCase().startsWith(match[1].toLowerCase())
 		);
 	};
-
 	chooseCommand = (command: HermesCommand) => {
 		this.composer = `/${command.name} `;
 		this.commandIndex = 0;
 		this.saveCurrentDraft();
 	};
-
 	handleComposerKeydown = (event: KeyboardEvent) => {
 		const matches = this.matchingCommands();
+		const sendKey =
+			document.documentElement.dataset.sendKey === 'mod-enter' ? 'mod-enter' : 'enter';
+		const sendNow = sendKey === 'mod-enter' && shouldSendMessage(event, sendKey);
 		if (matches.length && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
 			event.preventDefault();
 			const step = event.key === 'ArrowDown' ? 1 : -1;
 			this.commandIndex = (this.commandIndex + step + matches.length) % matches.length;
 			return;
 		}
-		if (matches.length && (event.key === 'Tab' || event.key === 'Enter')) {
+		if (matches.length && (event.key === 'Tab' || (event.key === 'Enter' && !sendNow))) {
 			event.preventDefault();
 			this.chooseCommand(matches[this.commandIndex] ?? matches[0]);
 			return;
 		}
-		if (
-			shouldSendMessage(
-				event,
-				document.documentElement.dataset.sendKey === 'mod-enter' ? 'mod-enter' : 'enter'
-			)
-		) {
+		if (shouldSendMessage(event, sendKey)) {
 			event.preventDefault();
 			(event.currentTarget as HTMLTextAreaElement).form?.requestSubmit();
 		}
 	};
-
-	addImageFiles = async (files: FileList | File[]) => {
-		for (const file of Array.from(files).slice(0, 4 - this.images.length)) {
-			if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
-				this.options.setError('Only PNG, JPEG, GIF, and WebP images are supported');
-				continue;
-			}
-			if (file.size > 10 * 1024 * 1024) {
-				this.options.setError('Each image must be 10 MB or smaller');
-				continue;
-			}
-			const dataUrl = await new Promise<string>((resolve, reject) => {
-				const reader = new FileReader();
-				reader.onload = () => resolve(String(reader.result));
-				reader.onerror = () => reject(reader.error);
-				reader.readAsDataURL(file);
-			});
-			this.images = [
-				...this.images,
-				{ name: file.name, mimeType: file.type, data: dataUrl.split(',')[1] }
-			];
-		}
+	addFiles = async (files: FileList | File[]) => {
+		const result = await readAttachmentFiles(
+			files,
+			8 - this.images.length - this.attachments.length
+		);
+		const availableImages = 4 - this.images.length;
+		this.images = [...this.images, ...result.images.slice(0, availableImages)];
+		this.attachments = [
+			...this.attachments.filter((attachment) => attachment.data),
+			...result.attachments
+		];
+		this.options.setError(
+			result.images.length > availableImages
+				? 'Attach no more than 4 images'
+				: (result.errors.at(-1) ?? '')
+		);
 	};
-
 	handleImageInput = (event: Event) => {
 		const input = event.currentTarget as HTMLInputElement;
-		if (input.files) void this.addImageFiles(input.files);
+		if (input.files) void this.addFiles(input.files);
 		input.value = '';
 	};
-
 	handleDrop = (event: DragEvent) => {
 		event.preventDefault();
 		this.draggingImages = false;
-		if (event.dataTransfer?.files) void this.addImageFiles(event.dataTransfer.files);
+		if (event.dataTransfer?.files) void this.addFiles(event.dataTransfer.files);
 	};
 
 	handlePaste = (event: ClipboardEvent) => {
 		const files = Array.from(event.clipboardData?.files ?? []).filter((file) =>
 			file.type.startsWith('image/')
 		);
-		if (files.length) void this.addImageFiles(files);
+		if (files.length) void this.addFiles(files);
 	};
 
 	startPolling = () => {
@@ -431,28 +472,7 @@ export class MessageState {
 					return;
 				const state = this.options.session;
 				this.options.applyVoiceEvents(body.events, state.activeMessageId);
-				const next = applySessionEvents(
-					{
-						cursor: state.eventCursor,
-						activeMessageId: state.activeMessageId,
-						pendingAssistant: state.pendingAssistant,
-						pendingImages: state.pendingImages,
-						pendingThought: state.pendingThought,
-						delivery: state.delivery,
-						transcript: state.transcript,
-						subagents: state.subagents
-					},
-					body.events
-				);
-				const wasBusy = isTurnBusy(state.delivery);
-				state.eventCursor = next.cursor;
-				state.pendingAssistant = next.pendingAssistant;
-				state.pendingImages = next.pendingImages ?? [];
-				state.pendingThought = next.pendingThought ?? '';
-				state.delivery = next.delivery;
-				if (wasBusy && !isTurnBusy(state.delivery)) this.options.transcriptFollow.settle();
-				state.transcript = next.transcript;
-				state.subagents = next.subagents ?? [];
+				if (state.applyEvents(body.events)) this.options.transcriptFollow.settle();
 				if (body.runtime) state.runtime = { ...state.runtime, ...body.runtime };
 				if (!isTurnBusy(state.delivery)) {
 					this.options.getNavigation().setSessionBusySince(sessionId, null);
