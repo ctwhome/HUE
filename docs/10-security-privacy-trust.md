@@ -27,6 +27,7 @@ HUE is a privileged local application coordinating probabilistic workers and det
 9. Cloud transmission is visible and policy-governed.
 10. Export and deletion are first-class.
 11. Notification endpoints cannot expand worker capability, and external/lock-screen payloads are minimized by policy.
+12. HUE work mode changes cadence only; they do not change approval policy, authority, or Hermes runtime mode.
 
 ## Threat surfaces
 
@@ -63,6 +64,13 @@ flowchart LR
 ```
 
 Enforcement lives in trusted control-plane code. Prompt instructions improve behavior but are not the boundary.
+
+### Work mode trust boundary
+
+- `work_mode` is HUE-owned Session metadata, not Hermes authority.
+- Natural-language and slash mode switches are exact local parsers, not classifier output.
+- HUE may send cadence hints through ACP `_meta` and a fixed preamble, but this is advisory guidance only and must not be represented as deterministic enforcement.
+- The preamble explicitly states that it does not authorize external effects, and HUE strips only its own exact generated preamble from replayed Hermes user text.
 
 ## Prompt-injection posture — `TBI`
 

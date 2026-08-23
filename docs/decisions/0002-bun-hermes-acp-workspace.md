@@ -47,7 +47,11 @@ HUE owns Project and Workflow metadata plus message-delivery truth. Hermes owns 
 
 HUE also persists each discovered or created Hermes Session's Project association and working directory. Session routes and delivery records require that association and use the composite Project/Session boundary. On startup, accepted queued turns resume their associated Hermes Session before dispatch; interrupted running turns become `unknown` with a durable event and are never retried automatically.
 
+HUE also owns a per-Session `work_mode` enum with exactly `autonomous` and `live`. It defaults to `autonomous` for new, migrated, and forked Sessions, is stored only in HUE SQLite, is visible in Session list/detail payloads, and is changed only through HUE Session/message routes. It must never be confused with Hermes ACP runtime `modeId`, and it does not widen authority.
+
 The browser never sends terminal keystrokes as chat input. HUE persists the full envelope before dispatch, deduplicates retries, serializes turns within a Session, and marks transport loss as `unknown` rather than automatically replaying a potentially side-effecting prompt.
+
+At prompt time HUE reads the current stored `work_mode`, sends ACP `_meta.hue = { workMode, version, authorityUnchanged: true }`, and prefixes the user text with a fixed cadence-only preamble because current Hermes ACP ignores `_meta`. HUE strips only that exact generated preamble from replayed Hermes user transcript chunks so the HUE-visible transcript remains the original user text.
 
 ## Explicit non-goals
 

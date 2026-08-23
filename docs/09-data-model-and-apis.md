@@ -64,6 +64,8 @@ Reusable user-owned reference such as a person, book, template, research library
 
 An independent discussion, execution, research, monitoring or review context bound to one Space/context-pack version. The Session owns human/assistant-visible messages, branches, attachments, working summaries, backend handles and task/run links. Model-facing technical events are not forced into display messages. Concurrent Sessions never share a mutable transcript/context window.
 
+HUE Session metadata also includes `work_mode = 'autonomous' | 'live'`. It defaults to `autonomous`, survives migration, is reset to `autonomous` on fork, and is stored in `project_sessions.work_mode` with control-plane validation.
+
 ### Knowledge item
 
 Human-readable note/file relationship with Space, tags, backlinks, version/provenance metadata and epistemic type: `personal_observation`, `agent_inference`, `external_evidence`, `professional_advice`, `decision`, or `unresolved_uncertainty`. The database indexes and relates content; files remain files where possible.
@@ -182,6 +184,7 @@ Task status summarizes current intent across runs; run status describes an attem
 space.created|updated|archived
 project.*|area.*|resource.*
 session.created|resumed|summarized|closed|archived
+session.work_mode_changed
 message.*
 knowledge.proposed|accepted|superseded|deleted
 source.bound|refreshed|stale|conflicted
@@ -218,6 +221,13 @@ inbox.*           capture, propose route, correct, keep, dispatch
 context.*         preview, explain, manifest
 memory.*          query, propose, accept, edit, supersede, delete
 tasks.*           create, plan, start, steer, pause, resume, cancel
+
+Focused HUE Session contract:
+
+- `GET /api/sessions`, `GET /api/projects/:projectId/sessions`: each Session item includes `workMode`.
+- `GET /api/sessions/:sessionId`, `GET /api/projects/:projectId/sessions/:sessionId`: detail includes `workMode`, transcript state, queued/running message state, and events.
+- `PATCH` existing Session route with exactly `{ "workMode": "autonomous" | "live" }`: updates HUE-owned cadence state even while a turn is running, returns the effective `workMode`, and emits `session.work_mode_changed` only on actual change.
+- `POST` Session message route: server applies exact natural/slash work-mode parsing before dispatch, returns the effective `workMode`, and may consume exact slash aliases without creating an agent turn.
 runs.*            get, events, reconcile, retry, branch
 workers.*         inspect, events, steer, terminate
 approvals.*       list, inspect, decide, revoke
