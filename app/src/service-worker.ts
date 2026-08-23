@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 import { build, version } from '$service-worker';
 import { safeLaunchUrl } from '$lib/pwa/safe-launch-url';
+import { notificationDisplayOptions, parsePushPayload } from '$lib/pwa/notification-payload';
 
 const worker = self as unknown as ServiceWorkerGlobalScope;
 const CACHE = `hue-static-${version}`;
@@ -36,17 +37,60 @@ worker.addEventListener('fetch', (event) => {
 	);
 });
 
+worker.addEventListener('push', (event) => {
+	let value: unknown = null;
+	try {
+		value = event.data?.json();
+	} catch {
+		// Malformed data falls back to generic copy.
+	}
+	const payload = parsePushPayload(value);
+	event.waitUntil(
+		worker.registration.showNotification(payload.title, notificationDisplayOptions(payload))
+	);
+});
+
 worker.addEventListener('notificationclick', (event) => {
 	event.notification.close();
 	const url = safeLaunchUrl(event.notification.data?.url, worker.location.origin);
+	const id = event.notification.data?.id;
+	const markActed =
+		typeof id === 'string' && id && id.length <= 200
+			? fetch(`/api/notifications/${encodeURIComponent(id)}`, {
+					method: 'PATCH',
+					credentials: 'same-origin',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ state: 'acted' })
+				}).catch(() => undefined)
+			: Promise.resolve();
 	event.waitUntil(
-		worker.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clients) => {
-			const client = clients[0] as WindowClient | undefined;
-			if (client) {
-				await client.navigate(url);
-				return client.focus();
-			}
-			return worker.clients.openWindow(url);
-		})
+		markActed.then(() =>
+			worker.clients
+				.matchAll({ type: 'window', includeUncontrolled: true })
+				.then(async (clients) => {
+					const client = clients[0] as WindowClient | undefined;
+					if (client) {
+						await client.navigate(url);
+						return client.focus();
+					}
+					return worker.clients.openWindow(url);
+				})
+		)
+	);
+});
+
+worker.addEventListener('notificationclose', (event) => {
+	const id = event.notification.data?.id;
+	if (typeof id !== 'string' || !id || id.length > 200) return;
+	event.waitUntil(
+		fetch(`/api/notifications/${encodeURIComponent(id)}`, {
+			method: 'PATCH',
+			credentials: 'same-origin',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ state: 'dismissed' })
+		}).then(
+			() => undefined,
+			() => undefined
+		)
 	);
 });

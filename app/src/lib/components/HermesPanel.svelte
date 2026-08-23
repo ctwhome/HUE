@@ -42,6 +42,7 @@
 	const runtimeActions = ['runtime.restart-admin', 'runtime.reconnect-acp'];
 
 	const labels: Record<GlobalView, string> = {
+		notifications: 'Notifications',
 		settings: 'Settings',
 		runtime: 'Runtime',
 		memory: 'Memory',

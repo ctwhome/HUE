@@ -1,14 +1,17 @@
 <script lang="ts">
 	import type { MobilePane } from './mobile-navigation';
 
-	let { drawer, ready, backdrop, ontoggle, onclose, onsettings } = $props<{
-		drawer: MobilePane;
-		ready: boolean;
-		backdrop: boolean;
-		ontoggle: (pane: Exclude<MobilePane, null>, trigger: HTMLElement) => void;
-		onclose: () => void;
-		onsettings: () => void;
-	}>();
+	let { drawer, ready, backdrop, unreadCount, ontoggle, onclose, onnotifications, onsettings } =
+		$props<{
+			drawer: MobilePane;
+			ready: boolean;
+			backdrop: boolean;
+			unreadCount: number;
+			ontoggle: (pane: Exclude<MobilePane, null>, trigger: HTMLElement) => void;
+			onclose: () => void;
+			onnotifications: () => void;
+			onsettings: () => void;
+		}>();
 </script>
 
 <nav class="mobile-navigation" aria-label="Workspace navigation">
@@ -22,6 +25,12 @@
 			>{pane === 'projects' ? 'Projects' : 'Sessions'}</button
 		>
 	{/each}
+	<button
+		aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
+		title="Notifications"
+		onclick={onnotifications}
+		>Notifications{unreadCount ? ` ${unreadCount > 99 ? '99+' : unreadCount}` : ''}</button
+	>
 	<button aria-label="Settings" title="Settings" onclick={onsettings}>Settings</button>
 </nav>
 {#if backdrop}<button
