@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { validateIcon } from '$lib/icon';
+import { applyExplicitWorkMode } from '$lib/server/work-mode-context';
 import { services } from '$lib/server/services';
 import { exportSession } from '$lib/server/session-transfer';
 import type { RequestHandler } from './$types';
@@ -38,6 +39,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		}
 		return json({
 			transcript,
+			workMode: session.workMode,
 			commands: services().runtime.getAvailableCommands(params.sessionId),
 			runtime: services().runtime.getSessionState(params.sessionId),
 			branch: null,
@@ -48,6 +50,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 			return json({
 				transcript: [],
 				transcriptError: cause instanceof Error ? cause.message : String(cause),
+				workMode: session.workMode,
 				...snapshot
 			});
 		}
@@ -120,6 +123,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		const body = (await request.json()) as {
 			modelId?: string;
 			modeId?: string;
+			workMode?: unknown;
 			icon?: unknown;
 			title?: unknown;
 			pinned?: unknown;
@@ -129,15 +133,32 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		};
 		const modelId = body.modelId?.trim();
 		const modeId = body.modeId?.trim();
+		const hasWorkMode = 'workMode' in body;
 		const hasIcon = 'icon' in body;
 		const metadataKeys = ['title', 'pinned', 'archived', 'folder', 'tags'].filter(
 			(key) => key in body
 		);
-		if ((modelId ? 1 : 0) + (modeId ? 1 : 0) + (hasIcon || metadataKeys.length ? 1 : 0) !== 1) {
+		if (
+			(modelId ? 1 : 0) +
+				(modeId ? 1 : 0) +
+				(hasWorkMode ? 1 : 0) +
+				(hasIcon || metadataKeys.length ? 1 : 0) !==
+			1
+		) {
 			return json(
 				{ error: 'Provide one runtime, icon, or Session metadata update' },
 				{ status: 400 }
 			);
+		}
+		if (hasWorkMode) {
+			const { session, event } = applyExplicitWorkMode(
+				services().store,
+				null,
+				params.sessionId,
+				body.workMode,
+				'selector'
+			);
+			return json({ session, workMode: session.workMode, ...(event ? { event } : {}) });
 		}
 		if (metadataKeys.length) {
 			if (
@@ -157,12 +178,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 					...(hasIcon ? [['icon', icon]] : [])
 				])
 			);
-			return json({ session, icon: session.icon });
+			return json({ session, icon: session.icon, workMode: session.workMode });
 		}
 		if (hasIcon) {
 			const icon = validateIcon(body.icon);
-			services().store.updateSession(null, params.sessionId, { icon });
-			return json({ icon });
+			const session = services().store.updateSession(null, params.sessionId, { icon });
+			return json({ icon, workMode: session.workMode });
 		}
 		if (services().store.getSessionSnapshot(null, params.sessionId).activeTurn) {
 			return json({ error: 'Wait for the active turn to finish' }, { status: 409 });

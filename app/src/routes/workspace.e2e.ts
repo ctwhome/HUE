@@ -3078,6 +3078,9 @@ test('shows loading beside new session without shifting the session list', async
 
 		const indicator = page.getByRole('status', { name: 'Loading project contents' });
 		await expect(indicator).toBeVisible();
+		expect(await indicator.evaluate((element) => getComputedStyle(element).animationName)).not.toBe(
+			'none'
+		);
 		const during = await session.boundingBox();
 		const addButton = await page
 			.getByRole('button', { name: 'New session', exact: true })
@@ -3090,7 +3093,7 @@ test('shows loading beside new session without shifting the session list', async
 		);
 
 		finishSessionLoad();
-		await expect(indicator).toBeHidden();
+		await expect(indicator).toHaveCount(0);
 		expect((await session.boundingBox())?.y).toBe(before?.y);
 	}
 });
@@ -3529,6 +3532,115 @@ test('reload restores running turn visibility and session-scoped draft', async (
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await sessionButton(page, 'Another').click();
 	await expect(page.getByLabel('Message Hermes')).toHaveValue('Unsent local draft');
+});
+
+test('per-session work mode selector persists across natural text, slash alias, selector toggle, and reload', async ({
+	page
+}) => {
+	let workMode: 'autonomous' | 'live' = 'autonomous';
+	let sequence = 1;
+	const workModeEvents: Array<{
+		sequence: number;
+		type: string;
+		createdAt: string;
+		payload: Record<string, unknown>;
+	}> = [];
+	const patchBodies: Array<Record<string, unknown>> = [];
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, async (route) => {
+		if (route.request().method() !== 'GET') return route.continue();
+		await route.fulfill({
+			json: {
+				sessions: [{ sessionId: 'session-1', cwd: '/work/hue', title: 'Main', workMode }]
+			}
+		});
+	});
+	await page.route(/\/api\/projects\/[^/]+\/sessions\/session-1$/, async (route) => {
+		if (route.request().method() === 'PATCH') {
+			const body = (await route.request().postDataJSON()) as Record<string, unknown>;
+			patchBodies.push(body);
+			const priorMode = workMode;
+			workMode = body.workMode as 'autonomous' | 'live';
+			const event = {
+				sequence: sequence++,
+				type: 'session.work_mode_changed',
+				createdAt: new Date(Date.UTC(2026, 7, 23, 10, sequence)).toISOString(),
+				payload: { priorMode, workMode, source: 'user' }
+			};
+			workModeEvents.push(event);
+			return route.fulfill({
+				json: { session: { sessionId: 'session-1', workMode }, workMode, event }
+			});
+		}
+		await route.fulfill({
+			json: {
+				transcript: [],
+				messages: [],
+				events: workModeEvents,
+				cursor: workModeEvents.at(-1)?.sequence ?? 0,
+				activeTurn: null,
+				workMode
+			}
+		});
+	});
+	await page.route(/\/api\/projects\/[^/]+\/sessions\/session-1\/messages$/, async (route) => {
+		const body = (await route.request().postDataJSON()) as { messageId: string; text: string };
+		if (body.text === '/autonomous-delivery') {
+			workMode = 'autonomous';
+			return route.fulfill({
+				status: 202,
+				json: {
+					messageId: body.messageId,
+					duplicate: false,
+					status: 'completed',
+					workMode,
+					consumed: true
+				}
+			});
+		}
+		if (body.text === "I'm at the computer") workMode = 'live';
+		await route.fulfill({
+			status: 202,
+			json: { messageId: body.messageId, duplicate: false, status: 'queued', workMode }
+		});
+	});
+	await page.route(/\/api\/projects\/[^/]+\/sessions\/session-1\/events\?after=.*/, async (route) =>
+		route.fulfill({ json: { events: [] } })
+	);
+
+	await addProject(page);
+	await sessionButton(page, 'Main').click();
+
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		const selector = page.getByLabel('Work mode', { exact: true });
+		await expect(selector).toBeVisible();
+		const selectorBox = (await selector.boundingBox())!;
+		expect(selectorBox.width).toBeGreaterThanOrEqual(96);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		if (viewport.width <= 390) {
+			expect((await selector.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+		}
+	}
+
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page.getByLabel('Message Hermes').fill("I'm at the computer");
+	await page.getByLabel('Message Hermes').press('Enter');
+	await expect(page.getByLabel('Work mode', { exact: true })).toHaveValue('live');
+
+	await page.getByLabel('Message Hermes').fill('/autonomous-delivery');
+	await page.getByLabel('Message Hermes').press('Enter');
+	await expect(page.getByLabel('Work mode', { exact: true })).toHaveValue('autonomous');
+	await expect(page.getByText('/autonomous-delivery')).toHaveCount(0);
+
+	await page.getByLabel('Work mode', { exact: true }).selectOption('live');
+	await expect(page.getByLabel('Work mode', { exact: true })).toHaveValue('live');
+	await expect(page.getByText('Work mode changed to Live')).toBeVisible();
+
+	await page.reload();
+	await expect(page.getByLabel('Work mode', { exact: true })).toHaveValue('live');
+	expect(patchBodies).toEqual([{ workMode: 'live' }]);
 });
 
 test('mobile uses explicit exclusive Projects and Sessions drawers', async ({ page }) => {
