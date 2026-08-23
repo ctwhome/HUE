@@ -78,7 +78,7 @@ export function buildWorkModePromptEnvelope(workMode: WorkMode, text: string) {
 		meta: {
 			hue: { workMode, version: WORK_MODE_VERSION, authorityUnchanged: true }
 		},
-		text: `${buildWorkModePreamble(workMode)}\n${text}`
+		text: text.trimStart().startsWith('/') ? text : `${buildWorkModePreamble(workMode)}\n${text}`
 	};
 }
 

@@ -350,7 +350,7 @@
 			aria-label="Hermes session context"
 		>
 			<span
-				class="context-chip context-profile inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground"
+				class="context-chip context-profile hidden min-h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground sm:inline-flex"
 				title="Active Hermes profile"
 			>
 				<Sparkles size={14} aria-hidden="true" /><span>{runtime.profile}</span>
@@ -359,9 +359,9 @@
 				class="context-chip context-select inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground hover:bg-accent sm:min-h-8"
 				title="Choose HUE work mode"
 			>
-				<span>Work mode</span>
+				<span class="hidden xl:inline">Work mode</span>
 				<select
-					class="min-h-11 sm:min-h-8"
+					class="min-h-11 min-w-24 sm:min-h-8"
 					aria-label="Work mode"
 					value={workMode}
 					disabled={workModeChanging}

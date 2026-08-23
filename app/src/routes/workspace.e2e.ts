@@ -3591,6 +3591,8 @@ test('per-session work mode selector persists across natural text, slash alias, 
 		await page.setViewportSize(viewport);
 		const selector = page.getByLabel('Work mode', { exact: true });
 		await expect(selector).toBeVisible();
+		const selectorBox = (await selector.boundingBox())!;
+		expect(selectorBox.width).toBeGreaterThanOrEqual(96);
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
 		);

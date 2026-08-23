@@ -120,6 +120,9 @@ describe('HUEStore project and workflow boundaries', () => {
 		store.copySessionMetadata('hue', 'session-1', 'fork-2', 'Fork copy');
 
 		expect(store.getSession('hue', 'fork-2')?.workMode).toBe('autonomous');
+		expect(
+			store.listEvents('hue', 'fork-2').filter(({ type }) => type === 'session.work_mode_changed')
+		).toHaveLength(0);
 		store.close();
 	});
 

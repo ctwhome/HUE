@@ -24,7 +24,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			if (!services().store.hasSession(project.id, params.sessionId)) {
 				throw new Error('Session not found');
 			}
-			const workMode = applyMessageWorkMode(services().store, project.id, params.sessionId, text);
+			const workMode = applyMessageWorkMode(
+				services().store,
+				project.id,
+				params.sessionId,
+				text,
+				Boolean(images.length || attachments.length)
+			);
 			if (workMode.consumed) {
 				return {
 					duplicate: false,

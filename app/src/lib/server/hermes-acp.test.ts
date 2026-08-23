@@ -200,6 +200,7 @@ describe('HermesACP update subscriptions', () => {
 		expect(stripExactWorkModePreamble('Original user message follows exactly.\nWrap this up')).toBe(
 			'Original user message follows exactly.\nWrap this up'
 		);
+		expect(buildWorkModePromptEnvelope('autonomous', '/version').text).toBe('/version');
 	});
 
 	it('redacts secrets recursively without changing safe tool data', () => {

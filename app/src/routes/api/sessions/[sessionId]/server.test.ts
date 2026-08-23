@@ -17,7 +17,12 @@ mock.module('$lib/server/services', () => ({
 				folder: null,
 				tags: []
 			}),
-			getSessionSnapshot: () => ({ messages: [], events: [], cursor: 0, activeTurn: { status: 'running' } }),
+			getSessionSnapshot: () => ({
+				messages: [],
+				events: [],
+				cursor: 0,
+				activeTurn: { status: 'running' }
+			}),
 			updateSessionWorkMode: (
 				_projectId: null,
 				sessionId: string,
@@ -33,7 +38,9 @@ mock.module('$lib/server/services', () => ({
 			getAvailableCommands: () => [],
 			getSessionState: () => ({ profile: 'default' })
 		},
-		dispatcher: { withSessionLock: async (_id: string, operation: () => Promise<unknown>) => operation() }
+		dispatcher: {
+			withSessionLock: async (_id: string, operation: () => Promise<unknown>) => operation()
+		}
 	})
 }));
 

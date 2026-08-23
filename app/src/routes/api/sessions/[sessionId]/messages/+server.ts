@@ -22,7 +22,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		if (!messageId || (!text.trim() && !images.length && !attachments.length)) {
 			return json({ error: 'messageId and message content are required' }, { status: 400 });
 		}
-		const workMode = applyMessageWorkMode(services().store, null, params.sessionId, text);
+		const workMode = applyMessageWorkMode(
+			services().store,
+			null,
+			params.sessionId,
+			text,
+			Boolean(images.length || attachments.length)
+		);
 		if (workMode.consumed) {
 			return json(
 				{

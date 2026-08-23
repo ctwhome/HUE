@@ -597,7 +597,7 @@ export class HUEStore {
 			}
 			const events = this.database
 				.query(
-					"SELECT type, payload, created_at FROM session_events WHERE project_id IS ? AND session_id = ? AND type != 'agent.image' ORDER BY sequence"
+					"SELECT type, payload, created_at FROM session_events WHERE project_id IS ? AND session_id = ? AND type NOT IN ('agent.image', 'session.work_mode_changed') ORDER BY sequence"
 				)
 				.all(projectId, sourceSessionId) as Array<{
 				type: string;

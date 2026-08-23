@@ -18,12 +18,15 @@ export function applyMessageWorkMode(
 	store: HUEStore,
 	projectId: string | null,
 	sessionId: string,
-	text: string
+	text: string,
+	hasAttachments = false
 ): { workMode: WorkMode; consumed: boolean; changed: boolean; event: SessionEvent | null } {
 	const detected = detectWorkModeSwitch(text);
 	const current = currentWorkMode(store, projectId, sessionId);
-	if (!detected)
-		return { workMode: current, consumed: false, changed: false, event: null };
+	if (!detected) return { workMode: current, consumed: false, changed: false, event: null };
+	if (detected.consumed && hasAttachments) {
+		throw new Error('Work mode commands cannot include attachments');
+	}
 	const updated = store.updateSessionWorkMode(
 		projectId,
 		sessionId,

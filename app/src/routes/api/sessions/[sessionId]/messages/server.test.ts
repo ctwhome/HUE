@@ -1,6 +1,10 @@
 import { expect, mock, test } from 'bun:test';
 
-let submitResult: Record<string, unknown> = { duplicate: false, status: 'queued', workMode: 'live' };
+let submitResult: Record<string, unknown> = {
+	duplicate: false,
+	status: 'queued',
+	workMode: 'live'
+};
 
 mock.module('$lib/server/services', () => ({
 	services: () => ({
