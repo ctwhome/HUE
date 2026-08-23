@@ -2,6 +2,14 @@
 	display: none;
 }
 
+.session-projects-back {
+	display: none;
+}
+
+.workspace:not(.ready) > :not(.mobile-navigation) {
+	visibility: hidden;
+}
+
 @media (max-width: 1200px) {
 	.project-workbench {
 		overflow: auto;
@@ -81,7 +89,7 @@
 	}
 	.workspace {
 		display: block;
-		padding-top: 56px;
+		padding-top: calc(56px + env(safe-area-inset-top, 0px));
 	}
 	.global-rail {
 		display: none;
@@ -91,12 +99,12 @@
 		z-index: 40;
 		inset: 0 0 auto;
 		display: grid;
-		height: 56px;
+		height: calc(56px + env(safe-area-inset-top, 0px));
 		grid-template-columns: repeat(3, 1fr);
 		gap: 8px;
 		border-bottom: 1px solid var(--border);
 		background: #0d1015ee;
-		padding: 6px 10px;
+		padding: calc(6px + env(safe-area-inset-top, 0px)) 10px 6px;
 		backdrop-filter: blur(16px);
 	}
 	.mobile-navigation button {
@@ -112,17 +120,19 @@
 	.drawer-backdrop {
 		position: fixed;
 		z-index: 20;
-		inset: 56px 0 0;
+		inset: calc(56px + env(safe-area-inset-top, 0px)) 0 0;
 		display: block;
 		width: 100%;
 		border: 0;
 		background: #0009;
+		opacity: var(--drawer-gesture-opacity, 1);
+		transition: opacity 160ms ease;
 	}
 	.project-rail,
 	.context-panel {
 		position: fixed;
 		z-index: 30;
-		inset: 56px auto 0 0;
+		inset: calc(56px + env(safe-area-inset-top, 0px)) auto 0 0;
 		width: min(88vw, 320px);
 		min-height: 0;
 		visibility: hidden;
@@ -130,6 +140,24 @@
 		transition:
 			transform 160ms ease,
 			visibility 160ms;
+		touch-action: pan-y;
+		overscroll-behavior: contain;
+		will-change: transform;
+	}
+	.workspace.drawer-gesture-active .gesture-drawer,
+	.workspace.drawer-gesture-active .gesture-revealed-drawer {
+		visibility: visible;
+		transition: none !important;
+	}
+	.workspace.gesture-reveal-projects .project-rail {
+		visibility: visible;
+		transform: translate3d(0, 0, 0);
+	}
+	.workspace.gesture-reveal-projects .context-panel {
+		z-index: 31;
+	}
+	.workspace.drawer-gesture-active .drawer-backdrop {
+		transition: none;
 	}
 	.project-rail.open,
 	.context-panel.open {
@@ -167,6 +195,9 @@
 		min-width: 44px;
 		width: 44px;
 		height: 44px;
+	}
+	.session-projects-back {
+		display: grid;
 	}
 	.tabs button,
 	.workflow-card button,
@@ -263,6 +294,9 @@
 	.context-profile {
 		display: none;
 	}
+	.session-view {
+		touch-action: pan-y;
+	}
 	.attachment-list figure {
 		flex-basis: 64px;
 	}
@@ -275,5 +309,13 @@
 		--num-columns: 6;
 		--emoji-size: 1.25rem;
 		--emoji-padding: 0.4rem;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.project-rail,
+	.context-panel,
+	.drawer-backdrop {
+		transition-duration: 0ms !important;
 	}
 }

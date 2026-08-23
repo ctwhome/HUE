@@ -18,6 +18,7 @@
 		X
 	} from 'lucide-svelte';
 	import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+	import { compactModelLabel } from './mobile-navigation';
 	import type { WorkMode } from '$lib/work-mode';
 
 	type Command = { name: string; description: string; input?: { hint: string } | null };
@@ -372,18 +373,23 @@
 					<option value="live">Live</option>
 				</select>
 			</label>
-			{#if runtime.models}<button
+			{#if runtime.models}{@const selectedModel = currentModel()}<button
 					type="button"
 					class="context-chip context-select context-model inline-flex min-h-8 max-w-40 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs hover:bg-accent"
 					aria-label="Hermes model"
 					aria-haspopup="menu"
 					aria-expanded={modelMenuOpen}
 					popovertarget="hermes-model-menu"
-					title="Choose Hermes model"
+					title={`${selectedModel?.name ?? runtime.models.currentModelId} · ${runtime.models.currentModelId}`}
 					disabled={runtimeChanging || busy}
 				>
 					<CircleDot size={14} aria-hidden="true" />
-					<span>{currentModel()?.name ?? runtime.models.currentModelId}</span>
+					<span
+						>{compactModelLabel(
+							runtime.models.currentModelId,
+							selectedModel?.name ?? runtime.models.currentModelId
+						)}</span
+					>
 					<ChevronDown size={13} aria-hidden="true" />
 				</button>
 				<div
@@ -419,7 +425,7 @@
 										type="button"
 										role="menuitemradio"
 										aria-checked={model.modelId === runtime.models?.currentModelId}
-										title={`Use ${model.name}`}
+										title={`Use ${model.name} · ${model.modelId}`}
 										onclick={() => onmodel(model.modelId)}
 									>
 										<span class="model-check pt-0.5 text-violet-300"
@@ -429,9 +435,9 @@
 												/>{/if}</span
 										>
 										<span
-											><strong>{model.name}</strong>{#if model.description}<small
-													>{model.description}</small
-												>{/if}</span
+											><strong>{model.name}</strong><small
+												>{model.modelId}{model.description ? ` · ${model.description}` : ''}</small
+											></span
 										>
 									</button>{/each}
 							</div>
