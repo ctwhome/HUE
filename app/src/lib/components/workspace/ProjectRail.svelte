@@ -5,7 +5,9 @@
 	import type { Directory, Project } from './types';
 
 	let {
+		element = $bindable(),
 		open,
+		mobile,
 		projects,
 		selectedProject,
 		projectsCapability,
@@ -49,7 +51,9 @@
 		onarchive,
 		isImage
 	}: {
+		element?: HTMLElement;
 		open: boolean;
+		mobile: boolean;
 		projects: Project[];
 		selectedProject: Project | null;
 		projectsCapability: 'available' | 'unavailable' | 'outage';
@@ -99,9 +103,12 @@
 </script>
 
 <aside
+	bind:this={element}
 	id="project-drawer"
 	class="project-rail flex min-h-dvh flex-col gap-5 border-r border-border bg-card/95 px-3.5 py-5"
 	class:open
+	inert={mobile && !open}
+	aria-hidden={mobile ? !open : undefined}
 	aria-label="Projects"
 >
 	<header class="brand flex items-center gap-2.5 px-1.5">

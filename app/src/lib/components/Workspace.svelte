@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount, untrack } from 'svelte';
-	import { beforeNavigate, goto } from '$app/navigation';
+	import { onMount, untrack } from 'svelte';
 	import { Circle } from 'lucide-svelte';
 	import { formatElapsed, isTurnBusy } from '$lib';
 	import { automaticSessionIcon } from '$lib/icon';
@@ -14,29 +13,39 @@
 	import ContextPanel from './workspace/ContextPanel.svelte';
 	import Conversation from './workspace/Conversation.svelte';
 	import { MessageState } from './workspace/message-state.svelte';
+	import MobileNavigation from './workspace/MobileNavigation.svelte';
+	import { MobileShellController } from './workspace/mobile-shell';
+	import type { MobileGesture } from './workspace/mobile-navigation';
 	import { workspaceApi } from './workspace/api';
 	import { WorkspaceNavigation } from './workspace/navigation.svelte';
 	import { isImageIcon, ProjectManagement } from './workspace/project-management.svelte';
 	import ProjectRail from './workspace/ProjectRail.svelte';
 	import DirtyGuardDialog from './workspace/DirtyGuardDialog.svelte';
 	import { DirtyGuard } from './workspace/dirty-guard';
+	import { installDirtyNavigation } from './workspace/dirty-navigation';
 	import { RuntimeState } from './workspace/runtime-state.svelte';
 	import { SessionState } from './workspace/session-state.svelte';
 	import { TranscriptFollow } from './workspace/transcript-follow.svelte';
 	import type { Project, SessionLoad, WorkspaceProps } from './workspace/types';
-
 	let {
 		projects: initialProjects,
 		projectsCapability = 'available',
 		projectsError = '',
 		reconciliationIssues = []
 	}: WorkspaceProps = $props();
-	let loading = $state(false);
-	let error = $state('');
+	let loading = $state(false),
+		error = $state('');
 	let globalView = $state<GlobalView | null>(null);
 	let now = $state(Date.now());
-	let dirtyGuardOpen = $state(false);
-	let dirtyGuardDirty = $state(false);
+	let dirtyGuardOpen = $state(false),
+		dirtyGuardDirty = $state(false);
+	let mobile = $state(false);
+	let workspaceElement: HTMLElement;
+	let projectDrawerElement = $state<HTMLElement>();
+	let sessionDrawerElement = $state<HTMLElement>();
+	let gestureActive = $state(false),
+		gestureAction = $state<MobileGesture['action']>(null);
+	let mobileShell: MobileShellController | null = null;
 	const dirtyGuard = new DirtyGuard((guard) => {
 		dirtyGuardOpen = guard.open;
 		dirtyGuardDirty = guard.dirty;
@@ -48,7 +57,6 @@
 	let elapsedTimer: ReturnType<typeof setInterval> | null = null;
 	const navigationRef: { current: WorkspaceNavigation | null } = { current: null };
 	const voiceRef: { current: ReturnType<typeof createVoiceCall> | null } = { current: null };
-
 	const sessionState = new SessionState(
 		() => navigationRef.current?.selectedProject ?? null,
 		(message) => (error = message)
@@ -105,7 +113,8 @@
 			sendText: messageState.sendText,
 			setError: (message) => (error = message),
 			setLoading: (value) => (loading = value),
-			guard: (action) => dirtyGuard.block(action)
+			guard: (action) => dirtyGuard.block(action),
+			isMobile: () => mobile
 		}
 	);
 	navigationRef.current = navigation;
@@ -125,7 +134,6 @@
 		reportError: (message) => (error = message)
 	});
 	voiceRef.current = voice;
-
 	let selectedProject = $derived(navigation.selectedProject);
 	let sessions = $derived(navigation.sessions);
 	let workflows = $derived(navigation.workflows);
@@ -147,61 +155,52 @@
 	let messageNotice = $derived(messageState.messageNotice);
 	let runtimeChanging = $derived(runtimeState.changing);
 	let stopping = $derived(messageState.stopping);
-
-	onMount(async () => {
+	onMount(() => {
 		applyPreferences(document.documentElement, readPreferences(localStorage));
 		elapsedTimer = setInterval(() => (now = Date.now()), 1000);
-		await navigation.restoreSelection();
-	});
-	onDestroy(() => {
-		voice.end(false);
-		messageState.stopPolling();
-		if (elapsedTimer) clearInterval(elapsedTimer);
-	});
-	beforeNavigate((navigation) => {
-		if (!navigation.to || !dirtyGuard.dirty) return;
-		navigation.cancel();
-		const target = navigation.to.url;
-		const internal = Boolean(navigation.to.route.id);
-		dirtyGuard.block(() => {
-			if (internal) void goto(target);
-			else window.location.assign(target);
+		mobileShell = new MobileShellController({
+			workspace: () => workspaceElement,
+			drawer: (pane) => (pane === 'projects' ? projectDrawerElement : sessionDrawerElement)!,
+			navigation,
+			onMobile: (value) => (mobile = value),
+			onVisual: (active, action) => ((gestureActive = active), (gestureAction = action))
 		});
+		mobileShell.start();
+		return () => {
+			mobileShell?.destroy();
+			mobileShell = null;
+			voice.end(false);
+			messageState.stopPolling();
+			if (elapsedTimer) clearInterval(elapsedTimer);
+		};
 	});
+	installDirtyNavigation(dirtyGuard);
 </script>
 
 <svelte:window
-	onkeydown={(event) => event.key === 'Escape' && (navigation.mobileDrawer = null)}
+	onkeydown={(event) =>
+		event.key === 'Escape' && !document.querySelector('dialog[open]') && mobileShell?.close()}
 	onbeforeunload={(event) => {
 		if (dirtyGuardDirty) event.preventDefault();
 	}}
 />
 
 <div
+	bind:this={workspaceElement}
 	class="workspace grid h-dvh grid-cols-[56px_220px_320px_minmax(0,1fr)] overflow-hidden bg-background text-foreground"
+	class:ready={navigation.ready}
+	class:drawer-gesture-active={gestureActive}
+	class:gesture-reveal-projects={gestureAction === 'show-projects'}
 >
 	<GlobalNavigation view={globalView} onview={setGlobalView} />
-	<nav class="mobile-navigation" aria-label="Workspace navigation">
-		<button
-			aria-controls="project-drawer"
-			aria-expanded={navigation.mobileDrawer === 'projects'}
-			title="Projects"
-			onclick={() =>
-				(navigation.mobileDrawer = navigation.mobileDrawer === 'projects' ? null : 'projects')}
-			>Projects</button
-		>
-		<button
-			aria-controls="session-drawer"
-			aria-expanded={navigation.mobileDrawer === 'sessions'}
-			title="Sessions"
-			onclick={() =>
-				(navigation.mobileDrawer = navigation.mobileDrawer === 'sessions' ? null : 'sessions')}
-			>Sessions</button
-		>
-		<button aria-label="Settings" title="Settings" onclick={() => setGlobalView('settings')}
-			>Settings</button
-		>
-	</nav>
+	<MobileNavigation
+		drawer={navigation.mobileDrawer}
+		ready={navigation.ready}
+		backdrop={Boolean(navigation.mobileDrawer || gestureActive)}
+		ontoggle={(pane, trigger) => mobileShell?.toggle(pane, trigger)}
+		onclose={() => mobileShell?.close()}
+		onsettings={() => setGlobalView('settings')}
+	/>
 	{#if globalView}<HermesPanel
 			view={globalView}
 			{commands}
@@ -214,14 +213,10 @@
 				});
 			}}
 		/>{/if}
-	{#if navigation.mobileDrawer}<button
-			class="drawer-backdrop"
-			aria-label="Close navigation"
-			title="Close navigation"
-			onclick={() => (navigation.mobileDrawer = null)}
-		></button>{/if}
 	<ProjectRail
+		bind:element={projectDrawerElement}
 		open={navigation.mobileDrawer === 'projects'}
+		{mobile}
 		projects={projectManagement.projects}
 		{selectedProject}
 		{projectsCapability}
@@ -266,7 +261,9 @@
 		isImage={isImageIcon}
 	/>
 	<ContextPanel
+		bind:element={sessionDrawerElement}
 		open={navigation.mobileDrawer === 'sessions'}
+		{mobile}
 		{selectedProject}
 		{loading}
 		{activeTab}
@@ -291,7 +288,8 @@
 		{now}
 		oncreate={navigation.createSession}
 		ontab={navigation.changeTab}
-		onopen={navigation.openSession}
+		onopen={(session) => navigation.openSession(session, 'push')}
+		onback={() => mobileShell?.open('projects')}
 		onedit={navigation.openEditSession}
 		onrun={navigation.runWorkflow}
 		onworkflow={navigation.addWorkflow}
@@ -306,7 +304,6 @@
 		automaticIcon={automaticSessionIcon}
 		elapsed={formatElapsed}
 	/>
-
 	<main class="session-view flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
 		<header
 			class="session-header flex min-h-[76px] items-center justify-between border-b border-border px-5 py-3.5"
@@ -429,13 +426,17 @@
 				<div class="flex flex-wrap justify-center gap-2">
 					<button
 						class="min-h-11 rounded-md bg-primary px-4 text-primary-foreground"
-						onclick={() => projectManagement.openEditProject(null, selectedProject)}
-						>Manage folders</button
+						onclick={() => {
+							if (mobile) navigation.setMobileDrawer('projects', 'push');
+							projectManagement.openEditProject(null, selectedProject);
+						}}>Manage folders</button
 					>
 					<button
 						class="min-h-11 rounded-md border border-border px-4"
-						onclick={() => projectManagement.requestRemoveStaleProject(selectedProject)}
-						>Archive</button
+						onclick={() => {
+							if (mobile) navigation.setMobileDrawer('projects', 'push');
+							projectManagement.requestRemoveStaleProject(selectedProject);
+						}}>Archive</button
 					>
 					<button
 						class="min-h-11 rounded-md border border-border px-4"
