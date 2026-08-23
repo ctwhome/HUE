@@ -13,7 +13,8 @@
 	import Composer from './workspace/Composer.svelte';
 	import ContextPanel from './workspace/ContextPanel.svelte';
 	import Conversation from './workspace/Conversation.svelte';
-	import { ApiError, MessageState } from './workspace/message-state.svelte';
+	import { MessageState } from './workspace/message-state.svelte';
+	import { workspaceApi } from './workspace/api';
 	import { WorkspaceNavigation } from './workspace/navigation.svelte';
 	import { isImageIcon, ProjectManagement } from './workspace/project-management.svelte';
 	import ProjectRail from './workspace/ProjectRail.svelte';
@@ -22,9 +23,14 @@
 	import { RuntimeState } from './workspace/runtime-state.svelte';
 	import { SessionState } from './workspace/session-state.svelte';
 	import { TranscriptFollow } from './workspace/transcript-follow.svelte';
-	import type { Project, SessionLoad } from './workspace/types';
+	import type { Project, SessionLoad, WorkspaceProps } from './workspace/types';
 
-	let { projects: initialProjects }: { projects: Project[] } = $props();
+	let {
+		projects: initialProjects,
+		projectsCapability = 'available',
+		projectsError = '',
+		reconciliationIssues = []
+	}: WorkspaceProps = $props();
 	let loading = $state(false);
 	let error = $state('');
 	let globalView = $state<GlobalView | null>(null);
@@ -38,22 +44,10 @@
 	function guarded(action: () => void) {
 		if (!dirtyGuard.block(action)) action();
 	}
-	function setGlobalView(view: GlobalView | null) {
-		guarded(() => (globalView = view));
-	}
+	const setGlobalView = (view: GlobalView | null) => guarded(() => (globalView = view));
 	let elapsedTimer: ReturnType<typeof setInterval> | null = null;
 	const navigationRef: { current: WorkspaceNavigation | null } = { current: null };
 	const voiceRef: { current: ReturnType<typeof createVoiceCall> | null } = { current: null };
-
-	async function api<T>(url: string, options?: RequestInit): Promise<T> {
-		const response = await fetch(url, {
-			...options,
-			headers: { 'content-type': 'application/json', ...(options?.headers ?? {}) }
-		});
-		const body = (await response.json()) as T & { error?: string };
-		if (!response.ok) throw new ApiError(body.error ?? `Request failed (${response.status})`);
-		return body;
-	}
 
 	const sessionState = new SessionState(
 		() => navigationRef.current?.selectedProject ?? null,
@@ -61,7 +55,7 @@
 	);
 	const transcriptFollow = new TranscriptFollow(() => sessionState.delivery);
 	const messageState = new MessageState({
-		api,
+		api: workspaceApi,
 		getProject: () => navigationRef.current?.selectedProject ?? null,
 		getSession: () => navigationRef.current?.selectedSession ?? null,
 		getNavigation: () => navigationRef.current!,
@@ -75,7 +69,7 @@
 	});
 	const projectManagement = new ProjectManagement({
 		initialProjects: untrack(() => initialProjects),
-		api,
+		api: workspaceApi,
 		getSelectedProject: () => navigationRef.current?.selectedProject ?? null,
 		setSelectedProject: (project) => navigationRef.current?.setSelectedProject(project),
 		chooseProject: (project) => navigationRef.current!.chooseProject(project)
@@ -83,7 +77,7 @@
 	const navigation = new WorkspaceNavigation(
 		untrack(() => initialProjects.find(({ rootAvailable }) => rootAvailable) ?? null),
 		{
-			api,
+			api: workspaceApi,
 			getProjects: () => projectManagement.projects,
 			endVoice: () => voiceRef.current?.end(false),
 			cacheSession: () => sessionState.cache(navigationRef.current?.selectedSession ?? null),
@@ -116,7 +110,7 @@
 	);
 	navigationRef.current = navigation;
 	const runtimeState = new RuntimeState({
-		api,
+		api: workspaceApi,
 		getSession: () => navigation.selectedSession,
 		sessionPath: (sessionId) => navigation.sessionApiPath(sessionId),
 		session: sessionState,
@@ -132,7 +126,6 @@
 	});
 	voiceRef.current = voice;
 
-	let projects = $derived(projectManagement.projects);
 	let selectedProject = $derived(navigation.selectedProject);
 	let sessions = $derived(navigation.sessions);
 	let workflows = $derived(navigation.workflows);
@@ -154,7 +147,6 @@
 	let messageNotice = $derived(messageState.messageNotice);
 	let runtimeChanging = $derived(runtimeState.changing);
 	let stopping = $derived(messageState.stopping);
-	const renderMarkdown = renderMessageMarkdown;
 
 	onMount(async () => {
 		applyPreferences(document.documentElement, readPreferences(localStorage));
@@ -230,14 +222,16 @@
 		></button>{/if}
 	<ProjectRail
 		open={navigation.mobileDrawer === 'projects'}
-		{projects}
+		projects={projectManagement.projects}
 		{selectedProject}
+		{projectsCapability}
+		{projectsError}
+		{reconciliationIssues}
 		bind:addProjectDialog={projectManagement.addProjectDialog}
 		bind:editProjectDialog={projectManagement.editProjectDialog}
 		bind:removeProjectDialog={projectManagement.removeProjectDialog}
 		editingProject={projectManagement.editingProject}
 		projectRoot={projectManagement.projectRoot}
-		projectDirectoryName={projectManagement.projectDirectoryName}
 		projectDirectories={projectManagement.projectDirectories}
 		projectDirectoryParent={projectManagement.projectDirectoryParent}
 		showHiddenDirectories={projectManagement.showHiddenDirectories}
@@ -249,6 +243,8 @@
 		projectEditError={projectManagement.projectEditError}
 		projectSaving={projectManagement.projectSaving}
 		locatingProject={projectManagement.locatingProject}
+		selectedFolders={projectManagement.selectedFolders}
+		primaryFolder={projectManagement.primaryFolder}
 		onprojectless={navigation.createProjectlessSession}
 		onaddopen={projectManagement.openAddProject}
 		onchoose={navigation.chooseProject}
@@ -256,11 +252,17 @@
 		onedit={projectManagement.openEditProject}
 		onhidden={projectManagement.toggleHiddenDirectories}
 		ondirectory={projectManagement.loadDirectory}
-		onadd={projectManagement.addProject}
+		ontogglefolder={projectManagement.toggleSelectedFolder}
+		onprimarychoice={projectManagement.choosePrimaryFolder}
+		oncreate={projectManagement.createProject}
+		onaddfolder={projectManagement.addCurrentFolder}
 		onimage={projectManagement.chooseProjectImage}
-		onsave={projectManagement.saveProject}
-		onremoveRequest={projectManagement.requestRemoveProject}
-		onremove={projectManagement.removeProject}
+		onsavemetadata={projectManagement.saveProject}
+		onsetprimary={projectManagement.setPrimaryFolder}
+		onremovefolder={projectManagement.removeFolder}
+		onlabel={projectManagement.setFolderLabel}
+		onarchiveRequest={projectManagement.requestRemoveProject}
+		onarchive={projectManagement.removeProject}
 		isImage={isImageIcon}
 	/>
 	<ContextPanel
@@ -311,7 +313,7 @@
 		>
 			<div>
 				<small>
-					{selectedProject?.rootPath ?? 'No project'}
+					{selectedProject?.primaryPath ?? 'No project'}
 					{#if branch}<span class="header-branch">{branch}</span>{/if}
 				</small>
 				<h2 class="selected-session-title mt-1 flex items-center gap-2 font-semibold">
@@ -354,7 +356,7 @@
 				{messageNotice}
 				busy={isTurnBusy(delivery)}
 				mediaPath={navigation.sessionApiPath(selectedSession.sessionId, '/media')}
-				{renderMarkdown}
+				renderMarkdown={renderMessageMarkdown}
 				onedit={messageState.editMessage}
 				oncopy={messageState.copyMessage}
 				oncopycode={messageState.copyCode}
@@ -421,18 +423,19 @@
 			>
 				<h2 class="text-foreground">Project folder unavailable</h2>
 				<p>
-					{selectedProject.name} moved or was removed. Recover its folder before opening Sessions, Git,
-					terminal, or preview tools.
+					Primary folder {selectedProject.primaryPath} is unavailable. Choose an available Project folder
+					as primary before opening Sessions, Git, terminal, or preview tools.
 				</p>
 				<div class="flex flex-wrap justify-center gap-2">
 					<button
 						class="min-h-11 rounded-md bg-primary px-4 text-primary-foreground"
-						onclick={() => projectManagement.openLocateProject(selectedProject)}>Locate</button
+						onclick={() => projectManagement.openEditProject(null, selectedProject)}
+						>Manage folders</button
 					>
 					<button
 						class="min-h-11 rounded-md border border-border px-4"
 						onclick={() => projectManagement.requestRemoveStaleProject(selectedProject)}
-						>Remove</button
+						>Archive</button
 					>
 					<button
 						class="min-h-11 rounded-md border border-border px-4"
@@ -457,16 +460,20 @@
 					H
 				</div>
 				<h2>
-					{projects.length ? 'Projects · Workflows · Sessions' : 'Start your first HUE workspace'}
+					{projectManagement.projects.length
+						? 'Projects · Workflows · Sessions'
+						: 'Start your first HUE workspace'}
 				</h2>
 				<p>
-					{projects.length
+					{projectManagement.projects.length
 						? 'Choose a Project, or continue without one for a general Hermes Session.'
 						: 'Add a trusted local folder for project work, or start a private projectless Session.'}
 				</p>
 				<div class="mt-5 flex flex-wrap justify-center gap-2">
 					<button
 						class="min-h-11 rounded-md bg-primary px-4 text-primary-foreground"
+						disabled={projectsCapability !== 'available'}
+						title={projectsCapability === 'available' ? 'Add Project' : projectsError}
 						onclick={projectManagement.openAddProject}>Add Project</button
 					>
 					<button

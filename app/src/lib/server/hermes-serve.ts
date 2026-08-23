@@ -1,10 +1,12 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createInterface } from 'node:readline';
+import { HermesProjectsRpc } from './hermes-projects-rpc';
 
 type HermesServeOptions = {
 	command?: string;
 	profile?: string;
+	env?: NodeJS.ProcessEnv;
 	onDiagnostic?: (message: string) => void;
 };
 
@@ -19,6 +21,7 @@ export type HermesMcpServer = {
 export class HermesServe {
 	private readonly command: string;
 	private readonly profile: string;
+	private readonly env: NodeJS.ProcessEnv;
 	private readonly onDiagnostic?: (message: string) => void;
 	private child: ChildProcessWithoutNullStreams | null = null;
 	private baseUrl: string | null = null;
@@ -26,10 +29,12 @@ export class HermesServe {
 	private starting: Promise<void> | null = null;
 	private closing = false;
 	private unavailable = false;
+	private readonly projectsRpc = new HermesProjectsRpc();
 
 	constructor(options: HermesServeOptions = {}) {
 		this.command = options.command ?? 'hermes';
 		this.profile = options.profile ?? 'default';
+		this.env = options.env ?? process.env;
 		this.onDiagnostic = options.onDiagnostic;
 	}
 
@@ -71,7 +76,7 @@ export class HermesServe {
 		];
 		const child = spawn(this.command, args, {
 			env: {
-				...process.env,
+				...this.env,
 				HERMES_DASHBOARD_SESSION_TOKEN: token,
 				HERMES_PARENT_PID: String(process.pid)
 			},
@@ -102,6 +107,7 @@ export class HermesServe {
 
 		child.once('exit', (code, signal) => {
 			if (this.child !== child) return;
+			this.projectsRpc.close();
 			this.child = null;
 			this.baseUrl = null;
 			this.token = null;
@@ -161,6 +167,14 @@ export class HermesServe {
 			);
 		}
 		return (await response.json()) as T;
+	}
+
+	async rpc<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+		await this.start();
+		const url = new URL('/api/ws', this.baseUrl!);
+		url.protocol = 'ws:';
+		url.searchParams.set('token', this.token!);
+		return this.projectsRpc.request<T>(url.toString(), method, params);
 	}
 
 	async mcpServers(): Promise<{ servers: HermesMcpServer[] }> {
@@ -339,6 +353,7 @@ export class HermesServe {
 	async close(): Promise<void> {
 		this.closing = true;
 		this.unavailable = false;
+		this.projectsRpc.close();
 		if (this.starting) await this.starting.catch(() => undefined);
 		const child = this.child;
 		if (!child) return;

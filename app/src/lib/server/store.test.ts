@@ -367,6 +367,20 @@ describe('HUEStore project and workflow boundaries', () => {
 		store.close();
 	});
 
+	it('reports unresolved Project delivery without deleting HUE metadata', () => {
+		const store = makeDeliveryStore();
+		expect(store.hasActiveProjectDeliveries('hue')).toBe(false);
+		store.acceptMessage({
+			id: 'msg-1',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Keep delivery state.'
+		});
+		expect(store.hasActiveProjectDeliveries('hue')).toBe(true);
+		expect(store.getMessage('msg-1')?.status).toBe('queued');
+		store.close();
+	});
+
 	it('stores a custom session icon without changing Hermes session data', () => {
 		const store = makeStore();
 		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
@@ -988,6 +1002,79 @@ describe('HUEStore acknowledged message transport', () => {
 		expect(store.getBusySessionStarts('hue')).toEqual({
 			'session-1': store.getMessage('queued')!.createdAt
 		});
+		store.close();
+	});
+});
+
+describe('HUEStore Hermes Project identity migration', () => {
+	it('marks pre-Hermes Project rows as legacy reconciliation inputs', () => {
+		const filename = join(tmpdir(), `hue-store-${crypto.randomUUID()}.db`);
+		temporaryDatabases.push(filename);
+		const legacy = new Database(filename, { create: true });
+		legacy.exec(`
+			CREATE TABLE projects (
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL,
+				root_path TEXT NOT NULL UNIQUE,
+				icon TEXT,
+				created_at TEXT NOT NULL
+			);
+			INSERT INTO projects VALUES ('legacy-hue', 'HUE', '/work/hue', '🟣', '2026-08-21T00:00:00.000Z');
+		`);
+		legacy.close();
+
+		const store = new HUEStore(filename);
+
+		expect(store.listLegacyProjects()).toEqual([
+			{
+				id: 'legacy-hue',
+				name: 'HUE',
+				rootPath: '/work/hue',
+				icon: '🟣',
+				createdAt: '2026-08-21T00:00:00.000Z'
+			}
+		]);
+		store.close();
+	});
+
+	it('remaps every HUE-owned foreign key to Hermes id without losing unknown delivery state', () => {
+		const store = makeStore();
+		store.createProject({ id: 'legacy-hue', name: 'HUE', rootPath: '/work/hue' });
+		store.createWorkflow({
+			id: 'workflow-1',
+			projectId: 'legacy-hue',
+			name: 'Ship',
+			prompt: 'Ship safely.'
+		});
+		store.upsertSession('legacy-hue', { sessionId: 'session-1', cwd: '/work/hue/packages/app' });
+		store.acceptMessage({
+			id: 'message-1',
+			projectId: 'legacy-hue',
+			sessionId: 'session-1',
+			text: 'Preserve delivery truth.'
+		});
+		store.updateMessageStatus('message-1', 'running');
+		store.updateMessageStatus('message-1', 'unknown');
+		store.database
+			.query(
+				'INSERT INTO dismissed_sessions (project_scope, session_id, dismissed_at) VALUES (?, ?, ?)'
+			)
+			.run('legacy-hue', 'dismissed-session', '2026-08-21T00:00:00.000Z');
+
+		store.adoptHermesProject('legacy-hue', 'p_hermes');
+
+		expect(store.listLegacyProjects()).toEqual([]);
+		expect(store.hasProjectMetadata('legacy-hue')).toBe(false);
+		expect(store.hasProjectMetadata('p_hermes')).toBe(true);
+		expect(store.listWorkflows('p_hermes').map(({ id }) => id)).toEqual(['workflow-1']);
+		expect(store.getSession('p_hermes', 'session-1')?.cwd).toBe('/work/hue/packages/app');
+		expect(store.getMessage('message-1')).toMatchObject({
+			projectId: 'p_hermes',
+			status: 'unknown'
+		});
+		expect(store.listEvents('p_hermes', 'session-1').length).toBeGreaterThan(0);
+		expect(store.isSessionDismissed('p_hermes', 'dismissed-session')).toBe(true);
+		expect(store.database.query('PRAGMA foreign_key_check').all()).toEqual([]);
 		store.close();
 	});
 });

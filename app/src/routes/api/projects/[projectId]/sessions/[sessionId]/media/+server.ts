@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { services } from '$lib/server/services';
+import { authoritativeProject, services } from '$lib/server/route-services';
 import {
 	closeSessionMedia,
 	resolveSessionMedia,
@@ -7,13 +7,19 @@ import {
 } from '$lib/server/session-media';
 import type { RequestHandler } from './$types';
 
-function getMedia(
+async function getMedia(
 	params: { projectId: string; sessionId: string },
 	url: URL,
 	request: Request,
 	head = false
 ) {
-	const session = services().store.getSession(params.projectId, params.sessionId);
+	let project;
+	try {
+		project = await authoritativeProject(params.projectId);
+	} catch (cause) {
+		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 404 });
+	}
+	const session = services().store.getSession(project.id, params.sessionId);
 	if (!session) return json({ error: 'Session not found' }, { status: 404 });
 	try {
 		const media = resolveSessionMedia(session.cwd, url.searchParams.get('path') ?? '');
@@ -29,7 +35,13 @@ export const HEAD: RequestHandler = ({ params, url, request }) =>
 	getMedia(params, url, request, true);
 
 export const POST: RequestHandler = async ({ params, request }) => {
-	const session = services().store.getSession(params.projectId, params.sessionId);
+	let project;
+	try {
+		project = await authoritativeProject(params.projectId);
+	} catch (cause) {
+		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 404 });
+	}
+	const session = services().store.getSession(project.id, params.sessionId);
 	if (!session) return json({ error: 'Session not found' }, { status: 404 });
 	try {
 		const body = (await request.json()) as { path?: string; action?: string };
