@@ -1128,10 +1128,7 @@ test('guards unsaved skill edits across workspace and Project navigation', async
 			.getByRole('navigation', { name: 'Workspace navigation' })
 			.getByRole('button', { name: 'Projects' });
 		await projectsMenu.click();
-		await page
-			.locator('.project-rail nav .project-select')
-			.filter({ hasText: 'Dirty skill target' })
-			.click();
+		await page.getByTitle(`Open Dirty skill target · ${targetRoot}`).click();
 		await expect(page.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
 		await page.getByRole('button', { name: 'Keep editing' }).click();
 		await expect(editor).toHaveValue(edited);
@@ -3764,6 +3761,8 @@ test('reduced motion suppresses synthesized click after touch gesture', async ({
 test('browser Back keeps dirty Project state unchanged until discard confirmation', async ({
 	page
 }) => {
+	await removeProjects(page);
+	const dirtyRoot = mkdtempSync(join(tmpdir(), 'hue-dirty-back-project-'));
 	await page.route('**/api/projects/*/files**', (route) => {
 		const url = new URL(route.request().url());
 		if (url.searchParams.get('mode') === 'preview')
@@ -3795,18 +3794,37 @@ test('browser Back keeps dirty Project state unchanged until discard confirmatio
 			}
 		});
 	});
-	await addProject(page);
-	await page.getByRole('button', { name: 'Files', exact: true }).click();
-	await page.getByRole('treeitem', { name: /README\.md/ }).click();
-	await page.getByRole('button', { name: 'Edit Markdown' }).click();
-	await page.getByLabel('File content').fill('# Unsaved Back regression');
+	const created = await page.request.post('/api/projects', {
+		data: {
+			name: 'Dirty Back Project',
+			folders: [dirtyRoot],
+			primaryPath: dirtyRoot
+		}
+	});
+	const project = ((await created.json()) as { project: { id: string } }).project;
+	try {
+		await page.goto('/?project=none');
+		await page
+			.locator('.project-rail nav .project-select')
+			.filter({ hasText: 'Dirty Back Project' })
+			.click();
+		await expect(page).toHaveURL(new RegExp(`project=${project.id}`));
+		await page.getByRole('button', { name: 'Files', exact: true }).click();
+		await page.getByRole('treeitem', { name: /README\.md/ }).click();
+		await page.getByRole('button', { name: 'Edit Markdown' }).click();
+		await page.getByLabel('File content').fill('# Unsaved Back regression');
+		await expect(page.getByRole('button', { name: 'Save file' })).toBeEnabled();
 
-	await page.goBack();
+		await page.goBack();
 
-	await expect(page.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
-	await expect(page.getByLabel('File content')).toHaveValue('# Unsaved Back regression');
-	await page.getByRole('button', { name: 'Keep editing' }).click();
-	await expect(page.getByLabel('File content')).toHaveValue('# Unsaved Back regression');
+		await expect(page.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
+		await expect(page.getByLabel('File content')).toHaveValue('# Unsaved Back regression');
+		await page.getByRole('button', { name: 'Keep editing' }).click();
+		await expect(page.getByLabel('File content')).toHaveValue('# Unsaved Back regression');
+	} finally {
+		await page.request.delete(`/api/projects/${project.id}`).catch(() => undefined);
+		rmSync(dirtyRoot, { recursive: true, force: true });
+	}
 });
 
 test('durable mobile destination restores safely and browser Back follows drawer hierarchy', async ({

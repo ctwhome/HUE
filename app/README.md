@@ -35,9 +35,12 @@ The real ACP test creates and resumes a Hermes Session but uses the local `/vers
 bun run build
 HOST=127.0.0.1 \
 PORT=4173 \
+ORIGIN=http://127.0.0.1:4173 \
 HUE_DATABASE_PATH="$HOME/.hue/hue.db" \
 HUE_HERMES_PROFILE=default \
 bun run start
 ```
+
+`bun run start` derives a local `ORIGIN` from `HOST` and `PORT` when omitted. Set the public `ORIGIN` explicitly behind a reverse proxy so SvelteKit can retain multipart CSRF protection for the Web Share Target.
 
 HUE stores Project, Workflow, Project/Session associations, message-delivery, and event-cursor state in its own SQLite database. Startup recovery redispatches queued turns after resuming their associated Hermes Session and marks interrupted running turns `unknown` without retrying them. Hermes remains authoritative for agent execution and Session transcripts; HUE never writes Hermes' database directly.

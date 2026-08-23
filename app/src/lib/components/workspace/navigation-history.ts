@@ -1,6 +1,7 @@
 import {
 	NAVIGATION_MEMORY_KEY,
-	resolveNavigationDestination,
+	resolveLaunchDestination,
+	type LaunchDestination,
 	type MobilePane
 } from './mobile-navigation';
 import type { Project, Session } from './types';
@@ -14,7 +15,11 @@ type NavigationState = {
 	mobileDrawer: MobilePane;
 	activeTab: 'sessions' | 'workflows';
 	sessions: Session[];
-	persistSelection: (mode?: Exclude<HistoryMode, 'none'>, drawerEntry?: boolean) => void;
+	persistSelection: (
+		mode?: Exclude<HistoryMode, 'none'>,
+		drawerEntry?: boolean,
+		remember?: boolean
+	) => void;
 	loadActiveTab: (sessionId?: string | null) => Promise<void>;
 	openSession: (session: Session, mode?: HistoryMode) => Promise<boolean>;
 };
@@ -30,9 +35,12 @@ type RestoreEffects = {
 export function persistNavigationSelection(
 	navigation: Pick<NavigationState, 'selectedProject' | 'selectedSession' | 'mobileDrawer'>,
 	mode: Exclude<HistoryMode, 'none'> = 'replace',
-	drawerEntry = false
+	drawerEntry = false,
+	remember = true
 ) {
 	const url = new URL(window.location.href);
+	url.searchParams.delete('intent');
+	url.searchParams.delete('token');
 	url.searchParams.set('project', navigation.selectedProject?.id ?? 'none');
 	if (navigation.selectedSession)
 		url.searchParams.set('session', navigation.selectedSession.sessionId);
@@ -51,15 +59,16 @@ export function persistNavigationSelection(
 		'',
 		url
 	);
-	localStorage.setItem(
-		NAVIGATION_MEMORY_KEY,
-		JSON.stringify({
-			version: 1,
-			projectId: navigation.selectedProject?.id ?? null,
-			sessionId: navigation.selectedSession?.sessionId ?? null,
-			pane: navigation.mobileDrawer
-		})
-	);
+	if (remember)
+		localStorage.setItem(
+			NAVIGATION_MEMORY_KEY,
+			JSON.stringify({
+				version: 1,
+				projectId: navigation.selectedProject?.id ?? null,
+				sessionId: navigation.selectedSession?.sessionId ?? null,
+				pane: navigation.mobileDrawer
+			})
+		);
 	document.title = navigation.selectedSession?.title
 		? `${navigation.selectedSession.title} · HUE`
 		: 'HUE';
@@ -67,21 +76,27 @@ export function persistNavigationSelection(
 
 export async function restoreNavigationSelection(
 	navigation: NavigationState,
-	effects: RestoreEffects
-) {
-	const destination = resolveNavigationDestination(
+	effects: RestoreEffects,
+	guard?: () => boolean
+): Promise<LaunchDestination | null> {
+	const destination = resolveLaunchDestination(
 		new URL(window.location.href),
 		localStorage.getItem(NAVIGATION_MEMORY_KEY),
 		effects.getProjects().map(({ id }) => id)
 	);
-	if (
+	const sameWorkspace =
 		navigation.ready &&
 		destination.projectId === (navigation.selectedProject?.id ?? null) &&
-		destination.sessionId === (navigation.selectedSession?.sessionId ?? null)
-	) {
+		destination.sessionId === (navigation.selectedSession?.sessionId ?? null);
+	if (navigation.ready && !sameWorkspace && guard?.()) return null;
+	if (sameWorkspace) {
 		navigation.mobileDrawer = effects.isMobile() ? destination.pane : null;
-		navigation.persistSelection('replace');
-		return;
+		navigation.persistSelection(
+			'replace',
+			false,
+			!['capture', 'share'].includes(destination.intent ?? '')
+		);
+		return destination;
 	}
 	navigation.ready = false;
 	effects.endVoice();
@@ -97,7 +112,7 @@ export async function restoreNavigationSelection(
 	if (navigation.selectedProject?.rootAvailable === false) {
 		navigation.persistSelection('replace');
 		navigation.ready = true;
-		return;
+		return destination;
 	}
 	await navigation.loadActiveTab(destination.sessionId);
 	const session = navigation.sessions.find(({ sessionId }) => sessionId === destination.sessionId);
@@ -112,6 +127,11 @@ export async function restoreNavigationSelection(
 			: destination.sessionId && !sessionRestored
 				? 'sessions'
 				: null;
-	navigation.persistSelection('replace');
+	navigation.persistSelection(
+		'replace',
+		false,
+		!['capture', 'share'].includes(destination.intent ?? '')
+	);
 	navigation.ready = true;
+	return destination;
 }

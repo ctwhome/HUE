@@ -17,6 +17,7 @@ const workspacePaths = [
 	'../lib/components/workspace/dirty-guard.ts',
 	'../lib/components/workspace/dirty-navigation.ts',
 	'../lib/components/workspace/ProjectRail.svelte',
+	'../lib/components/workspace/SessionHeader.svelte',
 	'../lib/components/workspace/ProjectFoldersEditor.svelte',
 	'../lib/components/workspace/message-state.svelte.ts',
 	'../lib/components/workspace/navigation.svelte.ts',
@@ -71,6 +72,21 @@ const input = read('../lib/components/ui/Input.svelte');
 const textarea = read('../lib/components/ui/Textarea.svelte');
 const ui = [page, navigation, panel, workbench].join('\n');
 const e2e = read('./workspace.e2e.ts');
+
+test('PWA capture and pin UI keeps create separate from send and uses honest fallback copy', () => {
+	const capture = read('../lib/components/pwa/QuickCapture.svelte');
+	const install = read('../lib/components/pwa/InstallPinGuidance.svelte');
+	expect(workspace).toContain('<QuickCapture');
+	expect(page).toContain('<InstallPinGuidance');
+	expect(capture).toContain('Create Session');
+	expect(capture).not.toContain('sendText');
+	expect(capture).toContain('bind:this={composerElement}');
+	expect(capture).toContain('min-h-11');
+	expect(install).toContain('beforeinstallprompt');
+	expect(install).toContain('Copy link');
+	expect(install).toMatch(/browser menu/i);
+	expect(install).toContain('min-h-11');
+});
 
 test('uses Tailwind tokens and local shadcn-style primitives', () => {
 	expect(appStyles).toContain("@import 'tailwindcss'");

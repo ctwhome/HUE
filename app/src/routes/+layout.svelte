@@ -6,6 +6,12 @@
 	let { children } = $props();
 </script>
 
-<svelte:head><link rel="icon" href={favicon} /></svelte:head>
+<svelte:head>
+	<link rel="icon" href={favicon} />
+	<link rel="manifest" href="/manifest.webmanifest" />
+	<link rel="apple-touch-icon" href="/icons/hue-192.png" />
+	<meta name="theme-color" content="#7c3aed" />
+	<meta name="application-name" content="HUE" />
+</svelte:head>
 {@render children()}
 <TooltipProvider />

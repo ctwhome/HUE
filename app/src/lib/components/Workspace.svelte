@@ -1,14 +1,15 @@
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
-	import { Circle } from 'lucide-svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { formatElapsed, isTurnBusy } from '$lib';
 	import { automaticSessionIcon } from '$lib/icon';
 	import { applyPreferences, readPreferences } from '$lib/preferences';
+	import type { CaptureInput } from '$lib/pwa/quick-capture';
 	import { renderMessageMarkdown } from '$lib/message-markdown';
 	import { createVoiceCall } from '$lib/voice/voice-call.svelte';
 	import GlobalNavigation, { type GlobalView } from './GlobalNavigation.svelte';
 	import HermesPanel from './HermesPanel.svelte';
 	import ProjectWorkbench from './ProjectWorkbench.svelte';
+	import QuickCapture from './pwa/QuickCapture.svelte';
 	import Composer from './workspace/Composer.svelte';
 	import ContextPanel from './workspace/ContextPanel.svelte';
 	import Conversation from './workspace/Conversation.svelte';
@@ -20,6 +21,7 @@
 	import { WorkspaceNavigation } from './workspace/navigation.svelte';
 	import { isImageIcon, ProjectManagement } from './workspace/project-management.svelte';
 	import ProjectRail from './workspace/ProjectRail.svelte';
+	import SessionHeader from './workspace/SessionHeader.svelte';
 	import DirtyGuardDialog from './workspace/DirtyGuardDialog.svelte';
 	import { DirtyGuard } from './workspace/dirty-guard';
 	import { installDirtyNavigation } from './workspace/dirty-navigation';
@@ -46,6 +48,7 @@
 	let gestureActive = $state(false),
 		gestureAction = $state<MobileGesture['action']>(null);
 	let mobileShell: MobileShellController | null = null;
+	let quickCapture: { open: (intent: 'capture' | 'share', token: string | null) => Promise<void> };
 	const dirtyGuard = new DirtyGuard((guard) => {
 		dirtyGuardOpen = guard.open;
 		dirtyGuardDirty = guard.dirty;
@@ -114,10 +117,27 @@
 			setError: (message) => (error = message),
 			setLoading: (value) => (loading = value),
 			guard: (action) => dirtyGuard.block(action),
-			isMobile: () => mobile
+			isMobile: () => mobile,
+			openCapture: (intent, token) => quickCapture.open(intent, token)
 		}
 	);
 	navigationRef.current = navigation;
+	async function createCapturedSession(capture: CaptureInput) {
+		const project = capture.projectId
+			? (projectManagement.projects.find(
+					({ id, rootAvailable }) => id === capture.projectId && rootAvailable
+				) ?? null)
+			: null;
+		await navigation.chooseProject(project, 'none');
+		if (!(await navigation.createSession())) return false;
+		messageState.composer = capture.text;
+		messageState.images = capture.images;
+		messageState.attachments = capture.attachments;
+		messageState.saveCurrentDraft();
+		await tick();
+		messageState.composerElement?.focus();
+		return true;
+	}
 	const runtimeState = new RuntimeState({
 		api: workspaceApi,
 		getSession: () => navigation.selectedSession,
@@ -305,42 +325,7 @@
 		elapsed={formatElapsed}
 	/>
 	<main class="session-view flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-		<header
-			class="session-header flex min-h-[76px] items-center justify-between border-b border-border px-5 py-3.5"
-		>
-			<div>
-				<small>
-					{selectedProject?.primaryPath ?? 'No project'}
-					{#if branch}<span class="header-branch">{branch}</span>{/if}
-				</small>
-				<h2 class="selected-session-title mt-1 flex items-center gap-2 font-semibold">
-					{#if selectedSession}{#if isImageIcon(selectedSession.icon ?? null)}<img
-								class="title-icon grid size-6 shrink-0 place-items-center rounded-md object-cover"
-								src={selectedSession.icon ?? ''}
-								alt=""
-							/>
-						{:else}<span
-								class="title-icon grid size-6 shrink-0 place-items-center rounded-md object-cover"
-								>{selectedSession.icon ?? automaticSessionIcon(selectedSession.title)}</span
-							>{/if}{/if}<span
-						>{selectedSession?.title ||
-							(selectedSession
-								? 'New Hermes Session'
-								: selectedProject
-									? 'Project workbench'
-									: 'Projects · Workflows · Sessions')}</span
-					>
-				</h2>
-			</div>
-			<div
-				class="runtime-pill rounded-full border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground"
-				title={runtime.clarify?.reason ??
-					`Clarify elicitation ${runtime.clarify?.status ?? 'unsupported'}`}
-			>
-				<Circle size={7} fill="currentColor" aria-hidden="true" /> Hermes ACP · Clarify {runtime
-					.clarify?.status ?? 'unsupported'}
-			</div>
-		</header>
+		<SessionHeader project={selectedProject} session={selectedSession} {branch} {runtime} />
 		{#if error}<div
 				class="error mx-5 mt-3 rounded-lg border border-destructive/40 bg-destructive/15 px-3 py-2.5 text-sm text-destructive"
 				role="alert"
@@ -444,7 +429,7 @@
 					>
 				</div>
 			</section>
-		{:else if selectedProject}
+		{:else if selectedProject && navigation.ready}
 			{#key selectedProject.id}
 				<ProjectWorkbench
 					projectId={selectedProject.id}
@@ -491,6 +476,12 @@
 		{/if}
 	</main>
 </div>
+
+<QuickCapture
+	bind:this={quickCapture}
+	projects={projectManagement.projects}
+	oncreate={createCapturedSession}
+/>
 
 <DirtyGuardDialog
 	open={dirtyGuardOpen}
