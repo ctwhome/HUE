@@ -3,6 +3,8 @@ import { serviceExportStubs } from '$lib/server/services-test-stubs';
 
 let submitted = false;
 let envelope: Record<string, unknown> | null = null;
+let submitResult: Record<string, unknown> = { duplicate: false, status: 'queued' };
+let workModeUpdates = 0;
 const metadataIds: string[] = [];
 const sessionProjectIds: string[] = [];
 const operationReferences: string[] = [];
@@ -13,6 +15,18 @@ mock.module('$lib/server/route-services', () => ({
 	services: () => ({
 		store: {
 			ensureProjectMetadata: (id: string) => metadataIds.push(id),
+			getSession: () => ({ workMode: 'autonomous' }),
+			updateSessionWorkMode: (_projectId: string, _sessionId: string, workMode: string) => {
+				workModeUpdates += 1;
+				return {
+					session: { workMode },
+					event: {
+						sequence: 1,
+						type: 'session.work_mode_changed',
+						payload: { workMode }
+					}
+				};
+			},
 			hasSession: (id: string) => {
 				sessionProjectIds.push(id);
 				return true;
@@ -22,7 +36,7 @@ mock.module('$lib/server/route-services', () => ({
 			submit: (input: Record<string, unknown>) => {
 				submitted = true;
 				envelope = input;
-				return { duplicate: false, status: 'queued' };
+				return submitResult;
 			},
 			updateQueuedMessage: (_id: string, input: Record<string, unknown>) => {
 				updatedEnvelope = input;
@@ -53,6 +67,7 @@ test('persists Project-scoped message under canonical Hermes id', async () => {
 	} as never);
 
 	expect(response.status).toBe(202);
+	expect(await response.clone().json()).toMatchObject({ workModeChanged: false });
 	expect(metadataIds).toEqual(['canonical-project']);
 	expect(sessionProjectIds).toEqual(['canonical-project']);
 	expect(envelope).toMatchObject({ projectId: 'canonical-project', sessionId: 'session' });
@@ -110,4 +125,53 @@ test('rejects combined image and generic attachment count before dispatch', asyn
 	expect(response.status).toBe(400);
 	expect(await response.json()).toEqual({ error: 'Attach no more than 8 files' });
 	expect(submitted).toBe(false);
+});
+
+test('message acceptance returns effective work mode after natural-language switch', async () => {
+	submitResult = { duplicate: false, status: 'queued', workMode: 'live' };
+	const { POST } = await import('./+server');
+	const response = await POST({
+		params: { projectId: 'project', sessionId: 'session' },
+		request: new Request('http://hue.test', {
+			method: 'POST',
+			body: JSON.stringify({ messageId: 'message', text: "I'm at the computer" })
+		})
+	} as never);
+
+	expect(response.status).toBe(202);
+	expect(await response.json()).toMatchObject({
+		messageId: 'message',
+		workMode: 'live',
+		workModeChanged: true,
+		workModeEvent: { type: 'session.work_mode_changed', payload: { workMode: 'live' } }
+	});
+});
+
+test('rejects a local work mode alias with attachments instead of discarding content', async () => {
+	submitted = false;
+	workModeUpdates = 0;
+	const { POST } = await import('./+server');
+	const response = await POST({
+		params: { projectId: 'project', sessionId: 'session' },
+		request: new Request('http://hue.test', {
+			method: 'POST',
+			body: JSON.stringify({
+				messageId: 'message-with-file',
+				text: '/live-co-development',
+				attachments: [
+					{
+						name: 'notes.txt',
+						mimeType: 'text/plain',
+						size: 5,
+						data: Buffer.from('hello').toString('base64')
+					}
+				]
+			})
+		})
+	} as never);
+
+	expect(response.status).toBe(400);
+	expect(await response.json()).toEqual({ error: 'Work mode commands cannot include attachments' });
+	expect(submitted).toBe(false);
+	expect(workModeUpdates).toBe(0);
 });

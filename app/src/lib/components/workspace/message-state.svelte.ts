@@ -1,6 +1,7 @@
 import { tick } from 'svelte';
 import { applySessionEvents, isTurnBusy, runSingleFlight } from '$lib';
 import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+import { formatWorkModeAnnouncement, type WorkMode } from '$lib/work-mode';
 import { shouldSendMessage } from '$lib/preferences';
 import type { WorkspaceNavigation } from './navigation.svelte';
 import type { SessionState } from './session-state.svelte';
@@ -81,28 +82,40 @@ export class MessageState {
 		if (!selectedSession) return false;
 		const messageId = crypto.randomUUID();
 		try {
-			await this.options.api<{ status: string }>(
-				this.sessionPath(selectedSession.sessionId, '/messages'),
-				{
-					method: 'POST',
-					body: JSON.stringify({
-						messageId,
-						text,
-						images: this.images,
-						attachments: this.attachments
-					})
-				}
-			);
-			this.options.session.queuedMessages = [
-				...this.options.session.queuedMessages,
-				{
-					id: messageId,
+			const accepted = await this.options.api<{
+				status: string;
+				workMode: WorkMode;
+				workModeChanged?: boolean;
+				workModeEvent?: SessionEvent | null;
+				consumed?: boolean;
+			}>(this.sessionPath(selectedSession.sessionId, '/messages'), {
+				method: 'POST',
+				body: JSON.stringify({
+					messageId,
 					text,
-					images: [...this.images],
-					attachments: this.attachments.map(unavailableAttachmentMetadata),
-					status: 'queued'
-				}
-			];
+					images: this.images,
+					attachments: this.attachments
+				})
+			});
+			this.options
+				.getNavigation()
+				.replaceSession({ ...selectedSession, workMode: accepted.workMode });
+			if (accepted.workModeChanged || accepted.consumed) {
+				this.messageNotice = formatWorkModeAnnouncement(accepted.workMode);
+			}
+			if (accepted.workModeEvent) this.options.session.applyEvents([accepted.workModeEvent]);
+			if (!accepted.consumed) {
+				this.options.session.queuedMessages = [
+					...this.options.session.queuedMessages,
+					{
+						id: messageId,
+						text,
+						images: [...this.images],
+						attachments: this.attachments.map(unavailableAttachmentMetadata),
+						status: 'queued'
+					}
+				];
+			}
 			return true;
 		} catch (cause) {
 			this.report(cause);
@@ -278,20 +291,37 @@ export class MessageState {
 			.getNavigation()
 			.setSessionBusySince(selectedSession.sessionId, new Date().toISOString());
 		try {
-			const accepted = await this.options.api<{ duplicate: boolean; status: string }>(
-				this.sessionPath(selectedSession.sessionId, '/messages'),
-				{
-					method: 'POST',
-					body: JSON.stringify({
-						messageId: envelope.id,
-						text: envelope.text,
-						images: envelope.images,
-						attachments: envelope.attachments
-					})
-				}
-			);
+			const accepted = await this.options.api<{
+				duplicate: boolean;
+				status: string;
+				workMode: WorkMode;
+				workModeChanged?: boolean;
+				workModeEvent?: SessionEvent | null;
+				consumed?: boolean;
+			}>(this.sessionPath(selectedSession.sessionId, '/messages'), {
+				method: 'POST',
+				body: JSON.stringify({
+					messageId: envelope.id,
+					text: envelope.text,
+					images: envelope.images,
+					attachments: envelope.attachments
+				})
+			});
+			this.options
+				.getNavigation()
+				.replaceSession({ ...selectedSession, workMode: accepted.workMode });
+			if (accepted.workModeChanged || accepted.consumed) {
+				this.messageNotice = formatWorkModeAnnouncement(accepted.workMode);
+			}
+			if (accepted.workModeEvent) this.options.session.applyEvents([accepted.workModeEvent]);
 			this.pendingEnvelope = null;
 			this.clearPendingEnvelope();
+			if (accepted.consumed) {
+				sessionState.activeMessageId = '';
+				sessionState.delivery = '';
+				this.options.getNavigation().setSessionBusySince(selectedSession.sessionId, null);
+				return true;
+			}
 			if (accepted.duplicate) {
 				if (['completed', 'failed', 'unknown'].includes(accepted.status)) {
 					await this.options.getNavigation().openSession(selectedSession);

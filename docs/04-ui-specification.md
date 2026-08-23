@@ -161,6 +161,8 @@ Project: Notidian · Auto routing · Computer use: ask
 **Streaming:** text and compact semantic tool activity; raw events belong in run detail.
 **Error:** retain unsent text and show retry path.
 
+The composer always shows a visible **Work mode** selector with `Autonomous` and `Live` together. It is HUE-owned Session context, not a Hermes runtime-mode control. Selector changes work while a turn is idle or running, announce politely, and append a compact timestamped status item in the conversation timeline. Natural exact phrases such as `I'm at the computer` and `continue autonomously`, plus exact slash aliases, switch the same stored value; slash aliases do not dispatch an agent turn.
+
 The Session header displays type (Discussion, Execution, Research, Monitoring or Review), Space, context-pack version and source health. Changing type creates an explicit transition or a new linked Session; it does not silently add broad tools to an existing context.
 
 ## Screen S04 — Task plan and live graph — `TBI`

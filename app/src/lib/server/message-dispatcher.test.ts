@@ -7,8 +7,13 @@ import {
 import { HUEStore } from './store';
 
 class RecordingRuntime implements PromptRuntime {
-	calls: Array<{ sessionId: string; text: string; images?: unknown[]; attachments?: unknown[] }> =
-		[];
+	calls: Array<{
+		sessionId: string;
+		text: string;
+		images?: unknown[];
+		attachments?: unknown[];
+		workMode?: string;
+	}> = [];
 	resumes: Array<{ cwd: string; sessionId: string }> = [];
 	active = 0;
 	maxActive = 0;
@@ -23,6 +28,7 @@ class RecordingRuntime implements PromptRuntime {
 			sessionId: input.sessionId,
 			text: input.text,
 			images: input.images,
+			workMode: input.workMode,
 			...(input.attachments?.length ? { attachments: input.attachments } : {})
 		});
 		this.active += 1;
@@ -100,7 +106,9 @@ describe('MessageDispatcher', () => {
 		dispatcher.recover();
 		await dispatcher.whenIdle('session-1');
 
-		expect(runtime.calls).toEqual([{ sessionId: 'session-1', text: 'Resume me', images: [] }]);
+		expect(runtime.calls).toEqual([
+			{ sessionId: 'session-1', text: 'Resume me', images: [], workMode: 'autonomous' }
+		]);
 		expect(store.getMessage('queued')?.status).toBe('completed');
 		expect(store.getMessage('running')?.status).toBe('unknown');
 		expect(
@@ -161,7 +169,9 @@ describe('MessageDispatcher', () => {
 		await dispatcher.whenIdle('session-1');
 
 		expect(runtime.resumes).toEqual([{ cwd: '/work/hue', sessionId: 'session-1' }]);
-		expect(runtime.calls).toEqual([{ sessionId: 'session-1', text: 'Resume me once', images: [] }]);
+		expect(runtime.calls).toEqual([
+			{ sessionId: 'session-1', text: 'Resume me once', images: [], workMode: 'autonomous' }
+		]);
 		expect(store.getMessage('queued')?.status).toBe('completed');
 		expect(store.getMessage('running')?.status).toBe('unknown');
 		expect(store.listEvents('hue', 'session-1').at(-1)?.type).toBe('message.completed');
@@ -264,7 +274,9 @@ describe('MessageDispatcher', () => {
 
 		expect(first).toMatchObject({ duplicate: false, status: 'queued' });
 		expect(retry.duplicate).toBe(true);
-		expect(runtime.calls).toEqual([{ sessionId: 'session-1', text: envelope.text, images: [] }]);
+		expect(runtime.calls).toEqual([
+			{ sessionId: 'session-1', text: envelope.text, images: [], workMode: 'autonomous' }
+		]);
 		expect(store.getMessage('msg-1')?.status).toBe('completed');
 		expect(
 			store
@@ -284,6 +296,48 @@ describe('MessageDispatcher', () => {
 		store.close();
 	});
 
+	it('reads current stored work mode at processing time, including queued mode changes', async () => {
+		const store = makeStore();
+		const runtime = new RecordingRuntime();
+		let releaseFirst!: () => void;
+		runtime.prompt = async (input) => {
+			runtime.calls.push({
+				sessionId: input.sessionId,
+				text: input.text,
+				images: input.images,
+				workMode: input.workMode
+			});
+			if (input.text === 'First') {
+				await new Promise<void>((resolve) => (releaseFirst = resolve));
+			}
+			input.onChunk(input.text);
+		};
+		const dispatcher = new MessageDispatcher(store, runtime);
+		dispatcher.submit({
+			id: 'msg-1',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'First'
+		});
+		dispatcher.submit({
+			id: 'msg-2',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Second'
+		});
+		await Promise.resolve();
+		store.updateSessionWorkMode('hue', 'session-1', 'live', 'user');
+		releaseFirst();
+
+		await dispatcher.whenIdle('session-1');
+
+		expect(runtime.calls.map(({ text, workMode }) => ({ text, workMode }))).toEqual([
+			{ text: 'First', workMode: 'autonomous' },
+			{ text: 'Second', workMode: 'live' }
+		]);
+		store.close();
+	});
+
 	it('persists and forwards image attachments as part of the exact envelope', async () => {
 		const store = makeStore();
 		const runtime = new RecordingRuntime();
@@ -300,7 +354,9 @@ describe('MessageDispatcher', () => {
 		dispatcher.submit(envelope);
 		await dispatcher.whenIdle('session-1');
 
-		expect(runtime.calls).toEqual([{ sessionId: 'session-1', text: envelope.text, images }]);
+		expect(runtime.calls).toEqual([
+			{ sessionId: 'session-1', text: envelope.text, images, workMode: 'autonomous' }
+		]);
 		expect(store.getMessage(envelope.id)?.images).toEqual(images);
 		store.close();
 	});
@@ -326,7 +382,13 @@ describe('MessageDispatcher', () => {
 		await dispatcher.whenIdle('session-1');
 
 		expect(runtime.calls).toEqual([
-			{ sessionId: 'session-1', text: 'Review this', images: [], attachments: [attachment] }
+			{
+				sessionId: 'session-1',
+				text: 'Review this',
+				images: [],
+				attachments: [attachment],
+				workMode: 'autonomous'
+			}
 		]);
 		expect(store.getMessage('file-message')?.attachments).toEqual([
 			{

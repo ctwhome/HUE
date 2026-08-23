@@ -17,6 +17,12 @@ import {
 	type ToolCall
 } from './message-dispatcher';
 import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+import {
+	buildWorkModePreamble,
+	stripHermesPreamble,
+	WORK_MODE_VERSION,
+	type WorkMode
+} from '$lib/work-mode';
 import { redactPersistedValue } from './redaction';
 
 export type HermesSession = {
@@ -65,6 +71,16 @@ type HermesSessionResponse = {
 };
 
 export const redactToolPayload = redactPersistedValue;
+export const stripExactWorkModePreamble = stripHermesPreamble;
+
+export function buildWorkModePromptEnvelope(workMode: WorkMode, text: string) {
+	return {
+		meta: {
+			hue: { workMode, version: WORK_MODE_VERSION, authorityUnchanged: true }
+		},
+		text: text.trimStart().startsWith('/') ? text : `${buildWorkModePreamble(workMode)}\n${text}`
+	};
+}
 
 function toolError(value: unknown): string | undefined {
 	if (!value || typeof value !== 'object') return undefined;
@@ -439,11 +455,13 @@ export class HermesACP implements PromptRuntime {
 	}
 
 	private requestRaw<Response>(context: acp.ClientContext, method: string, params: unknown) {
-		return (
-			context as unknown as {
-				sendRequest: (method: string, params: unknown) => Promise<Response>;
-			}
-		).sendRequest(method, params);
+		const raw = context as unknown as {
+			sendRequest?: (method: string, params: unknown) => Promise<Response>;
+			request?: (method: string, params: unknown) => Promise<Response>;
+		};
+		if (raw.sendRequest) return raw.sendRequest(method, params);
+		if (raw.request) return raw.request(method, params);
+		throw new Error('ACP context does not support requests');
 	}
 
 	async createSession(cwd: string): Promise<HermesSession> {
@@ -531,7 +549,7 @@ export class HermesACP implements PromptRuntime {
 		const transcript: HermesTranscriptMessage[] = [];
 		const unsubscribe = this.subscribe(sessionId, (update) => {
 			if (update.sessionUpdate === 'user_message_chunk' && update.content.type === 'text') {
-				transcript.push({ role: 'user', text: update.content.text });
+				appendTranscriptText(transcript, 'user', update.content.text, true);
 			}
 			if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'text') {
 				transcript.push({ role: 'assistant', text: update.content.text });
@@ -565,6 +583,7 @@ export class HermesACP implements PromptRuntime {
 		text: string;
 		images: ImageAttachment[];
 		attachments?: InputAttachment[];
+		workMode: WorkMode;
 		onChunk: (text: string) => void;
 		onImage?: (image: ImageAttachment) => void;
 		onThought?: (text: string) => void;
@@ -642,14 +661,24 @@ export class HermesACP implements PromptRuntime {
 			}
 		});
 		try {
-			const response = (await context.request(acp.methods.agent.session.prompt, {
-				sessionId: input.sessionId,
-				prompt: [
-					...(input.text.trim() ? [{ type: 'text' as const, text: input.text }] : []),
-					...input.images.map(({ data, mimeType }) => ({ type: 'image' as const, data, mimeType })),
-					...resources
-				]
-			})) as acp.PromptResponse;
+			const envelope = buildWorkModePromptEnvelope(input.workMode, input.text);
+			const response = (await this.requestRaw<acp.PromptResponse>(
+				context,
+				acp.methods.agent.session.prompt,
+				{
+					sessionId: input.sessionId,
+					prompt: [
+						...(envelope.text.trim() ? [{ type: 'text' as const, text: envelope.text }] : []),
+						...input.images.map(({ data, mimeType }) => ({
+							type: 'image' as const,
+							data,
+							mimeType
+						})),
+						...resources
+					],
+					_meta: envelope.meta
+				}
+			)) as acp.PromptResponse;
 			if (response.stopReason !== 'end_turn') {
 				throw new Error(`Hermes ended the turn with ${response.stopReason}`);
 			}
@@ -884,4 +913,22 @@ export class HermesACP implements PromptRuntime {
 			child.kill('SIGTERM');
 		});
 	}
+}
+
+function appendTranscriptText(
+	transcript: HermesTranscriptMessage[],
+	role: 'user' | 'assistant',
+	text: string,
+	stripGeneratedUserPreamble = false
+) {
+	const last = transcript.at(-1);
+	if (last && last.role === role && !last.images) {
+		last.text += text;
+		if (stripGeneratedUserPreamble) last.text = stripHermesPreamble(last.text);
+		return;
+	}
+	transcript.push({
+		role,
+		text: stripGeneratedUserPreamble ? stripHermesPreamble(text) : text
+	});
 }
