@@ -267,6 +267,46 @@ describe('HermesServe', () => {
 		expect(closed).toBe(true);
 	});
 
+	it('sends Projects JSON-RPC through authenticated /api/ws and closes pending calls', async () => {
+		let upgradeUrl = '';
+		let received: unknown;
+		const server = Bun.serve({
+			port: 0,
+			fetch(request, server) {
+				upgradeUrl = request.url;
+				if (server.upgrade(request)) return;
+				return new Response('upgrade required', { status: 426 });
+			},
+			websocket: {
+				message(socket, message) {
+					received = JSON.parse(String(message));
+					const frame = received as { id: string };
+					socket.send(JSON.stringify({ jsonrpc: '2.0', id: frame.id, result: { projects: [] } }));
+				}
+			}
+		});
+		cleanups.push(() => server.stop(true));
+		const hermes = new HermesServe();
+		Object.assign(hermes as object, {
+			child: {},
+			baseUrl: `http://127.0.0.1:${server.port}`,
+			token: 'server-secret'
+		});
+
+		await expect(hermes.rpc('projects.list', { profile: 'default' })).resolves.toEqual({
+			projects: []
+		});
+		expect(received).toMatchObject({
+			jsonrpc: '2.0',
+			method: 'projects.list',
+			params: { profile: 'default' }
+		});
+		expect(new URL(upgradeUrl).pathname).toBe('/api/ws');
+		expect(new URL(upgradeUrl).searchParams.get('token')).toBe('server-secret');
+		Object.assign(hermes as object, { child: null });
+		await hermes.close();
+	});
+
 	it('errors the audio response when Hermes closes before the stream ends', async () => {
 		const server = Bun.serve({
 			port: 0,

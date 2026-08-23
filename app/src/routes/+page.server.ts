@@ -1,6 +1,24 @@
-import { projectView, services } from '$lib/server/services';
+import { HermesProjectsCapabilityError } from '$lib/server/hermes-projects';
+import { loadProjectViews } from '$lib/server/route-services';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = () => ({
-	projects: services().store.listProjects().map(projectView)
-});
+export const load: PageServerLoad = async () => {
+	try {
+		const loaded = await loadProjectViews();
+		return {
+			...loaded,
+			projectsCapability: 'available' as const,
+			projectsError: ''
+		};
+	} catch (cause) {
+		return {
+			projects: [],
+			projectsCapability:
+				cause instanceof HermesProjectsCapabilityError
+					? ('unavailable' as const)
+					: ('outage' as const),
+			projectsError: cause instanceof Error ? cause.message : String(cause),
+			reconciliationIssues: []
+		};
+	}
+};

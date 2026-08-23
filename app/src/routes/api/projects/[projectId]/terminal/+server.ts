@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { services } from '$lib/server/services';
+import { authoritativeProject, services } from '$lib/server/services';
 import type { RequestHandler } from './$types';
 
 export function _terminalAllowed(
@@ -32,17 +32,15 @@ export function _terminalAllowed(
 	}
 }
 
-export const GET: RequestHandler = ({ params, request, url, getClientAddress }) => {
+export const GET: RequestHandler = async ({ params, request, url, getClientAddress }) => {
 	if (!_terminalAllowed(request, url, getClientAddress(), false)) {
 		return json({ error: 'Terminal access is limited to this device' }, { status: 403 });
 	}
-	if (!services().store.getProject(params.projectId)) {
-		return json({ error: 'Project not found' }, { status: 404 });
-	}
 	try {
+		const project = await authoritativeProject(params.projectId);
 		return json(
 			services().terminals.read(
-				params.projectId,
+				project.id,
 				url.searchParams.get('terminalId') ?? '',
 				Number(url.searchParams.get('after') ?? 0)
 			)
@@ -56,9 +54,8 @@ export const POST: RequestHandler = async ({ params, request, url, getClientAddr
 	if (!_terminalAllowed(request, url, getClientAddress(), true)) {
 		return json({ error: 'Terminal access is limited to this device' }, { status: 403 });
 	}
-	const project = services().store.getProject(params.projectId);
-	if (!project) return json({ error: 'Project not found' }, { status: 404 });
 	try {
+		const project = await authoritativeProject(params.projectId);
 		const body = (await request.json()) as {
 			action?: string;
 			terminalId?: string;
@@ -70,8 +67,8 @@ export const POST: RequestHandler = async ({ params, request, url, getClientAddr
 		if (body.action === 'create') {
 			return json(
 				services().terminals.create(
-					params.projectId,
-					project.rootPath,
+					project.id,
+					project.primary_path,
 					body.cols ?? 80,
 					body.rows ?? 24
 				)
@@ -79,21 +76,11 @@ export const POST: RequestHandler = async ({ params, request, url, getClientAddr
 		}
 		if (!body.terminalId) throw new Error('Terminal ID is required');
 		if (body.action === 'input') {
-			services().terminals.write(
-				params.projectId,
-				body.terminalId,
-				body.sequence ?? 0,
-				body.data ?? ''
-			);
+			services().terminals.write(project.id, body.terminalId, body.sequence ?? 0, body.data ?? '');
 		} else if (body.action === 'resize') {
-			services().terminals.resize(
-				params.projectId,
-				body.terminalId,
-				body.cols ?? 0,
-				body.rows ?? 0
-			);
+			services().terminals.resize(project.id, body.terminalId, body.cols ?? 0, body.rows ?? 0);
 		} else if (body.action === 'close') {
-			services().terminals.close(params.projectId, body.terminalId);
+			services().terminals.close(project.id, body.terminalId);
 		} else {
 			throw new Error('Unknown terminal action');
 		}

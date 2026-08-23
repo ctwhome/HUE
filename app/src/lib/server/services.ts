@@ -1,24 +1,28 @@
 import { mkdirSync, realpathSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { HermesACP } from './hermes-acp';
 import type { HermesSession } from './hermes-acp';
 import { redactHermesValue } from './redaction';
 import { resolveHermesCommand } from './hermes-cli';
 import { HermesServe } from './hermes-serve';
+import { HermesProjects, type HermesProject } from './hermes-projects';
 import { MessageDispatcher } from './message-dispatcher';
 import { ProjectTerminals, resolveTerminalShell } from './project-terminals';
 import { ProjectFiles } from './project-files';
 import { HUEStore } from './store';
-import type { Project } from './store';
+import { reconcileLegacyProjects } from './project-reconciliation';
+import { ProjectOperations } from './project-operations';
 
 type HUEServices = {
 	store: HUEStore;
 	runtime: HermesACP;
 	admin: HermesServe;
+	projects: HermesProjects;
 	dispatcher: MessageDispatcher;
 	terminals: ProjectTerminals;
+	projectOperations: ProjectOperations<HermesProject>;
 };
 
 const globalServices = globalThis as typeof globalThis & {
@@ -30,22 +34,34 @@ function createServices(): HUEServices {
 	if (databasePath !== ':memory:') mkdirSync(dirname(databasePath), { recursive: true });
 	const store = new HUEStore(databasePath);
 	const hermesCommand = resolveHermesCommand();
+	const profile = process.env.HUE_HERMES_PROFILE ?? 'default';
 	const runtime = new HermesACP({
 		command: hermesCommand,
-		profile: process.env.HUE_HERMES_PROFILE ?? 'default',
+		profile,
 		onDiagnostic: (message) => console.error(`[hermes-acp] ${String(redactHermesValue(message))}`)
 	});
 	const admin = new HermesServe({
 		command: hermesCommand,
-		profile: process.env.HUE_HERMES_PROFILE ?? 'default',
+		profile,
 		onDiagnostic: (message) => console.error(`[hermes-admin] ${String(redactHermesValue(message))}`)
+	});
+	const projects = new HermesProjects(
+		{ request: (method, params) => admin.rpc(method, params) },
+		profile
+	);
+	const projectOperations = new ProjectOperations<HermesProject>({
+		resolve: (reference) => projects.get(reference),
+		active: (projectId) => store.hasActiveProjectDeliveries(projectId),
+		archive: (projectId) => projects.archive(projectId)
 	});
 	return {
 		store,
 		runtime,
 		admin,
+		projects,
 		dispatcher: new MessageDispatcher(store, runtime),
-		terminals: new ProjectTerminals()
+		terminals: new ProjectTerminals(),
+		projectOperations
 	};
 }
 
@@ -75,15 +91,57 @@ export function trustedProjectRoot(input: string): string {
 		throw new Error('Project root does not exist');
 	}
 	if (!stat.isDirectory()) throw new Error('Project root must be a directory');
-	return realpathSync(canonical);
+	realpathSync(canonical);
+	return canonical;
 }
 
-export function projectView(project: Project): Project & { rootAvailable: boolean } {
+export type ProjectView = {
+	id: string;
+	name: string;
+	icon: string | null;
+	primaryPath: string;
+	folders: Array<{ path: string; label: string | null; isPrimary: boolean; available: boolean }>;
+	rootAvailable: boolean;
+};
+
+function directoryAvailable(path: string) {
 	try {
-		return { ...project, rootAvailable: statSync(project.rootPath).isDirectory() };
+		return statSync(path).isDirectory();
 	} catch {
-		return { ...project, rootAvailable: false };
+		return false;
 	}
+}
+
+export function projectView(project: HermesProject): ProjectView {
+	return {
+		id: project.id,
+		name: project.name,
+		icon: project.icon,
+		primaryPath: project.primary_path,
+		folders: project.folders.map((folder) => ({
+			path: folder.path,
+			label: folder.label,
+			isPrimary: folder.is_primary,
+			available: directoryAvailable(folder.path)
+		})),
+		rootAvailable: directoryAvailable(project.primary_path)
+	};
+}
+
+export async function loadProjectViews() {
+	const state = services();
+	const reconciled = await reconcileLegacyProjects(state.store, state.projects);
+	return {
+		projects: reconciled.projects.filter((project) => !project.archived).map(projectView),
+		reconciliationIssues: reconciled.issues
+	};
+}
+
+export async function authoritativeProject(id: string): Promise<HermesProject> {
+	const project = await services().projects.get(id);
+	if (project.archived) throw new Error('Project not found');
+	services().store.ensureProjectMetadata(project.id);
+	return project;
 }
 
 export function mergeProjectSessionViews(
@@ -211,6 +269,29 @@ export function sessionMatchesProjectRoot(projectRoot: string, sessionCwd: strin
 	} catch {
 		return false;
 	}
+}
+
+export function sessionMatchesProjectFolders(
+	projectFolders: string[],
+	sessionCwd: string
+): boolean {
+	let cwd: string;
+	try {
+		cwd = realpathSync(sessionCwd);
+	} catch {
+		return false;
+	}
+	return projectFolders.some((folder) => {
+		try {
+			const difference = relative(realpathSync(folder), cwd);
+			return (
+				!isAbsolute(difference) &&
+				(difference === '' || (difference !== '..' && !difference.startsWith(`..${sep}`)))
+			);
+		} catch {
+			return false;
+		}
+	});
 }
 
 export function projectBranch(projectRoot: string): string | null {

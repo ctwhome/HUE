@@ -33,7 +33,7 @@ Project → Workflow or new Session → complete acknowledged message → Hermes
 **Goal:** operate real Projects, Workflows, and Sessions in a browser.
 
 - SvelteKit/Bun application shell;
-- Project CRUD with trusted root validation;
+- Hermes-authoritative Project CRUD through profile-scoped `projects.*`, with trusted multi-folder validation and one primary folder;
 - Workflow CRUD and run action;
 - sessions loaded only for the selected Project;
 - new/resume Session;
@@ -42,7 +42,7 @@ Project → Workflow or new Session → complete acknowledged message → Hermes
 - explicit empty, loading, failure, and unknown-delivery states;
 - desktop rail/sidebar/work layout plus mobile Project and Session drawers.
 
-**Exit:** a user can add a real local Project, create or resume a Hermes Session, send a full message, disconnect/reload, and recover the acknowledged result without truncation.
+**Exit:** a user can create or edit a multi-folder Hermes Project, create or resume a Session from its primary folder, send a full message, disconnect/reload, and recover the acknowledged result without truncation.
 
 ## M2 — Reliability and release
 

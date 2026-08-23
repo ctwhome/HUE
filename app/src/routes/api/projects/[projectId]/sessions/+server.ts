@@ -1,13 +1,18 @@
 import { json } from '@sveltejs/kit';
 import { statSync } from 'node:fs';
 import { automaticSessionIcon } from '$lib/icon';
-import { projectBranch, services, sessionMatchesProjectRoot } from '$lib/server/services';
+import {
+	authoritativeProject,
+	projectBranch,
+	services,
+	sessionMatchesProjectFolders
+} from '$lib/server/route-services';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ params, url }) => {
-	const project = services().store.getProject(params.projectId);
-	if (!project) return json({ error: 'Project not found' }, { status: 404 });
 	try {
+		const project = await authoritativeProject(params.projectId);
+		const folders = project.folders.map(({ path }) => path);
 		const requestedSessionId = url.searchParams.get('sessionId');
 		if (requestedSessionId) {
 			const stored =
@@ -44,9 +49,9 @@ export const GET: RequestHandler = async ({ params, url }) => {
 				hasMore: false
 			});
 		}
-		const roots = new Set([project.rootPath, ...services().store.listSessionRoots(project.id)]);
+		const roots = new Set([...folders, ...services().store.listSessionRoots(project.id)]);
 		const availableRoots = new Set<string>();
-		const sessions = [];
+		const sessionsById = new Map();
 		for (const root of roots) {
 			try {
 				if (!statSync(root).isDirectory()) continue;
@@ -54,14 +59,17 @@ export const GET: RequestHandler = async ({ params, url }) => {
 				continue;
 			}
 			availableRoots.add(root);
-			sessions.push(
-				...(await services().runtime.listSessions(root)).filter(
-					(session) =>
-						sessionMatchesProjectRoot(root, session.cwd) &&
-						!services().store.isSessionDismissed(project.id, session.sessionId)
-				)
-			);
+			for (const session of await services().runtime.listSessions(root)) {
+				if (
+					(sessionMatchesProjectFolders(folders, session.cwd) ||
+						services().store.hasSession(project.id, session.sessionId)) &&
+					!services().store.isSessionDismissed(project.id, session.sessionId)
+				) {
+					sessionsById.set(session.sessionId, session);
+				}
+			}
 		}
+		const sessions = [...sessionsById.values()];
 		for (const session of sessions) {
 			services().store.upsertSession(project.id, session);
 		}
@@ -108,11 +116,11 @@ export const GET: RequestHandler = async ({ params, url }) => {
 };
 
 export const POST: RequestHandler = async ({ params }) => {
-	const project = services().store.getProject(params.projectId);
-	if (!project) return json({ error: 'Project not found' }, { status: 404 });
 	try {
-		const session = await services().runtime.createSession(project.rootPath);
-		if (!sessionMatchesProjectRoot(project.rootPath, session.cwd)) {
+		const project = await authoritativeProject(params.projectId);
+		const folders = project.folders.map(({ path }) => path);
+		const session = await services().runtime.createSession(project.primary_path);
+		if (!sessionMatchesProjectFolders(folders, session.cwd)) {
 			throw new Error(`Hermes Session ${session.sessionId} is outside the Project root`);
 		}
 		services().store.upsertSession(project.id, session);
@@ -122,7 +130,7 @@ export const POST: RequestHandler = async ({ params }) => {
 				session: { ...session, icon: automaticSessionIcon(session.title), customIcon: null },
 				commands: services().runtime.getAvailableCommands(session.sessionId),
 				runtime: services().runtime.getSessionState(session.sessionId),
-				branch: projectBranch(project.rootPath)
+				branch: projectBranch(project.primary_path)
 			},
 			{ status: 201 }
 		);

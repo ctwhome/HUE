@@ -18,9 +18,9 @@ test('pending persistence strips generic bytes and restores explicit reattach st
 		() => ({
 			id: 'project',
 			name: 'HUE',
-			rootPath: '/work',
 			icon: null,
-			createdAt: '',
+			primaryPath: '/work',
+			folders: [{ path: '/work', label: null, isPrimary: true, available: true }],
 			rootAvailable: true
 		}),
 		() => ({ sessionId: 'session', cwd: '/work', icon: 'H', customIcon: null })

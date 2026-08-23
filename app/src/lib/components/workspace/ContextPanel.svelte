@@ -4,9 +4,9 @@
 	type Project = {
 		id: string;
 		name: string;
-		rootPath: string;
 		icon: string | null;
-		createdAt: string;
+		primaryPath: string;
+		folders: Array<{ path: string; label: string | null; isPrimary: boolean; available: boolean }>;
 		rootAvailable: boolean;
 	};
 	type Session = {
@@ -186,7 +186,7 @@
 			><input bind:checked={showArchived} onchange={() => onsearch()} type="checkbox" /> Show archived</label
 		>
 		<div class="item-list grid gap-1 overflow-auto p-2">
-			{#each sessions as session, index}
+			{#each sessions as session, index (session.sessionId)}
 				{#if index === 0 || group(sessions[index - 1]) !== group(session)}<h2
 						class="px-2 pt-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
 					>
@@ -258,7 +258,7 @@
 		</div>
 	{:else}
 		<div class="item-list grid gap-1 overflow-auto p-2">
-			{#each workflows as workflow}
+			{#each workflows as workflow (workflow.id)}
 				<article
 					class="workflow-card flex items-start gap-2.5 rounded-xl border border-border bg-card p-3"
 				>

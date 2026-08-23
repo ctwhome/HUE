@@ -1,17 +1,21 @@
 import { json } from '@sveltejs/kit';
 import { validateIcon } from '$lib/icon';
-import { projectBranch, services } from '$lib/server/services';
+import { authoritativeProject, projectBranch, services } from '$lib/server/route-services';
 import { exportSession } from '$lib/server/session-transfer';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ params, url }) => {
-	const project = services().store.getProject(params.projectId);
-	if (!project) return json({ error: 'Project not found' }, { status: 404 });
-	if (!services().store.hasSession(params.projectId, params.sessionId)) {
+	let project;
+	try {
+		project = await authoritativeProject(params.projectId);
+	} catch (cause) {
+		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 404 });
+	}
+	if (!services().store.hasSession(project.id, params.sessionId)) {
 		return json({ error: 'Session not found' }, { status: 404 });
 	}
-	const session = services().store.getSession(params.projectId, params.sessionId)!;
-	const snapshot = services().store.getSessionSnapshot(params.projectId, params.sessionId);
+	const session = services().store.getSession(project.id, params.sessionId)!;
+	const snapshot = services().store.getSessionSnapshot(project.id, params.sessionId);
 	try {
 		const transcript = await services().runtime.loadTranscript(session.cwd, params.sessionId);
 		const format = url.searchParams.get('format');
@@ -44,7 +48,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 			transcript,
 			commands: services().runtime.getAvailableCommands(params.sessionId),
 			runtime: services().runtime.getSessionState(params.sessionId),
-			branch: projectBranch(project.rootPath),
+			branch: projectBranch(project.primary_path),
 			...snapshot
 		});
 	} catch (error) {
@@ -60,9 +64,13 @@ export const GET: RequestHandler = async ({ params, url }) => {
 };
 
 export const POST: RequestHandler = async ({ params, request }) => {
-	const project = services().store.getProject(params.projectId);
-	if (!project) return json({ error: 'Project not found' }, { status: 404 });
-	if (!services().store.hasSession(params.projectId, params.sessionId)) {
+	let project;
+	try {
+		project = await authoritativeProject(params.projectId);
+	} catch (cause) {
+		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 404 });
+	}
+	if (!services().store.hasSession(project.id, params.sessionId)) {
 		return json({ error: 'Session not found' }, { status: 404 });
 	}
 	try {
@@ -120,9 +128,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
 };
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
-	const project = services().store.getProject(params.projectId);
-	if (!project) return json({ error: 'Project not found' }, { status: 404 });
-	if (!services().store.hasSession(params.projectId, params.sessionId)) {
+	let project;
+	try {
+		project = await authoritativeProject(params.projectId);
+	} catch (cause) {
+		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 404 });
+	}
+	if (!services().store.hasSession(project.id, params.sessionId)) {
 		return json({ error: 'Session not found' }, { status: 404 });
 	}
 	try {
@@ -159,7 +171,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				return json({ error: 'Invalid Session metadata' }, { status: 400 });
 			const icon = hasIcon ? validateIcon(body.icon) : undefined;
 			const session = services().store.updateSession(
-				params.projectId,
+				project.id,
 				params.sessionId,
 				Object.fromEntries([
 					...metadataKeys.map((key) => [key, body[key as keyof typeof body]]),
@@ -170,10 +182,10 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		}
 		if (hasIcon) {
 			const icon = validateIcon(body.icon);
-			services().store.updateSession(params.projectId, params.sessionId, { icon });
+			services().store.updateSession(project.id, params.sessionId, { icon });
 			return json({ icon });
 		}
-		if (services().store.getSessionSnapshot(params.projectId, params.sessionId).activeTurn) {
+		if (services().store.getSessionSnapshot(project.id, params.sessionId).activeTurn) {
 			return json({ error: 'Wait for the active turn to finish' }, { status: 409 });
 		}
 		const runtime = modelId
@@ -185,15 +197,19 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	}
 };
 
-export const DELETE: RequestHandler = ({ params, url }) => {
-	if (!services().store.getProject(params.projectId))
-		return json({ error: 'Project not found' }, { status: 404 });
-	const impact = services().store.previewSessionDelete(params.projectId, params.sessionId);
+export const DELETE: RequestHandler = async ({ params, url }) => {
+	let project;
+	try {
+		project = await authoritativeProject(params.projectId);
+	} catch (cause) {
+		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 404 });
+	}
+	const impact = services().store.previewSessionDelete(project.id, params.sessionId);
 	if (!impact) return json({ error: 'Session not found' }, { status: 404 });
 	if (url.searchParams.get('confirm') !== 'true')
 		return json({ impact: { ...impact, hermesTranscriptRetained: true } });
 	try {
-		services().store.deleteSession(params.projectId, params.sessionId);
+		services().store.deleteSession(project.id, params.sessionId);
 		return json({ deleted: true, hermesTranscriptRetained: true });
 	} catch (cause) {
 		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 409 });
