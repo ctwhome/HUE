@@ -61,6 +61,12 @@ describe('durable mobile navigation', () => {
 			resolveLaunchDestination(new URL('http://hue.local/?intent=new-session'), null, projects)
 		).toMatchObject({ intent: 'new-session', projectId: null, sessionId: null });
 	});
+
+	test('native quick capture opens same non-submitting capture intent', () => {
+		expect(
+			resolveLaunchDestination(new URL('http://hue.local/?quick-capture=1'), null, projects)
+		).toMatchObject({ intent: 'capture', projectId: null, sessionId: null, source: 'intent' });
+	});
 	test('clean first launch uses first valid Project without opening a drawer', () => {
 		expect(resolveNavigationDestination(new URL('http://hue.local/'), null, projects)).toEqual({
 			projectId: 'project-1',

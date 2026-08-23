@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">HUE</string>
+    <string name="title_activity_main">HUE</string>
+    <string name="package_name">studio.ctw.hue</string>
+    <string name="custom_url_scheme">studio.ctw.hue</string>
+    <string name="widget_quick_idea_label">HUE · Quick Idea</string>
+    <string name="widget_quick_idea_description">Open a Quick Idea draft in HUE</string>
+</resources>
