@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { applyMessageWorkMode } from '$lib/server/work-mode-context';
 import { services } from '$lib/server/route-services';
 import { MessageConflictError } from '$lib/server/store';
 import { validateMessageAttachments } from '$lib/message-content';
@@ -23,14 +24,29 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			if (!services().store.hasSession(project.id, params.sessionId)) {
 				throw new Error('Session not found');
 			}
-			return services().dispatcher.submit({
-				id: messageId,
-				projectId: project.id,
-				sessionId: params.sessionId,
-				text,
-				images,
-				attachments
-			});
+			const workMode = applyMessageWorkMode(services().store, project.id, params.sessionId, text);
+			if (workMode.consumed) {
+				return {
+					duplicate: false,
+					status: 'completed',
+					workMode: workMode.workMode,
+					workModeChanged: workMode.changed,
+					workModeEvent: workMode.event,
+					consumed: true
+				};
+			}
+			return {
+				...services().dispatcher.submit({
+					id: messageId,
+					projectId: project.id,
+					sessionId: params.sessionId,
+					text,
+					images,
+					attachments
+				}),
+				workModeChanged: workMode.changed,
+				workModeEvent: workMode.event
+			};
 		});
 		return json({ messageId, ...accepted }, { status: 202 });
 	} catch (error) {

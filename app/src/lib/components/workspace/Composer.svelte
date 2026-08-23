@@ -18,6 +18,7 @@
 		X
 	} from 'lucide-svelte';
 	import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+	import type { WorkMode } from '$lib/work-mode';
 
 	type Command = { name: string; description: string; input?: { hint: string } | null };
 	type QueuedMessage = {
@@ -59,6 +60,8 @@
 		voiceMessageElement = $bindable(),
 		voiceStartElement = $bindable(),
 		runtime,
+		workMode,
+		workModeChanging,
 		runtimeChanging,
 		modelMenuOpen = $bindable(),
 		modelPopover = $bindable(),
@@ -81,6 +84,7 @@
 		oncommand,
 		onmodel,
 		onruntime,
+		onworkmode,
 		onscrolllatest,
 		matchingCommands,
 		currentModel,
@@ -108,6 +112,8 @@
 		voiceMessageElement?: HTMLButtonElement;
 		voiceStartElement?: HTMLButtonElement;
 		runtime: Runtime;
+		workMode: WorkMode;
+		workModeChanging: boolean;
 		runtimeChanging: boolean;
 		modelMenuOpen: boolean;
 		modelPopover?: HTMLElement;
@@ -131,6 +137,7 @@
 		oncommand: (command: Command) => void;
 		onmodel: (id: string) => void;
 		onruntime: (kind: 'modelId' | 'modeId', value: string) => void;
+		onworkmode: (value: WorkMode) => void;
 		onscrolllatest: (behavior: ScrollBehavior) => void;
 		matchingCommands: () => Command[];
 		currentModel: () => Model | undefined;
@@ -348,6 +355,23 @@
 			>
 				<Sparkles size={14} aria-hidden="true" /><span>{runtime.profile}</span>
 			</span>
+			<label
+				class="context-chip context-select inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground hover:bg-accent sm:min-h-8"
+				title="Choose HUE work mode"
+			>
+				<span>Work mode</span>
+				<select
+					class="min-h-11 sm:min-h-8"
+					aria-label="Work mode"
+					value={workMode}
+					disabled={workModeChanging}
+					onchange={(event) =>
+						onworkmode((event.currentTarget as HTMLSelectElement).value as WorkMode)}
+				>
+					<option value="autonomous">Autonomous</option>
+					<option value="live">Live</option>
+				</select>
+			</label>
 			{#if runtime.models}<button
 					type="button"
 					class="context-chip context-select context-model inline-flex min-h-8 max-w-40 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs hover:bg-accent"

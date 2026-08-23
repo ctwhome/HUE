@@ -59,6 +59,13 @@ export type WorkspaceTimelineItem =
 			entries: WorkspacePlanEntry[];
 			createdAt?: string;
 	  }
+	| {
+			sequence: number;
+			kind: 'status';
+			statusType: 'work-mode';
+			label: string;
+			createdAt?: string;
+	  }
 	| { sequence: number; kind: 'thought'; messageId?: string; text: string; createdAt?: string };
 export type WorkspaceDeliveryState = {
 	cursor: number;
@@ -186,6 +193,21 @@ function applyTimelineEvent(
 		const next = [...timeline];
 		next[index] = item;
 		return next;
+	}
+	if (event.type === 'session.work_mode_changed') {
+		const workMode = String(event.payload.workMode ?? '');
+		const label =
+			workMode === 'live' ? 'Work mode changed to Live' : 'Work mode changed to Autonomous';
+		return [
+			...timeline,
+			{
+				sequence: event.sequence,
+				kind: 'status',
+				statusType: 'work-mode',
+				label,
+				...(event.createdAt ? { createdAt: event.createdAt } : {})
+			}
+		];
 	}
 	const kind = ACTIVITY_TYPES.get(event.type as never);
 	const id = String(event.payload.id ?? '');

@@ -38,10 +38,88 @@ describe('HUEStore project and workflow boundaries', () => {
 			pinned: true,
 			archived: true,
 			folder: 'Delivery',
-			tags: ['release', 'blocked']
+			tags: ['release', 'blocked'],
+			workMode: 'autonomous'
 		});
 		expect(store.hasSession('hue', 'session-1')).toBe(true);
 		expect(store.hasSession(null, 'session-1')).toBe(false);
+		store.close();
+	});
+
+	it('migrates and validates per-session work mode for project and projectless Sessions', () => {
+		const path = join(tmpdir(), `hue-work-mode-${crypto.randomUUID()}.sqlite`);
+		temporaryDatabases.push(path);
+		const database = new Database(path);
+		database.exec(`
+			CREATE TABLE projects (
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL,
+				root_path TEXT NOT NULL UNIQUE,
+				icon TEXT,
+				legacy INTEGER NOT NULL DEFAULT 1,
+				created_at TEXT NOT NULL
+			);
+			CREATE TABLE project_sessions (
+				session_id TEXT PRIMARY KEY,
+				project_id TEXT,
+				cwd TEXT NOT NULL,
+				icon TEXT,
+				title TEXT,
+				title_custom INTEGER NOT NULL DEFAULT 0,
+				pinned INTEGER NOT NULL DEFAULT 0,
+				archived INTEGER NOT NULL DEFAULT 0,
+				folder TEXT,
+				tags TEXT NOT NULL DEFAULT '[]',
+				updated_at TEXT NOT NULL
+			);
+			INSERT INTO projects (id, name, root_path, created_at)
+			VALUES ('hue', 'HUE', '/work/hue', '2026-08-23T00:00:00.000Z');
+			INSERT INTO project_sessions (session_id, project_id, cwd, updated_at)
+			VALUES
+				('project-session', 'hue', '/work/hue', '2026-08-23T00:00:00.000Z'),
+				('projectless-session', NULL, '/work/loose', '2026-08-23T00:00:00.000Z');
+		`);
+		database.close();
+
+		const store = new HUEStore(path);
+		expect(store.getSession('hue', 'project-session')?.workMode).toBe('autonomous');
+		expect(store.getSession(null, 'projectless-session')?.workMode).toBe('autonomous');
+
+		const updated = store.updateSessionWorkMode('hue', 'project-session', 'live', 'user');
+		expect(updated.workMode).toBe('live');
+		expect(
+			store
+				.listEvents('hue', 'project-session')
+				.find((event) => event.type === 'session.work_mode_changed')?.payload
+		).toEqual({
+			priorMode: 'autonomous',
+			workMode: 'live',
+			source: 'user'
+		});
+		expect(store.updateSessionWorkMode('hue', 'project-session', 'live', 'user')).toEqual(updated);
+		expect(
+			store
+				.listEvents('hue', 'project-session')
+				.filter((event) => event.type === 'session.work_mode_changed')
+		).toHaveLength(1);
+		expect(() =>
+			store.database
+				.query(
+					"UPDATE project_sessions SET work_mode = 'pair' WHERE session_id = 'project-session'"
+				)
+				.run()
+		).toThrow();
+		store.close();
+	});
+
+	it('forked Session defaults back to autonomous instead of copying work mode', () => {
+		const store = makeDeliveryStore();
+		store.updateSessionWorkMode('hue', 'session-1', 'live', 'user');
+		store.upsertSession('hue', { sessionId: 'fork-2', cwd: '/work/hue' });
+
+		store.copySessionMetadata('hue', 'session-1', 'fork-2', 'Fork copy');
+
+		expect(store.getSession('hue', 'fork-2')?.workMode).toBe('autonomous');
 		store.close();
 	});
 

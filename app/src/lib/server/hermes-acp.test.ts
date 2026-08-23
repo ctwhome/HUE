@@ -5,10 +5,12 @@ import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
 	HermesACP,
+	buildWorkModePromptEnvelope,
 	isolatedHermesEnvironment,
 	normalizeDelegateTaskUpdate,
 	normalizeToolCallUpdate,
-	redactToolPayload
+	redactToolPayload,
+	stripExactWorkModePreamble
 } from './hermes-acp';
 
 const realHermesTest = process.env.HUE_REAL_HERMES === '1' ? it : it.skip;
@@ -139,6 +141,7 @@ print(json.dumps(_content_blocks_to_openai_user_content([block])))`,
 					sessionId: session.sessionId,
 					text: '/version',
 					images: [],
+					workMode: 'autonomous',
 					onChunk: (text) => chunks.push(text)
 				});
 				const persistenceMarker = 'HUE ACP isolated persistence marker';
@@ -146,6 +149,7 @@ print(json.dumps(_content_blocks_to_openai_user_content([block])))`,
 					sessionId: session.sessionId,
 					text: persistenceMarker,
 					images: [],
+					workMode: 'autonomous',
 					onChunk: () => undefined
 				});
 
@@ -178,6 +182,26 @@ print(json.dumps(_content_blocks_to_openai_user_content([block])))`,
 });
 
 describe('HermesACP update subscriptions', () => {
+	it('builds exact work-mode _meta envelope and strips only exact replay preamble', () => {
+		const live = buildWorkModePromptEnvelope('live', 'Ship fix');
+		expect(live.meta).toEqual({
+			hue: { workMode: 'live', version: 1, authorityUnchanged: true }
+		});
+		expect(live.text).toContain('cadence only');
+		expect(live.text).toContain('does not authorize external effects');
+		expect(live.text).toContain('Ship fix');
+		expect(stripExactWorkModePreamble(live.text)).toBe('Ship fix');
+
+		const autonomous = buildWorkModePromptEnvelope('autonomous', 'Wrap this up');
+		expect(autonomous.meta).toEqual({
+			hue: { workMode: 'autonomous', version: 1, authorityUnchanged: true }
+		});
+		expect(autonomous.text).toContain('Assume user is not watching.');
+		expect(stripExactWorkModePreamble('Original user message follows exactly.\nWrap this up')).toBe(
+			'Original user message follows exactly.\nWrap this up'
+		);
+	});
+
 	it('redacts secrets recursively without changing safe tool data', () => {
 		expect(
 			redactToolPayload({
@@ -304,6 +328,7 @@ describe('HermesACP update subscriptions', () => {
 			sessionId: 'session-1',
 			text: 'Inspect',
 			images: [],
+			workMode: 'autonomous',
 			onChunk: () => {},
 			onTool: (tool) => tools.push(tool),
 			onPlan: (plan) => plans.push(plan)
@@ -388,6 +413,7 @@ describe('HermesACP update subscriptions', () => {
 			sessionId: 'session-1',
 			text: 'Deploy',
 			images: [],
+			workMode: 'autonomous',
 			onChunk: () => {},
 			onInteraction: async (request) => {
 				interactions.push(request);
@@ -484,6 +510,7 @@ describe('HermesACP update subscriptions', () => {
 			sessionId: 'session-1',
 			text: 'Find it',
 			images: [],
+			workMode: 'autonomous',
 			onThought: (text) => thoughts.push(text),
 			onChunk: (text) => chunks.push(text)
 		});
@@ -513,6 +540,7 @@ describe('HermesACP update subscriptions', () => {
 			sessionId: 'session-1',
 			text: 'Show the screenshot',
 			images: [],
+			workMode: 'autonomous',
 			onChunk: () => {},
 			onImage: (image) => images.push(image)
 		});
@@ -547,12 +575,16 @@ describe('HermesACP update subscriptions', () => {
 			sessionId: 'session-1',
 			text: 'Review file',
 			images: [],
+			workMode: 'autonomous',
 			attachments: [{ name: 'notes.md', mimeType: 'text/markdown', size: 5, data: 'aGVsbG8=' }],
 			onChunk: () => {}
 		});
 
 		expect(prompt).toEqual([
-			{ type: 'text', text: 'Review file' },
+			{
+				type: 'text',
+				text: expect.stringContaining('Original user message follows exactly.\n---\nReview file')
+			},
 			{
 				type: 'resource_link',
 				uri: expect.stringMatching(/^file:\/\//),
@@ -574,7 +606,7 @@ describe('HermesACP update subscriptions', () => {
 		};
 		internals.context = async () => ({
 			request: async (_method, params) => {
-				stagedPath = fileURLToPath((params.prompt[0] as { uri: string }).uri);
+				stagedPath = fileURLToPath((params.prompt[1] as { uri: string }).uri);
 				throw new Error(`transport failed while reading ${stagedPath}`);
 			}
 		});
@@ -584,6 +616,7 @@ describe('HermesACP update subscriptions', () => {
 				sessionId: 'session-1',
 				text: '',
 				images: [],
+				workMode: 'autonomous',
 				attachments: [{ name: 'notes.txt', mimeType: 'text/plain', size: 5, data: 'aGVsbG8=' }],
 				onChunk: () => {}
 			});

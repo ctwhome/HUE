@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { Ellipsis, LoaderCircle, Pin, Plus, Search } from 'lucide-svelte';
+	import { Archive, Ellipsis, LoaderCircle, Pin, Plus, Search } from 'lucide-svelte';
 	import SessionManagerDialog from './SessionManagerDialog.svelte';
+	import type { WorkMode } from '$lib/work-mode';
 	type Project = {
 		id: string;
 		name: string;
@@ -25,6 +26,7 @@
 		archived?: boolean;
 		folder?: string | null;
 		tags?: string[];
+		workMode?: WorkMode;
 	};
 	type Workflow = { id: string; name: string; prompt: string; profile: string };
 	let {
@@ -50,10 +52,12 @@
 		sessionEmojiPickerOpen = $bindable(),
 		sessionEditError,
 		sessionSaving,
+		archivingSessionId,
 		now,
 		oncreate,
 		ontab,
 		onopen,
+		onarchive,
 		onedit,
 		onrun,
 		onworkflow,
@@ -90,10 +94,12 @@
 		sessionEmojiPickerOpen: boolean;
 		sessionEditError: string;
 		sessionSaving: boolean;
+		archivingSessionId: string | null;
 		now: number;
 		oncreate: () => void;
 		ontab: (tab: 'sessions' | 'workflows') => void;
 		onopen: (session: Session) => void;
+		onarchive: (event: MouseEvent, session: Session) => void;
 		onedit: (event: MouseEvent, session: Session) => void;
 		onrun: (workflow: Workflow) => void;
 		onworkflow: (event: SubmitEvent) => void;
@@ -140,12 +146,12 @@
 			</h1>
 		</div>
 		<div class="context-actions flex items-center gap-2">
-			<LoaderCircle
-				class={loading ? 'loading-indicator active' : 'loading-indicator'}
-				role="status"
-				aria-label="Loading project contents"
-				aria-hidden={!loading}
-			/>
+			{#if loading}<LoaderCircle
+					class="loading-indicator animate-spin"
+					role="status"
+					aria-label="Loading project contents"
+				/>
+			{/if}
 			{#if activeTab === 'sessions'}<button
 					class="icon-button grid size-8 shrink-0 place-items-center rounded-md border border-border bg-secondary hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
 					onclick={oncreate}
@@ -194,7 +200,7 @@
 					</h2>{/if}
 				<div class="session-row relative">
 					<button
-						class="session-select flex min-h-12 w-full items-center gap-2.5 rounded-lg border border-transparent bg-transparent p-2.5 pr-10 text-left hover:border-border hover:bg-accent [&.active]:border-border [&.active]:bg-accent"
+						class="session-select flex min-h-12 w-full items-center gap-2.5 rounded-lg border border-transparent bg-transparent p-2.5 pr-[4.5rem] text-left hover:border-border hover:bg-accent [&.active]:border-border [&.active]:bg-accent"
 						class:active={selectedSession?.sessionId === session.sessionId}
 						title={session.available === false
 							? session.recovery
@@ -241,13 +247,25 @@
 								aria-label="Session needs attention">•</span
 							>{/if}
 					</button>
-					{#if session.available !== false}<button
-							class="session-edit absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
-							aria-label={`Edit ${session.title || 'Untitled session'}`}
-							title={`Edit ${session.title || 'Untitled session'}`}
-							onclick={(event) => onedit(event, session)}
-							><Ellipsis size={16} aria-hidden="true" /></button
-						>{/if}
+					{#if session.available !== false}<div
+							class="session-actions absolute top-1/2 right-1 flex -translate-y-1/2 opacity-0 [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
+						>
+							{#if !session.archived}<button
+									class="session-archive grid size-7 place-items-center rounded-md hover:bg-accent"
+									aria-label={`Archive ${session.title || 'Untitled session'}`}
+									title={`Archive ${session.title || 'Untitled session'}`}
+									disabled={archivingSessionId === session.sessionId}
+									onclick={(event) => onarchive(event, session)}
+									><Archive size={16} aria-hidden="true" /></button
+								>{/if}
+							<button
+								class="session-edit grid size-7 place-items-center rounded-md hover:bg-accent"
+								aria-label={`Edit ${session.title || 'Untitled session'}`}
+								title={`Edit ${session.title || 'Untitled session'}`}
+								onclick={(event) => onedit(event, session)}
+								><Ellipsis size={16} aria-hidden="true" /></button
+							>
+						</div>{/if}
 				</div>
 			{/each}
 			{#if !loading && sessions.length === 0}<p

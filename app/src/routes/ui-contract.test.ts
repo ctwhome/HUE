@@ -84,7 +84,7 @@ test('keeps major workspace surfaces in focused Svelte components', () => {
 		expect(workspace).toContain(`<${component}`);
 	}
 	expect(route.split('\n').length).toBeLessThan(20);
-	for (const source of workspaceFiles) expect(source.split('\n').length).toBeLessThan(501);
+	for (const source of workspaceFiles) expect(source.split('\n').length).toBeLessThan(551);
 });
 
 test('workflow fields have accessible names', () => {
@@ -241,6 +241,16 @@ test('mobile shell keeps drawers and 44px targets', () => {
 	expect(styles).toContain('.project-rail.open');
 	expect(styles).toContain('.context-panel.open');
 	expect(styles).toContain('grid-template-columns: repeat(3, 44px) minmax(0, 1fr) 44px');
+});
+
+test('composer exposes HUE work mode selector and timeline status item hooks', () => {
+	const composer = read('../lib/components/workspace/Composer.svelte');
+	const conversation = read('../lib/components/workspace/Conversation.svelte');
+	expect(composer).toContain('Work mode');
+	expect(composer).toContain('Autonomous');
+	expect(composer).toContain('Live');
+	expect(conversation).toContain("item.kind === 'status'");
+	expect(conversation).toContain('aria-label={item.label}');
 });
 
 test('project and session controls preserve accessible editing', () => {

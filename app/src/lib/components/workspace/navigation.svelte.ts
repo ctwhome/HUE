@@ -60,6 +60,7 @@ export class WorkspaceNavigation {
 	sessionEmojiPickerOpen = $state(false);
 	sessionEditError = $state('');
 	sessionSaving = $state(false);
+	archivingSessionId = $state<string | null>(null);
 	private sessionRequestGeneration = 0;
 	private tabRequestGeneration = 0;
 	private sessionLists = new Map<string, Session[]>();
@@ -294,6 +295,10 @@ export class WorkspaceNavigation {
 				})
 			)
 				return;
+			this.replaceSession({
+				...this.selectedSession,
+				workMode: body.workMode ?? this.selectedSession.workMode
+			});
 			this.effects.applyLoadedSession(body);
 			this.effects.restoreDraft();
 			this.mobileDrawer = null;
@@ -348,6 +353,32 @@ export class WorkspaceNavigation {
 		this.sessionEmojiPickerOpen = false;
 		this.sessionEditError = '';
 		this.editSessionDialog?.showModal();
+	};
+
+	archiveSession = async (event: MouseEvent, session: Session) => {
+		event.stopPropagation();
+		if (session.available === false || session.archived || this.archivingSessionId) return;
+		this.archivingSessionId = session.sessionId;
+		this.effects.setError('');
+		try {
+			const body = await this.effects.api<{ session?: Session }>(
+				this.sessionApiPath(session.sessionId),
+				{
+					method: 'PATCH',
+					body: JSON.stringify({ archived: true })
+				}
+			);
+			const updated = { ...session, ...(body.session ?? {}), archived: true };
+			this.sessions = this.showArchived
+				? this.sessions.map((item) => (item.sessionId === updated.sessionId ? updated : item))
+				: this.sessions.filter((item) => item.sessionId !== updated.sessionId);
+			this.sessionLists.set(this.selectedProject?.id ?? 'none', this.sessions);
+			if (this.selectedSession?.sessionId === updated.sessionId) this.selectedSession = updated;
+		} catch (cause) {
+			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
+		} finally {
+			this.archivingSessionId = null;
+		}
 	};
 
 	sessionIconPreview = () => this.sessionIcon ?? automaticSessionIcon(this.editingSession?.title);
@@ -483,6 +514,15 @@ export class WorkspaceNavigation {
 
 	prependSession(session: Session) {
 		this.sessions = [session, ...this.sessions];
+	}
+
+	replaceSession(session: Session) {
+		this.sessions = this.sessions.map((item) =>
+			item.sessionId === session.sessionId ? { ...item, ...session } : item
+		);
+		if (this.selectedSession?.sessionId === session.sessionId) {
+			this.selectedSession = { ...this.selectedSession, ...session };
+		}
 	}
 
 	setSelectedProject(project: Project) {
