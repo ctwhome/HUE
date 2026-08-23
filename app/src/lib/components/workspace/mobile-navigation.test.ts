@@ -4,6 +4,7 @@ import {
 	compactModelLabel,
 	finishMobileGesture,
 	parseNavigationMemory,
+	resolveLaunchDestination,
 	resolveNavigationDestination,
 	updateMobileGesture
 } from './mobile-navigation';
@@ -11,6 +12,55 @@ import {
 const projects = ['project-1', 'project-2'];
 
 describe('durable mobile navigation', () => {
+	test('launch precedence is explicit, shortcut/share, notification, remembered, default', () => {
+		const remembered = JSON.stringify({
+			version: 1,
+			projectId: 'project-1',
+			sessionId: 'remembered',
+			pane: null
+		});
+		const notification = { projectId: 'project-2', sessionId: 'notified' };
+
+		expect(
+			resolveLaunchDestination(
+				new URL('http://hue.local/?project=project-1&session=explicit&intent=capture'),
+				remembered,
+				projects,
+				notification
+			)
+		).toMatchObject({ sessionId: 'explicit', intent: null, source: 'explicit' });
+		expect(
+			resolveLaunchDestination(
+				new URL('http://hue.local/?intent=capture'),
+				remembered,
+				projects,
+				notification
+			)
+		).toMatchObject({ sessionId: null, intent: 'capture', source: 'intent' });
+		expect(
+			resolveLaunchDestination(new URL('http://hue.local/'), null, projects, notification)
+		).toMatchObject({ projectId: 'project-2', sessionId: 'notified', source: 'notification' });
+		expect(
+			resolveLaunchDestination(new URL('http://hue.local/'), remembered, projects)
+		).toMatchObject({ sessionId: 'remembered', source: 'remembered' });
+		expect(resolveLaunchDestination(new URL('http://hue.local/'), null, projects)).toMatchObject({
+			projectId: 'project-1',
+			source: 'default'
+		});
+	});
+
+	test('share carries only one-time token and projectless new Session is explicit action', () => {
+		expect(
+			resolveLaunchDestination(
+				new URL('http://hue.local/?intent=share&token=one-time'),
+				null,
+				projects
+			)
+		).toMatchObject({ intent: 'share', token: 'one-time', projectId: null });
+		expect(
+			resolveLaunchDestination(new URL('http://hue.local/?intent=new-session'), null, projects)
+		).toMatchObject({ intent: 'new-session', projectId: null, sessionId: null });
+	});
 	test('clean first launch uses first valid Project without opening a drawer', () => {
 		expect(resolveNavigationDestination(new URL('http://hue.local/'), null, projects)).toEqual({
 			projectId: 'project-1',
@@ -40,6 +90,65 @@ describe('durable mobile navigation', () => {
 			pane: null,
 			explicit: true
 		});
+	});
+
+	test('shortcut and share intents beat remembered destination but not explicit deep links', () => {
+		const remembered = JSON.stringify({
+			version: 1,
+			projectId: 'project-1',
+			sessionId: 'session-1',
+			pane: 'sessions'
+		});
+
+		expect(
+			resolveNavigationDestination(
+				new URL('http://hue.local/?intent=capture'),
+				remembered,
+				projects
+			)
+		).toMatchObject({ projectId: null, sessionId: null, pane: null, explicit: false });
+		expect(
+			resolveNavigationDestination(
+				new URL('http://hue.local/?intent=share&token=one-time'),
+				remembered,
+				projects
+			)
+		).toMatchObject({ projectId: null, sessionId: null, pane: null, explicit: false });
+		expect(
+			resolveNavigationDestination(
+				new URL('http://hue.local/?project=project-2&session=session-2&intent=capture'),
+				remembered,
+				projects
+			)
+		).toMatchObject({
+			projectId: 'project-2',
+			sessionId: 'session-2',
+			pane: null,
+			explicit: true
+		});
+	});
+
+	test('Projects and Recents shortcut intents replace remembered session selection', () => {
+		const remembered = JSON.stringify({
+			version: 1,
+			projectId: 'project-1',
+			sessionId: 'session-1',
+			pane: null
+		});
+		expect(
+			resolveNavigationDestination(
+				new URL('http://hue.local/?intent=projects'),
+				remembered,
+				projects
+			)
+		).toMatchObject({ projectId: null, sessionId: null, pane: 'projects' });
+		expect(
+			resolveNavigationDestination(
+				new URL('http://hue.local/?intent=recents'),
+				remembered,
+				projects
+			)
+		).toMatchObject({ projectId: 'project-1', sessionId: null, pane: 'sessions' });
 	});
 
 	test('ordinary launch restores durable destination and rejects transient fields', () => {

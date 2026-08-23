@@ -12,6 +12,7 @@ export type InputAttachment = {
 	available?: boolean;
 	reattachRequired?: boolean;
 };
+export type ByteAttachment = Omit<InputAttachment, 'data'> & { bytes: Uint8Array };
 export type MediaOutput = {
 	name: string;
 	mimeType: string;
@@ -82,6 +83,8 @@ const allowedTypes = new Map<string, { extensions: string[]; maxBytes: number }>
 	})
 ]);
 
+export const allowedAttachmentMimeTypes = () => [...allowedTypes.keys()];
+
 const base64Pattern = /^[A-Za-z0-9+/]*={0,2}$/;
 
 function decodedBytes(data: string): number {
@@ -96,6 +99,61 @@ function decodedBytes(data: string): number {
 function decodedData(data: string): Uint8Array {
 	decodedBytes(data);
 	return Uint8Array.from(atob(data), (character) => character.charCodeAt(0));
+}
+
+function validateAttachment(
+	name: unknown,
+	mimeType: unknown,
+	size: unknown,
+	bytes: Uint8Array
+): Omit<InputAttachment, 'data'> {
+	if (
+		typeof name !== 'string' ||
+		!name.trim() ||
+		name.length > 255 ||
+		/[\\/]/.test(name) ||
+		/[\u0000-\u001f\u007f]/.test(name)
+	) {
+		throw new Error('Each attachment requires a safe file name');
+	}
+	const normalizedMimeType = typeof mimeType === 'string' ? mimeType : '';
+	const rule = allowedTypes.get(normalizedMimeType);
+	if (!rule || !rule.extensions.includes(fileExtension(name))) {
+		throw new Error('Attachment file type is not allowed or does not match its extension');
+	}
+	if (typeof size !== 'number' || !Number.isSafeInteger(size) || size < 0) {
+		throw new Error('Attachment size is invalid');
+	}
+	if (bytes.byteLength !== size) throw new Error('Attachment size does not match decoded data');
+	if (!attachmentMatchesDeclaredType(normalizedMimeType, bytes)) {
+		throw new Error('Attachment content does not match its declared type');
+	}
+	if (bytes.byteLength > rule.maxBytes) {
+		throw new Error(
+			`Each ${normalizedMimeType.split('/')[0]} attachment must be ${rule.maxBytes / 1024 / 1024} MB or smaller`
+		);
+	}
+	return { name: name.trim(), mimeType: normalizedMimeType, size };
+}
+
+function validateAttachmentTotal(attachments: Array<{ size: number }>) {
+	if (
+		attachments.reduce((sum, attachment) => sum + attachment.size, 0) >
+		attachmentLimits.maxTotalBytes
+	)
+		throw new Error('Attachments must total 40 MB or smaller');
+}
+
+export function validateAttachmentBytes(input: ByteAttachment[]): ByteAttachment[] {
+	if (!Array.isArray(input) || input.length > attachmentLimits.maxCount) {
+		throw new Error(`Attach no more than ${attachmentLimits.maxCount} files`);
+	}
+	const attachments = input.map(({ name, mimeType, size, bytes }) => ({
+		...validateAttachment(name, mimeType, size, bytes),
+		bytes
+	}));
+	validateAttachmentTotal(attachments);
+	return attachments;
 }
 
 const textTypes = new Set(
@@ -169,43 +227,14 @@ export function validateAttachments(input: unknown): InputAttachment[] {
 	if (!Array.isArray(input) || input.length > attachmentLimits.maxCount) {
 		throw new Error(`Attach no more than ${attachmentLimits.maxCount} files`);
 	}
-	let total = 0;
 	const attachments = input.map((candidate) => {
 		if (!candidate || typeof candidate !== 'object') throw new Error('Invalid attachment');
 		const { name, mimeType, size, data } = candidate as Record<string, unknown>;
-		if (
-			typeof name !== 'string' ||
-			!name.trim() ||
-			name.length > 255 ||
-			/[\\/]/.test(name) ||
-			/[\u0000-\u001f\u007f]/.test(name)
-		) {
-			throw new Error('Each attachment requires a safe file name');
-		}
-		const normalizedMimeType = typeof mimeType === 'string' ? mimeType : '';
-		const rule = allowedTypes.get(normalizedMimeType);
-		if (!rule || !rule.extensions.includes(fileExtension(name))) {
-			throw new Error('Attachment file type is not allowed or does not match its extension');
-		}
-		if (typeof size !== 'number' || !Number.isSafeInteger(size) || size < 0) {
-			throw new Error('Attachment size is invalid');
-		}
 		if (typeof data !== 'string') throw new Error('Attachment data must be valid base64');
 		const bytes = decodedData(data);
-		if (bytes.byteLength !== size) throw new Error('Attachment size does not match decoded data');
-		if (!attachmentMatchesDeclaredType(normalizedMimeType, bytes)) {
-			throw new Error('Attachment content does not match its declared type');
-		}
-		if (bytes.byteLength > rule.maxBytes) {
-			throw new Error(
-				`Each ${normalizedMimeType.split('/')[0]} attachment must be ${rule.maxBytes / 1024 / 1024} MB or smaller`
-			);
-		}
-		total += bytes.byteLength;
-		return { name: name.trim(), mimeType: normalizedMimeType, size, data };
+		return { ...validateAttachment(name, mimeType, size, bytes), data };
 	});
-	if (total > attachmentLimits.maxTotalBytes)
-		throw new Error('Attachments must total 40 MB or smaller');
+	validateAttachmentTotal(attachments);
 	return attachments;
 }
 

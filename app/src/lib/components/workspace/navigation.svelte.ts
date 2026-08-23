@@ -42,6 +42,7 @@ type NavigationEffects = {
 	setLoading: (loading: boolean) => void;
 	guard: (action: () => void) => boolean;
 	isMobile: () => boolean;
+	openCapture: (intent: 'capture' | 'share', token: string | null) => Promise<void>;
 };
 export class WorkspaceNavigation {
 	selectedProject = $state<Project | null>(null);
@@ -101,16 +102,23 @@ export class WorkspaceNavigation {
 			selection.sessionId === this.selectedSession?.sessionId
 		);
 	}
-	persistSelection(mode: Exclude<HistoryMode, 'none'> = 'replace', drawerEntry = false) {
-		persistNavigationSelection(this, mode, drawerEntry);
+	persistSelection(
+		mode: Exclude<HistoryMode, 'none'> = 'replace',
+		drawerEntry = false,
+		remember = true
+	) {
+		persistNavigationSelection(this, mode, drawerEntry, remember);
 	}
-
 	restoreSelection = async () => {
-		if (this.effects.guard(() => void this.restoreSelection())) return false;
-		await restoreNavigationSelection(this, this.effects);
+		const launch = await restoreNavigationSelection(this, this.effects, () =>
+			this.effects.guard(() => void this.restoreSelection())
+		);
+		if (!launch) return false;
+		if (launch.intent === 'new-session') await this.createProjectlessSession();
+		else if (launch.intent === 'capture' || launch.intent === 'share')
+			await this.effects.openCapture(launch.intent, launch.token);
 		return true;
 	};
-
 	chooseProject = async (project: Project | null, historyMode: HistoryMode = 'push') => {
 		if (this.effects.guard(() => void this.chooseProject(project, historyMode))) return;
 		const drillingFromProjects = this.effects.isMobile() && this.mobileDrawer === 'projects';
@@ -133,13 +141,11 @@ export class WorkspaceNavigation {
 		await this.loadActiveTab();
 		if (this.effects.isMobile()) this.setMobileDrawer('sessions', 'push');
 	};
-
 	createProjectlessSession = async () => {
 		if (this.effects.guard(() => void this.createProjectlessSession())) return;
 		await this.chooseProject(null, 'none');
 		await this.createSession();
 	};
-
 	private currentTabRequest() {
 		return {
 			generation: this.tabRequestGeneration,
@@ -147,7 +153,6 @@ export class WorkspaceNavigation {
 			tab: this.activeTab
 		};
 	}
-
 	loadActiveTab = async (targetSessionId: string | null = null) => {
 		if (this.selectedProject && !this.selectedProject.rootAvailable) return;
 		const request = {
@@ -203,12 +208,10 @@ export class WorkspaceNavigation {
 			if (isCurrentTabRequest(request, this.currentTabRequest())) this.effects.setLoading(false);
 		}
 	};
-
 	changeTab = async (tab: 'sessions' | 'workflows') => {
 		this.activeTab = tab;
 		await this.loadActiveTab();
 	};
-
 	createSession = async (): Promise<Session | null> => {
 		if (this.effects.guard(() => void this.createSession())) return null;
 		this.effects.endVoice();
@@ -243,7 +246,6 @@ export class WorkspaceNavigation {
 			this.effects.setLoading(false);
 		}
 	};
-
 	openSession = async (session: Session, historyMode: HistoryMode = 'replace') => {
 		if (this.effects.guard(() => void this.openSession(session, historyMode))) return false;
 		if (session.available === false) {
@@ -299,7 +301,6 @@ export class WorkspaceNavigation {
 			if (request.generation === this.sessionRequestGeneration) this.effects.setLoading(false);
 		}
 	};
-
 	addWorkflow = async (event: SubmitEvent) => {
 		event.preventDefault();
 		if (!this.selectedProject) return;
@@ -318,14 +319,12 @@ export class WorkspaceNavigation {
 			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
 		}
 	};
-
 	runWorkflow = async (workflow: Workflow) => {
 		if (this.effects.guard(() => void this.runWorkflow(workflow))) return;
 		this.activeTab = 'sessions';
 		const session = await this.createSession();
 		if (session) await this.effects.sendText(workflow.prompt);
 	};
-
 	openEditSession = (event: MouseEvent, session: Session) => {
 		event.stopPropagation();
 		this.editingSession = session;
