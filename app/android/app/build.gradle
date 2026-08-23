@@ -1,0 +1,148 @@
+apply plugin: 'com.android.application'
+
+import java.net.URI
+import java.util.Locale
+import groovy.json.JsonSlurper
+
+def configuredHueUrl = providers.gradleProperty('HUE_SERVER_URL')
+    .orElse(providers.environmentVariable('HUE_SERVER_URL'))
+    .getOrElse('')
+    .trim()
+def debugHueUrl = configuredHueUrl ?: 'http://10.0.2.2:4173'
+def releaseHueUrl = configuredHueUrl ?: 'https://hue.invalid'
+
+def parseHueOrigin = { String value ->
+    URI uri
+    try {
+        uri = new URI(value)
+    } catch (Exception error) {
+        throw new GradleException('HUE_SERVER_URL must be an absolute origin URL', error)
+    }
+    def authority = uri.rawAuthority
+    if (!uri.absolute || !authority || authority.contains('@') || authority.contains('[') || authority.contains(']')
+        || (uri.path && uri.path != '/') || uri.query || uri.fragment) {
+        throw new GradleException('HUE_SERVER_URL must contain only scheme, host, and optional port')
+    }
+    def scheme = uri.scheme.toLowerCase(Locale.ROOT)
+    def port = uri.port
+    def rawHost = uri.host
+    if (!rawHost) {
+        def separator = authority.lastIndexOf(':')
+        rawHost = separator < 0 ? authority : authority.substring(0, separator)
+        if (separator >= 0) {
+            try {
+                port = Integer.parseInt(authority.substring(separator + 1))
+            } catch (NumberFormatException error) {
+                throw new GradleException('HUE_SERVER_URL must contain only scheme, host, and optional port', error)
+            }
+        }
+    }
+    def host = rawHost.toLowerCase(Locale.ROOT).replaceAll(/\.+$/, '')
+    if (!host || host.contains(':') || host.contains('%') || port > 65535 || !(scheme in ['https', 'http'])) {
+        throw new GradleException('HUE_SERVER_URL must use HTTPS, or debug-only loopback HTTP')
+    }
+    return new URI(scheme, null, host, port, null, null, null)
+}
+
+def invalidHueHost = { String host -> host == 'invalid' || host.endsWith('.invalid') }
+def validateDebugHueOrigin = { URI uri ->
+    if (uri.scheme == 'http' && !(uri.host in ['10.0.2.2', '127.0.0.1', 'localhost'])) {
+        throw new GradleException('Debug cleartext HUE_SERVER_URL is limited to emulator or adb-reverse loopback')
+    }
+    return uri
+}
+def validateReleaseHueOrigin = { URI uri ->
+    if (uri.scheme != 'https' || invalidHueHost(uri.host)) {
+        throw new GradleException('Release HUE_SERVER_URL must use a real HTTPS origin')
+    }
+    return uri
+}
+
+def debugHueOrigin = validateDebugHueOrigin(parseHueOrigin(debugHueUrl))
+def releaseHueOrigin = parseHueOrigin(releaseHueUrl)
+def canonicalDebugHueUrl = debugHueOrigin.toString()
+def canonicalReleaseHueUrl = releaseHueOrigin.toString()
+
+android {
+    namespace = "studio.ctw.hue"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "studio.ctw.hue"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    buildFeatures {
+        buildConfig true
+    }
+    buildTypes {
+        debug {
+            buildConfigField 'String', 'HUE_SERVER_URL', "\"${canonicalDebugHueUrl}\""
+            manifestPlaceholders = [hueAppLinkHost: debugHueOrigin.host]
+        }
+        release {
+            buildConfigField 'String', 'HUE_SERVER_URL', "\"${canonicalReleaseHueUrl}\""
+            manifestPlaceholders = [hueAppLinkHost: releaseHueOrigin.host]
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+tasks.register('validateHueReleaseConfig') {
+    group = 'verification'
+    doLast {
+        validateReleaseHueOrigin(releaseHueOrigin)
+        def capacitorConfig = file('src/main/assets/capacitor.config.json')
+        if (!capacitorConfig.isFile()) {
+            throw new GradleException('Capacitor config is missing; run scripts/android-sync.sh with the release HUE_SERVER_URL')
+        }
+        def configuredServerUrl = new JsonSlurper().parse(capacitorConfig)?.server?.url
+        if (configuredServerUrl != canonicalReleaseHueUrl) {
+            throw new GradleException('Capacitor server.url must match the validated release HUE_SERVER_URL; use scripts/android-gradle.sh')
+        }
+    }
+}
+
+tasks.configureEach { task ->
+    if (task.name == 'assembleRelease' || task.name == 'bundleRelease') {
+        task.dependsOn('validateHueReleaseConfig')
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    androidTestImplementation "androidx.test.uiautomator:uiautomator:2.3.0"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

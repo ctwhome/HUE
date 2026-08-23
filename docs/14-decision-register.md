@@ -5,10 +5,11 @@
 
 ## Accepted decisions
 
-| ID                                          | Decision                                                                        | Accepted direction                                                                                                                                    | ADR                                                    | Status   |
-| ------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | -------- |
-| TBD-020                                     | Frontend and component system                                                   | SvelteKit + Svelte 5 + shadcn-svelte beneath HUE-owned tokens and wrapper components; static HTML prototype retained until functional flows stabilize | [ADR-0001](decisions/0001-sveltekit-shadcn-svelte.md)  | Accepted |
-| TBD-001, TBD-002, TBD-004, TBD-007, TBD-012 | Focused product boundary, shell, control plane, runtime, storage, and transport | Browser workspace on SvelteKit/Bun; `bun:sqlite`; Hermes ACP external-process adapter; acknowledged HTTP envelopes and cursor replay                  | [ADR-0002](decisions/0002-bun-hermes-acp-workspace.md) | Accepted |
+| ID                                          | Decision                                                                        | Accepted direction                                                                                                                                    | ADR                                                          | Status                  |
+| ------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------- |
+| TBD-020                                     | Frontend and component system                                                   | SvelteKit + Svelte 5 + shadcn-svelte beneath HUE-owned tokens and wrapper components; static HTML prototype retained until functional flows stabilize | [ADR-0001](decisions/0001-sveltekit-shadcn-svelte.md)        | Accepted                |
+| TBD-001, TBD-002, TBD-004, TBD-007, TBD-012 | Focused product boundary, shell, control plane, runtime, storage, and transport | Browser workspace on SvelteKit/Bun; `bun:sqlite`; Hermes ACP external-process adapter; acknowledged HTTP envelopes and cursor replay                  | [ADR-0002](decisions/0002-bun-hermes-acp-workspace.md)       | Accepted                |
+| TBD-014 (Android proof boundary only)       | Mobile attention surface                                                        | Capacitor shell over canonical HUE server with bounded Android links, widget, shortcuts, and generic notifications; production access remains TBD     | [ADR-0008](decisions/0008-capacitor-android-native-shell.md) | Accepted proof boundary |
 
 ## Alpha-blocking decisions
 
@@ -62,14 +63,14 @@ Each decision gets `docs/decisions/NNNN-title.md` using the template. An accepte
 6. **TBD-008:** route policy/evaluation.
 7. **TBD-010:** computer use after permission engine foundations.
 8. **TBD-023 + TBD-024:** source ownership and the first replaceable execution adapter.
-9. Remaining packaging/ecosystem decisions.
+9. Remaining production packaging, access, and distribution decisions after ADR-0008 Android proof.
 
 ## Strong current hypotheses (not decisions)
 
 These are recommendations to test, still `TBD`:
 
 - Keep HUE's Project/Workflow metadata and delivery journal independent while treating Hermes ACP as the sole Session execution/runtime boundary.
-- Use the accepted SvelteKit + Svelte 5 frontend and shadcn-svelte component foundation regardless of which packaging option wins `TBD-001`.
+- Keep SvelteKit + Svelte 5 canonical UI; ADR-0008 proves bounded Capacitor Android transport without selecting production access or distribution.
 - Do not fork or embed the existing Hermes Python WebUI; use ACP and complete semantic message envelopes instead of PTY input.
 - Use SQLite as canonical local transactional storage with an append-only event journal and rebuildable indexes.
 - Build a small custom durable orchestration state machine while borrowing proven supervisor patterns; avoid importing a large framework before requirements are proven.

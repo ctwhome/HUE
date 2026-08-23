@@ -59,7 +59,11 @@ export function resolveLaunchDestination(
 	const params = _url.searchParams;
 	const explicit = params.has('project') || params.has('session') || params.has('pane');
 	const memory = parseNavigationMemory(_rawMemory);
-	const requestedIntent = explicit ? null : params.get('intent');
+	const requestedIntent = explicit
+		? null
+		: params.get('quick-capture') === '1'
+			? 'capture'
+			: params.get('intent');
 	const intent = ['new-session', 'capture', 'share', 'projects', 'recents'].includes(
 		requestedIntent ?? ''
 	)
