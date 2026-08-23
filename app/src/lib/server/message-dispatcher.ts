@@ -117,9 +117,16 @@ export class MessageDispatcher {
 
 	constructor(
 		private readonly store: HUEStore,
-		private readonly runtime: PromptRuntime
+		private readonly runtime: PromptRuntime,
+		private readonly onAttention?: () => Promise<void> | void
 	) {
 		this.recover();
+		this.deliverAttention();
+	}
+
+	private deliverAttention(): void {
+		if (!this.onAttention) return;
+		void Promise.resolve(this.onAttention()).catch(() => undefined);
 	}
 
 	recover(): void {
@@ -240,6 +247,7 @@ export class MessageDispatcher {
 			messageId,
 			status: 'pending'
 		});
+		this.deliverAttention();
 		return new Promise((resolve) =>
 			this.interactions.set(`${request.sessionId}\0${request.id}`, {
 				request,
@@ -334,6 +342,7 @@ export class MessageDispatcher {
 			this.store.transitionMessage(envelope.id, 'completed', {
 				messageId: envelope.id
 			});
+			this.deliverAttention();
 		} catch (error) {
 			this.cancelInteractions(envelope.id);
 			const message = error instanceof Error ? error.message : String(error);
@@ -345,6 +354,7 @@ export class MessageDispatcher {
 				messageId: envelope.id,
 				error: message
 			});
+			this.deliverAttention();
 		} finally {
 			this.turnAttachments.delete(envelope.id);
 		}

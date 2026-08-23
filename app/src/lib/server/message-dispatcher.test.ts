@@ -67,6 +67,21 @@ function makeStore() {
 }
 
 describe('MessageDispatcher', () => {
+	it('triggers attention delivery after projecting a new terminal event', async () => {
+		const store = makeStore();
+		let deliveries = 0;
+		const dispatcher = new MessageDispatcher(store, new RecordingRuntime(), async () => {
+			deliveries += 1;
+		});
+
+		dispatcher.submit({ id: 'notify', projectId: 'hue', sessionId: 'session-1', text: 'Finish' });
+		await dispatcher.whenIdle('session-1');
+
+		expect(store.notificationCounts()).toEqual({ unread: 1, all: 1 });
+		expect(deliveries).toBeGreaterThanOrEqual(1);
+		store.close();
+	});
+
 	it('recovers legacy work after its project session is discovered', async () => {
 		const store = new HUEStore(':memory:');
 		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
