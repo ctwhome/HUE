@@ -3589,7 +3589,7 @@ test('per-session work mode selector persists across natural text, slash alias, 
 
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
-		const selector = page.getByLabel('Work mode');
+		const selector = page.getByLabel('Work mode', { exact: true });
 		await expect(selector).toBeVisible();
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
@@ -3602,19 +3602,19 @@ test('per-session work mode selector persists across natural text, slash alias, 
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await page.getByLabel('Message Hermes').fill("I'm at the computer");
 	await page.getByLabel('Message Hermes').press('Enter');
-	await expect(page.getByLabel('Work mode')).toHaveValue('live');
+	await expect(page.getByLabel('Work mode', { exact: true })).toHaveValue('live');
 
 	await page.getByLabel('Message Hermes').fill('/autonomous-delivery');
 	await page.getByLabel('Message Hermes').press('Enter');
-	await expect(page.getByLabel('Work mode')).toHaveValue('autonomous');
+	await expect(page.getByLabel('Work mode', { exact: true })).toHaveValue('autonomous');
 	await expect(page.getByText('/autonomous-delivery')).toHaveCount(0);
 
-	await page.getByLabel('Work mode').selectOption('live');
-	await expect(page.getByLabel('Work mode')).toHaveValue('live');
+	await page.getByLabel('Work mode', { exact: true }).selectOption('live');
+	await expect(page.getByLabel('Work mode', { exact: true })).toHaveValue('live');
 	await expect(page.getByText('Work mode changed to Live')).toBeVisible();
 
 	await page.reload();
-	await expect(page.getByLabel('Work mode')).toHaveValue('live');
+	await expect(page.getByLabel('Work mode', { exact: true })).toHaveValue('live');
 	expect(patchBodies).toEqual([{ workMode: 'live' }]);
 });
 
