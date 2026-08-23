@@ -1535,6 +1535,9 @@ test('capability-gates Hermes v0.20.5 administration and keeps controls responsi
 test('sends one complete envelope and renders streamed completion', async ({ page }) => {
 	const captured: { envelope?: { messageId: string; text: string } } = {};
 	const browserErrors: string[] = [];
+	await page.addInitScript(() => {
+		Object.defineProperty(navigator, 'gpu', { configurable: true, value: undefined });
+	});
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
 	page.on('pageerror', (error) => browserErrors.push(error.message));
 	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
@@ -1602,7 +1605,7 @@ test('sends one complete envelope and renders streamed completion', async ({ pag
 		});
 	});
 	await page.route(/\/sessions\/session-send\/events\?after=5$/, async (route) => {
-		await new Promise((resolve) => setTimeout(resolve, 250));
+		await new Promise((resolve) => setTimeout(resolve, 3_000));
 		await route.fulfill({
 			json: {
 				events: [
@@ -1616,6 +1619,7 @@ test('sends one complete envelope and renders streamed completion', async ({ pag
 		});
 	});
 
+	await page.emulateMedia({ reducedMotion: 'reduce' });
 	await addProject(page);
 	await sessionButton(page, 'Send').click();
 	const text = 'Complete message 🧭 with final words intact.';
@@ -1623,6 +1627,25 @@ test('sends one complete envelope and renders streamed completion', async ({ pag
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 
 	await expect(page.getByText('Hermes reasoning')).toBeVisible();
+	await expect(page.locator('.active-thinking')).toHaveCount(1);
+	await expect(page.locator('.liquid-thinking-orb')).not.toHaveClass(/gpu-ready/);
+	expect(
+		await page
+			.locator('.liquid-thinking-orb')
+			.evaluate((element) => getComputedStyle(element).backgroundImage)
+	).not.toBe('none');
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		await expect(page.locator('.active-thinking')).toBeVisible();
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		expect(
+			await page
+				.locator('.transcript')
+				.evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight)
+		).toBeLessThanOrEqual(2);
+	}
 	await expect(page.getByText('Checking the request before answering.')).toBeHidden();
 	await page.getByText('Hermes reasoning').click();
 	await expect(page.getByText('Checking the request before answering.')).toBeVisible();

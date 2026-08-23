@@ -35,6 +35,7 @@ const styleFiles = [
 	'../styles/theme-base.css',
 	'../styles/workspace-forms.css',
 	'../styles/conversation-composer.css',
+	'../styles/liquid-thinking-orb.css',
 	'../styles/responsive.css'
 ].map(read);
 const styles = [appStyles, ...styleFiles].join('\n');
@@ -273,6 +274,33 @@ test('composer exposes HUE work mode selector and timeline status item hooks', (
 	expect(composer).toContain('Live');
 	expect(conversation).toContain("item.kind === 'status'");
 	expect(conversation).toContain('aria-label={item.label}');
+});
+
+test('active reasoning uses one lazy liquid orb while historical thoughts stay collapsed', () => {
+	const conversation = read('../lib/components/workspace/Conversation.svelte');
+	const orb = read('../lib/components/workspace/LiquidThinkingOrb.svelte');
+	expect(conversation).toContain('<LiquidThinkingOrb');
+	expect(conversation).toContain(
+		"item.kind === 'thought' && item.sequence !== currentThought?.sequence"
+	);
+	expect(conversation).toContain('{#if busy}<LiquidThinkingOrb');
+	expect(conversation).toContain("item.kind === 'thought'");
+	expect(orb).toContain('Hermes reasoning');
+	expect(orb).toContain('data-timeline-sequence={sequence}');
+	expect(orb).toContain("import('./liquid-orb-renderer')");
+	expect(orb.indexOf("matchMedia('(prefers-reduced-motion: reduce)')")).toBeLessThan(
+		orb.indexOf("import('./liquid-orb-renderer')")
+	);
+	expect(orb).toContain("canvas.getContext('webgpu')");
+	expect(orb).toContain('removeEventListener');
+	expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.liquid-thinking-orb/);
+});
+
+test('liquid orb adaptation carries upstream MIT notice', () => {
+	const notices = read('../../../THIRD_PARTY_NOTICES.md');
+	expect(notices).toContain('LerSent001/orb');
+	expect(notices).toContain('Copyright (c) 2026 LerSent001');
+	expect(notices).toContain('MIT License');
 });
 
 test('project and session controls preserve accessible editing', () => {
