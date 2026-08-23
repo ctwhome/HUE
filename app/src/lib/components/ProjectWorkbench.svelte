@@ -1,11 +1,18 @@
 <script lang="ts">
+	import { onMount, type Component } from 'svelte';
 	import { Code2, Files } from 'lucide-svelte';
 	import BrowserPanel from './workbench/BrowserPanel.svelte';
 	import FilesPanel from './workbench/FilesPanel.svelte';
-	import RepositoryPanels from './workbench/RepositoryPanels.svelte';
-	import TerminalPanel from './workbench/TerminalPanel.svelte';
 	import HealthStrip from './workbench/HealthStrip.svelte';
+	import { afterInitialPaint } from './workbench/after-initial-paint';
 	import type { DirtyGuard } from './workspace/dirty-guard';
+
+	type TerminalProps = { projectId: string };
+	type RepositoryProps = {
+		projectId: string;
+		onbranch: (branch: string | null) => void;
+		onopenfile: (path: string) => void;
+	};
 
 	let {
 		projectId,
@@ -22,6 +29,36 @@
 	let view = $state<'develop' | 'files'>('develop');
 	let filesMounted = $state(false);
 	let fileRequest = $state<{ path: string; id: string } | null>(null);
+	let TerminalPanel = $state<Component<TerminalProps> | null>(null);
+	let RepositoryPanels = $state<Component<RepositoryProps> | null>(null);
+	let terminalLoading = $state(false);
+	let terminalError = $state('');
+	let repositoryError = $state('');
+	let mounted = false;
+	const panel =
+		'workbench-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card';
+
+	async function activateTerminal() {
+		if (terminalLoading || TerminalPanel) return;
+		terminalLoading = true;
+		terminalError = '';
+		try {
+			const module = await import('./workbench/TerminalPanel.svelte');
+			if (mounted) TerminalPanel = module.default;
+		} catch (cause) {
+			if (mounted) terminalError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			if (mounted) terminalLoading = false;
+		}
+	}
+	async function loadRepositoryPanels() {
+		try {
+			const module = await import('./workbench/RepositoryPanels.svelte');
+			if (mounted) RepositoryPanels = module.default;
+		} catch (cause) {
+			if (mounted) repositoryError = cause instanceof Error ? cause.message : String(cause);
+		}
+	}
 	function openFile(path: string) {
 		filesMounted = true;
 		fileRequest = { path, id: crypto.randomUUID() };
@@ -34,6 +71,15 @@
 	function openDevelop() {
 		if (!dirtyGuard.block(() => (view = 'develop'))) view = 'develop';
 	}
+
+	onMount(() => {
+		mounted = true;
+		const cancelRepositoryLoad = afterInitialPaint(() => void loadRepositoryPanels());
+		return () => {
+			mounted = false;
+			cancelRepositoryLoad();
+		};
+	});
 </script>
 
 <section
@@ -74,8 +120,57 @@
 			aria-hidden={view !== 'develop'}
 		>
 			<BrowserPanel {projectId} onpreviewchange={(url) => (previewUrl = url)} />
-			<TerminalPanel {projectId} />
-			<RepositoryPanels {projectId} {onbranch} onopenfile={openFile} />
+			{#if TerminalPanel}
+				<TerminalPanel {projectId} />
+			{:else}
+				<article
+					class={`${panel} terminal-panel grid place-content-center gap-3 p-4 text-center`}
+					aria-label="Project terminal"
+				>
+					<strong class="text-sm">Terminal</strong>
+					<span class="text-xs text-muted-foreground">Start when needed.</span>
+					<button
+						class="min-h-11 rounded-md border border-border px-4 text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+						disabled={terminalLoading}
+						onclick={activateTerminal}
+						>{terminalLoading ? 'Starting terminal…' : 'Start terminal'}</button
+					>
+					{#if terminalError}<span class="text-xs text-destructive" role="alert"
+							>{terminalError}</span
+						>{/if}
+				</article>
+			{/if}
+			{#if RepositoryPanels}
+				<RepositoryPanels {projectId} {onbranch} onopenfile={openFile} />
+			{:else}
+				<article
+					class={`${panel} repository-panel`}
+					aria-label="Git status"
+					aria-busy={!repositoryError}
+				>
+					<header class="min-h-11 border-b border-border bg-muted/40 px-2.5 py-2">
+						<strong class="text-xs">Git</strong>
+					</header>
+					<div class="grid flex-1 place-content-center p-4 text-xs text-muted-foreground">
+						{repositoryError ? 'Git unavailable' : 'Loading Git status'}
+					</div>
+					{#if repositoryError}<span class="px-4 pb-4 text-xs text-destructive" role="alert"
+							>{repositoryError}</span
+						>{/if}
+				</article>
+				<article
+					class={`${panel} worktrees-panel`}
+					aria-label="Git worktrees"
+					aria-busy={!repositoryError}
+				>
+					<header class="min-h-11 border-b border-border bg-muted/40 px-2.5 py-2">
+						<strong class="text-xs">Worktrees</strong>
+					</header>
+					<div class="grid flex-1 place-content-center p-4 text-xs text-muted-foreground">
+						{repositoryError ? 'Git unavailable' : 'Loading Git worktrees'}
+					</div>
+				</article>
+			{/if}
 		</div>
 	</div>
 </section>

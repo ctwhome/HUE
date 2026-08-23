@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -10,6 +10,30 @@ const viewports = [
 	{ width: 320, height: 844 }
 ];
 const mobileViewports = viewports.slice(-2);
+
+type IdleControlledWindow = Window & { __runHueIdleCallbacks: () => void };
+
+async function controlIdleCallbacks(page: import('@playwright/test').Page) {
+	await page.addInitScript(() => {
+		let nextId = 1;
+		const callbacks = new Map<number, IdleRequestCallback>();
+		window.requestIdleCallback = (callback) => {
+			const id = nextId++;
+			callbacks.set(id, callback);
+			return id;
+		};
+		window.cancelIdleCallback = (id) => callbacks.delete(id);
+		(window as unknown as IdleControlledWindow).__runHueIdleCallbacks = () => {
+			const pending = [...callbacks.values()];
+			callbacks.clear();
+			for (const callback of pending) callback({ didTimeout: false, timeRemaining: () => 50 });
+		};
+	});
+}
+
+async function runIdleCallbacks(page: import('@playwright/test').Page) {
+	await page.evaluate(() => (window as unknown as IdleControlledWindow).__runHueIdleCallbacks());
+}
 
 async function expectMinimumTouchTargets(locator: import('@playwright/test').Locator) {
 	for (let index = 0; index < (await locator.count()); index += 1) {
@@ -4072,6 +4096,219 @@ test('durable mobile destination restores safely and browser Back follows drawer
 	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
+test('keeps startup interactive and terminal unloaded until explicit activation', async ({
+	page
+}) => {
+	const root = mkdtempSync(join(tmpdir(), 'hue-startup-terminal-'));
+	let projectId = '';
+	let releaseSessions!: () => void;
+	const sessionsGate = new Promise<void>((resolve) => (releaseSessions = resolve));
+	let terminalCreates = 0;
+	let terminalPolls = 0;
+	let sessionRequests = 0;
+	let repositoryRequests = 0;
+	let healthRequests = 0;
+	const scripts: string[] = [];
+	page.on('request', (request) => {
+		if (request.resourceType() === 'script') scripts.push(request.url());
+	});
+	try {
+		const response = await page.request.post('/api/projects', {
+			data: { name: 'Startup', folders: [root], primaryPath: root }
+		});
+		const project = (await response.json()).project as { id: string };
+		projectId = project.id;
+		await controlIdleCallbacks(page);
+		await page.route(`/api/projects/${project.id}/sessions`, async (route) => {
+			sessionRequests += 1;
+			await sessionsGate;
+			await route.fulfill({ json: { sessions: [] } });
+		});
+		await page.route(`/api/projects/${project.id}/repository`, (route) => {
+			repositoryRequests += 1;
+			return route.fulfill({
+				json: { isRepository: false, branch: null, changes: [], worktrees: [], remotes: [] }
+			});
+		});
+		await page.route(`**/api/health?projectId=${project.id}`, (route) => {
+			healthRequests += 1;
+			return route.fulfill({ json: { checks: [] } });
+		});
+		await page.route(`/api/projects/${project.id}/terminal**`, async (route) => {
+			if (route.request().method() === 'GET') {
+				terminalPolls += 1;
+				return route.fulfill({
+					json: {
+						output: '',
+						cursor: 0,
+						inputSequence: 0,
+						reset: false,
+						status: 'running'
+					}
+				});
+			}
+			const body = (await route.request().postDataJSON()) as { action: string };
+			if (body.action === 'create') terminalCreates += 1;
+			return route.fulfill({
+				json:
+					body.action === 'create'
+						? { terminalId: 'startup-terminal', cursor: 0, status: 'running' }
+						: { success: true }
+			});
+		});
+
+		await page.goto(`/?project=${project.id}`);
+		const workbench = page.getByRole('region', { name: 'Startup workbench' });
+		await expect(workbench).toBeVisible();
+		const terminalEntry = JSON.parse(
+			readFileSync('.svelte-kit/output/client/.vite/manifest.json', 'utf8')
+		) as Record<string, { file: string }>;
+		const terminalAsset = terminalEntry['src/lib/components/workbench/TerminalPanel.svelte']?.file;
+		expect(terminalAsset).toBeTruthy();
+		expect(sessionRequests).toBe(1);
+		expect(scripts.some((url) => url.endsWith(terminalAsset))).toBe(false);
+		expect(terminalCreates).toBe(0);
+		expect(terminalPolls).toBe(0);
+		expect(repositoryRequests).toBe(0);
+		expect(healthRequests).toBe(0);
+
+		await workbench.getByRole('button', { name: 'Start terminal' }).click();
+		await expect(workbench.getByRole('article', { name: 'Project terminal' })).toBeVisible();
+		await expect.poll(() => scripts.some((url) => url.endsWith(terminalAsset))).toBe(true);
+		await expect.poll(() => terminalCreates).toBe(1);
+		await expect.poll(() => terminalPolls).toBeGreaterThan(0);
+		await page.waitForTimeout(250);
+		expect(terminalCreates).toBe(1);
+	} finally {
+		releaseSessions();
+		if (projectId) await page.request.delete(`/api/projects/${projectId}`).catch(() => undefined);
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('defers Git and keeps health usable when Git fails', async ({ page }) => {
+	const root = mkdtempSync(join(tmpdir(), 'hue-startup-git-failure-'));
+	let projectId = '';
+	const browserErrors: string[] = [];
+	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
+	page.on('pageerror', (error) => browserErrors.push(error.stack ?? error.message));
+	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
+	try {
+		const response = await page.request.post('/api/projects', {
+			data: { name: 'Git failure', folders: [root], primaryPath: root }
+		});
+		const project = (await response.json()).project as { id: string };
+		projectId = project.id;
+		let repositoryRequests = 0;
+		let healthRequests = 0;
+		await controlIdleCallbacks(page);
+		await page.route(`/api/projects/${project.id}/sessions`, (route) =>
+			route.fulfill({ json: { sessions: [] } })
+		);
+		await page.route(`/api/projects/${project.id}/repository`, (route) => {
+			repositoryRequests += 1;
+			return route.fulfill({ status: 503, json: { error: 'Git unavailable' } });
+		});
+		await page.route(`**/api/health?projectId=${project.id}`, (route) => {
+			healthRequests += 1;
+			return route.fulfill({
+				json: {
+					checks: [
+						{ id: 'project', label: 'Project', status: 'ready', summary: 'Healthy', action: 'Open' }
+					]
+				}
+			});
+		});
+
+		await page.goto(`/?project=${project.id}`);
+		const workbench = page.getByRole('region', { name: 'Git failure workbench' });
+		for (const viewport of viewports) {
+			await page.setViewportSize(viewport);
+			await expect(workbench.getByRole('article', { name: 'Git status' })).toContainText(
+				'Loading Git status'
+			);
+			await expect(workbench.getByRole('article', { name: 'Git worktrees' })).toContainText(
+				'Loading Git worktrees'
+			);
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+				viewport.width
+			);
+			if (viewport.width <= 390) await expectMinimumTouchTargets(workbench.locator('button, a'));
+		}
+		expect(repositoryRequests).toBe(0);
+		expect(healthRequests).toBe(0);
+		await runIdleCallbacks(page);
+		await expect(workbench.getByRole('article', { name: 'Git status' })).toContainText(
+			'Git unavailable'
+		);
+		await expect(workbench.getByRole('region', { name: 'Runtime health' })).toContainText(
+			'Healthy'
+		);
+		expect(repositoryRequests).toBe(1);
+		expect(healthRequests).toBe(1);
+		expect(browserErrors).toEqual([
+			'Failed to load resource: the server responded with a status of 503 (Service Unavailable)'
+		]);
+	} finally {
+		if (projectId) await page.request.delete(`/api/projects/${projectId}`).catch(() => undefined);
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('defers health and keeps Git usable when health fails', async ({ page }) => {
+	const root = mkdtempSync(join(tmpdir(), 'hue-startup-health-failure-'));
+	let projectId = '';
+	try {
+		const response = await page.request.post('/api/projects', {
+			data: { name: 'Health failure', folders: [root], primaryPath: root }
+		});
+		const project = (await response.json()).project as { id: string };
+		projectId = project.id;
+		let repositoryRequests = 0;
+		let healthRequests = 0;
+		await controlIdleCallbacks(page);
+		await page.route(`/api/projects/${project.id}/sessions`, (route) =>
+			route.fulfill({ json: { sessions: [] } })
+		);
+		await page.route(`/api/projects/${project.id}/repository`, (route) => {
+			repositoryRequests += 1;
+			return route.fulfill({
+				json: {
+					isRepository: true,
+					branch: 'startup-ready',
+					changes: [],
+					worktrees: [],
+					remotes: []
+				}
+			});
+		});
+		await page.route(`**/api/health?projectId=${project.id}`, (route) => {
+			healthRequests += 1;
+			return route.fulfill({ status: 503, json: { error: 'Health unavailable' } });
+		});
+
+		await page.goto(`/?project=${project.id}`);
+		const workbench = page.getByRole('region', { name: 'Health failure workbench' });
+		await expect(workbench.getByRole('article', { name: 'Git worktrees' })).toContainText(
+			'Loading Git worktrees'
+		);
+		expect(repositoryRequests).toBe(0);
+		expect(healthRequests).toBe(0);
+		await runIdleCallbacks(page);
+		await expect(workbench.getByRole('article', { name: 'Git status' })).toContainText(
+			'startup-ready'
+		);
+		await expect(workbench.getByRole('region', { name: 'Runtime health' })).toContainText(
+			'Health unavailable'
+		);
+		expect(repositoryRequests).toBe(1);
+		expect(healthRequests).toBe(1);
+	} finally {
+		if (projectId) await page.request.delete(`/api/projects/${projectId}`).catch(() => undefined);
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test('opens project-scoped browser, terminal, Git status, and worktree panels', async ({
 	page
 }) => {
@@ -4108,6 +4345,7 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 
 	const workbench = page.getByRole('region', { name: /HUE workbench/ });
 	await expect(workbench.getByRole('article', { name: 'Project browser' })).toBeVisible();
+	await workbench.getByRole('button', { name: 'Start terminal' }).click();
 	const terminal = workbench.getByRole('article', { name: 'Project terminal' });
 	await expect(terminal.getByRole('tab', { name: /Terminal 1/ })).toBeVisible();
 	await terminal.getByRole('application', { name: 'Interactive project terminal' }).click();
@@ -4202,6 +4440,7 @@ test('remounts project-scoped tools when switching projects', async ({ page }) =
 		await expect(
 			page.locator('.session-header').getByText('branch-one', { exact: true })
 		).toBeVisible();
+		await page.getByRole('button', { name: 'Start terminal' }).click();
 		const firstBrowser = page.getByRole('article', { name: 'Project browser' });
 		await firstBrowser.getByLabel('Browser address').fill('http://localhost:4001');
 		await firstBrowser.getByRole('button', { name: 'Go' }).click();
@@ -4213,6 +4452,7 @@ test('remounts project-scoped tools when switching projects', async ({ page }) =
 		await expect(
 			page.getByRole('article', { name: 'Project browser' }).getByLabel('Browser address')
 		).toHaveValue('');
+		await page.getByRole('button', { name: 'Start terminal' }).click();
 		await expect
 			.poll(() =>
 				terminalActions.some(
@@ -4220,7 +4460,13 @@ test('remounts project-scoped tools when switching projects', async ({ page }) =
 				)
 			)
 			.toBe(true);
-		expect(terminalActions).toContainEqual({ projectId: projects[1].id, action: 'create' });
+		await expect
+			.poll(() =>
+				terminalActions.some(
+					({ projectId, action }) => projectId === projects[1].id && action === 'create'
+				)
+			)
+			.toBe(true);
 	} finally {
 		for (const project of projects)
 			await page.request.delete(`/api/projects/${project.id}`).catch(() => undefined);

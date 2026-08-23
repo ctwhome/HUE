@@ -3,6 +3,7 @@
 	import { RefreshCw } from 'lucide-svelte';
 	import Button from '../ui/Button.svelte';
 	import { api } from './api';
+	import { afterInitialPaint } from './after-initial-paint';
 
 	type Check = {
 		id: string;
@@ -24,6 +25,7 @@
 	);
 	let error = $state('');
 	let loading = $state(false);
+	let cancelInitialLoad: (() => void) | null = null;
 	let visibleChecks = $derived(
 		checks.map((check) =>
 			check.id === 'preview'
@@ -38,6 +40,9 @@
 	);
 
 	async function load() {
+		cancelInitialLoad?.();
+		cancelInitialLoad = null;
+		if (loading) return;
 		loading = true;
 		error = '';
 		try {
@@ -51,12 +56,16 @@
 		}
 	}
 
-	onMount(() => void load());
+	onMount(() => {
+		cancelInitialLoad = afterInitialPaint(() => void load());
+		return () => cancelInitialLoad?.();
+	});
 </script>
 
 <section
 	class="flex min-w-0 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-card px-2.5 py-2"
 	aria-label="Runtime health"
+	aria-busy={loading}
 >
 	{#each visibleChecks as check}
 		<div
@@ -85,6 +94,7 @@
 		aria-label="Refresh runtime health"
 		title="Refresh runtime health"
 		disabled={loading}
-		onclick={load}><RefreshCw size={14} aria-hidden="true" /></Button
+		onclick={load}
+		><RefreshCw class={loading ? 'animate-spin' : ''} size={14} aria-hidden="true" /></Button
 	>
 </section>
