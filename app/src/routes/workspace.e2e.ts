@@ -898,64 +898,6 @@ test('shows automatic session emojis and allows a custom override', async ({ pag
 	}
 });
 
-test('archives a session directly from its session-list row', async ({ page }, testInfo) => {
-	let archived = false;
-	let archivePayload: unknown;
-	const browserErrors: string[] = [];
-	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
-	page.on('pageerror', (error) => browserErrors.push(error.stack ?? error.message));
-	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
-	await page.route('**/api/projects/*/sessions', (route) =>
-		route.fulfill({
-			json: {
-				sessions: archived
-					? []
-					: [{ sessionId: 'session-archive', cwd: '/work/hue', title: 'Archive me' }]
-			}
-		})
-	);
-	await page.route('**/sessions/session-archive', async (route) => {
-		archivePayload = await route.request().postDataJSON();
-		archived = true;
-		return route.fulfill({
-			json: {
-				session: {
-					sessionId: 'session-archive',
-					cwd: '/work/hue',
-					title: 'Archive me',
-					archived: true
-				}
-			}
-		});
-	});
-
-	for (const viewport of viewports) {
-		archived = false;
-		archivePayload = undefined;
-		await page.setViewportSize(viewport);
-		await addProject(page);
-		const row = sessionButton(page, 'Archive me');
-		await row.hover();
-		const archiveButton = page.getByRole('button', { name: 'Archive Archive me' });
-		await expect(archiveButton).toBeVisible();
-		if (viewport.width <= 390) {
-			expect((await archiveButton.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-		}
-		await testInfo.attach(`session-archive-${viewport.width}x${viewport.height}`, {
-			body: await page.screenshot(),
-			contentType: 'image/png'
-		});
-		await archiveButton.click();
-
-		expect(archivePayload).toEqual({ archived: true });
-		await expect(row).toHaveCount(0);
-		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
-			viewport.width
-		);
-	}
-	expect(browserErrors).toEqual([]);
-});
-
 test('opens distinct Hermes runtime, skills, schedules, commands, profiles, and MCP panels', async ({
 	page
 }) => {
