@@ -1,5 +1,6 @@
 import type { HUEStore } from './store';
 import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+import { DEFAULT_WORK_MODE, type WorkMode } from '$lib/work-mode';
 
 export type SubagentChild = {
 	index: number;
@@ -75,6 +76,7 @@ export interface PromptRuntime {
 		text: string;
 		images: ImageAttachment[];
 		attachments?: InputAttachment[];
+		workMode: WorkMode;
 		onChunk: (text: string) => void;
 		onImage?: (image: ImageAttachment) => void;
 		onThought?: (text: string) => void;
@@ -137,11 +139,13 @@ export class MessageDispatcher {
 
 	submit(envelope: MessageEnvelope) {
 		const accepted = this.store.acceptMessage(envelope);
-		if (accepted.duplicate) return accepted;
+		const workMode = (this.store.getSession(envelope.projectId, envelope.sessionId)?.workMode ??
+			DEFAULT_WORK_MODE) as WorkMode;
+		if (accepted.duplicate) return { ...accepted, workMode };
 		if (envelope.attachments?.length) this.turnAttachments.set(envelope.id, envelope.attachments);
 
 		this.enqueue(envelope);
-		return accepted;
+		return { ...accepted, workMode };
 	}
 
 	updateQueuedMessage(id: string, input: Parameters<HUEStore['updateQueuedMessage']>[1]) {
@@ -289,7 +293,9 @@ export class MessageDispatcher {
 				...envelope,
 				text: queued.text,
 				images: queued.images,
-				attachments: attachments ?? []
+				attachments: attachments ?? [],
+				workMode: (this.store.getSession(envelope.projectId, envelope.sessionId)?.workMode ??
+					DEFAULT_WORK_MODE) as WorkMode
 			};
 			this.store.transitionMessage(current.id, 'running', {
 				messageId: envelope.id
@@ -299,6 +305,7 @@ export class MessageDispatcher {
 				text: current.text,
 				images: current.images ?? [],
 				attachments: current.attachments ?? [],
+				workMode: current.workMode,
 				onChunk: (text) => {
 					this.store.appendEvent(envelope.projectId, envelope.sessionId, 'agent.chunk', {
 						messageId: envelope.id,
