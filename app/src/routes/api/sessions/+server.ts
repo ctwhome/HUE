@@ -83,10 +83,16 @@ export const POST: RequestHandler = async () => {
 			throw new Error('Hermes Session is outside the HUE session directory');
 		}
 		services().store.upsertSession(null, session);
+		const stored = services().store.getSession(null, session.sessionId)!;
 		services().dispatcher.recover();
 		return json(
 			{
-				session: { ...session, icon: automaticSessionIcon(session.title), customIcon: null },
+				session: {
+					...session,
+					...stored,
+					icon: stored.icon ?? automaticSessionIcon(session.title),
+					customIcon: stored.icon
+				},
 				commands: services().runtime.getAvailableCommands(session.sessionId),
 				runtime: services().runtime.getSessionState(session.sessionId),
 				branch: null
