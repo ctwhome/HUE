@@ -124,10 +124,16 @@ export const POST: RequestHandler = async ({ params }) => {
 			throw new Error(`Hermes Session ${session.sessionId} is outside the Project root`);
 		}
 		services().store.upsertSession(project.id, session);
+		const stored = services().store.getSession(project.id, session.sessionId)!;
 		services().dispatcher.recover();
 		return json(
 			{
-				session: { ...session, icon: automaticSessionIcon(session.title), customIcon: null },
+				session: {
+					...session,
+					...stored,
+					icon: stored.icon ?? automaticSessionIcon(session.title),
+					customIcon: stored.icon
+				},
 				commands: services().runtime.getAvailableCommands(session.sessionId),
 				runtime: services().runtime.getSessionState(session.sessionId),
 				branch: projectBranch(project.primary_path)

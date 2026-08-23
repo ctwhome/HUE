@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { services } from '$lib/server/services';
+import { applyMessageWorkMode } from '$lib/server/work-mode-context';
 import { MessageConflictError } from '$lib/server/store';
 import { validateMessageAttachments } from '$lib/message-content';
 import type { RequestHandler } from './$types';
@@ -21,6 +22,27 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		if (!messageId || (!text.trim() && !images.length && !attachments.length)) {
 			return json({ error: 'messageId and message content are required' }, { status: 400 });
 		}
+		const workMode = applyMessageWorkMode(
+			services().store,
+			null,
+			params.sessionId,
+			text,
+			Boolean(images.length || attachments.length)
+		);
+		if (workMode.consumed) {
+			return json(
+				{
+					messageId,
+					duplicate: false,
+					status: 'completed',
+					workMode: workMode.workMode,
+					workModeChanged: workMode.changed,
+					workModeEvent: workMode.event,
+					consumed: true
+				},
+				{ status: 202 }
+			);
+		}
 		const accepted = services().dispatcher.submit({
 			id: messageId,
 			projectId: null,
@@ -29,7 +51,16 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			images,
 			attachments
 		});
-		return json({ messageId, ...accepted }, { status: 202 });
+		return json(
+			{
+				messageId,
+				...accepted,
+				workMode: workMode.workMode,
+				workModeChanged: workMode.changed,
+				workModeEvent: workMode.event
+			},
+			{ status: 202 }
+		);
 	} catch (cause) {
 		if (cause instanceof MessageConflictError) {
 			return json({ error: cause.message }, { status: 409 });
