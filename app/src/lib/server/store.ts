@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import type { Database as BunDatabase } from 'bun:sqlite';
 import { validateIcon } from '$lib/icon';
 import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+import { DEFAULT_WORK_MODE, parseWorkMode, type WorkMode } from '$lib/work-mode';
 import { redactPersistedValue } from './redaction';
 
 const runtimeRequire = createRequire(import.meta.url);
@@ -51,6 +52,7 @@ export type StoredSession = {
 	cwd: string;
 	icon: string | null;
 	title: string | null;
+	workMode: WorkMode;
 	pinned: boolean;
 	archived: boolean;
 	folder: string | null;
@@ -63,6 +65,7 @@ type SessionRow = {
 	cwd: string;
 	icon: string | null;
 	title: string | null;
+	work_mode: WorkMode;
 	pinned: number;
 	archived: number;
 	folder: string | null;
@@ -165,6 +168,7 @@ export class HUEStore {
 				project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
 				cwd TEXT NOT NULL,
 				icon TEXT,
+				work_mode TEXT NOT NULL DEFAULT 'autonomous' CHECK (work_mode IN ('autonomous', 'live')),
 				updated_at TEXT NOT NULL,
 				UNIQUE (project_id, session_id)
 			);
@@ -252,6 +256,7 @@ export class HUEStore {
 		for (const [name, definition] of [
 			['title', 'TEXT'],
 			['title_custom', 'INTEGER NOT NULL DEFAULT 0'],
+			['work_mode', "TEXT NOT NULL DEFAULT 'autonomous'"],
 			['pinned', 'INTEGER NOT NULL DEFAULT 0'],
 			['archived', 'INTEGER NOT NULL DEFAULT 0'],
 			['folder', 'TEXT'],
@@ -261,6 +266,23 @@ export class HUEStore {
 				this.database.exec(`ALTER TABLE project_sessions ADD COLUMN ${name} ${definition}`);
 			}
 		}
+		this.database.exec(`
+			CREATE TRIGGER IF NOT EXISTS project_sessions_work_mode_insert_check
+			BEFORE INSERT ON project_sessions
+			FOR EACH ROW
+			WHEN NEW.work_mode NOT IN ('autonomous', 'live')
+			BEGIN
+				SELECT RAISE(FAIL, 'invalid work_mode');
+			END;
+
+			CREATE TRIGGER IF NOT EXISTS project_sessions_work_mode_update_check
+			BEFORE UPDATE OF work_mode ON project_sessions
+			FOR EACH ROW
+			WHEN NEW.work_mode NOT IN ('autonomous', 'live')
+			BEGIN
+				SELECT RAISE(FAIL, 'invalid work_mode');
+			END;
+		`);
 		const messageColumns = this.database.query('PRAGMA table_info(messages)').all() as Array<{
 			name: string;
 		}>;
@@ -295,7 +317,13 @@ export class HUEStore {
 
 	upsertSession(
 		projectId: string | null,
-		session: { sessionId: string; cwd: string; title?: string | null; updatedAt?: string | null }
+		session: {
+			sessionId: string;
+			cwd: string;
+			title?: string | null;
+			updatedAt?: string | null;
+			workMode?: WorkMode | null;
+		}
 	): void {
 		if (this.isSessionDismissed(projectId, session.sessionId)) return;
 		const existing = this.database
@@ -307,18 +335,20 @@ export class HUEStore {
 			);
 		}
 		const now = session.updatedAt ?? new Date().toISOString();
+		const workMode = parseWorkMode(session.workMode) ?? DEFAULT_WORK_MODE;
 		this.database.transaction(() => {
 			this.database
 				.query(
-					`INSERT INTO project_sessions (session_id, project_id, cwd, title, updated_at)
-					 VALUES (?, ?, ?, ?, ?)
+					`INSERT INTO project_sessions (session_id, project_id, cwd, title, work_mode, updated_at)
+					 VALUES (?, ?, ?, ?, ?, ?)
 					 ON CONFLICT(session_id) DO UPDATE SET
 					 project_id = excluded.project_id,
 					 cwd = excluded.cwd,
 					 title = CASE WHEN project_sessions.title_custom = 1 THEN project_sessions.title ELSE COALESCE(excluded.title, project_sessions.title) END,
+					 work_mode = project_sessions.work_mode,
 					 updated_at = excluded.updated_at`
 				)
-				.run(session.sessionId, projectId, session.cwd, session.title ?? null, now);
+				.run(session.sessionId, projectId, session.cwd, session.title ?? null, workMode, now);
 			if (projectId) {
 				this.database
 					.query('UPDATE messages SET project_id = ? WHERE session_id = ? AND project_id IS NULL')
@@ -341,7 +371,7 @@ export class HUEStore {
 	getSession(projectId: string | null, sessionId: string): StoredSession | null {
 		const row = this.database
 			.query(
-				'SELECT session_id, cwd, icon, title, pinned, archived, folder, tags, updated_at FROM project_sessions WHERE project_id IS ? AND session_id = ?'
+				'SELECT session_id, cwd, icon, title, work_mode, pinned, archived, folder, tags, updated_at FROM project_sessions WHERE project_id IS ? AND session_id = ?'
 			)
 			.get(projectId, sessionId) as SessionRow | null;
 		return row ? this.mapSession(row) : null;
@@ -355,6 +385,7 @@ export class HUEStore {
 		const rows = this.database
 			.query(
 				`SELECT session_id, cwd, icon, title, pinned, archived, folder, tags, updated_at
+				 , work_mode
 				 FROM project_sessions WHERE project_id IS ? AND (? OR archived = 0)
 				 ORDER BY pinned DESC, updated_at DESC, session_id LIMIT ?`
 			)
@@ -384,7 +415,7 @@ export class HUEStore {
 			Number.isSafeInteger(requestedOffset) && requestedOffset > 0 ? requestedOffset : 0;
 		const needle = options.query.trim().toLowerCase();
 		const columns =
-			'ps.session_id, ps.cwd, ps.icon, ps.title, ps.pinned, ps.archived, ps.folder, ps.tags, ps.updated_at';
+			'ps.session_id, ps.cwd, ps.icon, ps.title, ps.work_mode, ps.pinned, ps.archived, ps.folder, ps.tags, ps.updated_at';
 		const rows = needle
 			? (this.database
 					.query(
@@ -566,7 +597,7 @@ export class HUEStore {
 			}
 			const events = this.database
 				.query(
-					"SELECT type, payload, created_at FROM session_events WHERE project_id IS ? AND session_id = ? AND type != 'agent.image' ORDER BY sequence"
+					"SELECT type, payload, created_at FROM session_events WHERE project_id IS ? AND session_id = ? AND type NOT IN ('agent.image', 'session.work_mode_changed') ORDER BY sequence"
 				)
 				.all(projectId, sourceSessionId) as Array<{
 				type: string;
@@ -669,12 +700,64 @@ export class HUEStore {
 			cwd: row.cwd,
 			icon: row.icon,
 			title: row.title,
+			workMode: parseWorkMode(row.work_mode) ?? DEFAULT_WORK_MODE,
 			pinned: !!row.pinned,
 			archived: !!row.archived,
 			folder: row.folder,
 			tags: JSON.parse(row.tags) as string[],
 			updatedAt: row.updated_at
 		};
+	}
+
+	updateSessionWorkMode(
+		projectId: string | null,
+		sessionId: string,
+		workMode: WorkMode,
+		source: string,
+		withEvent: false
+	): { session: StoredSession; event: SessionEvent | null };
+	updateSessionWorkMode(
+		projectId: string | null,
+		sessionId: string,
+		workMode: WorkMode,
+		source: string,
+		withEvent: true
+	): { session: StoredSession; event: SessionEvent | null };
+	updateSessionWorkMode(
+		projectId: string | null,
+		sessionId: string,
+		workMode: WorkMode,
+		source: string
+	): StoredSession;
+	updateSessionWorkMode(
+		projectId: string | null,
+		sessionId: string,
+		workMode: WorkMode,
+		source: string,
+		withEvent = false
+	): StoredSession | { session: StoredSession; event: SessionEvent | null } {
+		const current = this.getSession(projectId, sessionId);
+		if (!current) throw new Error('Session not found');
+		const nextMode = parseWorkMode(workMode);
+		if (!nextMode) throw new Error('workMode must be autonomous or live');
+		if (current.workMode === nextMode) {
+			return withEvent ? { session: current, event: null } : current;
+		}
+		const result = this.database.transaction(() => {
+			this.database
+				.query(
+					'UPDATE project_sessions SET work_mode = ?, updated_at = ? WHERE project_id IS ? AND session_id = ?'
+				)
+				.run(nextMode, new Date().toISOString(), projectId, sessionId);
+			const session = this.getSession(projectId, sessionId)!;
+			const event = this.appendEvent(projectId, sessionId, 'session.work_mode_changed', {
+				priorMode: current.workMode,
+				workMode: nextMode,
+				source
+			});
+			return { session, event };
+		})();
+		return withEvent ? result : result.session;
 	}
 
 	updateSessionIcon(projectId: string | null, sessionId: string, icon: string | null): boolean {

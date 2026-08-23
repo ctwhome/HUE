@@ -294,6 +294,10 @@ export class WorkspaceNavigation {
 				})
 			)
 				return;
+			this.replaceSession({
+				...this.selectedSession,
+				workMode: body.workMode ?? this.selectedSession.workMode
+			});
 			this.effects.applyLoadedSession(body);
 			this.effects.restoreDraft();
 			this.mobileDrawer = null;
@@ -483,6 +487,15 @@ export class WorkspaceNavigation {
 
 	prependSession(session: Session) {
 		this.sessions = [session, ...this.sessions];
+	}
+
+	replaceSession(session: Session) {
+		this.sessions = this.sessions.map((item) =>
+			item.sessionId === session.sessionId ? { ...item, ...session } : item
+		);
+		if (this.selectedSession?.sessionId === session.sessionId) {
+			this.selectedSession = { ...this.selectedSession, ...session };
+		}
 	}
 
 	setSelectedProject(project: Project) {

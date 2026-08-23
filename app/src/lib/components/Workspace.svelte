@@ -6,6 +6,7 @@
 	import { automaticSessionIcon } from '$lib/icon';
 	import { applyPreferences, readPreferences } from '$lib/preferences';
 	import { renderMessageMarkdown } from '$lib/message-markdown';
+	import { formatWorkModeAnnouncement, type WorkMode } from '$lib/work-mode';
 	import { createVoiceCall } from '$lib/voice/voice-call.svelte';
 	import GlobalNavigation, { type GlobalView } from './GlobalNavigation.svelte';
 	import HermesPanel from './HermesPanel.svelte';
@@ -147,6 +148,33 @@
 	let messageNotice = $derived(messageState.messageNotice);
 	let runtimeChanging = $derived(runtimeState.changing);
 	let stopping = $derived(messageState.stopping);
+	let workModeChanging = $state(false);
+
+	const changeWorkMode = async (workMode: WorkMode) => {
+		if (!navigation.selectedSession || workModeChanging) return;
+		workModeChanging = true;
+		try {
+			const body = await workspaceApi<{
+				session: { sessionId: string; workMode: WorkMode };
+				workMode: WorkMode;
+				event?: import('./workspace/types').SessionEvent | null;
+			}>(navigation.sessionApiPath(navigation.selectedSession.sessionId), {
+				method: 'PATCH',
+				body: JSON.stringify({ workMode })
+			});
+			navigation.replaceSession({
+				...navigation.selectedSession,
+				...body.session,
+				workMode: body.workMode
+			});
+			messageState.messageNotice = formatWorkModeAnnouncement(body.workMode);
+			if (body.event) sessionState.applyEvents([body.event]);
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			workModeChanging = false;
+		}
+	};
 
 	onMount(async () => {
 		applyPreferences(document.documentElement, readPreferences(localStorage));
@@ -387,6 +415,8 @@
 				bind:voiceMessageElement={voice.messageElement}
 				bind:voiceStartElement={voice.startElement}
 				{runtime}
+				workMode={selectedSession.workMode ?? 'autonomous'}
+				{workModeChanging}
 				{runtimeChanging}
 				bind:modelMenuOpen={runtimeState.modelMenuOpen}
 				bind:modelPopover={runtimeState.modelPopover}
@@ -410,6 +440,7 @@
 				oncommand={messageState.chooseCommand}
 				onmodel={runtimeState.selectModel}
 				onruntime={runtimeState.change}
+				onworkmode={changeWorkMode}
 				onscrolllatest={transcriptFollow.scrollToLatest}
 				matchingCommands={messageState.matchingCommands}
 				currentModel={runtimeState.currentModel}

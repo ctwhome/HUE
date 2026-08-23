@@ -141,7 +141,7 @@
 		</div>
 		<div class="context-actions flex items-center gap-2">
 			<LoaderCircle
-				class={loading ? 'loading-indicator active' : 'loading-indicator'}
+				class={loading ? 'loading-indicator active animate-spin' : 'loading-indicator'}
 				role="status"
 				aria-label="Loading project contents"
 				aria-hidden={!loading}

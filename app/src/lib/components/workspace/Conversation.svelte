@@ -305,6 +305,20 @@
 					>
 					<div class="markdown">{@html renderMarkdown(item.text)}</div>
 				</details>
+			{:else if item.kind === 'status'}<section
+					data-timeline-sequence={item.sequence}
+					class="mx-auto mb-4 max-w-[774px] rounded-xl border border-border bg-card px-3 py-2 text-sm text-muted-foreground"
+					aria-label={item.label}
+				>
+					<div class="flex items-center justify-between gap-3">
+						<span>{item.label}</span>
+						{#if validTimestamp(item.createdAt)}<time
+								datetime={item.createdAt}
+								title={timestampTitle(item.createdAt)}
+								aria-label={timestampTitle(item.createdAt)}>{timestamp(item.createdAt)}</time
+							>{/if}
+					</div>
+				</section>
 			{:else if item.kind === 'tool'}<details
 					data-timeline-sequence={item.sequence}
 					class="tool-card activity-card mx-auto mb-4 max-w-[774px] overflow-hidden rounded-xl border border-border bg-card"
