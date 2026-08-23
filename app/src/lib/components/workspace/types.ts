@@ -1,4 +1,5 @@
 import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+import type { WorkMode } from '$lib/work-mode';
 import type {
 	WorkspaceActivity,
 	WorkspacePlanEntry,
@@ -38,6 +39,7 @@ export type Session = {
 	archived?: boolean;
 	folder?: string | null;
 	tags?: string[];
+	workMode?: WorkMode;
 };
 
 export type Workflow = { id: string; name: string; prompt: string; profile: string };
@@ -112,6 +114,7 @@ export type SessionLoad = {
 	transcript: TranscriptMessage[];
 	transcriptError?: string;
 	cursor: number;
+	workMode?: WorkMode;
 	activeTurn: ActiveTurn | null;
 	events: SessionEvent[];
 	messages: Array<{
