@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Ellipsis, LoaderCircle, Pin, Plus, Search } from 'lucide-svelte';
+	import { ArrowLeft, Ellipsis, LoaderCircle, Pin, Plus, Search } from 'lucide-svelte';
 	import SessionManagerDialog from './SessionManagerDialog.svelte';
 	type Project = {
 		id: string;
@@ -28,7 +28,9 @@
 	};
 	type Workflow = { id: string; name: string; prompt: string; profile: string };
 	let {
+		element = $bindable(),
 		open,
+		mobile,
 		selectedProject,
 		loading,
 		activeTab,
@@ -54,6 +56,7 @@
 		oncreate,
 		ontab,
 		onopen,
+		onback,
 		onedit,
 		onrun,
 		onworkflow,
@@ -68,7 +71,9 @@
 		automaticIcon,
 		elapsed
 	}: {
+		element?: HTMLElement;
 		open: boolean;
+		mobile: boolean;
 		selectedProject: Project | null;
 		loading: boolean;
 		activeTab: 'sessions' | 'workflows';
@@ -94,6 +99,7 @@
 		oncreate: () => void;
 		ontab: (tab: 'sessions' | 'workflows') => void;
 		onopen: (session: Session) => void;
+		onback: () => void;
 		onedit: (event: MouseEvent, session: Session) => void;
 		onrun: (workflow: Workflow) => void;
 		onworkflow: (event: SubmitEvent) => void;
@@ -119,12 +125,22 @@
 </script>
 
 <aside
+	bind:this={element}
 	id="session-drawer"
 	class="context-panel flex min-h-dvh flex-col border-r border-border bg-card/95"
 	class:open
+	inert={mobile && !open}
+	aria-hidden={mobile ? !open : undefined}
 	aria-label="Project contents"
 >
 	<header>
+		<button
+			class="session-projects-back grid size-11 shrink-0 place-items-center rounded-md hover:bg-accent"
+			data-drawer-focus
+			aria-label="Back to Projects"
+			title="Back to Projects"
+			onclick={onback}><ArrowLeft size={20} aria-hidden="true" /></button
+		>
 		<div>
 			<small>Session scope</small>
 			<h1 class="selected-project-title mt-1 flex items-center gap-2 font-semibold">

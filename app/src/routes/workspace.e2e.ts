@@ -20,8 +20,73 @@ async function expectMinimumTouchTargets(locator: import('@playwright/test').Loc
 	}
 }
 
+async function touchDrag(
+	page: import('@playwright/test').Page,
+	from: { x: number; y: number },
+	to: { x: number; y: number },
+	during?: () => Promise<void>
+) {
+	await page.evaluate(({ x, y }) => {
+		const target = document.elementFromPoint(x, y);
+		if (!target) throw new Error(`No drag target at ${x},${y}`);
+		target.dispatchEvent(
+			new PointerEvent('pointerdown', {
+				bubbles: true,
+				cancelable: true,
+				pointerId: 41,
+				pointerType: 'touch',
+				isPrimary: true,
+				clientX: x,
+				clientY: y
+			})
+		);
+	}, from);
+	for (let step = 1; step <= 4; step += 1) {
+		const point = {
+			x: from.x + ((to.x - from.x) * step) / 4,
+			y: from.y + ((to.y - from.y) * step) / 4
+		};
+		await page.waitForTimeout(24);
+		await page.evaluate(({ x, y }) => {
+			window.dispatchEvent(
+				new PointerEvent('pointermove', {
+					bubbles: true,
+					cancelable: true,
+					pointerId: 41,
+					pointerType: 'touch',
+					isPrimary: true,
+					clientX: x,
+					clientY: y
+				})
+			);
+		}, point);
+		if (step === 2) await during?.();
+	}
+	await page.waitForTimeout(24);
+	await page.evaluate(({ x, y }) => {
+		window.dispatchEvent(
+			new PointerEvent('pointerup', {
+				bubbles: true,
+				cancelable: true,
+				pointerId: 41,
+				pointerType: 'touch',
+				isPrimary: true,
+				clientX: x,
+				clientY: y
+			})
+		);
+	}, to);
+}
+
 function sessionButton(page: import('@playwright/test').Page, title: string) {
 	return page.locator('.session-select').filter({ hasText: title });
+}
+
+async function openMobileProjects(page: import('@playwright/test').Page) {
+	const button = page.locator('.mobile-navigation').getByRole('button', { name: 'Projects' });
+	if (!(await button.isVisible())) return;
+	await expect(button).toBeEnabled();
+	if ((await button.getAttribute('aria-expanded')) !== 'true') await button.click();
 }
 
 async function mockProjectWorkbenchRequests(page: import('@playwright/test').Page) {
@@ -62,8 +127,7 @@ async function mockDefaultSessionRequests(page: import('@playwright/test').Page)
 
 async function addProject(page: import('@playwright/test').Page) {
 	await page.goto('/');
-	const projectsMenu = page.locator('.mobile-navigation').getByRole('button', { name: 'Projects' });
-	if (await projectsMenu.isVisible()) await projectsMenu.click();
+	await openMobileProjects(page);
 	const existing = page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' });
 	if (await existing.count()) {
 		await existing.click();
@@ -78,7 +142,7 @@ async function addProject(page: import('@playwright/test').Page) {
 	});
 	if (!response.ok()) throw new Error(`${response.status()}: ${await response.text()}`);
 	await page.goto('/');
-	if (await projectsMenu.isVisible()) await projectsMenu.click();
+	await openMobileProjects(page);
 	await page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' }).click();
 }
 
@@ -491,6 +555,8 @@ test('recovers missing primary folders with folder management, archive, or proje
 					})
 				);
 				await recovery.getByRole('button', { name: 'Manage folders' }).click();
+				await expect(page).toHaveURL(/pane=projects/);
+				await expect(page.locator('#project-drawer')).toBeVisible();
 				await page
 					.getByRole('dialog', { name: 'Edit Hermes Project' })
 					.getByRole('button', { name: 'Add folder' })
@@ -660,10 +726,7 @@ test('opens project creation from the Projects heading and dismisses it with Esc
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await page.goto('/');
-		const projectsMenu = page
-			.locator('.mobile-navigation')
-			.getByRole('button', { name: 'Projects' });
-		if (await projectsMenu.isVisible()) await projectsMenu.click();
+		await openMobileProjects(page);
 		const dialog = page.getByRole('dialog', { name: 'Create Hermes Project' });
 		const addButton = page
 			.locator('.section-heading')
@@ -724,10 +787,7 @@ test('edits authoritative Project metadata and folders, then archives it', async
 		for (const viewport of viewports) {
 			await page.setViewportSize(viewport);
 			await page.goto('/');
-			const projectsMenu = page
-				.locator('.mobile-navigation')
-				.getByRole('button', { name: 'Projects' });
-			if (await projectsMenu.isVisible()) await projectsMenu.click();
+			await openMobileProjects(page);
 			const editButton = page.getByRole('button', { name: `Edit ${currentName}` });
 			await editButton.click();
 			const dialog = page.getByRole('dialog', { name: 'Edit Hermes Project' });
@@ -2058,7 +2118,10 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 						models: {
 							currentModelId: selectedModel,
 							availableModels: [
-								{ modelId: 'openai:gpt-5.6', name: 'GPT 5.6' },
+								{
+									modelId: 'openai:gpt-5.6',
+									name: 'OpenAI work subscription · GPT 5.6'
+								},
 								{ modelId: 'openai:gpt-5.6-mini', name: 'GPT 5.6 Mini' },
 								{ modelId: 'anthropic:claude', name: 'Claude' }
 							]
@@ -2080,7 +2143,10 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 					models: {
 						currentModelId: 'openai:gpt-5.6',
 						availableModels: [
-							{ modelId: 'openai:gpt-5.6', name: 'GPT 5.6' },
+							{
+								modelId: 'openai:gpt-5.6',
+								name: 'OpenAI work subscription · GPT 5.6'
+							},
 							{ modelId: 'openai:gpt-5.6-mini', name: 'GPT 5.6 Mini' },
 							{ modelId: 'anthropic:claude', name: 'Claude' }
 						]
@@ -2113,10 +2179,16 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 	await expect(page.getByText('25%', { exact: true })).toBeVisible();
 	const modelTrigger = page.getByLabel('Hermes model', { exact: true });
 	const modelMenu = page.getByRole('menu', { name: 'Choose Hermes model' });
+	await expect(modelTrigger).toHaveText(/gpt-5\.6/);
+	await expect(modelTrigger).not.toContainText('OpenAI');
+	await expect(modelTrigger).not.toContainText('subscription');
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		const triggerBox = await modelTrigger.boundingBox();
 		expect(triggerBox!.width).toBeLessThanOrEqual(150);
+		expect(await modelTrigger.evaluate((element) => element.scrollHeight)).toBeLessThanOrEqual(
+			triggerBox!.height
+		);
 		await modelTrigger.click();
 		await expect(modelMenu).toBeVisible();
 		const box = await modelMenu.boundingBox();
@@ -2164,7 +2236,8 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 	await modelMenu.getByRole('menuitemradio', { name: /Claude/ }).click();
 	await expect.poll(() => selectedModel).toBe('anthropic:claude');
 	await expect(modelMenu).toBeHidden();
-	await expect(modelTrigger).toContainText('Claude');
+	await expect(modelTrigger).toContainText('claude');
+	await expect(modelTrigger).toHaveAttribute('title', /Claude · anthropic:claude/);
 	await page.getByLabel('Message Hermes').fill('/');
 	await expect(page.getByRole('listbox', { name: 'Hermes commands' })).toBeVisible();
 	await expect(page.getByRole('option', { name: /compress/ })).toContainText(
@@ -2994,6 +3067,14 @@ test('shows loading beside new session without shifting the session list', async
 		await expect(session).toBeVisible();
 		const before = await session.boundingBox();
 		await session.click();
+		if (viewport.width <= 700) {
+			await expect(page).toHaveURL(/session=session-loading/);
+			await expect(page.locator('#session-drawer')).toBeHidden();
+			await page.locator('.mobile-navigation').getByRole('button', { name: 'Sessions' }).click();
+			await expect
+				.poll(async () => (await page.locator('#session-drawer').boundingBox())?.x)
+				.toBe(0);
+		}
 
 		const indicator = page.getByRole('status', { name: 'Loading project contents' });
 		await expect(indicator).toBeVisible();
@@ -3602,6 +3683,352 @@ test('mobile uses explicit exclusive Projects and Sessions drawers', async ({ pa
 	await expectMinimumTouchTargets(
 		page.locator('#session-drawer button, #session-drawer input, #session-drawer textarea')
 	);
+});
+
+test('mobile swipe hierarchy tracks, snaps back, excludes native interactions, and dismisses drawers', async ({
+	page
+}) => {
+	await page.route(/\/api\/(?:projects\/[^/]+\/)?sessions(?:\?.*)?$/, (route) =>
+		route.fulfill({
+			json: {
+				sessions: [{ sessionId: 'gesture-session', cwd: '/work/hue', title: 'Gesture session' }]
+			}
+		})
+	);
+	await page.route(/\/sessions\/gesture-session$/, (route) =>
+		route.fulfill({
+			json: {
+				transcript: [
+					{ role: 'user', text: 'Keep vertical scrolling and text selection native.' },
+					{ role: 'assistant', text: 'Gesture fixture ready.' }
+				],
+				messages: [],
+				events: [],
+				cursor: 0,
+				activeTurn: null
+			}
+		})
+	);
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await addProject(page);
+	await sessionButton(page, 'Gesture session').click();
+
+	for (const viewport of [
+		{ width: 320, height: 700 },
+		{ width: 390, height: 844 }
+	]) {
+		await page.setViewportSize(viewport);
+		await page.emulateMedia({ reducedMotion: viewport.width === 320 ? 'reduce' : 'no-preference' });
+		const projectsButton = page
+			.locator('.mobile-navigation')
+			.getByRole('button', { name: 'Projects' });
+		const sessionsButton = page
+			.locator('.mobile-navigation')
+			.getByRole('button', { name: 'Sessions' });
+
+		await touchDrag(page, { x: 32, y: 300 }, { x: 72, y: 302 });
+		await expect(page.locator('#session-drawer')).toBeHidden();
+		await touchDrag(page, { x: 32, y: 300 }, { x: 38, y: 410 });
+		await expect(page.locator('#session-drawer')).toBeHidden();
+		await touchDrag(page, { x: 8, y: 300 }, { x: 180, y: 302 });
+		await expect(page.locator('#session-drawer')).toBeHidden();
+
+		const composerBox = (await page.getByLabel('Message Hermes').boundingBox())!;
+		await touchDrag(
+			page,
+			{ x: Math.max(32, composerBox.x + 2), y: composerBox.y + composerBox.height / 2 },
+			{ x: 180, y: composerBox.y + composerBox.height / 2 }
+		);
+		await expect(page.locator('#session-drawer')).toBeHidden();
+
+		await page
+			.getByText('Keep vertical scrolling and text selection native.')
+			.evaluate((element) => {
+				const range = document.createRange();
+				range.selectNodeContents(element);
+				const selection = window.getSelection();
+				selection?.removeAllRanges();
+				selection?.addRange(range);
+			});
+		await touchDrag(page, { x: 32, y: 300 }, { x: 180, y: 302 });
+		await expect(page.locator('#session-drawer')).toBeHidden();
+		await page.evaluate(() => window.getSelection()?.removeAllRanges());
+
+		await touchDrag(page, { x: 32, y: 300 }, { x: viewport.width * 0.48, y: 302 }, async () => {
+			await expect(page.locator('#session-drawer')).toBeVisible();
+			await expect(page.locator('.drawer-backdrop')).toBeVisible();
+			const transform = await page
+				.locator('#session-drawer')
+				.evaluate((element) => getComputedStyle(element).transform);
+			expect(transform).not.toBe('none');
+			expect(transform).not.toBe('matrix(1, 0, 0, 1, 0, 0)');
+		});
+		await expect(page.locator('#session-drawer')).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Back to Projects' })).toBeVisible();
+		expect(
+			(await page.getByRole('button', { name: 'Back to Projects' }).boundingBox())!.height
+		).toBeGreaterThanOrEqual(44);
+		await expect(page.locator('#session-drawer')).toHaveAttribute('aria-hidden', 'false');
+		await expect(page.locator('#project-drawer')).toHaveAttribute('inert', '');
+		await expect(page.locator('.drawer-backdrop')).toBeVisible();
+		await expectMinimumTouchTargets(page.locator('#session-drawer button'));
+
+		await touchDrag(
+			page,
+			{ x: 92, y: viewport.height - 110 },
+			{ x: 245, y: viewport.height - 108 }
+		);
+		await expect(page.locator('#project-drawer')).toBeVisible();
+		await expect(page.locator('#session-drawer')).toBeHidden();
+		await expect(projectsButton).toHaveAttribute('aria-expanded', 'true');
+		await expect(sessionsButton).toHaveAttribute('aria-expanded', 'false');
+
+		await touchDrag(
+			page,
+			{ x: 230, y: viewport.height - 110 },
+			{ x: 65, y: viewport.height - 108 }
+		);
+		await expect(page.locator('#project-drawer')).toBeHidden();
+		await expect(page.locator('#session-drawer')).toBeVisible();
+		await touchDrag(
+			page,
+			{ x: 230, y: viewport.height - 110 },
+			{ x: 65, y: viewport.height - 108 }
+		);
+		await expect(page.locator('#session-drawer')).toBeHidden();
+		await expect(page.locator('.drawer-backdrop')).toHaveCount(0);
+
+		await sessionsButton.click();
+		await expect(page.locator('#session-drawer')).toBeVisible();
+		await page.locator('.drawer-backdrop').click({ position: { x: viewport.width - 2, y: 100 } });
+		await expect(page.locator('#session-drawer')).toBeHidden();
+		await expect(sessionsButton).toBeFocused();
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+	}
+
+	const sessionsButton = page
+		.locator('.mobile-navigation')
+		.getByRole('button', { name: 'Sessions' });
+	await sessionsButton.click();
+	await page.getByRole('button', { name: 'Edit Gesture session' }).click();
+	const sessionDialog = page.getByRole('dialog', { name: 'Edit session icon' });
+	await expect(sessionDialog).toBeVisible();
+	await touchDrag(page, { x: 32, y: 300 }, { x: 180, y: 302 });
+	await expect(sessionDialog).toBeVisible();
+	await expect(page.locator('#project-drawer')).toBeHidden();
+	await page.keyboard.press('Escape');
+	await expect(sessionDialog).toBeHidden();
+	await expect(page.locator('#session-drawer')).toBeVisible();
+	await page.locator('.drawer-backdrop').click({ position: { x: 388, y: 100 } });
+});
+
+test('reduced motion suppresses synthesized click after touch gesture', async ({ page }) => {
+	await page.route(/\/api\/(?:projects\/[^/]+\/)?sessions(?:\?.*)?$/, (route) =>
+		route.fulfill({
+			json: {
+				sessions: [{ sessionId: 'gesture-session', cwd: '/work/hue', title: 'Gesture session' }]
+			}
+		})
+	);
+	await page.route(/\/sessions\/gesture-session$/, (route) =>
+		route.fulfill({
+			json: { transcript: [], messages: [], events: [], cursor: 0, activeTurn: null }
+		})
+	);
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.emulateMedia({ reducedMotion: 'reduce' });
+	await addProject(page);
+	await sessionButton(page, 'Gesture session').click();
+
+	const click = await page.evaluate(() => {
+		const target = document.elementFromPoint(32, 300)!;
+		let bubbled = 0;
+		document.body.addEventListener('click', () => bubbled++, { once: true });
+		const pointer = (type: string, x: number) =>
+			new PointerEvent(type, {
+				bubbles: true,
+				cancelable: true,
+				pointerId: 42,
+				pointerType: 'touch',
+				isPrimary: true,
+				clientX: x,
+				clientY: 300
+			});
+		target.dispatchEvent(pointer('pointerdown', 32));
+		window.dispatchEvent(pointer('pointermove', 48));
+		window.dispatchEvent(pointer('pointermove', 180));
+		window.dispatchEvent(pointer('pointerup', 180));
+		const synthesized = new MouseEvent('click', {
+			bubbles: true,
+			cancelable: true,
+			clientX: 180,
+			clientY: 300
+		});
+		const allowed = target.dispatchEvent(synthesized);
+		return { allowed, bubbled, defaultPrevented: synthesized.defaultPrevented };
+	});
+
+	expect(click).toEqual({ allowed: false, bubbled: 0, defaultPrevented: true });
+});
+
+test('browser Back keeps dirty Project state unchanged until discard confirmation', async ({
+	page
+}) => {
+	await page.route('**/api/projects/*/files**', (route) => {
+		const url = new URL(route.request().url());
+		if (url.searchParams.get('mode') === 'preview')
+			return route.fulfill({
+				json: {
+					path: 'README.md',
+					name: 'README.md',
+					type: 'file',
+					kind: 'markdown',
+					mime: 'text/markdown',
+					size: 5,
+					mtime: new Date(0).toISOString(),
+					version: { hash: 'dirty', mtimeNs: '1', size: 5 },
+					content: '# HUE'
+				}
+			});
+		return route.fulfill({
+			json: {
+				entries: [
+					{
+						name: 'README.md',
+						path: 'README.md',
+						type: 'file',
+						size: 5,
+						mtime: new Date(0).toISOString()
+					}
+				],
+				truncated: false
+			}
+		});
+	});
+	await addProject(page);
+	await page.getByRole('button', { name: 'Files', exact: true }).click();
+	await page.getByRole('treeitem', { name: /README\.md/ }).click();
+	await page.getByRole('button', { name: 'Edit Markdown' }).click();
+	await page.getByLabel('File content').fill('# Unsaved Back regression');
+
+	await page.goBack();
+
+	await expect(page.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
+	await expect(page.getByLabel('File content')).toHaveValue('# Unsaved Back regression');
+	await page.getByRole('button', { name: 'Keep editing' }).click();
+	await expect(page.getByLabel('File content')).toHaveValue('# Unsaved Back regression');
+});
+
+test('durable mobile destination restores safely and browser Back follows drawer hierarchy', async ({
+	page
+}) => {
+	await page.route(/\/api\/(?:projects\/[^/]+\/)?sessions(?:\?.*)?$/, async (route) => {
+		const projectless = !route.request().url().includes('/projects/');
+		await route.fulfill({
+			json: {
+				sessions: projectless
+					? [{ sessionId: 'general', cwd: '/work/general', title: 'General session' }]
+					: [{ sessionId: 'remembered', cwd: '/work/hue', title: 'Remembered session' }]
+			}
+		});
+	});
+	await page.route(/\/sessions\/(remembered|general)$/, (route) =>
+		route.fulfill({
+			json: { transcript: [], messages: [], events: [], cursor: 0, activeTurn: null }
+		})
+	);
+	await page.setViewportSize({ width: 390, height: 844 });
+	await addProject(page);
+	const projects = (await (await page.request.get('/api/projects')).json()) as {
+		projects: Array<{ id: string; name: string }>;
+	};
+	const projectId = projects.projects.find(({ name }) => name === 'HUE')!.id;
+	await sessionButton(page, 'Remembered session').click();
+	await expect(page.getByRole('heading', { name: 'Remembered session' })).toBeVisible();
+
+	await page.goto('/');
+	await expect(page).toHaveURL(new RegExp(`project=${projectId}.*session=remembered`));
+	await expect(page.getByRole('heading', { name: 'Remembered session' })).toBeVisible();
+
+	const navigation = page.locator('.mobile-navigation');
+	await navigation.getByRole('button', { name: 'Projects' }).click();
+	await page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' }).click();
+	await expect(page.locator('#session-drawer')).toBeVisible();
+	await page.goBack();
+	await expect(page).toHaveURL(/pane=projects/);
+	await expect(page.locator('#project-drawer')).toBeVisible();
+	await page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' }).click();
+	await sessionButton(page, 'Remembered session').click();
+	await expect(page.locator('#session-drawer')).toBeHidden();
+
+	await navigation.getByRole('button', { name: 'Sessions' }).click();
+	await expect(page).toHaveURL(/pane=sessions/);
+	await navigation.getByRole('button', { name: 'Projects' }).click();
+	await expect(page).toHaveURL(/pane=projects/);
+	await page.goBack();
+	await expect(page.locator('#session-drawer')).toBeVisible();
+	await expect(page.locator('#project-drawer')).toBeHidden();
+	await page.goBack();
+	await expect(page.locator('#session-drawer')).toBeHidden();
+	await expect(page.getByRole('heading', { name: 'Remembered session' })).toBeVisible();
+	await expect(navigation.getByRole('button', { name: 'Sessions' })).toBeFocused();
+
+	await navigation.getByRole('button', { name: 'Projects' }).click();
+	const projectChoice = page.locator('#project-drawer .project-select').filter({ hasText: 'HUE' });
+	await expect(page.locator('#project-drawer')).not.toHaveAttribute('inert', '');
+	await projectChoice.evaluate((element) => (element as HTMLElement).focus());
+	await page.goBack();
+	await expect(page.locator('#project-drawer')).toBeHidden();
+	await expect(navigation.getByRole('button', { name: 'Projects' })).toBeFocused();
+
+	await page.evaluate((id) => {
+		localStorage.setItem(
+			'hue:navigation:v1',
+			JSON.stringify({ version: 1, projectId: id, sessionId: 'remembered', pane: 'sessions' })
+		);
+	}, projectId);
+	await page.goto('/');
+	await expect(page.locator('#session-drawer')).toBeVisible();
+	await page.reload();
+	await expect(page.locator('#session-drawer')).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Remembered session' })).toBeVisible();
+	await page.setViewportSize({ width: 1024, height: 768 });
+	await page.waitForTimeout(100);
+	await page.setViewportSize({ width: 390, height: 844 });
+	await expect(page.locator('#session-drawer')).toBeVisible();
+
+	await page.goto('/?project=none&session=general');
+	await expect(page.getByRole('heading', { name: 'General session' })).toBeVisible();
+	await expect(page).toHaveURL(/project=none&session=general/);
+
+	await page.evaluate((id) => {
+		localStorage.setItem(
+			'hue:navigation:v1',
+			JSON.stringify({ version: 1, projectId: id, sessionId: 'deleted-session', pane: null })
+		);
+	}, projectId);
+	await page.goto('/');
+	await expect(page.locator('#session-drawer')).toBeVisible();
+	await expect(page).not.toHaveURL(/deleted-session/);
+
+	await page.evaluate(() => {
+		localStorage.setItem(
+			'hue:navigation:v1',
+			JSON.stringify({
+				version: 1,
+				projectId: 'deleted-project',
+				sessionId: 'deleted-session',
+				pane: 'sessions'
+			})
+		);
+	});
+	await page.goto('/');
+	await expect(page.locator('#project-drawer')).toBeVisible();
+	await expect(page.locator('#session-drawer')).toBeHidden();
+	await expect(page).not.toHaveURL(/deleted-project|deleted-session/);
+	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
 test('opens project-scoped browser, terminal, Git status, and worktree panels', async ({

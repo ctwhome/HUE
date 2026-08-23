@@ -1,6 +1,12 @@
 import { tick } from 'svelte';
 import { automaticSessionIcon } from '$lib/icon';
 import { isCurrentSessionRequest, isCurrentTabRequest } from '$lib';
+import type { MobilePane } from './mobile-navigation';
+import {
+	persistNavigationSelection,
+	restoreNavigationSelection,
+	type HistoryMode
+} from './navigation-history';
 import type {
 	Api,
 	HermesCommand,
@@ -10,7 +16,6 @@ import type {
 	SessionLoad,
 	Workflow
 } from './types';
-
 type NavigationEffects = {
 	api: Api;
 	getProjects: () => Project[];
@@ -36,15 +41,16 @@ type NavigationEffects = {
 	setError: (message: string) => void;
 	setLoading: (loading: boolean) => void;
 	guard: (action: () => void) => boolean;
+	isMobile: () => boolean;
 };
-
 export class WorkspaceNavigation {
 	selectedProject = $state<Project | null>(null);
 	sessions = $state<Session[]>([]);
 	workflows = $state<Workflow[]>([]);
 	selectedSession = $state<Session | null>(null);
 	activeTab = $state<'sessions' | 'workflows'>('sessions');
-	mobileDrawer = $state<'projects' | 'sessions' | null>(null);
+	mobileDrawer = $state<MobilePane>(null);
+	ready = $state(false);
 	workflowName = $state('');
 	workflowPrompt = $state('');
 	editSessionDialog = $state<HTMLDialogElement>();
@@ -64,21 +70,18 @@ export class WorkspaceNavigation {
 	private tabRequestGeneration = 0;
 	private sessionLists = new Map<string, Session[]>();
 	private workflowLists = new Map<string, Workflow[]>();
-
 	constructor(
 		initialProject: Project | null,
 		private effects: NavigationEffects
 	) {
 		this.selectedProject = initialProject?.rootAvailable ? initialProject : null;
 	}
-
 	sessionApiPath(sessionId?: string, suffix = '') {
 		const base = this.selectedProject
 			? `/api/projects/${this.selectedProject.id}/sessions`
 			: '/api/sessions';
 		return `${base}${sessionId ? `/${sessionId}` : ''}${suffix}`;
 	}
-
 	captureSessionSelection() {
 		if (!this.selectedSession) return null;
 		return {
@@ -87,7 +90,6 @@ export class WorkspaceNavigation {
 			sessionId: this.selectedSession.sessionId
 		};
 	}
-
 	isCurrentSessionSelection(selection: {
 		generation: number;
 		projectId: string | null;
@@ -99,41 +101,19 @@ export class WorkspaceNavigation {
 			selection.sessionId === this.selectedSession?.sessionId
 		);
 	}
-
-	persistSelection() {
-		const url = new URL(window.location.href);
-		url.searchParams.set('project', this.selectedProject?.id ?? 'none');
-		if (this.selectedSession) url.searchParams.set('session', this.selectedSession.sessionId);
-		else url.searchParams.delete('session');
-		window.history.replaceState(window.history.state ?? {}, '', url);
-		document.title = this.selectedSession?.title ? `${this.selectedSession.title} · HUE` : 'HUE';
+	persistSelection(mode: Exclude<HistoryMode, 'none'> = 'replace', drawerEntry = false) {
+		persistNavigationSelection(this, mode, drawerEntry);
 	}
 
 	restoreSelection = async () => {
-		const params = new URL(window.location.href).searchParams;
-		const requestedProject = params.get('project');
-		if (!requestedProject && !this.effects.getProjects().length) {
-			this.persistSelection();
-			return;
-		}
-		this.selectedProject =
-			requestedProject === 'none'
-				? null
-				: (this.effects.getProjects().find(({ id }) => id === requestedProject) ??
-					this.selectedProject);
-		if (this.selectedProject && !this.selectedProject.rootAvailable) {
-			this.persistSelection();
-			return;
-		}
-		const requestedSession = params.get('session');
-		await this.loadActiveTab(requestedSession);
-		const session = this.sessions.find(({ sessionId }) => sessionId === requestedSession);
-		if (session) await this.openSession(session);
-		else this.persistSelection();
+		if (this.effects.guard(() => void this.restoreSelection())) return false;
+		await restoreNavigationSelection(this, this.effects);
+		return true;
 	};
 
-	chooseProject = async (project: Project | null) => {
-		if (this.effects.guard(() => void this.chooseProject(project))) return;
+	chooseProject = async (project: Project | null, historyMode: HistoryMode = 'push') => {
+		if (this.effects.guard(() => void this.chooseProject(project, historyMode))) return;
+		const drillingFromProjects = this.effects.isMobile() && this.mobileDrawer === 'projects';
 		this.effects.endVoice();
 		this.effects.cacheSession();
 		this.effects.saveDraft();
@@ -146,15 +126,17 @@ export class WorkspaceNavigation {
 		this.workflows = project ? (this.workflowLists.get(project.id) ?? []) : [];
 		this.effects.clearSession();
 		this.effects.setError('');
-		this.mobileDrawer = 'sessions';
-		this.persistSelection();
+		this.mobileDrawer = drillingFromProjects ? 'projects' : null;
+		if (historyMode !== 'none')
+			this.persistSelection(drillingFromProjects ? 'replace' : historyMode);
 		if (project && !project.rootAvailable) return;
 		await this.loadActiveTab();
+		if (this.effects.isMobile()) this.setMobileDrawer('sessions', 'push');
 	};
 
 	createProjectlessSession = async () => {
 		if (this.effects.guard(() => void this.createProjectlessSession())) return;
-		await this.chooseProject(null);
+		await this.chooseProject(null, 'none');
 		await this.createSession();
 	};
 
@@ -245,7 +227,8 @@ export class WorkspaceNavigation {
 			this.sessions = [body.session, ...this.sessions];
 			this.sessionLists.set(projectId ?? 'none', this.sessions);
 			this.selectedSession = body.session;
-			this.persistSelection();
+			this.mobileDrawer = null;
+			this.persistSelection('push');
 			this.effects.applyCreatedSession(body);
 			this.effects.setError('');
 			this.effects.restoreDraft();
@@ -261,11 +244,11 @@ export class WorkspaceNavigation {
 		}
 	};
 
-	openSession = async (session: Session) => {
-		if (this.effects.guard(() => void this.openSession(session))) return;
+	openSession = async (session: Session, historyMode: HistoryMode = 'replace') => {
+		if (this.effects.guard(() => void this.openSession(session, historyMode))) return false;
 		if (session.available === false) {
 			this.effects.setError(session.recovery ?? 'Hermes Session is unavailable.');
-			return;
+			return false;
 		}
 		if (this.selectedSession?.sessionId !== session.sessionId) this.effects.endVoice();
 		const request = {
@@ -280,7 +263,8 @@ export class WorkspaceNavigation {
 		this.effects.showCachedSession(session);
 		this.effects.beginTranscriptEntryStick();
 		await this.effects.scrollToLatest();
-		this.persistSelection();
+		this.mobileDrawer = null;
+		if (historyMode !== 'none') this.persistSelection(historyMode);
 		this.effects.setLoading(true);
 		this.effects.setError('');
 		try {
@@ -293,7 +277,7 @@ export class WorkspaceNavigation {
 					sessionId: this.selectedSession.sessionId
 				})
 			)
-				return;
+				return false;
 			this.replaceSession({
 				...this.selectedSession,
 				workMode: body.workMode ?? this.selectedSession.workMode
@@ -305,10 +289,12 @@ export class WorkspaceNavigation {
 			this.effects.beginTranscriptEntryStick();
 			await this.effects.scrollToLatest();
 			if (body.activeTurn && body.activeTurn.status !== 'unknown') this.effects.startPolling();
+			return true;
 		} catch (cause) {
 			if (request.generation === this.sessionRequestGeneration) {
 				this.effects.setError(cause instanceof Error ? cause.message : String(cause));
 			}
+			return false;
 		} finally {
 			if (request.generation === this.sessionRequestGeneration) this.effects.setLoading(false);
 		}
@@ -437,7 +423,7 @@ export class WorkspaceNavigation {
 			);
 			this.prependSession(body.session);
 			this.editSessionDialog?.close();
-			await this.openSession(body.session);
+			await this.openSession(body.session, 'push');
 		} catch (cause) {
 			this.sessionEditError = cause instanceof Error ? cause.message : String(cause);
 		} finally {
@@ -476,6 +462,22 @@ export class WorkspaceNavigation {
 			this.sessionSaving = false;
 		}
 	};
+
+	setMobileDrawer(drawer: Exclude<MobilePane, null>, mode: HistoryMode = 'push') {
+		if (this.mobileDrawer === drawer) return;
+		this.mobileDrawer = drawer;
+		if (mode !== 'none') this.persistSelection(mode, mode === 'push');
+	}
+
+	closeMobileDrawer() {
+		if (!this.mobileDrawer) return;
+		if (window.history.state?.hueWorkspace && window.history.state?.drawerEntry) {
+			window.history.back();
+			return;
+		}
+		this.mobileDrawer = null;
+		this.persistSelection('replace');
+	}
 
 	exportSession = (format: 'markdown' | 'json') => {
 		if (!this.editingSession) return;

@@ -371,6 +371,12 @@
 .context-model {
 	anchor-name: --model-trigger;
 }
+.context-model > span {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
 .model-menu > header,
 .model-menu summary {
 	display: flex;
