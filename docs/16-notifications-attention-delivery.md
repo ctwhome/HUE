@@ -9,6 +9,28 @@ HUE runs work that may finish, fail or require a decision after the user has lef
 
 A notification is not a transient toast and not a raw worker log line. It is a durable, inspectable attention object linked to the Space, Session, task, run, evidence and event that caused it.
 
+## Bounded local implementation — issue 84
+
+Current focused HUE implementation projects only five durable `session_events` kinds: `message.completed`, pending `agent.permission`, pending `agent.clarify`, `message.failed`, and `message.unknown`. Projectless Sessions remain supported. Routine chunks, thoughts, tools, plans, progress, and resolved interactions never create notifications.
+
+SQLite stores canonical notification lifecycle, device endpoints, endpoint-scoped presence, and delivery attempts separately. Source-event sequence is unique per canonical notification, so startup projection and replay are idempotent. Presentation copy is fixed and generic: prompts, transcript text, Project/Session titles, paths, tool arguments, answers, and secret-bearing errors are never copied into notification records or Web Push payloads.
+
+Web Push is optional. Configure all three values or HUE reports system delivery unavailable without failing startup:
+
+```text
+HUE_VAPID_PUBLIC_KEY
+HUE_VAPID_PRIVATE_KEY
+HUE_VAPID_SUBJECT=mailto:operator@example.com
+```
+
+Subscriptions require explicit browser permission from a user click. Endpoint URLs and subscription keys are credentials: APIs expose only device metadata. HUE encrypts each credential with AES-256-GCM and a persistent 32-byte local key. Default key path is `notification.key` beside configured HUE database; `HUE_NOTIFICATION_KEY_PATH` overrides it. Database directory, database file, and key modes are repaired to `0700`, `0600`, and `0600`. Missing, malformed, or inaccessible key fails startup closed; protect key backups because losing it makes stored subscriptions unreadable.
+
+Endpoint registration records current notification baseline, so enabling or re-enabling device never replays older events. Read, dismissed, acted, or resolved-interaction notifications are excluded from delivery. Owned local timer wakes for bounded exponential retries without browser polling or new events, and service startup recovers due attempts. System-notification click marks canonical notification acted/read through same-origin mutation before safe same-origin focus/navigation; navigation continues if mutation network request fails.
+
+Exact visible Session presence suppresses redundant completion/failure/unknown system delivery for that endpoint, while permission and clarify requests remain urgent. Canonical in-app state is never suppressed.
+
+Foreground sound is a local opt-in unlocked by a user gesture. Background installed-PWA sound remains controlled by browser and operating-system notification channels. Wear OS mirroring is best effort and controlled by phone, browser, and watch settings; automated browser coverage is not physical-watch delivery evidence.
+
 ## Product principles — `TBI`
 
 1. **Durable before delivered.** HUE records the notification and delivery intent before attempting an external channel, so restart cannot silently lose it.
@@ -22,14 +44,14 @@ A notification is not a transient toast and not a raw worker log line. It is a d
 
 ## Attention classes — `TBI`
 
-| Class | Examples | Default urgency | Default behavior |
-|---|---|---:|---|
-| Action required | approval, missing decision/input, recovery choice | high | in-app + desktop; phone if configured |
-| Security or budget boundary | policy denial, spend limit, suspicious access, credential expiry | high/critical | immediate on approved channels; never suppressed silently |
-| Outcome | verified completion, completed-unverified, failed, cancelled | normal/high | in-app; desktop/sound according to policy; phone for requested or long work |
-| Time-sensitive monitoring | deadline, threshold, scheduled monitor finding | configured | notify before the event becomes stale |
-| Progress | milestone reached, long-run checkpoint | quiet | in-app only unless the user explicitly subscribes |
-| Informational | route fallback, background reconciliation, routine update | quiet | activity/history; grouped or digested |
+| Class                       | Examples                                                         | Default urgency | Default behavior                                                            |
+| --------------------------- | ---------------------------------------------------------------- | --------------: | --------------------------------------------------------------------------- |
+| Action required             | approval, missing decision/input, recovery choice                |            high | in-app + desktop; phone if configured                                       |
+| Security or budget boundary | policy denial, spend limit, suspicious access, credential expiry |   high/critical | immediate on approved channels; never suppressed silently                   |
+| Outcome                     | verified completion, completed-unverified, failed, cancelled     |     normal/high | in-app; desktop/sound according to policy; phone for requested or long work |
+| Time-sensitive monitoring   | deadline, threshold, scheduled monitor finding                   |      configured | notify before the event becomes stale                                       |
+| Progress                    | milestone reached, long-run checkpoint                           |           quiet | in-app only unless the user explicitly subscribes                           |
+| Informational               | route fallback, background reconciliation, routine update        |           quiet | activity/history; grouped or digested                                       |
 
 The terminal outcome vocabulary remains explicit:
 

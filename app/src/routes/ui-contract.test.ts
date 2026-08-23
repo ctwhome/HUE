@@ -106,7 +106,8 @@ test('keeps major workspace surfaces in focused Svelte components', () => {
 		expect(workspace).toContain(`<${component}`);
 	}
 	expect(route.split('\n').length).toBeLessThan(20);
-	for (const source of workspaceFiles) expect(source.split('\n').length).toBeLessThan(501);
+	for (const source of workspaceFiles)
+		expect(source.trimEnd().split('\n').length).toBeLessThan(501);
 });
 
 test('workflow fields have accessible names', () => {

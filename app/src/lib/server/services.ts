@@ -14,6 +14,7 @@ import { ProjectFiles } from './project-files';
 import { HUEStore } from './store';
 import { reconcileLegacyProjects } from './project-reconciliation';
 import { ProjectOperations } from './project-operations';
+import { NotificationService, notificationOptionsFromEnv } from './notifications';
 
 type HUEServices = {
 	store: HUEStore;
@@ -21,6 +22,7 @@ type HUEServices = {
 	admin: HermesServe;
 	projects: HermesProjects;
 	dispatcher: MessageDispatcher;
+	notifications: NotificationService;
 	terminals: ProjectTerminals;
 	projectOperations: ProjectOperations<HermesProject>;
 };
@@ -54,12 +56,14 @@ function createServices(): HUEServices {
 		active: (projectId) => store.hasActiveProjectDeliveries(projectId),
 		archive: (projectId) => projects.archive(projectId)
 	});
+	const notifications = new NotificationService(store, notificationOptionsFromEnv(process.env));
 	return {
 		store,
 		runtime,
 		admin,
 		projects,
-		dispatcher: new MessageDispatcher(store, runtime),
+		dispatcher: new MessageDispatcher(store, runtime, () => notifications.deliverPending()),
+		notifications,
 		terminals: new ProjectTerminals(),
 		projectOperations
 	};
