@@ -29,19 +29,24 @@
 	let repositoryMessage = $state('');
 	let commitMessage = $state('');
 	let mounted = false;
+	let repositoryRequestGeneration = 0;
 	const panel =
 		'workbench-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card';
 
 	async function loadRepository() {
+		const request = ++repositoryRequestGeneration;
 		repositoryLoading = true;
 		repositoryError = '';
 		try {
-			repository = await api<Repository>(`/api/projects/${projectId}/repository`);
-			if (mounted) onbranch(repository.branch);
+			const result = await api<Repository>(`/api/projects/${projectId}/repository`);
+			if (!mounted || request !== repositoryRequestGeneration) return;
+			repository = result;
+			onbranch(result.branch);
 		} catch (cause) {
+			if (!mounted || request !== repositoryRequestGeneration) return;
 			repositoryError = cause instanceof Error ? cause.message : String(cause);
 		} finally {
-			repositoryLoading = false;
+			if (mounted && request === repositoryRequestGeneration) repositoryLoading = false;
 		}
 	}
 	function repositoryLinks() {
@@ -96,7 +101,10 @@
 	onMount(() => {
 		mounted = true;
 		void loadRepository();
-		return () => (mounted = false);
+		return () => {
+			mounted = false;
+			repositoryRequestGeneration += 1;
+		};
 	});
 </script>
 

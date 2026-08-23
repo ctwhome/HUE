@@ -114,6 +114,8 @@ export async function restoreNavigationSelection(
 		navigation.ready = true;
 		return destination;
 	}
+	// Shell and workbench stay usable while slower Session discovery continues.
+	navigation.ready = true;
 	await navigation.loadActiveTab(destination.sessionId);
 	const session = navigation.sessions.find(({ sessionId }) => sessionId === destination.sessionId);
 	const sessionRestored = session ? await navigation.openSession(session, 'none') : false;
