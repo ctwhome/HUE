@@ -14,3 +14,4 @@ docs/public/prototype/
 docs/public/data/
 app/static/docs/
 .playwright-mcp
+artifacts/android-proof/
