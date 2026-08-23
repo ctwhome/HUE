@@ -43,19 +43,20 @@ HUE lets a user open a local **Project**, launch a reusable **Workflow**, and cr
    - [Decision register](docs/14-decision-register.md)
    - [Accepted frontend ADR: SvelteKit + shadcn-svelte](docs/decisions/0001-sveltekit-shadcn-svelte.md)
    - [Accepted focused workspace ADR: Bun + Hermes ACP](docs/decisions/0002-bun-hermes-acp-workspace.md)
+   - [Accepted Android proof ADR: bounded Capacitor shell](docs/decisions/0008-capacitor-android-native-shell.md)
    - [Glossary](docs/15-glossary.md)
    - [Notifications, attention and delivery](docs/16-notifications-attention-delivery.md)
 
 ## Status vocabulary
 
-| Label | Meaning |
-|---|---|
-| **TBI** | Target behavior is specified but not implemented. |
-| **TBD** | A decision is still open; implementation must not silently choose. |
-| **SPEC** | Documentation exists and is reviewable; this does not imply product implementation. |
-| **POC** | A disposable proof was built to answer a named question. |
-| **IMPLEMENTED** | Code exists and acceptance evidence is linked. |
-| **VERIFIED** | The implemented behavior passed its documented verification gates. |
+| Label           | Meaning                                                                             |
+| --------------- | ----------------------------------------------------------------------------------- |
+| **TBI**         | Target behavior is specified but not implemented.                                   |
+| **TBD**         | A decision is still open; implementation must not silently choose.                  |
+| **SPEC**        | Documentation exists and is reviewable; this does not imply product implementation. |
+| **POC**         | A disposable proof was built to answer a named question.                            |
+| **IMPLEMENTED** | Code exists and acceptance evidence is linked.                                      |
+| **VERIFIED**    | The implemented behavior passed its documented verification gates.                  |
 
 The canonical status rules live in [docs/00-status-and-review.md](docs/00-status-and-review.md).
 
@@ -82,6 +83,31 @@ bun run --cwd docs verify
 ```
 
 The production site is deployed to [ctwhome.github.io/HUE](https://ctwhome.github.io/HUE/) by GitHub Actions after every verified push to `main`.
+
+## Android native-shell proof
+
+Capacitor shell under `app/android` loads canonical HUE server; it does not embed another workspace or Hermes authority. JDK 21 and Android SDK 36 are required.
+
+```bash
+bun install --frozen-lockfile
+bun run --cwd app android:sync # injects HUE_SERVER_URL into Capacitor before sync
+scripts/android-gradle.sh :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+
+# Debug-only emulator or adb-reverse origin; cleartext accepts loopback only.
+scripts/android-gradle.sh -PHUE_SERVER_URL=http://10.0.2.2:4173 :app:assembleDebug
+
+# Release boundary proof: first command must fail, second must pass.
+scripts/android-gradle.sh -PHUE_SERVER_URL=http://127.0.0.1:4173 :app:validateHueReleaseConfig
+scripts/android-gradle.sh -PHUE_SERVER_URL=https://hue.example :app:validateHueReleaseConfig
+
+# Debug-only loopback API 36 proof.
+scripts/android-proof.sh
+
+# Exact HTTPS App Link API 36 proof; runtime value is never tracked.
+HUE_ANDROID_HTTPS_ORIGIN=https://your-hue-origin.example scripts/android-proof.sh
+```
+
+`scripts/android-env.sh` finds SDK at `$ANDROID_SDK_ROOT`, `$ANDROID_HOME`, or `/Volumes/DATA-ext/Android SDK/sdk` without `local.properties`. Production builds inject HTTPS origin through `HUE_SERVER_URL`; do not put credentials or auth tokens in origin. Native credentials, if later required, must use Android Keystore. See [ADR-0008](docs/decisions/0008-capacitor-android-native-shell.md).
 
 ## Focused product contract
 
