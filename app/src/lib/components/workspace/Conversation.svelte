@@ -10,6 +10,8 @@
 	} from 'lucide-svelte';
 	import type { ImageAttachment, InputAttachment } from '$lib/message-content';
 	import type { WorkspaceActivity, WorkspacePlanEntry, WorkspaceTimelineItem } from '$lib';
+	import LiquidThinkingOrb from './LiquidThinkingOrb.svelte';
+	import { activeThought } from './thinking-state';
 
 	type Message = {
 		role: 'user' | 'assistant';
@@ -77,6 +79,7 @@
 		});
 	const timestampTitle = (value: string) =>
 		new Date(value).toLocaleString([], { dateStyle: 'full', timeStyle: 'long' });
+	let currentThought = $derived(activeThought(timeline, busy));
 	function handleTranscriptClick(event: MouseEvent) {
 		const button = (event.target as Element).closest<HTMLButtonElement>('[data-copy-code]');
 		if (!button) return;
@@ -291,7 +294,7 @@
 							</li>{/each}
 					</ul>
 				</section>
-			{:else if item.kind === 'thought'}<details
+			{:else if item.kind === 'thought' && item.sequence !== currentThought?.sequence}<details
 					data-timeline-sequence={item.sequence}
 					class="agent-thought mx-auto mb-6 max-w-[774px] border-l-2 border-border text-muted-foreground"
 				>
@@ -458,6 +461,10 @@
 				</details>
 			{/if}
 		{/each}
+		{#if busy}<LiquidThinkingOrb
+				thought={currentThought?.text}
+				sequence={currentThought?.sequence}
+			/>{/if}
 		{#if timeline.length === 0}<div
 				class="welcome mx-auto mt-[12vh] max-w-2xl text-center text-muted-foreground"
 			>
