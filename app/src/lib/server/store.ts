@@ -1,4 +1,6 @@
 import { createRequire } from 'node:module';
+import { chmodSync, lstatSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import type { Database as BunDatabase } from 'bun:sqlite';
 import { validateIcon } from '$lib/icon';
 import type { ImageAttachment, InputAttachment } from '$lib/message-content';
@@ -47,6 +49,24 @@ export type SessionEvent = {
 	createdAt: string;
 };
 
+export type NotificationKind = 'completed' | 'permission' | 'clarify' | 'failed' | 'unknown';
+
+export type StoredNotification = {
+	id: string;
+	sourceEventId: string;
+	projectId: string | null;
+	sessionId: string;
+	kind: NotificationKind;
+	priority: 'normal' | 'high';
+	title: string;
+	body: string;
+	path: string;
+	createdAt: string;
+	readAt: string | null;
+	dismissedAt: string | null;
+	actedAt: string | null;
+};
+
 export type StoredSession = {
 	sessionId: string;
 	cwd: string;
@@ -72,6 +92,84 @@ type SessionRow = {
 	tags: string;
 	updated_at: string;
 };
+
+type NotificationRow = {
+	id: string;
+	source_event_id: string;
+	project_id: string | null;
+	session_id: string;
+	kind: NotificationKind;
+	priority: 'normal' | 'high';
+	title: string;
+	body: string;
+	path: string;
+	created_at: string;
+	read_at: string | null;
+	dismissed_at: string | null;
+	acted_at: string | null;
+};
+
+function mapNotification(row: NotificationRow): StoredNotification {
+	return {
+		id: row.id,
+		sourceEventId: row.source_event_id,
+		projectId: row.project_id,
+		sessionId: row.session_id,
+		kind: row.kind,
+		priority: row.priority,
+		title: row.title,
+		body: row.body,
+		path: row.path,
+		createdAt: row.created_at,
+		readAt: row.read_at,
+		dismissedAt: row.dismissed_at,
+		actedAt: row.acted_at
+	};
+}
+
+function notificationPresentation(
+	type: string
+): Pick<StoredNotification, 'kind' | 'priority' | 'title' | 'body'> | null {
+	switch (type) {
+		case 'message.completed':
+			return {
+				kind: 'completed',
+				priority: 'normal',
+				title: 'Task completed',
+				body: 'Open HUE to review the result.'
+			};
+		case 'agent.permission':
+			return {
+				kind: 'permission',
+				priority: 'high',
+				title: 'HUE needs permission',
+				body: 'Open HUE to review the request.'
+			};
+		case 'agent.clarify':
+			return {
+				kind: 'clarify',
+				priority: 'high',
+				title: 'HUE needs your input',
+				body: 'Open HUE to answer safely.'
+			};
+		case 'message.failed':
+			return {
+				kind: 'failed',
+				priority: 'high',
+				title: 'Task failed',
+				body: 'Open HUE to inspect the failure.'
+			};
+		case 'message.unknown':
+			return {
+				kind: 'unknown',
+				priority: 'high',
+				title: 'Task outcome unknown',
+				body: 'Open HUE to inspect delivery state.'
+			};
+		default:
+			return null;
+	}
+}
 
 function cleanOptional(value: unknown, max: number, label: string): string | null {
 	if (value === null) return null;
@@ -132,11 +230,17 @@ const allowedTransitions: Record<MessageStatus, ReadonlySet<MessageStatus>> = {
 
 export class HUEStore {
 	readonly database: BunDatabase;
+	readonly filename: string;
 
 	constructor(filename: string) {
+		this.filename = filename;
+		if (filename !== ':memory:') secureDatabasePath(filename);
 		const { Database } = runtimeRequire('bun:sqlite') as typeof import('bun:sqlite');
 		this.database = new Database(filename, { create: true, strict: true });
+		if (filename !== ':memory:' && (lstatSync(filename).mode & 0o777) !== 0o600)
+			chmodSync(filename, 0o600);
 		this.database.exec('PRAGMA foreign_keys = ON');
+		this.database.exec('PRAGMA secure_delete = ON');
 		this.migrate();
 	}
 
@@ -211,6 +315,66 @@ export class HUEStore {
 
 			CREATE INDEX IF NOT EXISTS session_events_cursor_idx
 				ON session_events(session_id, sequence);
+
+			CREATE TABLE IF NOT EXISTS notifications (
+				id TEXT PRIMARY KEY,
+				source_event_id TEXT NOT NULL UNIQUE,
+				project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+				session_id TEXT NOT NULL,
+				kind TEXT NOT NULL CHECK (kind IN ('completed', 'permission', 'clarify', 'failed', 'unknown')),
+				priority TEXT NOT NULL CHECK (priority IN ('normal', 'high')),
+				title TEXT NOT NULL,
+				body TEXT NOT NULL,
+				path TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				read_at TEXT,
+				dismissed_at TEXT,
+				acted_at TEXT
+			);
+
+			CREATE INDEX IF NOT EXISTS notifications_created_idx
+				ON notifications(created_at DESC, source_event_id DESC);
+			CREATE INDEX IF NOT EXISTS notifications_unread_idx
+				ON notifications(read_at, dismissed_at, source_event_id DESC);
+
+			CREATE TABLE IF NOT EXISTS notification_endpoints (
+				id TEXT PRIMARY KEY,
+				device_id TEXT NOT NULL UNIQUE,
+				name TEXT NOT NULL,
+				endpoint TEXT NOT NULL,
+				p256dh TEXT NOT NULL,
+				auth TEXT NOT NULL,
+				enabled INTEGER NOT NULL DEFAULT 1,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				revoked_at TEXT,
+				notification_baseline INTEGER NOT NULL DEFAULT 0
+			);
+
+			CREATE TABLE IF NOT EXISTS notification_delivery_attempts (
+				id TEXT PRIMARY KEY,
+				notification_id TEXT NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+				endpoint_id TEXT NOT NULL REFERENCES notification_endpoints(id) ON DELETE CASCADE,
+				status TEXT NOT NULL CHECK (status IN ('queued', 'retry', 'accepted', 'expired', 'suppressed')),
+				attempt_count INTEGER NOT NULL DEFAULT 0,
+				error_category TEXT,
+				next_attempt_at TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				accepted_at TEXT,
+				UNIQUE (notification_id, endpoint_id)
+			);
+
+			CREATE INDEX IF NOT EXISTS notification_attempts_due_idx
+				ON notification_delivery_attempts(status, next_attempt_at);
+
+			CREATE TABLE IF NOT EXISTS notification_presence (
+				endpoint_id TEXT PRIMARY KEY REFERENCES notification_endpoints(id) ON DELETE CASCADE,
+				project_id TEXT,
+				session_id TEXT,
+				visible INTEGER NOT NULL,
+				expires_at TEXT NOT NULL
+			);
 		`);
 		const projectColumns = this.database.query('PRAGMA table_info(projects)').all() as Array<{
 			name: string;
@@ -303,6 +467,16 @@ export class HUEStore {
 				'ALTER TABLE session_events ADD COLUMN project_id TEXT REFERENCES projects(id)'
 			);
 		}
+		const endpointColumns = this.database
+			.query('PRAGMA table_info(notification_endpoints)')
+			.all() as Array<{ name: string }>;
+		let initializeEndpointBaselines = false;
+		if (!endpointColumns.some((column) => column.name === 'notification_baseline')) {
+			this.database.exec(
+				'ALTER TABLE notification_endpoints ADD COLUMN notification_baseline INTEGER NOT NULL DEFAULT 0'
+			);
+			initializeEndpointBaselines = true;
+		}
 		this.database.exec(`
 			CREATE INDEX IF NOT EXISTS messages_project_session_idx
 				ON messages(project_id, session_id, created_at, id);
@@ -313,6 +487,127 @@ export class HUEStore {
 			CREATE INDEX IF NOT EXISTS project_sessions_scope_list_idx
 				ON project_sessions(project_id, archived, pinned DESC, updated_at DESC, session_id);
 		`);
+		this.projectPendingNotifications();
+		if (initializeEndpointBaselines) {
+			this.database.exec(`
+				UPDATE notification_endpoints SET notification_baseline =
+					COALESCE((SELECT MAX(CAST(source_event_id AS INTEGER)) FROM notifications), 0)
+			`);
+		}
+	}
+
+	projectPendingNotifications(): number {
+		const rows = this.database
+			.query(
+				`SELECT e.sequence, e.project_id, e.session_id, e.type, e.created_at
+				 FROM session_events e
+				 LEFT JOIN notifications n ON n.source_event_id = CAST(e.sequence AS TEXT)
+				 WHERE n.id IS NULL AND (
+					e.type IN ('message.completed', 'message.failed', 'message.unknown') OR
+					(e.type IN ('agent.permission', 'agent.clarify') AND json_extract(e.payload, '$.status') = 'pending')
+				 )
+				 ORDER BY e.sequence`
+			)
+			.all() as Array<{
+			sequence: number;
+			project_id: string | null;
+			session_id: string;
+			type: string;
+			created_at: string;
+		}>;
+		this.database.transaction(() => {
+			for (const row of rows) this.insertNotification(row);
+		})();
+		return rows.length;
+	}
+
+	private insertNotification(event: {
+		sequence: number;
+		project_id: string | null;
+		session_id: string;
+		type: string;
+		created_at: string;
+	}): void {
+		const presentation = notificationPresentation(event.type);
+		if (!presentation) return;
+		const path = event.project_id
+			? `/?project=${encodeURIComponent(event.project_id)}&session=${encodeURIComponent(event.session_id)}`
+			: `/?project=none&session=${encodeURIComponent(event.session_id)}`;
+		this.database
+			.query(
+				`INSERT OR IGNORE INTO notifications
+				 (id, source_event_id, project_id, session_id, kind, priority, title, body, path, created_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+			)
+			.run(
+				`notification:${event.sequence}`,
+				String(event.sequence),
+				event.project_id,
+				event.session_id,
+				presentation.kind,
+				presentation.priority,
+				presentation.title,
+				presentation.body,
+				path,
+				event.created_at
+			);
+	}
+
+	listNotifications(options: { unreadOnly?: boolean; limit?: number; cursor?: string | null }): {
+		items: StoredNotification[];
+		nextCursor: string | null;
+	} {
+		const limit = Math.max(1, Math.min(Math.trunc(options.limit ?? 50) || 50, 100));
+		const cursor = options.cursor ? Number(options.cursor) : Number.MAX_SAFE_INTEGER;
+		if (!Number.isSafeInteger(cursor) || cursor < 1) throw new Error('Invalid notification cursor');
+		const rows = this.database
+			.query(
+				`SELECT id, source_event_id, project_id, session_id, kind, priority, title, body, path,
+				 created_at, read_at, dismissed_at, acted_at
+				 FROM notifications
+				 WHERE CAST(source_event_id AS INTEGER) < ?
+				   AND (? = 0 OR (read_at IS NULL AND dismissed_at IS NULL))
+				 ORDER BY CAST(source_event_id AS INTEGER) DESC LIMIT ?`
+			)
+			.all(cursor, options.unreadOnly ? 1 : 0, limit + 1) as NotificationRow[];
+		const items = rows.slice(0, limit).map(mapNotification);
+		return {
+			items,
+			nextCursor: rows.length > limit ? rows[limit - 1]!.source_event_id : null
+		};
+	}
+
+	notificationCounts(): { unread: number; all: number } {
+		const row = this.database
+			.query(
+				`SELECT COUNT(*) AS all_count,
+				 SUM(CASE WHEN read_at IS NULL AND dismissed_at IS NULL THEN 1 ELSE 0 END) AS unread_count
+				 FROM notifications`
+			)
+			.get() as { all_count: number; unread_count: number | null };
+		return { all: row.all_count, unread: row.unread_count ?? 0 };
+	}
+
+	getNotification(id: string): StoredNotification | null {
+		const row = this.database
+			.query(
+				`SELECT id, source_event_id, project_id, session_id, kind, priority, title, body, path,
+				 created_at, read_at, dismissed_at, acted_at FROM notifications WHERE id = ?`
+			)
+			.get(id) as NotificationRow | null;
+		return row ? mapNotification(row) : null;
+	}
+
+	updateNotification(id: string, state: 'read' | 'dismissed' | 'acted'): StoredNotification {
+		const now = new Date().toISOString();
+		const column =
+			state === 'read' ? 'read_at' : state === 'dismissed' ? 'dismissed_at' : 'acted_at';
+		const read = state === 'read' ? '' : ', read_at = COALESCE(read_at, ?)';
+		const result = this.database
+			.query(`UPDATE notifications SET ${column} = COALESCE(${column}, ?)${read} WHERE id = ?`)
+			.run(...(read ? [now, now, id] : [now, id]));
+		if (!result.changes) throw new Error('Notification not found');
+		return this.getNotification(id)!;
 	}
 
 	upsertSession(
@@ -1312,13 +1607,30 @@ export class HUEStore {
 	): SessionEvent {
 		const redactedPayload = redactPersistedValue(payload) as Record<string, unknown>;
 		const createdAt = new Date().toISOString();
-		const result = this.database
-			.query(
-				'INSERT INTO session_events (project_id, session_id, type, payload, created_at) VALUES (?, ?, ?, ?, ?)'
-			)
-			.run(projectId, sessionId, type, JSON.stringify(redactedPayload), createdAt);
+		let sequence = 0;
+		this.database.transaction(() => {
+			const result = this.database
+				.query(
+					'INSERT INTO session_events (project_id, session_id, type, payload, created_at) VALUES (?, ?, ?, ?, ?)'
+				)
+				.run(projectId, sessionId, type, JSON.stringify(redactedPayload), createdAt);
+			sequence = Number(result.lastInsertRowid);
+			if (
+				['message.completed', 'message.failed', 'message.unknown'].includes(type) ||
+				(['agent.permission', 'agent.clarify'].includes(type) &&
+					redactedPayload.status === 'pending')
+			) {
+				this.insertNotification({
+					sequence,
+					project_id: projectId,
+					session_id: sessionId,
+					type,
+					created_at: createdAt
+				});
+			}
+		})();
 		return {
-			sequence: Number(result.lastInsertRowid),
+			sequence,
 			projectId,
 			sessionId,
 			type,
@@ -1413,5 +1725,24 @@ export class HUEStore {
 
 	close() {
 		this.database.close();
+	}
+}
+
+function secureDatabasePath(filename: string): void {
+	const directory = dirname(filename);
+	mkdirSync(directory, { recursive: true, mode: 0o700 });
+	const directoryStat = lstatSync(directory);
+	if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) {
+		throw new Error('HUE database directory must be a real directory');
+	}
+	if ((directoryStat.mode & 0o777) !== 0o700) chmodSync(directory, 0o700);
+	try {
+		const fileStat = lstatSync(filename);
+		if (!fileStat.isFile() || fileStat.isSymbolicLink()) {
+			throw new Error('HUE database must be a regular file');
+		}
+		if ((fileStat.mode & 0o777) !== 0o600) chmodSync(filename, 0o600);
+	} catch (cause) {
+		if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause;
 	}
 }

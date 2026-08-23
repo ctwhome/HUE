@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		CalendarDays,
+		Bell,
 		Code2,
 		FileText,
 		Grid2X2,
@@ -14,6 +15,7 @@
 	import Button from './ui/Button.svelte';
 
 	export type GlobalView =
+		| 'notifications'
 		| 'settings'
 		| 'runtime'
 		| 'memory'
@@ -24,8 +26,15 @@
 		| 'mcp'
 		| 'models';
 
-	let { view, onview }: { view: GlobalView | null; onview: (view: GlobalView | null) => void } =
-		$props();
+	let {
+		view,
+		unreadCount = 0,
+		onview
+	}: {
+		view: GlobalView | null;
+		unreadCount?: number;
+		onview: (view: GlobalView | null) => void;
+	} = $props();
 
 	const action =
 		'global-action size-10 text-muted-foreground [&.active]:border-orange-900 [&.active]:bg-orange-950 [&.active]:text-orange-300 [&>svg]:size-5';
@@ -46,6 +55,20 @@
 		onclick={() => onview(null)}
 	>
 		<MessageSquare aria-hidden="true" />
+	</Button>
+	<Button
+		variant="outline"
+		size="icon"
+		class={`${action} relative ${view === 'notifications' ? 'active' : ''}`}
+		aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
+		title="Notifications"
+		onclick={() => onview('notifications')}
+	>
+		<Bell aria-hidden="true" />
+		{#if unreadCount > 0}<span
+				class="notification-badge text-destructive-foreground absolute -top-1 -right-1 min-w-5 rounded-full bg-destructive px-1 text-[10px] leading-5 font-bold"
+				>{unreadCount > 99 ? '99+' : unreadCount}</span
+			>{/if}
 	</Button>
 	<div class="global-admin mt-auto flex flex-col gap-3">
 		<Button

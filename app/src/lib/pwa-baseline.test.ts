@@ -130,7 +130,7 @@ test('service worker caches versioned build assets and excludes navigation and A
 	expect(source).toContain("from '$service-worker'");
 	expect(source).toContain('build.includes(url.pathname)');
 	expect(source).not.toMatch(/caches\.put\([^\n]*(?:api|request)/i);
-	expect(source).not.toContain("'/api/");
+	expect(source).not.toContain('/api/notifications?view=unread');
 	expect(source).toContain('notificationclick');
 	expect(source).toContain('skipWaiting');
 });

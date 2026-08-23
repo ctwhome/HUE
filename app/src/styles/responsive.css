@@ -94,13 +94,16 @@
 	.global-rail {
 		display: none;
 	}
+	.global-panel {
+		top: calc(56px + env(safe-area-inset-top, 0px));
+	}
 	.mobile-navigation {
 		position: fixed;
 		z-index: 40;
 		inset: 0 0 auto;
 		display: grid;
 		height: calc(56px + env(safe-area-inset-top, 0px));
-		grid-template-columns: repeat(3, 1fr);
+		grid-template-columns: repeat(4, minmax(0, 1fr));
 		gap: 8px;
 		border-bottom: 1px solid var(--border);
 		background: #0d1015ee;

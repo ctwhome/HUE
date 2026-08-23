@@ -8,6 +8,7 @@
 	import { formatWorkModeAnnouncement, type WorkMode } from '$lib/work-mode';
 	import { createVoiceCall } from '$lib/voice/voice-call.svelte';
 	import GlobalNavigation, { type GlobalView } from './GlobalNavigation.svelte';
+	import AttentionCenter from './notifications/AttentionCenter.svelte';
 	import HermesPanel from './HermesPanel.svelte';
 	import ProjectWorkbench from './ProjectWorkbench.svelte';
 	import QuickCapture from './pwa/QuickCapture.svelte';
@@ -39,6 +40,7 @@
 	let loading = $state(false),
 		error = $state('');
 	let globalView = $state<GlobalView | null>(null);
+	let unreadNotifications = $state(0);
 	let now = $state(Date.now());
 	let dirtyGuardOpen = $state(false),
 		dirtyGuardDirty = $state(false);
@@ -233,7 +235,6 @@
 		if (dirtyGuardDirty) event.preventDefault();
 	}}
 />
-
 <div
 	bind:this={workspaceElement}
 	class="workspace grid h-dvh grid-cols-[56px_220px_320px_minmax(0,1fr)] overflow-hidden bg-background text-foreground"
@@ -241,16 +242,25 @@
 	class:drawer-gesture-active={gestureActive}
 	class:gesture-reveal-projects={gestureAction === 'show-projects'}
 >
-	<GlobalNavigation view={globalView} onview={setGlobalView} />
+	<GlobalNavigation view={globalView} unreadCount={unreadNotifications} onview={setGlobalView} />
 	<MobileNavigation
 		drawer={navigation.mobileDrawer}
 		ready={navigation.ready}
 		backdrop={Boolean(navigation.mobileDrawer || gestureActive)}
+		unreadCount={unreadNotifications}
 		ontoggle={(pane, trigger) => mobileShell?.toggle(pane, trigger)}
 		onclose={() => mobileShell?.close()}
+		onnotifications={() => setGlobalView('notifications')}
 		onsettings={() => setGlobalView('settings')}
 	/>
-	{#if globalView}<HermesPanel
+	<AttentionCenter
+		open={globalView === 'notifications'}
+		projectId={selectedProject?.id ?? null}
+		sessionId={selectedSession?.sessionId ?? null}
+		onclose={() => setGlobalView(null)}
+		oncounts={(count) => (unreadNotifications = count)}
+	/>
+	{#if globalView && globalView !== 'notifications'}<HermesPanel
 			view={globalView}
 			{commands}
 			{dirtyGuard}
