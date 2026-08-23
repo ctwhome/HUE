@@ -240,6 +240,31 @@ describe('workspace async state', () => {
 		expect(timeline[7]).toMatchObject({ id: 'delegate-1', status: 'completed' });
 	});
 
+	it('maps work mode changes into compact timeline status items', () => {
+		const timeline = workspaceState.timelineFromSession(
+			[],
+			[],
+			[
+				{
+					sequence: 1,
+					type: 'session.work_mode_changed',
+					createdAt: '2026-08-23T10:00:00.000Z',
+					payload: { priorMode: 'autonomous', workMode: 'live', source: 'user' }
+				}
+			]
+		);
+
+		expect(timeline).toEqual([
+			expect.objectContaining({
+				sequence: 1,
+				kind: 'status',
+				statusType: 'work-mode',
+				label: 'Work mode changed to Live',
+				createdAt: '2026-08-23T10:00:00.000Z'
+			})
+		]);
+	});
+
 	it('deduplicates reconnect replay while appending new assistant segments in event order', () => {
 		const initial = workspaceState.applyTimelineEvents(
 			{ cursor: 2, timeline: [{ sequence: 2, kind: 'message', role: 'assistant', text: 'A' }] },
