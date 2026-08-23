@@ -155,22 +155,12 @@
 		min-height: 44px;
 		padding-right: 44px;
 	}
-	.project-edit {
+	.project-edit,
+	.session-edit {
 		right: 0;
 		width: 44px;
 		height: 44px;
 		opacity: 1;
-	}
-	.session-select {
-		padding-right: 88px;
-	}
-	.session-actions {
-		right: 0;
-		opacity: 1;
-	}
-	.session-actions button {
-		width: 44px;
-		height: 44px;
 	}
 	.context-panel .icon-button,
 	.section-heading .icon-button {

@@ -316,12 +316,10 @@
 		bind:sessionEmojiPickerOpen={navigation.sessionEmojiPickerOpen}
 		sessionEditError={navigation.sessionEditError}
 		sessionSaving={navigation.sessionSaving}
-		archivingSessionId={navigation.archivingSessionId}
 		{now}
 		oncreate={navigation.createSession}
 		ontab={navigation.changeTab}
 		onopen={navigation.openSession}
-		onarchive={navigation.archiveSession}
 		onedit={navigation.openEditSession}
 		onrun={navigation.runWorkflow}
 		onworkflow={navigation.addWorkflow}

@@ -552,7 +552,7 @@ export class HermesACP implements PromptRuntime {
 				appendTranscriptText(transcript, 'user', update.content.text, true);
 			}
 			if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'text') {
-				appendTranscriptText(transcript, 'assistant', update.content.text);
+				transcript.push({ role: 'assistant', text: update.content.text });
 			}
 			if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'image') {
 				transcript.push({ role: 'assistant', text: '', images: [this.image(update.content)] });

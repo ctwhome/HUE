@@ -25,7 +25,24 @@ mock.module('$lib/server/route-services', () => ({
 		folders.some((folder) => cwd === folder || cwd.startsWith(`${folder}/`)),
 	services: () => ({
 		store: {
-			getSession: () => null,
+			getSession: (projectId: string, sessionId: string) => {
+				const session = stored.find(
+					(candidate) => candidate.projectId === projectId && candidate.sessionId === sessionId
+				);
+				return session
+					? {
+							...session,
+							icon: null,
+							title: null,
+							workMode: 'autonomous',
+							pinned: false,
+							archived: false,
+							folder: null,
+							tags: [],
+							updatedAt: '2026-08-22T00:00:00.000Z'
+						}
+					: null;
+			},
 			listSessionRoots: () => [],
 			isSessionDismissed: () => false,
 			upsertSession: (projectId: string, session: { sessionId: string; cwd: string }) =>
@@ -94,5 +111,8 @@ test('creates new Hermes Session in primary folder', async () => {
 
 	expect(response.status).toBe(201);
 	expect(createdRoots).toEqual(['/work/app']);
-	expect((await response.json()).session.cwd).toBe('/work/app');
+	expect((await response.json()).session).toMatchObject({
+		cwd: '/work/app',
+		workMode: 'autonomous'
+	});
 });

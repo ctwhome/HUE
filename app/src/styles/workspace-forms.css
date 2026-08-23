@@ -143,8 +143,8 @@
 
 .project-row:hover .project-edit,
 .project-select.active + .project-edit,
-.session-row:hover .session-actions,
-.session-row:focus-within .session-actions {
+.session-row:hover .session-edit,
+.session-select.active + .session-edit {
 	opacity: 1;
 }
 
