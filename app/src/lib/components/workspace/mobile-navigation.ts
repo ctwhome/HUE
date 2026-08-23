@@ -8,6 +8,13 @@ export type NavigationMemory = {
 };
 
 export type NavigationDestination = Omit<NavigationMemory, 'version'> & { explicit: boolean };
+export type LaunchIntent = 'new-session' | 'capture' | 'share' | 'projects' | 'recents' | null;
+export type LaunchSource = 'explicit' | 'intent' | 'notification' | 'remembered' | 'default';
+export type LaunchDestination = NavigationDestination & {
+	intent: LaunchIntent;
+	token: string | null;
+	source: LaunchSource;
+};
 
 export type MobileGesture = {
 	status: 'pending' | 'active' | 'cancelled';
@@ -43,14 +50,74 @@ export function parseNavigationMemory(_raw: string | null): NavigationMemory | n
 	}
 }
 
-export function resolveNavigationDestination(
+export function resolveLaunchDestination(
 	_url: URL,
 	_rawMemory: string | null,
-	_projectIds: string[]
-): NavigationDestination {
+	_projectIds: string[],
+	_notification: { projectId: string | null; sessionId: string | null } | null = null
+): LaunchDestination {
 	const params = _url.searchParams;
 	const explicit = params.has('project') || params.has('session') || params.has('pane');
 	const memory = parseNavigationMemory(_rawMemory);
+	const requestedIntent = explicit ? null : params.get('intent');
+	const intent = ['new-session', 'capture', 'share', 'projects', 'recents'].includes(
+		requestedIntent ?? ''
+	)
+		? (requestedIntent as Exclude<LaunchIntent, null>)
+		: null;
+	if (intent === 'capture' || intent === 'share' || intent === 'new-session') {
+		const token = params.get('token');
+		return {
+			projectId: null,
+			sessionId: null,
+			pane: null,
+			explicit: false,
+			intent,
+			token: token && /^[A-Za-z0-9-]{1,128}$/.test(token) ? token : null,
+			source: 'intent'
+		};
+	}
+	if (intent === 'projects') {
+		return {
+			projectId: null,
+			sessionId: null,
+			pane: 'projects',
+			explicit: false,
+			intent,
+			token: null,
+			source: 'intent'
+		};
+	}
+	if (intent === 'recents') {
+		const rememberedProject = memory?.projectId;
+		const projectId =
+			rememberedProject && _projectIds.includes(rememberedProject)
+				? rememberedProject
+				: (_projectIds[0] ?? null);
+		return {
+			projectId,
+			sessionId: null,
+			pane: 'sessions',
+			explicit: false,
+			intent,
+			token: null,
+			source: 'intent'
+		};
+	}
+	if (!explicit && _notification) {
+		const projectId = _notification.projectId;
+		if (projectId === null || _projectIds.includes(projectId)) {
+			return {
+				projectId,
+				sessionId: _notification.sessionId,
+				pane: null,
+				explicit: false,
+				intent: null,
+				token: null,
+				source: 'notification'
+			};
+		}
+	}
 	const requestedProject = explicit
 		? params.get('project') === 'none'
 			? null
@@ -61,13 +128,24 @@ export function resolveNavigationDestination(
 			projectId: _projectIds[0] ?? null,
 			sessionId: null,
 			pane: null,
-			explicit: false
+			explicit: false,
+			intent: null,
+			token: null,
+			source: 'default'
 		};
 	const projectExists =
 		requestedProject === null ||
 		(typeof requestedProject === 'string' && _projectIds.includes(requestedProject));
 	if (requestedProject === undefined || !projectExists)
-		return { projectId: null, sessionId: null, pane: 'projects', explicit };
+		return {
+			projectId: null,
+			sessionId: null,
+			pane: 'projects',
+			explicit,
+			intent: null,
+			token: null,
+			source: explicit ? 'explicit' : 'remembered'
+		};
 	const pane = explicit
 		? params.get('pane') === 'projects' || params.get('pane') === 'sessions'
 			? (params.get('pane') as Exclude<MobilePane, null>)
@@ -77,8 +155,25 @@ export function resolveNavigationDestination(
 		projectId: requestedProject,
 		sessionId: explicit ? params.get('session') : (memory?.sessionId ?? null),
 		pane,
-		explicit
+		explicit,
+		intent: null,
+		token: null,
+		source: explicit ? 'explicit' : 'remembered'
 	};
+}
+
+export function resolveNavigationDestination(
+	url: URL,
+	rawMemory: string | null,
+	projectIds: string[]
+): NavigationDestination {
+	const {
+		intent: _intent,
+		token: _token,
+		source: _source,
+		...destination
+	} = resolveLaunchDestination(url, rawMemory, projectIds);
+	return destination;
 }
 
 export function beginMobileGesture(_options: {
