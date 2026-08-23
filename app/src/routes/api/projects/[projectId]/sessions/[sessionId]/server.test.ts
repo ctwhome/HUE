@@ -17,6 +17,12 @@ let failCopy = false;
 let lockActive = false;
 let metadataMutated = false;
 let listCalls = 0;
+let workModeCalls: Array<{
+	projectId: string;
+	sessionId: string;
+	workMode: string;
+	source: string;
+}> = [];
 
 mock.module('$lib/server/route-services', () => ({
 	...serviceExportStubs,
@@ -40,6 +46,7 @@ mock.module('$lib/server/route-services', () => ({
 				cwd: '/work/hue-old',
 				icon: null,
 				title: sourceTitle,
+				workMode: 'autonomous',
 				pinned: false,
 				archived: false,
 				folder: null,
@@ -57,6 +64,15 @@ mock.module('$lib/server/route-services', () => ({
 			copySessionMetadata: () => {
 				if (failCopy) throw new Error('SQLite disk full');
 				return forked;
+			},
+			updateSessionWorkMode: (
+				projectId: string,
+				sessionId: string,
+				workMode: string,
+				source: string
+			) => {
+				workModeCalls.push({ projectId, sessionId, workMode, source });
+				return { session: { ...forked, workMode }, event: null };
 			},
 			updateSessionMetadata: () => {
 				metadataMutated = true;
@@ -112,6 +128,7 @@ test('returns stored turn state while Hermes transcript reconnects', async () =>
 	expect(await response.json()).toEqual({
 		transcript: [],
 		transcriptError: 'Hermes ACP reconnecting',
+		workMode: 'autonomous',
 		...snapshot
 	});
 });
@@ -253,4 +270,21 @@ test('looks up a deep-linked Session directly without listing Hermes Sessions', 
 		expect.objectContaining({ sessionId: 'session-1', title: 'Source' })
 	]);
 	expect(listCalls).toBe(0);
+});
+
+test('PATCH updates HUE work mode even while turn is running', async () => {
+	workModeCalls = [];
+	const { PATCH } = await import('./+server');
+	const response = await PATCH({
+		params: { projectId: 'project-1', sessionId: 'session-1' },
+		request: new Request('http://hue.test', {
+			method: 'PATCH',
+			body: JSON.stringify({ workMode: 'live' })
+		})
+	} as never);
+
+	expect(response.status).toBe(200);
+	expect(workModeCalls).toEqual([
+		{ projectId: 'project-1', sessionId: 'session-1', workMode: 'live', source: 'selector' }
+	]);
 });
