@@ -64,6 +64,8 @@
 	let initialized = false;
 	let known = new Set<string>();
 	let audioContext: AudioContext | null = null;
+	let refreshGeneration = 0;
+	let refreshesInFlight = 0;
 	let centerState = $derived(attentionState({ loading, error, items, unread }));
 	const endpointKey = 'hue:notification:endpoint-id';
 	const deviceKey = 'hue:notification:device-id';
@@ -112,17 +114,25 @@
 		}
 	}
 
-	async function refresh(reset = true) {
-		if (reset) loading = true;
-		error = '';
+	async function refresh(reset = true, background = false) {
+		if (background && refreshesInFlight > 0) return;
+		const request = ++refreshGeneration;
+		const requestedView = view;
+		const requestedCursor = !reset ? nextCursor : null;
+		refreshesInFlight += 1;
+		if (!background) {
+			if (reset) loading = true;
+			error = '';
+		}
 		try {
-			const query = new URLSearchParams({ view, limit: '50' });
-			if (!reset && nextCursor) query.set('cursor', nextCursor);
+			const query = new URLSearchParams({ view: requestedView, limit: '50' });
+			if (requestedCursor) query.set('cursor', requestedCursor);
 			const body = await api<{
 				items: Item[];
 				nextCursor: string | null;
 				counts: { unread: number; all: number };
 			}>(`/api/notifications?${query}`);
+			if (request !== refreshGeneration) return;
 			const incoming = body.items.filter((item) => !known.has(item.id));
 			if (initialized) for (const item of incoming.toReversed()) present(item);
 			for (const item of body.items) known.add(item.id);
@@ -133,9 +143,10 @@
 			oncounts(unread);
 			updateBadge(unread);
 		} catch {
-			error = 'Unable to load notifications';
+			if (request === refreshGeneration && !background) error = 'Unable to load notifications';
 		} finally {
-			loading = false;
+			refreshesInFlight -= 1;
+			if (request === refreshGeneration && !background) loading = false;
 		}
 	}
 
@@ -324,7 +335,7 @@
 		void refresh();
 		void loadSettings();
 		void reportPresence();
-		const poll = setInterval(() => void refresh(), 5_000);
+		const poll = setInterval(() => void refresh(true, true), 5_000);
 		const presence = setInterval(() => void reportPresence(), 30_000);
 		const visibility = () => void reportPresence();
 		document.addEventListener('visibilitychange', visibility);
