@@ -41,6 +41,7 @@ export function persistNavigationSelection(
 	const url = new URL(window.location.href);
 	url.searchParams.delete('intent');
 	url.searchParams.delete('token');
+	url.searchParams.delete('event');
 	url.searchParams.set('project', navigation.selectedProject?.id ?? 'none');
 	if (navigation.selectedSession)
 		url.searchParams.set('session', navigation.selectedSession.sessionId);

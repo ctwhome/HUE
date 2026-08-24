@@ -7,6 +7,7 @@ type RuntimeStateOptions = {
 	sessionPath: (sessionId: string) => string;
 	session: SessionState;
 	setError: (message: string) => void;
+	rememberSelection: (selection: { modelId?: string; modeId?: string }) => void;
 };
 
 export class RuntimeState {
@@ -54,6 +55,7 @@ export class RuntimeState {
 				{ method: 'PATCH', body: JSON.stringify({ [kind]: value }) }
 			);
 			this.options.session.runtime = { ...this.options.session.runtime, ...body.runtime };
+			this.options.rememberSelection({ [kind]: value });
 		} catch (cause) {
 			this.options.setError(cause instanceof Error ? cause.message : String(cause));
 		} finally {

@@ -6,6 +6,7 @@
 		ChevronRight,
 		Circle,
 		CircleDot,
+		BookOpenText,
 		GripVertical,
 		Mic,
 		MicOff,
@@ -17,11 +18,22 @@
 		Square,
 		X
 	} from 'lucide-svelte';
-	import type { WorkspacePlanEntry } from '$lib';
+	import {
+		selectThinkingTimeline,
+		type WorkspacePlanEntry,
+		type WorkspaceTimelineItem
+	} from '$lib';
 	import type { ImageAttachment, InputAttachment } from '$lib/message-content';
 	import { compactModelLabel } from './mobile-navigation';
 	import CurrentTask from './CurrentTask.svelte';
-	import type { HermesCommand as Command, HermesRuntime as Runtime, QueuedMessage } from './types';
+	import PromptLibraryDialog from './PromptLibraryDialog.svelte';
+	import ThinkingDialog from './ThinkingDialog.svelte';
+	import type {
+		HermesCommand as Command,
+		HermesRuntime as Runtime,
+		QueuedMessage,
+		Workflow
+	} from './types';
 	import type { WorkMode } from '$lib/work-mode';
 
 	type Model = NonNullable<Runtime['models']>['availableModels'][number];
@@ -29,6 +41,8 @@
 	let {
 		composer,
 		plan,
+		timeline,
+		renderMarkdown,
 		composerElement = $bindable(),
 		draggingImages = $bindable(),
 		images = $bindable(),
@@ -51,6 +65,10 @@
 		workMode,
 		workModeChanging,
 		runtimeChanging,
+		promptLibraryAvailable,
+		workflows,
+		workflowName = $bindable(),
+		workflowPrompt = $bindable(),
 		modelMenuOpen = $bindable(),
 		modelPopover = $bindable(),
 		stopping,
@@ -73,6 +91,9 @@
 		onmodel,
 		onruntime,
 		onworkmode,
+		onloadworkflows,
+		onworkflow,
+		onrunworkflow,
 		onscrolllatest,
 		matchingCommands,
 		currentModel,
@@ -82,6 +103,8 @@
 	}: {
 		composer: string;
 		plan: WorkspacePlanEntry[];
+		timeline: WorkspaceTimelineItem[];
+		renderMarkdown: (text: string) => string;
 		composerElement?: HTMLTextAreaElement;
 		draggingImages: boolean;
 		images: ImageAttachment[];
@@ -104,6 +127,10 @@
 		workMode: WorkMode;
 		workModeChanging: boolean;
 		runtimeChanging: boolean;
+		promptLibraryAvailable: boolean;
+		workflows: Workflow[];
+		workflowName: string;
+		workflowPrompt: string;
 		modelMenuOpen: boolean;
 		modelPopover?: HTMLElement;
 		stopping: boolean;
@@ -127,12 +154,25 @@
 		onmodel: (id: string) => void;
 		onruntime: (kind: 'modelId' | 'modeId', value: string) => void;
 		onworkmode: (value: WorkMode) => void;
+		onloadworkflows: () => Promise<void>;
+		onworkflow: (event: SubmitEvent) => void;
+		onrunworkflow: (workflow: Workflow) => void;
 		onscrolllatest: (behavior: ScrollBehavior) => void;
 		matchingCommands: () => Command[];
 		currentModel: () => Model | undefined;
 		modelCategories: () => Array<{ name: string; models: Model[] }>;
 		contextPercent: () => number | null;
 	} = $props();
+	let thinkingTimeline = $derived(selectThinkingTimeline(timeline));
+	let promptLibraryDialog = $state<HTMLDialogElement>();
+	let promptLibraryLoading = $state(false);
+
+	async function openPromptLibrary() {
+		promptLibraryDialog?.showModal();
+		promptLibraryLoading = true;
+		await onloadworkflows();
+		promptLibraryLoading = false;
+	}
 </script>
 
 <form
@@ -294,7 +334,10 @@
 				{/if}
 			</div>
 		</section>{/if}
-	<CurrentTask {plan} />
+	<div class="composer-activity">
+		<ThinkingDialog items={thinkingTimeline} {renderMarkdown} {busy} />
+		<CurrentTask {plan} />
+	</div>
 	<textarea
 		bind:this={composerElement}
 		value={composer}
@@ -306,6 +349,16 @@
 			: 'Message Hermes… / for commands'}
 		aria-label="Message Hermes"></textarea>
 	<div class="composer-toolbar flex min-w-0 items-center gap-2 pt-1">
+		{#if promptLibraryAvailable}<button
+				type="button"
+				class="attach-button flex min-h-9 shrink-0 items-center gap-2 rounded-lg border border-border px-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+				aria-label="Prompt library"
+				title="Open prompt library"
+				onclick={openPromptLibrary}
+			>
+				<BookOpenText size={20} aria-hidden="true" /><span class="hidden lg:inline">Prompts</span
+				></button
+			>{/if}
 		<label
 			class="attach-button grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
 			aria-label="Attach images and files"
@@ -486,3 +539,12 @@
 			>{/if}
 	</div>
 </form>
+<PromptLibraryDialog
+	bind:dialog={promptLibraryDialog}
+	loading={promptLibraryLoading}
+	{workflows}
+	bind:name={workflowName}
+	bind:prompt={workflowPrompt}
+	onsubmit={onworkflow}
+	onrun={onrunworkflow}
+/>
