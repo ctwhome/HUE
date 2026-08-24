@@ -268,31 +268,34 @@ test('mobile shell keeps drawers and 44px targets', () => {
 
 test('composer exposes HUE work mode selector and timeline status item hooks', () => {
 	const composer = read('../lib/components/workspace/Composer.svelte');
-	const conversation = read('../lib/components/workspace/Conversation.svelte');
+	const dialog = read('../lib/components/workspace/ThinkingDialog.svelte');
 	expect(composer).toContain('Work mode');
 	expect(composer).toContain('Autonomous');
 	expect(composer).toContain('Live');
-	expect(conversation).toContain("item.kind === 'status'");
-	expect(conversation).toContain('aria-label={item.label}');
+	expect(dialog).toContain("item.kind === 'status'");
+	expect(dialog).toContain('{item.label}');
 });
 
-test('active reasoning uses one lazy liquid orb while historical thoughts stay collapsed', () => {
+test('clean chat moves private activity into focused thinking dialog and tasks into composer', () => {
 	const conversation = read('../lib/components/workspace/Conversation.svelte');
+	const composer = read('../lib/components/workspace/Composer.svelte');
+	const task = read('../lib/components/workspace/CurrentTask.svelte');
+	const dialog = read('../lib/components/workspace/ThinkingDialog.svelte');
 	const orb = read('../lib/components/workspace/LiquidThinkingOrb.svelte');
-	expect(conversation).toContain('<LiquidThinkingOrb');
-	expect(conversation).toContain(
-		"item.kind === 'thought' && item.sequence !== currentThought?.sequence"
-	);
-	expect(conversation).toContain('{#if busy}<LiquidThinkingOrb');
-	expect(conversation).toContain("item.kind === 'thought'");
+	expect(conversation).toContain('selectTranscriptTimeline');
+	expect(conversation).toContain('<ThinkingDialog');
+	expect(conversation).not.toContain('<LiquidThinkingOrb');
+	expect(conversation).not.toContain("item.kind === 'plan'");
+	expect(dialog).toContain('aria-label="Thinking activity"');
+	expect(dialog).toContain('aria-modal="true"');
+	expect(dialog).toContain("event.key === 'Escape'");
+	expect(dialog).toContain('trigger?.focus()');
+	expect(composer).toContain('<CurrentTask {plan}');
+	expect(task).toContain('Current task');
+	expect(task).toContain('aria-expanded={tasksExpanded}');
 	expect(orb).toContain('Hermes reasoning');
-	expect(orb).toContain('data-timeline-sequence={sequence}');
 	expect(orb).toContain("import('./liquid-orb-renderer')");
-	expect(orb.indexOf("matchMedia('(prefers-reduced-motion: reduce)')")).toBeLessThan(
-		orb.indexOf("import('./liquid-orb-renderer')")
-	);
 	expect(orb).toContain("canvas.getContext('webgpu')");
-	expect(orb).toContain('removeEventListener');
 	expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.liquid-thinking-orb/);
 });
 

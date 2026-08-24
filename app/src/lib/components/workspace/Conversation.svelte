@@ -1,17 +1,13 @@
 <script lang="ts">
-	import {
-		ChevronRight,
-		Copy,
-		Download,
-		ExternalLink,
-		FolderOpen,
-		GitFork,
-		Pencil
-	} from 'lucide-svelte';
+	import { Copy, Download, ExternalLink, FolderOpen, GitFork, Pencil } from 'lucide-svelte';
 	import type { ImageAttachment, InputAttachment } from '$lib/message-content';
-	import type { WorkspaceActivity, WorkspacePlanEntry, WorkspaceTimelineItem } from '$lib';
-	import LiquidThinkingOrb from './LiquidThinkingOrb.svelte';
-	import { activeThought } from './thinking-state';
+	import {
+		selectThinkingTimeline,
+		selectTranscriptTimeline,
+		type WorkspaceActivity,
+		type WorkspaceTimelineItem
+	} from '$lib';
+	import ThinkingDialog from './ThinkingDialog.svelte';
 
 	type Message = {
 		role: 'user' | 'assistant';
@@ -67,8 +63,6 @@
 
 	const serialized = (value: unknown) =>
 		typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-	const progress = (plan: WorkspacePlanEntry[]) =>
-		plan.filter(({ status }) => status === 'completed').length;
 	const validTimestamp = (value?: string): value is string =>
 		!!value && !Number.isNaN(Date.parse(value));
 	const timestamp = (value: string) =>
@@ -79,7 +73,8 @@
 		});
 	const timestampTitle = (value: string) =>
 		new Date(value).toLocaleString([], { dateStyle: 'full', timeStyle: 'long' });
-	let currentThought = $derived(activeThought(timeline, busy));
+	let transcriptTimeline = $derived(selectTranscriptTimeline(timeline));
+	let thinkingTimeline = $derived(selectThinkingTimeline(timeline));
 	function handleTranscriptClick(event: MouseEvent) {
 		const button = (event.target as Element).closest<HTMLButtonElement>('[data-copy-code]');
 		if (!button) return;
@@ -116,7 +111,8 @@
 >
 	<div class="transcript-content min-h-full">
 		{#if messageNotice}<span class="copy-notice" role="status">{messageNotice}</span>{/if}
-		{#each timeline as item, index (item.kind + ':' + item.sequence)}
+		<ThinkingDialog items={thinkingTimeline} {renderMarkdown} />
+		{#each transcriptTimeline as item, index (item.kind + ':' + item.sequence)}
 			{#if item.kind === 'message'}
 				{@const message = item}
 				<article
@@ -209,7 +205,9 @@
 												alt={image.name}
 											/>{/each}
 									</div>{/if}
-								{@html renderMarkdown(message.text)}{#if index === timeline.length - 1 && busy}<span
+								{@html renderMarkdown(
+									message.text
+								)}{#if index === transcriptTimeline.length - 1 && busy}<span
 										class="cursor animate-pulse text-violet-400">▋</span
 									>{/if}
 							</div>
@@ -247,7 +245,7 @@
 								title="Hermes ACP can duplicate a full Session but cannot fork from a selected message"
 								disabled><GitFork size={14} aria-hidden="true" /></button
 							>
-							{#if message.role === 'assistant' && index === timeline.length - 1}<button
+							{#if message.role === 'assistant' && index === transcriptTimeline.length - 1}<button
 									type="button"
 									aria-label="Retry last response"
 									title="Retry last response by resending previous user message"
@@ -264,93 +262,6 @@
 						</div>
 					</div>
 				</article>
-			{:else if item.kind === 'plan' && item.entries.length}<section
-					data-timeline-sequence={item.sequence}
-					class="todo-progress activity-card mx-auto mb-4 max-w-[774px] rounded-xl border border-border bg-card p-3"
-					aria-label="Hermes todo progress"
-				>
-					<header class="flex items-center justify-between gap-3">
-						<strong>Hermes todo</strong><span
-							>{progress(item.entries)} of {item.entries.length}</span
-						>{#if validTimestamp(item.createdAt)}<time
-								datetime={item.createdAt}
-								title={timestampTitle(item.createdAt)}
-								aria-label={timestampTitle(item.createdAt)}>{timestamp(item.createdAt)}</time
-							>{/if}
-					</header>
-					<progress class="w-full" value={progress(item.entries)} max={item.entries.length}
-						>{progress(item.entries)} of {item.entries.length}</progress
-					>
-					<ul>
-						{#each item.entries as entry}<li class:completed={entry.status === 'completed'}>
-								<span aria-hidden="true"
-									>{entry.status === 'completed'
-										? '✓'
-										: entry.status === 'in_progress'
-											? '◉'
-											: '○'}</span
-								>
-								{entry.content}
-							</li>{/each}
-					</ul>
-				</section>
-			{:else if item.kind === 'thought' && item.sequence !== currentThought?.sequence}<details
-					data-timeline-sequence={item.sequence}
-					class="agent-thought mx-auto mb-6 max-w-[774px] border-l-2 border-border text-muted-foreground"
-				>
-					<summary
-						>Hermes reasoning{#if validTimestamp(item.createdAt)}
-							<time
-								datetime={item.createdAt}
-								title={timestampTitle(item.createdAt)}
-								aria-label={timestampTitle(item.createdAt)}>{timestamp(item.createdAt)}</time
-							>{/if}</summary
-					>
-					<div class="markdown">{@html renderMarkdown(item.text)}</div>
-				</details>
-			{:else if item.kind === 'status'}<section
-					data-timeline-sequence={item.sequence}
-					class="mx-auto mb-4 max-w-[774px] rounded-xl border border-border bg-card px-3 py-2 text-sm text-muted-foreground"
-					aria-label={item.label}
-				>
-					<div class="flex items-center justify-between gap-3">
-						<span>{item.label}</span>
-						{#if validTimestamp(item.createdAt)}<time
-								datetime={item.createdAt}
-								title={timestampTitle(item.createdAt)}
-								aria-label={timestampTitle(item.createdAt)}>{timestamp(item.createdAt)}</time
-							>{/if}
-					</div>
-				</section>
-			{:else if item.kind === 'tool'}<details
-					data-timeline-sequence={item.sequence}
-					class="tool-card activity-card mx-auto mb-4 max-w-[774px] overflow-hidden rounded-xl border border-border bg-card"
-					aria-label={item.title ?? item.name ?? 'Tool call'}
-				>
-					<summary
-						><ChevronRight class="disclosure-icon" size={14} aria-hidden="true" /><strong
-							>{item.title ?? item.name ?? 'Tool call'}</strong
-						><span class="activity-status">{item.status.replace('_', ' ')}</span
-						>{#if item.durationMs !== undefined}<span>{item.durationMs} ms</span
-							>{/if}{#if validTimestamp(item.createdAt)}<time
-								datetime={item.createdAt}
-								title={timestampTitle(item.createdAt)}
-								aria-label={timestampTitle(item.createdAt)}>{timestamp(item.createdAt)}</time
-							>{/if}</summary
-					>
-					<div class="activity-body">
-						{#if item.args !== undefined}<strong>Arguments</strong>
-							<pre>{serialized(item.args)}</pre>{/if}{#if item.result !== undefined}<strong
-								>Result</strong
-							>
-							<pre>{serialized(item.result)}</pre>{/if}{#if item.error}<p
-								class="text-destructive"
-								role="alert"
-							>
-								{item.error}
-							</p>{/if}
-					</div>
-				</details>
 			{:else if item.kind === 'permission'}<section
 					data-timeline-sequence={item.sequence}
 					class="permission-card activity-card mx-auto mb-4 max-w-[774px] rounded-xl border border-amber-500/50 bg-card p-3"
@@ -414,57 +325,8 @@
 							>
 						</div>{:else}<p class="activity-status" role="status">{item.status}</p>{/if}
 				</form>
-			{:else if item.kind === 'subagents'}
-				<details
-					data-timeline-sequence={item.sequence}
-					class="subagent-tree mx-auto mb-6 max-w-[774px] overflow-hidden rounded-xl border border-border bg-card"
-					aria-label={item.title}
-					open
-				>
-					<summary
-						><ChevronRight
-							class="disclosure-icon shrink-0 text-muted-foreground"
-							size={14}
-							aria-hidden="true"
-						/><span class="subagent-tree-title min-w-0 text-sm font-bold">{item.title}</span><span
-							class="subagent-status ml-auto shrink-0 text-xs text-muted-foreground capitalize"
-							class:active={item.status === 'in_progress'}>{item.status.replace('_', ' ')}</span
-						>{#if validTimestamp(item.createdAt)}<time
-								datetime={item.createdAt}
-								title={timestampTitle(item.createdAt)}
-								aria-label={timestampTitle(item.createdAt)}>{timestamp(item.createdAt)}</time
-							>{/if}</summary
-					>
-					<div class="subagent-children py-1">
-						{#each item.children ?? [] as child (child.index)}<details class="subagent-child">
-								<summary
-									><ChevronRight
-										class="disclosure-icon shrink-0 text-muted-foreground"
-										size={14}
-										aria-hidden="true"
-									/><span class="subagent-branch" aria-hidden="true"></span><span
-										class="subagent-goal min-w-0 break-words">{child.goal}</span
-									>{#if child.role}<span class="subagent-role shrink-0 text-xs text-violet-300"
-											>@{child.role}</span
-										>{/if}<span
-										class="subagent-status ml-auto shrink-0 text-xs text-muted-foreground capitalize"
-										class:active={child.status === 'in_progress'}
-										>{child.status.replace('_', ' ')}</span
-									></summary
-								>{#if child.result}<div
-										class="subagent-result mx-3 mb-2.5 ml-8 border-l-2 border-border bg-background p-2.5 text-xs whitespace-pre-wrap text-muted-foreground"
-									>
-										{child.result}
-									</div>{/if}
-							</details>{/each}
-					</div>
-				</details>
 			{/if}
 		{/each}
-		{#if busy}<LiquidThinkingOrb
-				thought={currentThought?.text}
-				sequence={currentThought?.sequence}
-			/>{/if}
 		{#if timeline.length === 0}<div
 				class="welcome mx-auto mt-[12vh] max-w-2xl text-center text-muted-foreground"
 			>

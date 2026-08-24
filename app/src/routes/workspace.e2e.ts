@@ -2718,10 +2718,14 @@ test('shows durable delegate_task children as a collapsible status and result tr
 	expect(browserErrors).toEqual([]);
 });
 
-test('renders durable ACP activity, todo, approval, clarify, timestamps, and code feedback', async ({
+test('keeps chat clean while Thinking dialog and current task preserve ACP activity', async ({
 	page
-}) => {
+}, testInfo) => {
 	const responses: unknown[] = [];
+	const browserErrors: string[] = [];
+	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
+	page.on('pageerror', (error) => browserErrors.push(error.stack ?? error.message));
+	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
 	await page.route('**/api/projects/*/sessions', (route) =>
 		route.fulfill({
 			json: {
@@ -2761,7 +2765,7 @@ test('renders durable ACP activity, todo, approval, clarify, timestamps, and cod
 					}
 				],
 				runtime: { profile: 'default', clarify: { status: 'available' } },
-				cursor: 10,
+				cursor: 12,
 				activeTurn: {
 					messageId: 'msg-1',
 					status: 'running',
@@ -2888,13 +2892,34 @@ test('renders durable ACP activity, todo, approval, clarify, timestamps, and cod
 					{
 						sequence: 10,
 						type: 'agent.thought',
+						createdAt: '2026-08-22T10:00:04.000Z',
 						payload: { messageId: 'msg-1', text: 'Private published reasoning' }
+					},
+					{
+						sequence: 11,
+						type: 'agent.subagents',
+						createdAt: '2026-08-22T10:00:05.000Z',
+						payload: {
+							messageId: 'msg-1',
+							id: 'delegate-1',
+							title: '1 subagent',
+							status: 'completed',
+							children: [
+								{ index: 0, goal: 'Inspect fixtures', status: 'completed', result: 'Ready' }
+							]
+						}
+					},
+					{
+						sequence: 12,
+						type: 'session.work_mode_changed',
+						createdAt: '2026-08-22T10:00:06.000Z',
+						payload: { priorMode: 'autonomous', workMode: 'live', source: 'user' }
 					}
 				]
 			}
 		})
 	);
-	await page.route(/\/sessions\/session-interactions\/events\?after=10$/, (route) =>
+	await page.route(/\/sessions\/session-interactions\/events\?after=12$/, (route) =>
 		route.fulfill({ json: { events: [] } })
 	);
 	await page.route(/\/sessions\/session-interactions\/interactions$/, async (route) => {
@@ -2911,12 +2936,15 @@ test('renders durable ACP activity, todo, approval, clarify, timestamps, and cod
 	await expect(page.getByText('Hermes ACP · Clarify available')).toBeVisible();
 	expect(
 		await page
-			.locator('[data-timeline-sequence]')
+			.locator('.transcript [data-timeline-sequence]')
 			.evaluateAll((elements) =>
 				elements.map((element) => Number(element.getAttribute('data-timeline-sequence')))
 			)
-	).toEqual([1, 2, 3, 5, 6, 7, 8, 9, 10]);
-	await expect(page.getByRole('group', { name: 'Read configuration' })).toContainText('425 ms');
+	).toEqual([1, 2, 5, 7, 8, 9]);
+	await expect(page.getByRole('button', { name: 'Thinking' })).toBeVisible();
+	await expect(page.getByRole('button', { name: /Current task: Run checks/ })).toContainText(
+		'1 of 2'
+	);
 	const conversationTimes = page.locator('.transcript article time');
 	await expect(conversationTimes).toHaveCount(2);
 	await expect(conversationTimes.first()).toHaveAttribute('datetime', '2026-08-22T09:59:59.000Z');
@@ -2925,13 +2953,46 @@ test('renders durable ACP activity, todo, approval, clarify, timestamps, and cod
 		await expect(time).toHaveText(/^\d{2}:\d{2}$/);
 		await expect(time).toHaveAttribute('title', /2026/);
 	}
-	const toolSummary = page
-		.getByRole('group', { name: 'Read configuration' })
-		.getByText('Read configuration');
+	const thinkingTrigger = page.getByRole('button', { name: 'Thinking' });
+	await thinkingTrigger.click();
+	const thinking = page.getByRole('dialog', { name: 'Thinking activity' });
+	await expect(thinking).toBeVisible();
+	expect(
+		await thinking
+			.locator('.thinking-event')
+			.first()
+			.evaluate((element) => getComputedStyle(element).display)
+	).toBe('grid');
+	expect(
+		await thinking
+			.locator('[data-thinking-sequence]')
+			.evaluateAll((elements) =>
+				elements.map((element) => Number(element.getAttribute('data-thinking-sequence')))
+			)
+	).toEqual([3, 10, 11, 12]);
+	await expect(thinking.getByText('Inspect fixtures')).toBeVisible();
+	await expect(thinking.getByText('Work mode changed to Live')).toBeVisible();
+	const toolGroup = thinking.getByRole('group', { name: 'Read configuration' });
+	const toolSummary = toolGroup.locator('summary');
 	await toolSummary.focus();
 	await toolSummary.press('Enter');
-	await expect(page.getByRole('group', { name: 'Read configuration' })).toContainText('[REDACTED]');
-	await expect(page.getByRole('region', { name: 'Hermes todo progress' })).toContainText('1 of 2');
+	await expect(toolGroup).toContainText('[REDACTED]');
+	await expect(thinking.getByText('Private published reasoning')).toBeVisible();
+	await thinking.getByRole('button', { name: 'Close Thinking' }).click();
+	await expect(thinking).toHaveCount(0);
+	await expect(thinkingTrigger).toBeFocused();
+	await thinkingTrigger.click();
+	await page.keyboard.press('Escape');
+	await expect(thinking).toHaveCount(0);
+	await expect(thinkingTrigger).toBeFocused();
+	await thinkingTrigger.click();
+	await page.mouse.click(1, 1);
+	await expect(thinking).toHaveCount(0);
+	await expect(thinkingTrigger).toBeFocused();
+	await page.getByRole('button', { name: /Current task: Run checks/ }).click();
+	await expect(page.getByRole('region', { name: 'Current task plan' })).toContainText(
+		'Inspect files'
+	);
 	await expect(
 		page.getByRole('group', { name: 'Permission required: Execute test suite' })
 	).toBeVisible();
@@ -2950,8 +3011,6 @@ test('renders durable ACP activity, todo, approval, clarify, timestamps, and cod
 		.click();
 	await expect.poll(() => responses.length).toBe(3);
 	await expect(page.getByText('Private published reasoning')).toBeHidden();
-	await page.getByText('Hermes reasoning').click();
-	await expect(page.getByText('Private published reasoning')).toBeVisible();
 	await page.getByRole('button', { name: 'Copy code' }).focus();
 	await page.getByRole('button', { name: 'Copy code' }).press('Enter');
 	await expect(page.getByText('Code copied')).toBeVisible();
@@ -2961,12 +3020,25 @@ test('renders durable ACP activity, todo, approval, clarify, timestamps, and cod
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
 		);
-		if (viewport.width <= 390) {
-			await expectMinimumTouchTargets(
-				page.locator('.activity-card button, .activity-card summary, .code-block button')
-			);
-		}
+		if (viewport.width <= 390)
+			await expectMinimumTouchTargets(page.locator('.composer button, .code-block button'));
+		await thinkingTrigger.click();
+		await expect(thinking).toBeVisible();
+		expect(
+			await thinking.evaluate((element) => ({
+				width: element.getBoundingClientRect().width,
+				overflow: element.scrollWidth - element.clientWidth
+			}))
+		).toMatchObject({ overflow: 0 });
+		expect((await thinking.boundingBox())!.width).toBeLessThanOrEqual(viewport.width);
+		if (viewport.width <= 390) await expectMinimumTouchTargets(thinking.locator('button, summary'));
+		await testInfo.attach(`thinking-${viewport.width}x${viewport.height}`, {
+			body: await page.screenshot(),
+			contentType: 'image/png'
+		});
+		await thinking.getByRole('button', { name: 'Close Thinking' }).click();
 	}
+	expect(browserErrors).toEqual([]);
 });
 
 test('omits unavailable historical conversation timestamps', async ({ page }) => {
