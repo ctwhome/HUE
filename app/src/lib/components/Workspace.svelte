@@ -5,6 +5,10 @@
 	import { applyPreferences, readPreferences } from '$lib/preferences';
 	import type { CaptureInput } from '$lib/pwa/quick-capture';
 	import { renderMessageMarkdown } from '$lib/message-markdown';
+	import {
+		applyLastSessionSelections,
+		rememberLastSessionSelection
+	} from '$lib/session-selections';
 	import { formatWorkModeAnnouncement, type WorkMode } from '$lib/work-mode';
 	import { createVoiceCall } from '$lib/voice/voice-call.svelte';
 	import GlobalNavigation, { type GlobalView } from './GlobalNavigation.svelte';
@@ -104,14 +108,40 @@
 				sessionState.clear();
 			},
 			showCachedSession: sessionState.showCached,
-			applyCreatedSession: (body) => {
+			applyCreatedSession: async (body) => {
 				messageState.clear();
-				sessionState.applyCreated(body);
+				const selectedSession = navigation.selectedSession;
+				if (!selectedSession) {
+					sessionState.applyCreated(body);
+					return;
+				}
+				const selections = await applyLastSessionSelections({
+					storage: localStorage,
+					runtime: body.runtime ?? { profile: 'default' },
+					workMode: selectedSession.workMode ?? 'autonomous',
+					changeRuntime: async (kind, value) => {
+						const response = await workspaceApi<{ runtime: SessionLoad['runtime'] }>(
+							navigation.sessionApiPath(selectedSession.sessionId),
+							{ method: 'PATCH', body: JSON.stringify({ [kind]: value }) }
+						);
+						return response.runtime ?? {};
+					},
+					changeWorkMode: async (workMode) => {
+						const response = await workspaceApi<{ workMode: WorkMode }>(
+							navigation.sessionApiPath(selectedSession.sessionId),
+							{ method: 'PATCH', body: JSON.stringify({ workMode }) }
+						);
+						return response.workMode;
+					}
+				});
+				navigation.replaceSession({ ...selectedSession, workMode: selections.workMode });
+				sessionState.applyCreated({ ...body, runtime: selections.runtime });
 			},
 			applyLoadedSession: (body: SessionLoad) => {
 				messageState.clear();
 				sessionState.applyLoaded(body);
 			},
+			focusNotificationTarget: transcriptFollow.focusNotificationTarget,
 			stopPolling: messageState.stopPolling,
 			startPolling: messageState.startPolling,
 			restoreDraft: messageState.restoreDraft,
@@ -149,7 +179,8 @@
 		getSession: () => navigation.selectedSession,
 		sessionPath: (sessionId) => navigation.sessionApiPath(sessionId),
 		session: sessionState,
-		setError: (message) => (error = message)
+		setError: (message) => (error = message),
+		rememberSelection: (selection) => rememberLastSessionSelection(localStorage, selection)
 	});
 	const voice = createVoiceCall({
 		hasSession: () => navigation.selectedSession !== null,
@@ -164,7 +195,6 @@
 	let sessions = $derived(navigation.sessions);
 	let workflows = $derived(navigation.workflows);
 	let selectedSession = $derived(navigation.selectedSession);
-	let activeTab = $derived(navigation.activeTab);
 	let timeline = $derived(sessionState.timeline);
 	let selectedPlan = $derived(selectLatestPlan(timeline));
 	let commands = $derived(sessionState.commands);
@@ -201,6 +231,7 @@
 				...body.session,
 				workMode: body.workMode
 			});
+			rememberLastSessionSelection(localStorage, { workMode: body.workMode });
 			messageState.messageNotice = formatWorkModeAnnouncement(body.workMode);
 			if (body.event) sessionState.applyEvents([body.event]);
 		} catch (cause) {
@@ -332,22 +363,15 @@
 		{mobile}
 		{selectedProject}
 		{loading}
-		{activeTab}
 		{sessions}
 		{selectedSession}
-		{workflows}
-		bind:workflowName={navigation.workflowName}
-		bind:workflowPrompt={navigation.workflowPrompt}
 		bind:sessionSearch={navigation.sessionSearch}
 		bind:showArchived={navigation.showArchived}
 		{now}
 		oncreate={navigation.createSession}
-		ontab={navigation.changeTab}
 		onopen={(session) => navigation.openSession(session, 'push')}
 		onback={() => mobileShell?.open('projects')}
 		onedit={navigation.openEditSession}
-		onrun={navigation.runWorkflow}
-		onworkflow={navigation.addWorkflow}
 		onsearch={navigation.searchSessionList}
 		onclose={() => mobileShell?.close()}
 		isImage={isImageIcon}
@@ -388,6 +412,8 @@
 			<Composer
 				{composer}
 				plan={selectedPlan}
+				{timeline}
+				renderMarkdown={renderMessageMarkdown}
 				bind:composerElement={messageState.composerElement}
 				bind:draggingImages={messageState.draggingImages}
 				bind:images={messageState.images}
@@ -410,6 +436,10 @@
 				workMode={selectedSession.workMode ?? 'autonomous'}
 				{workModeChanging}
 				{runtimeChanging}
+				promptLibraryAvailable={Boolean(selectedProject?.rootAvailable)}
+				{workflows}
+				bind:workflowName={navigation.workflowName}
+				bind:workflowPrompt={navigation.workflowPrompt}
 				bind:modelMenuOpen={runtimeState.modelMenuOpen}
 				bind:modelPopover={runtimeState.modelPopover}
 				{stopping}
@@ -433,6 +463,9 @@
 				onmodel={runtimeState.selectModel}
 				onruntime={runtimeState.change}
 				onworkmode={changeWorkMode}
+				onloadworkflows={navigation.loadWorkflows}
+				onworkflow={navigation.addWorkflow}
+				onrunworkflow={navigation.runWorkflow}
 				onscrolllatest={transcriptFollow.scrollToLatest}
 				matchingCommands={messageState.matchingCommands}
 				currentModel={runtimeState.currentModel}

@@ -2,12 +2,10 @@
 	import { Copy, Download, ExternalLink, FolderOpen, GitFork, Pencil } from 'lucide-svelte';
 	import type { ImageAttachment, InputAttachment } from '$lib/message-content';
 	import {
-		selectThinkingTimeline,
 		selectTranscriptTimeline,
 		type WorkspaceActivity,
 		type WorkspaceTimelineItem
 	} from '$lib';
-	import ThinkingDialog from './ThinkingDialog.svelte';
 
 	type Message = {
 		role: 'user' | 'assistant';
@@ -74,7 +72,6 @@
 	const timestampTitle = (value: string) =>
 		new Date(value).toLocaleString([], { dateStyle: 'full', timeStyle: 'long' });
 	let transcriptTimeline = $derived(selectTranscriptTimeline(timeline));
-	let thinkingTimeline = $derived(selectThinkingTimeline(timeline));
 	function handleTranscriptClick(event: MouseEvent) {
 		const button = (event.target as Element).closest<HTMLButtonElement>('[data-copy-code]');
 		if (!button) return;
@@ -111,12 +108,13 @@
 >
 	<div class="transcript-content min-h-full">
 		{#if messageNotice}<span class="copy-notice" role="status">{messageNotice}</span>{/if}
-		<ThinkingDialog items={thinkingTimeline} {renderMarkdown} />
 		{#each transcriptTimeline as item, index (item.kind + ':' + item.sequence)}
 			{#if item.kind === 'message'}
 				{@const message = item}
 				<article
 					data-timeline-sequence={item.sequence}
+					data-message-id={message.messageId}
+					tabindex="-1"
 					class:assistant={message.role === 'assistant'}
 					class:user={message.role === 'user'}
 				>
@@ -253,7 +251,7 @@
 									onclick={onretrylast}>Retry</button
 								>{/if}
 							{#if validTimestamp(message.createdAt)}<time
-									class="ml-1 text-xs text-muted-foreground"
+									class="ml-auto text-xs text-muted-foreground"
 									datetime={message.createdAt}
 									title={timestampTitle(message.createdAt)}
 									aria-label={timestampTitle(message.createdAt)}
@@ -264,6 +262,8 @@
 				</article>
 			{:else if item.kind === 'permission'}<section
 					data-timeline-sequence={item.sequence}
+					data-message-id={item.messageId}
+					tabindex="-1"
 					class="permission-card activity-card mx-auto mb-4 max-w-[774px] rounded-xl border border-amber-500/50 bg-card p-3"
 					role="group"
 					aria-label={`Permission required: ${item.toolCall?.title ?? 'Hermes tool'}`}
@@ -288,6 +288,8 @@
 				</section>
 			{:else if item.kind === 'clarify'}<form
 					data-timeline-sequence={item.sequence}
+					data-message-id={item.messageId}
+					tabindex="-1"
 					class="clarify-card activity-card mx-auto mb-4 grid max-w-[774px] gap-3 rounded-xl border border-sky-500/50 bg-card p-3"
 					role="group"
 					aria-label={`Clarify: ${item.message ?? 'Hermes question'}`}

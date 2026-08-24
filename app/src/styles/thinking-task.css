@@ -1,83 +1,90 @@
+.composer-activity {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	margin: -2px 0 4px;
+	border-bottom: 1px solid var(--border);
+}
+.composer-activity > :only-child {
+	grid-column: 1 / -1;
+}
+.thinking-activity {
+	min-width: 0;
+	border-right: 1px solid var(--border);
+}
 .thinking-trigger {
-	position: sticky;
-	top: 8px;
-	z-index: 3;
 	display: flex;
+	width: 100%;
 	min-height: 36px;
 	align-items: center;
 	gap: 7px;
-	margin: 0 0 12px auto;
-	border: 1px solid var(--border);
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--card) 92%, transparent);
-	padding: 6px 11px;
-	box-shadow: 0 8px 24px #0004;
+	border-radius: 8px;
+	background: transparent;
+	padding: 5px 8px;
 	color: var(--muted-foreground);
 	font-size: 0.78rem;
 	font-weight: 700;
-	backdrop-filter: blur(12px);
+}
+.task-trigger {
+	display: flex;
+	width: 100%;
+	min-height: 36px;
+	align-items: center;
+	gap: 7px;
+	border-radius: 8px;
+	padding: 5px 8px;
+	color: var(--muted-foreground);
+	font-size: 0.78rem;
+	font-weight: 700;
+}
+.task-trigger:hover {
+	background: var(--accent);
+	color: var(--foreground);
+}
+.task-trigger small {
+	margin-left: auto;
+	font-weight: 500;
 }
 .thinking-trigger:hover {
 	background: var(--accent);
 	color: var(--foreground);
 }
-.thinking-dialog {
-	width: min(760px, calc(100vw - 32px));
-	max-width: none;
-	max-height: min(760px, calc(100dvh - 32px));
-	margin: auto;
+.thinking-trigger small {
+	min-width: 0;
+	margin-left: auto;
 	overflow: hidden;
-	border: 1px solid var(--border);
-	border-radius: 18px;
-	background: var(--card);
-	padding: 0;
-	color: var(--foreground);
-	box-shadow: 0 24px 80px #000b;
+	font-weight: 500;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
-.thinking-dialog::backdrop {
-	background: #050507b8;
-	backdrop-filter: blur(3px);
+.task-trigger small {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.thinking-trigger > svg:last-child {
+	transition: transform 160ms ease;
+}
+.thinking-trigger > svg:last-child.expanded {
+	transform: rotate(180deg);
 }
 .thinking-panel {
-	display: grid;
-	max-height: min(760px, calc(100dvh - 32px));
-	grid-template-rows: auto minmax(0, 1fr);
+	max-height: min(420px, 45dvh);
+	overflow: hidden;
+	border-top: 1px solid var(--border);
 }
-.thinking-panel > header,
-.thinking-panel > header > div,
 .thinking-event-meta,
 .subagent-detail > header {
 	display: flex;
 	align-items: center;
 }
-.thinking-panel > header {
-	justify-content: space-between;
-	border-bottom: 1px solid var(--border);
-	padding: 12px 14px;
-}
-.thinking-panel > header > div {
-	gap: 9px;
-}
-.thinking-panel h2 {
-	margin: 0;
-	font-size: 1rem;
-}
-.thinking-panel > header button {
-	display: grid;
-	width: 44px;
-	height: 44px;
-	place-items: center;
-	border-radius: 9px;
-}
-.thinking-panel > header button:hover {
-	background: var(--accent);
-}
 .thinking-timeline {
+	max-height: min(420px, 45dvh);
 	overflow-y: auto;
 	overscroll-behavior: contain;
 	padding: 14px;
 }
-.thinking-dialog .thinking-event {
+.thinking-panel .thinking-event {
 	position: relative;
 	display: grid;
 	max-width: none;
@@ -156,47 +163,44 @@
 	white-space: pre-wrap;
 }
 .current-task {
-	margin: 0 1px 4px;
-	border: 1px solid var(--border);
-	border-radius: 10px;
-	background: var(--background);
+	min-width: 0;
 }
-.current-task > button {
+.task-dialog > header,
+.task-dialog > header > div {
 	display: flex;
-	width: 100%;
-	min-height: 40px;
 	align-items: center;
 	gap: 8px;
-	padding: 5px 9px;
-	text-align: left;
 }
-.task-label {
-	display: flex;
-	min-width: 0;
-	flex: 1;
-	align-items: baseline;
-	gap: 8px;
+.task-dialog > header {
+	justify-content: space-between;
+	border-bottom: 1px solid var(--border);
+	padding: 10px 12px;
 }
-.task-label small,
-.task-progress,
+.task-dialog > header small,
 .current-task-entries small {
 	color: var(--muted-foreground);
 	font-size: 0.7rem;
 }
-.task-label strong {
-	overflow: hidden;
-	font-size: 0.8rem;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+.task-dialog > header button {
+	display: grid;
+	width: 44px;
+	height: 44px;
+	place-items: center;
+	border-radius: 9px;
 }
 .current-task svg.expanded {
 	transform: rotate(180deg);
 }
 .current-task-entries {
 	display: grid;
+	max-height: min(420px, 45dvh);
+	overflow-y: auto;
 	gap: 7px;
 	border-top: 1px solid var(--border);
-	padding: 9px;
+	padding: 12px;
+}
+.current-task-entries > strong {
+	font-size: 0.8rem;
 }
 .current-task-entries progress {
 	width: 100%;
@@ -223,21 +227,40 @@
 }
 @media (max-width: 700px) {
 	.thinking-trigger,
-	.current-task > button {
+	.task-trigger {
 		min-height: 44px;
 	}
-	.thinking-dialog {
-		width: calc(100vw - 16px);
+	.task-dialog {
+		width: min(420px, calc(100vw - 16px));
+		max-width: none;
 		max-height: calc(100dvh - 16px);
+		margin: auto;
+		overflow: hidden;
+		border: 1px solid var(--border);
 		border-radius: 14px;
+		background: var(--card);
+		padding: 0;
+		color: var(--foreground);
+		box-shadow: 0 24px 80px #000b;
+	}
+	.task-dialog::backdrop {
+		background: #050507b8;
+		backdrop-filter: blur(3px);
+	}
+	.task-dialog .current-task-entries {
+		max-height: calc(100dvh - 80px);
+		border-top: 0;
 	}
 	.thinking-panel {
-		max-height: calc(100dvh - 16px);
+		max-height: min(360px, 42dvh);
 	}
 	.thinking-timeline {
 		padding: 12px 10px;
 	}
-	.task-label small {
-		display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+	.thinking-trigger > svg {
+		animation: none;
+		transition: none;
 	}
 }

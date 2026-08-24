@@ -1,18 +1,17 @@
 <script lang="ts">
-	import { Brain, ChevronRight, X } from 'lucide-svelte';
-	import { tick } from 'svelte';
+	import { ChevronDown, ChevronRight, LoaderCircle } from 'lucide-svelte';
 	import type { WorkspaceTimelineItem } from '$lib';
 
 	let {
 		items,
-		renderMarkdown
+		renderMarkdown,
+		busy
 	}: {
 		items: WorkspaceTimelineItem[];
 		renderMarkdown: (text: string) => string;
+		busy: boolean;
 	} = $props();
 	let open = $state(false);
-	let dialog = $state<HTMLDialogElement>();
-	let trigger = $state<HTMLButtonElement>();
 
 	const serialized = (value: unknown) =>
 		typeof value === 'string' ? value : JSON.stringify(value, null, 2);
@@ -36,58 +35,21 @@
 		return item.kind === 'subagents' ? (item.title ?? 'Subagents') : 'Activity';
 	};
 
-	async function show() {
-		open = true;
-		await tick();
-		dialog?.showModal();
-	}
-	async function close() {
-		dialog?.close();
-		open = false;
-		await tick();
-		trigger?.focus();
-	}
-	function handleKeydown(event: KeyboardEvent) {
-		if (event.key === 'Escape') {
-			event.preventDefault();
-			void close();
-		}
-	}
 </script>
 
-{#if items.length}<button
-		bind:this={trigger}
-		type="button"
-		class="thinking-trigger"
-		aria-haspopup="dialog"
-		aria-expanded={open}
-		onclick={show}
-	>
-		<Brain size={15} aria-hidden="true" /> Thinking
-	</button>{/if}
-
-{#if open}<dialog
-		bind:this={dialog}
-		class="thinking-dialog"
-		aria-label="Thinking activity"
-		aria-modal="true"
-		oncancel={(event) => {
-			event.preventDefault();
-			void close();
-		}}
-		onkeydown={handleKeydown}
-		onclick={(event) => event.target === dialog && void close()}
-	>
-		<section class="thinking-panel">
-			<header>
-				<div>
-					<Brain size={18} aria-hidden="true" />
-					<h2>Thinking</h2>
-				</div>
-				<button type="button" aria-label="Close Thinking" title="Close Thinking" onclick={close}
-					><X size={18} aria-hidden="true" /></button
-				>
-			</header>
+{#if busy}<section class="thinking-activity" aria-label="Thinking activity">
+		<button
+			type="button"
+			class="thinking-trigger"
+			aria-controls="thinking-activity-panel"
+			aria-expanded={open}
+			onclick={() => (open = !open)}
+		>
+			<LoaderCircle class="animate-spin" size={16} aria-hidden="true" />
+			<span>Thinking</span><small>In progress</small>
+			<ChevronDown class={open ? 'expanded' : ''} size={16} aria-hidden="true" />
+		</button>
+		{#if open}<div id="thinking-activity-panel" class="thinking-panel">
 			<div class="thinking-timeline" aria-label="Thinking timeline">
 				{#each items as item (item.kind + ':' + item.sequence)}<article
 						class="thinking-event"
@@ -147,5 +109,5 @@
 							</div>{/if}
 					</article>{/each}
 			</div>
-		</section>
-	</dialog>{/if}
+		</div>{/if}
+	</section>{/if}

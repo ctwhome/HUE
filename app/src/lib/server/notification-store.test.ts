@@ -46,6 +46,11 @@ describe('durable notification projection', () => {
 			'unknown'
 		]);
 		expect(new Set(notifications.items.map(({ sourceEventId }) => sourceEventId)).size).toBe(5);
+		for (const notification of notifications.items) {
+			expect(new URL(notification.path, 'http://hue.local').searchParams.get('event')).toBe(
+				notification.sourceEventId
+			);
+		}
 		expect(notifications.items.every(({ projectId }) => projectId === 'project-1')).toBe(true);
 		expect(notifications.items.every(({ sessionId }) => sessionId === 'session-1')).toBe(true);
 		expect(JSON.stringify(notifications)).not.toMatch(
@@ -63,6 +68,9 @@ describe('durable notification projection', () => {
 			messageId: 'message-1'
 		});
 		const first = store.listNotifications({ limit: 10 }).items[0]!;
+		store.database
+			.query('UPDATE notifications SET path = ? WHERE id = ?')
+			.run('/?project=project-1&session=session-1', first.id);
 		store.close();
 
 		const restarted = new HUEStore(path);
@@ -112,6 +120,22 @@ describe('durable notification projection', () => {
 			readAt: expect.any(String)
 		});
 		expect(store.notificationCounts().unread).toBe(0);
+		store.close();
+	});
+
+	it('marks every unread notification read at once', () => {
+		const store = seededStore();
+		for (let index = 0; index < 3; index += 1) {
+			store.appendEvent('project-1', 'session-1', 'message.completed', {
+				messageId: `message-${index}`
+			});
+		}
+
+		expect(store.markAllNotificationsRead()).toBe(3);
+		expect(store.notificationCounts()).toEqual({ unread: 0, all: 3 });
+		expect(
+			store.listNotifications({ limit: 10 }).items.every(({ readAt }) => Boolean(readAt))
+		).toBe(true);
 		store.close();
 	});
 });
