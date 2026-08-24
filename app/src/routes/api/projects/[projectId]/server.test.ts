@@ -22,6 +22,7 @@ const closedProjects: string[] = [];
 let activeDelivery = false;
 let removeFailure: Error | null = null;
 const activeChecks: string[] = [];
+const colorUpdates: Array<{ id: string; color: string }> = [];
 let projectRoot = '/work/old';
 
 mock.module('$lib/server/route-services', () => ({
@@ -71,6 +72,9 @@ mock.module('$lib/server/route-services', () => ({
 				...projects
 			},
 			store: {
+				ensureProjectMetadata: () => undefined,
+				getProjectColor: () => colorUpdates.at(-1)?.color ?? null,
+				updateProjectColor: (id: string, color: string) => colorUpdates.push({ id, color }),
 				hasActiveProjectDeliveries: () => activeDelivery,
 				deleteProject: () => {
 					throw new Error('HUE Project metadata must not be deleted');
@@ -95,6 +99,7 @@ beforeEach(() => {
 	activeDelivery = false;
 	removeFailure = null;
 	activeChecks.length = 0;
+	colorUpdates.length = 0;
 	projectRoot = '/work/old';
 });
 
@@ -115,6 +120,21 @@ test('updates Hermes name and icon and returns authoritative readback', async ()
 	expect(response.status).toBe(200);
 	expect(calls).toEqual([{ method: 'update', args: ['p_1', { name: 'Renamed', icon: '🚀' }] }]);
 	expect((await response.json()).project).toMatchObject({ id: 'p_1', name: 'Renamed' });
+});
+
+test('updates HUE status color without mutating Hermes Project identity', async () => {
+	const response = await patch({ action: 'set_color', color: '#7aa2f7' });
+
+	expect(response.status).toBe(200);
+	expect(colorUpdates).toEqual([{ id: 'p_1', color: '#7aa2f7' }]);
+	expect(calls).toEqual([{ method: 'get', args: ['p_1'] }]);
+});
+
+test('rejects malformed Project status colors', async () => {
+	const response = await patch({ action: 'set_color', color: 'red' });
+
+	expect(response.status).toBe(400);
+	expect(colorUpdates).toEqual([]);
 });
 
 test('automatic icon discovers a favicon within the Project', async () => {

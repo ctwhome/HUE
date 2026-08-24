@@ -82,8 +82,8 @@
 	margin: 2px 0 0;
 	overflow-wrap: anywhere;
 }
-
-.session-manager-popover:popover-open {
+.session-manager-popover:popover-open,
+.project-manager-popover:popover-open {
 	display: block;
 	inset: auto;
 	z-index: 50;

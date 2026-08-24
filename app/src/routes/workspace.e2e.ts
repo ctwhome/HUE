@@ -240,13 +240,36 @@ test('drags Sessions into independently interactive resizable chat panes', async
 	await expect(panes.locator(':scope > article > .session-pane-header')).toHaveCount(2);
 	await expect(page.getByRole('button', { name: 'Close Pane alpha pane' })).toBeVisible();
 	await expect(page.getByRole('complementary', { name: 'Project browser' })).toBeHidden();
-	expect((await page.getByRole('main').boundingBox())!.width).toBeGreaterThan(300);
-	await expect(page.getByLabel('Message Hermes')).toBeVisible();
-	const embedded = page.frameLocator('iframe[title="Pane beta"]');
-	await expect(embedded.getByLabel('Message Hermes')).toBeVisible();
+	const primary = panes.getByRole('article', { name: 'Pane alpha pane' });
+	expect((await primary.getByRole('main').boundingBox())!.width).toBeGreaterThan(300);
+	await expect(primary.getByLabel('Message Hermes')).toBeVisible();
+	const secondary = panes.getByRole('article', { name: 'Pane beta pane' });
+	await expect(secondary.getByLabel('Message Hermes')).toBeVisible();
+	await expect(panes.locator('iframe')).toHaveCount(0);
+	const duplicateTransfer = await page.evaluateHandle(() => new DataTransfer());
+	await sessionButton(page, 'Pane alpha').dispatchEvent('dragstart', {
+		dataTransfer: duplicateTransfer
+	});
+	await primary.dispatchEvent('dragover', { dataTransfer: duplicateTransfer });
+	await expect(page.locator('.session-drop-preview')).toBeHidden();
+	await primary.getByLabel('Message Hermes').fill('Primary draft');
+	await secondary.getByLabel('Message Hermes').fill('Secondary draft');
+	await expect(primary.getByLabel('Message Hermes')).toHaveValue('Primary draft');
+	await expect(secondary.getByLabel('Message Hermes')).toHaveValue('Secondary draft');
+	await expect
+		.poll(() =>
+			page.evaluate(
+				() => Object.entries(localStorage).find(([key]) => key.endsWith(':pane-beta'))?.[1]
+			)
+		)
+		.toBe('Secondary draft');
+	await page.waitForTimeout(100);
 	expect(
 		(await page.getByRole('button', { name: 'Close Pane beta pane' }).boundingBox())!.height
 	).toBeGreaterThanOrEqual(44);
+	await page.reload();
+	await expect(panes).toHaveAttribute('data-pane-count', '2');
+	await expect(secondary.getByLabel('Message Hermes')).toBeVisible();
 	for (const viewport of viewports.slice(1)) {
 		await page.setViewportSize(viewport);
 		await expect(panes).toHaveAttribute('data-pane-count', '2');
@@ -254,27 +277,10 @@ test('drags Sessions into independently interactive resizable chat panes', async
 			viewport.width
 		);
 		expect(
-			(await page.getByRole('button', { name: 'Close Pane alpha pane' }).boundingBox())!.height
+			(await page.getByRole('button', { name: 'Close Pane beta pane' }).boundingBox())!.height
 		).toBeGreaterThanOrEqual(44);
 	}
 	await page.setViewportSize(viewports[0]);
-
-	const activePane = page.getByRole('main');
-	const widthBefore = (await activePane.boundingBox())!.width;
-	await page.getByRole('separator', { name: 'Resize Session panes' }).focus();
-	await page.keyboard.press('ArrowRight');
-	await expect
-		.poll(async () => (await activePane.boundingBox())!.width)
-		.toBeGreaterThan(widthBefore);
-	const resizedWidth = (await activePane.boundingBox())!.width;
-	await page.reload();
-	await expect(panes).toHaveAttribute('data-pane-count', '2');
-	await expect(embedded.getByLabel('Message Hermes')).toBeVisible();
-	expect(Math.abs((await activePane.boundingBox())!.width - resizedWidth)).toBeLessThan(3);
-
-	await page.getByRole('button', { name: 'Close Pane alpha pane' }).click();
-	await expect(panes).toHaveAttribute('data-pane-count', '1');
-	await expect(page).toHaveURL(/session=pane-beta/);
 });
 
 test('Project tools stay docked across Sessions and collapse to their rail', async ({

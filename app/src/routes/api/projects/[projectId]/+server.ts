@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { validateIcon } from '$lib/icon';
+import { validateProjectColor } from '$lib/project-color';
 import {
 	HermesProjectMutationError,
 	HermesProjectsCapabilityError
@@ -28,6 +29,14 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	let closeTerminals = false;
 	try {
 		const body = (await request.json()) as Record<string, unknown>;
+		if (body.action === 'set_color') {
+			const color = validateProjectColor(body.color);
+			const state = services();
+			const current = await state.projects.get(params.projectId);
+			state.store.ensureProjectMetadata(current.id);
+			state.store.updateProjectColor(current.id, color);
+			return json({ project: projectView(current, color) });
+		}
 		let project;
 		if (body.action === 'auto_icon') {
 			const current = await services().projects.get(params.projectId);
@@ -81,12 +90,16 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			throw new Error('Unknown Project update');
 		}
 		if (closeTerminals) services().terminals.closeProject(project.id);
-		return json({ project: projectView(project) });
+		return json({ project: projectView(project, services().store.getProjectColor(project.id)) });
 	} catch (cause) {
-		let project = cause instanceof HermesProjectMutationError ? projectView(cause.project) : null;
+		let project =
+			cause instanceof HermesProjectMutationError
+				? projectView(cause.project, services().store.getProjectColor(cause.project.id))
+				: null;
 		if (attempted && !project) {
 			try {
-				project = projectView(await services().projects.get(params.projectId));
+				const current = await services().projects.get(params.projectId);
+				project = projectView(current, services().store.getProjectColor(current.id));
 			} catch {
 				// Original mutation failure remains authoritative.
 			}

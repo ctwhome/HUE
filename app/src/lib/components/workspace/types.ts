@@ -11,6 +11,7 @@ export type Project = {
 	id: string;
 	name: string;
 	icon: string | null;
+	color: string | null;
 	primaryPath: string;
 	folders: Array<{ path: string; label: string | null; isPrimary: boolean; available: boolean }>;
 	rootAvailable: boolean;

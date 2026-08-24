@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { projectColorForeground } from '$lib/project-color';
 	import { api } from './api';
 	import { afterInitialPaint } from './after-initial-paint';
 
@@ -14,8 +15,9 @@
 	let {
 		projectId,
 		projectName,
+		color,
 		previewUrl
-	}: { projectId: string; projectName: string; previewUrl: string } = $props();
+	}: { projectId: string; projectName: string; color: string | null; previewUrl: string } = $props();
 	let checks = $state<Check[]>(
 		['Project', 'Git', 'Terminal', 'Preview', 'Hermes ACP', 'Hermes admin'].map((label) => ({
 			id: label.toLowerCase().replaceAll(' ', '-'),
@@ -65,7 +67,10 @@
 </script>
 
 <section
-	class="project-status-bar absolute inset-x-0 bottom-0 z-50 flex min-w-0 items-center overflow-x-auto border-t border-border bg-card text-[11px] whitespace-nowrap"
+	class="project-status-bar absolute inset-x-0 bottom-0 z-50 flex min-w-0 items-center overflow-x-auto border-t text-[11px] whitespace-nowrap"
+	style={color
+		? `--project-status-color: ${color}; --project-status-foreground: ${projectColorForeground(color)}`
+		: undefined}
 	aria-label="Runtime health"
 	aria-busy={loading}
 >
@@ -84,7 +89,7 @@
 				class:bg-amber-400={check.status === 'idle'}
 				class:bg-destructive={check.status === 'blocked' || check.status === 'unavailable'}
 			></span>
-			<strong>{check.label}</strong><span class="text-muted-foreground">{check.summary}</span>
+			<strong>{check.label}</strong><span class="opacity-75">{check.summary}</span>
 		</div>
 	{/each}
 	{#if error}<span class="px-2 text-destructive" role="alert">Health unavailable: {error}</span
@@ -99,7 +104,13 @@
 	.project-status-bar {
 		height: calc(var(--project-status-height) + env(safe-area-inset-bottom, 0px));
 		padding-bottom: env(safe-area-inset-bottom, 0px);
+		border-color: color-mix(in srgb, currentColor 25%, transparent);
+		background: var(--project-status-color, var(--card));
+		color: var(--project-status-foreground, var(--foreground));
 		scrollbar-width: none;
+	}
+	.project-status-bar > * {
+		border-color: color-mix(in srgb, currentColor 25%, transparent);
 	}
 	.project-status-bar::-webkit-scrollbar {
 		display: none;

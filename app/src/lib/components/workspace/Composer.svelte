@@ -164,6 +164,8 @@
 		modelCategories: () => Array<{ name: string; models: Model[] }>;
 		contextPercent: () => number | null;
 	} = $props();
+	const instanceId = $props.id();
+	const modelMenuId = `${instanceId}-model-menu`;
 	let thinkingTimeline = $derived(selectThinkingTimeline(timeline));
 	let promptLibraryDialog = $state<HTMLDialogElement>();
 	let promptLibraryLoading = $state(false);
@@ -365,7 +367,12 @@
 			</div>
 		</section>{/if}
 	<div class="composer-activity">
-		<ThinkingDialog items={thinkingTimeline} {renderMarkdown} {busy} />
+		<ThinkingDialog
+			id={`${instanceId}-thinking`}
+			items={thinkingTimeline}
+			{renderMarkdown}
+			{busy}
+		/>
 		<CurrentTask {plan} />
 	</div>
 	<textarea
@@ -451,7 +458,7 @@
 					aria-label="Hermes model"
 					aria-haspopup="menu"
 					aria-expanded={modelMenuOpen}
-					popovertarget="hermes-model-menu"
+					popovertarget={modelMenuId}
 					title={`${selectedModel?.name ?? runtime.models.currentModelId} · ${runtime.models.currentModelId}`}
 					disabled={runtimeChanging || busy}
 				>
@@ -466,7 +473,7 @@
 				</button>
 				<div
 					bind:this={modelPopover}
-					id="hermes-model-menu"
+					id={modelMenuId}
 					class="model-menu max-h-[min(520px,calc(100dvh-24px))] w-[min(360px,calc(100vw-24px))] overflow-y-auto rounded-2xl border border-border bg-card p-2 text-foreground shadow-2xl"
 					popover="auto"
 					role="menu"
@@ -596,6 +603,7 @@
 	</div>
 </form>
 <PromptLibraryDialog
+	id={`${instanceId}-prompts`}
 	bind:dialog={promptLibraryDialog}
 	loading={promptLibraryLoading}
 	{workflows}
