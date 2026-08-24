@@ -170,7 +170,6 @@
 				class="project-select flex min-h-11 w-full items-center gap-2 rounded-lg bg-transparent px-2.5 py-2 pr-10 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
 				class:active={!selectedProject}
 				aria-current={!selectedProject ? 'page' : undefined}
-				title="Open sessions with no project"
 				onclick={() => onchoose(null)}
 			>
 				<Diamond
@@ -207,7 +206,6 @@
 					class="project-select flex min-h-11 w-full items-center gap-2 rounded-lg bg-transparent py-2 pr-10 pl-11 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
 					class:active={selectedProject?.id === project.id}
 					aria-current={selectedProject?.id === project.id ? 'page' : undefined}
-					title={`Open ${project.name} · ${project.primaryPath}`}
 					onclick={() => onchoose(project)}
 				>
 					{#if isImage(project.icon)}<img

@@ -23,7 +23,7 @@
 	import { MessageState } from './workspace/message-state.svelte';
 	import MobileNavigation from './workspace/MobileNavigation.svelte';
 	import { MobileShellController } from './workspace/mobile-shell';
-	import type { MobileGesture } from './workspace/mobile-navigation';
+	import { compactModelLabel, type MobileGesture } from './workspace/mobile-navigation';
 	import { workspaceApi } from './workspace/api';
 	import { WorkspaceNavigation } from './workspace/navigation.svelte';
 	import { isImageIcon, ProjectManagement } from './workspace/project-management.svelte';
@@ -518,7 +518,10 @@
 		class:terminal-open={terminalOpen && !mobile}
 		style={`--terminal-panel-height: ${terminalHeight}px`}
 	>
-		<main class="session-view flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+		<main
+			class="session-view flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+			class:empty-session={timeline.length === 0}
+		>
 			<SessionHeader
 				session={selectedSession}
 				onsessions={() => mobileShell?.open('sessions')}
@@ -552,7 +555,10 @@
 				<Conversation
 					{timeline}
 					{messageNotice}
-					agentLabel={`${runtimeState.currentModel()?.name ?? runtime.models?.currentModelId ?? 'Hermes'}${runtime.modes?.currentModeId ? ` · ${runtime.modes.availableModes.find(({ id }) => id === runtime.modes?.currentModeId)?.name ?? runtime.modes.currentModeId}` : ''}`}
+					agentLabel={compactModelLabel(
+						runtime.models?.currentModelId ?? '',
+						runtimeState.currentModel()?.name ?? runtime.models?.currentModelId ?? 'Hermes'
+					)}
 					busy={isTurnBusy(delivery)}
 					mediaPath={selectedSession
 						? navigation.sessionApiPath(selectedSession.sessionId, '/media')
