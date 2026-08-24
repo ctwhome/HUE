@@ -1,6 +1,14 @@
 <script lang="ts">
 	import { onMount, type Component } from 'svelte';
-	import { Code2, Files, GitBranch, Globe, TerminalSquare } from 'lucide-svelte';
+	import {
+		Code2,
+		Files,
+		GitBranch,
+		Globe,
+		PanelRightClose,
+		PanelRightOpen,
+		TerminalSquare
+	} from 'lucide-svelte';
 	import BrowserPanel from './workbench/BrowserPanel.svelte';
 	import FilesPanel from './workbench/FilesPanel.svelte';
 	import HealthStrip from './workbench/HealthStrip.svelte';
@@ -21,7 +29,9 @@
 		projectName,
 		compact,
 		docked = false,
+		browserOpen = false,
 		terminalOpen = false,
+		onbrowser = () => {},
 		onterminal = () => {},
 		onbranch,
 		dirtyGuard
@@ -30,19 +40,22 @@
 		projectName: string;
 		compact: boolean;
 		docked?: boolean;
+		browserOpen?: boolean;
 		terminalOpen?: boolean;
+		onbrowser?: () => void;
 		onterminal?: () => void;
 		onbranch: (branch: string | null) => void;
 		dirtyGuard: DirtyGuard;
 	} = $props();
-	type Tool = 'browser' | 'git' | 'files';
+	type Tool = 'git' | 'files';
 	let previewUrl = $state('');
 	let view = $state<'develop' | 'files'>('develop');
 	let developView = $state<'browser' | 'terminal' | 'git'>('browser');
 	let open = $state(true);
 	let gitChanges = $state(0);
 	let width = $state(440);
-	let activeTool = $derived<Tool>(
+	let maxWidth = $state(720);
+	let activeTool = $derived<Tool | 'browser'>(
 		view === 'files' ? 'files' : developView === 'git' ? 'git' : 'browser'
 	);
 	let dockElement: HTMLElement;
@@ -58,7 +71,6 @@
 	const panel =
 		'workbench-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card';
 	const tools = [
-		{ id: 'browser', label: 'Browser', icon: Globe },
 		{ id: 'git', label: 'Git', icon: GitBranch },
 		{ id: 'files', label: 'Files', icon: Files }
 	] as const;
@@ -126,11 +138,12 @@
 		onterminal();
 	}
 	function resizeLimits() {
-		const available = dockElement.parentElement?.clientWidth ?? innerWidth;
-		return { min: 280, max: Math.max(280, Math.min(720, available - 320)) };
+		const available = dockElement?.parentElement?.clientWidth ?? globalThis.innerWidth ?? 960;
+		return { min: 280, max: Math.max(280, available - 320) };
 	}
 	function setWidth(next: number) {
 		const { min, max } = resizeLimits();
+		maxWidth = max;
 		width = Math.min(max, Math.max(min, next));
 	}
 	function saveWidth() {
@@ -165,6 +178,7 @@
 	onMount(() => {
 		mounted = true;
 		if (docked) {
+			open = false;
 			const savedWidth = Number(localStorage.getItem(`hue:project-tools:${projectId}:width`));
 			setWidth(
 				savedWidth > 0 ? savedWidth : (dockElement.parentElement?.clientWidth ?? 960) * 0.46
@@ -198,7 +212,7 @@
 			aria-label="Resize project tools"
 			aria-orientation="vertical"
 			aria-valuemin="280"
-			aria-valuemax="720"
+			aria-valuemax={maxWidth}
 			aria-valuenow={Math.round(width)}
 			tabindex="0"
 			onpointerdown={startResize}
@@ -214,7 +228,7 @@
 		aria-hidden={docked && !open}
 		inert={docked && !open ? true : undefined}
 	>
-		<HealthStrip {projectId} {previewUrl} />
+		{#if !docked}<HealthStrip {projectId} {previewUrl} />{/if}
 		<nav
 			class="workbench-tabs flex gap-1 border-b border-border px-2.5 py-1.5"
 			aria-label="Project workbench views"
@@ -329,6 +343,19 @@
 		</div>
 	</section>
 	{#if docked}<nav class="project-tool-rail" aria-label="Project tools">
+			<button
+				type="button"
+				class:active={browserOpen}
+				aria-label={browserOpen ? 'Hide Browser' : 'Show Browser'}
+				aria-expanded={browserOpen}
+				title={browserOpen ? 'Hide Browser' : 'Show Browser'}
+				onclick={onbrowser}
+			>
+				{#if browserOpen}<PanelRightClose size={19} aria-hidden="true" />{:else}<PanelRightOpen
+						size={19}
+						aria-hidden="true"
+					/>{/if}
+			</button>
 			{#each tools as tool}
 				{@const Icon = tool.icon}
 				<button

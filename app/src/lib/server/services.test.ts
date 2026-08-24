@@ -7,6 +7,7 @@ import {
 	mergeProjectSessionViews,
 	projectRepository,
 	projectRepositoryAction,
+	projectStagedDiff,
 	projectRuntimeHealth,
 	services,
 	sessionMatchesProjectFolders,
@@ -215,6 +216,19 @@ test('stages, unstages, and commits project files without shell interpolation', 
 			.stdout.toString()
 			.trim()
 	).toBe('Commit from HUE');
+});
+
+test('reads only the bounded staged diff for commit generation', () => {
+	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-staged-diff-'));
+	temporaryDirectories.push(projectRoot);
+	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
+	writeFileSync(join(projectRoot, 'staged.txt'), 'staged content\n');
+	writeFileSync(join(projectRoot, 'unstaged.txt'), 'unstaged content\n');
+	Bun.spawnSync(['git', 'add', 'staged.txt'], { cwd: projectRoot });
+
+	const diff = projectStagedDiff(projectRoot);
+	expect(diff).toContain('staged content');
+	expect(diff).not.toContain('unstaged content');
 });
 
 test('pushes the current branch and creates its upstream', () => {

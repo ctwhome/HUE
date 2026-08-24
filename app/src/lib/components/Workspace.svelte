@@ -14,6 +14,7 @@
 	import GlobalNavigation, { type GlobalView } from './GlobalNavigation.svelte';
 	import AttentionCenter from './notifications/AttentionCenter.svelte';
 	import HermesPanel from './HermesPanel.svelte';
+	import ProjectBrowserDock from './ProjectBrowserDock.svelte';
 	import ProjectWorkbench from './ProjectWorkbench.svelte';
 	import ProjectTerminalDock from './workbench/ProjectTerminalDock.svelte';
 	import QuickCapture from './pwa/QuickCapture.svelte';
@@ -266,6 +267,7 @@
 	let runtimeChanging = $derived(runtimeState.changing);
 	let stopping = $derived(messageState.stopping);
 	let workModeChanging = $state(false);
+	let browserOpen = $state(true);
 	let terminalOpen = $state(false);
 	let terminalHeight = $state(300);
 	let pendingSessionDraft = '';
@@ -273,6 +275,7 @@
 	$effect(() => {
 		selectedProject;
 		projectTools = false;
+		browserOpen = true;
 		terminalOpen = false;
 		terminalHeight = 300;
 	});
@@ -706,12 +709,15 @@
 		</main>
 		{#if selectedProject?.rootAvailable && navigation.ready && !mobile}
 			{#key selectedProject.id}
+				<ProjectBrowserDock projectId={selectedProject.id} open={browserOpen} />
 				<ProjectWorkbench
 					projectId={selectedProject.id}
 					projectName={selectedProject.name}
 					compact={false}
 					docked={true}
+					{browserOpen}
 					{terminalOpen}
+					onbrowser={() => (browserOpen = !browserOpen)}
 					onterminal={() => (terminalOpen = !terminalOpen)}
 					onbranch={(value) => (branch = value)}
 					{dirtyGuard}

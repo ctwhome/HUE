@@ -2,9 +2,11 @@ import { json } from '@sveltejs/kit';
 import {
 	projectRepository,
 	projectRepositoryAction,
+	projectStagedDiff,
 	authoritativeProject,
 	type ProjectRepositoryAction
 } from '$lib/server/services';
+import { generateHermesCommitMessage } from '$lib/server/hermes-cli';
 import type { RequestHandler } from './$types';
 
 export function _repositoryMutationAllowed(request: Request, clientAddress: string) {
@@ -36,7 +38,21 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 	}
 	try {
 		const project = await authoritativeProject(params.projectId);
-		const operation = (await request.json()) as ProjectRepositoryAction;
+		const operation = (await request.json()) as
+			| ProjectRepositoryAction
+			| { action: 'generateCommitMessage'; provider?: string; model?: string };
+		if (operation.action === 'generateCommitMessage') {
+			const selection =
+				operation.provider && operation.model
+					? { provider: operation.provider, model: operation.model }
+					: undefined;
+			const message = await generateHermesCommitMessage(
+				project.primary_path,
+				projectStagedDiff(project.primary_path),
+				selection
+			);
+			return json({ message });
+		}
 		return json(projectRepositoryAction(project.primary_path, operation));
 	} catch (error) {
 		return json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });

@@ -2,7 +2,52 @@ import { expect, test } from 'bun:test';
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseCronJobs, parseProfiles, parseSkills, resolveHermesCommand } from './hermes-cli';
+import {
+	commitMessageArgs,
+	normalizeCommitMessage,
+	parseCronJobs,
+	parseProfiles,
+	parseSkills,
+	resolveHermesCommand
+} from './hermes-cli';
+
+test('uses a cheap tool-free Hermes model for commit drafts', () => {
+	expect(commitMessageArgs({})).toEqual([
+		'chat',
+		'--query-file',
+		'-',
+		'--quiet',
+		'--source',
+		'tool',
+		'--provider',
+		'openai-codex',
+		'--model',
+		'gpt-5.6-luna',
+		'--reasoning',
+		'none',
+		'--toolsets',
+		'context_engine',
+		'--ignore-rules',
+		'--max-turns',
+		'1',
+		'--run-budget',
+		'30'
+	]);
+	expect(commitMessageArgs({}, { provider: 'copilot', model: 'gpt-4o-mini' }).slice(6, 10)).toEqual(
+		['--provider', 'copilot', '--model', 'gpt-4o-mini']
+	);
+});
+
+test('normalizes Hermes commit drafts to one bounded subject line', () => {
+	expect(normalizeCommitMessage('```text\nfeat: add commit generation\n```')).toBe(
+		'feat: add commit generation'
+	);
+	expect(normalizeCommitMessage('┌─ Reasoning ─┐\nThinking aloud\nfix(ui): keep one rail')).toBe(
+		'fix(ui): keep one rail'
+	);
+	expect(normalizeCommitMessage(`fix: ${'x'.repeat(100)}`)).toHaveLength(72);
+	expect(() => normalizeCommitMessage('')).toThrow('Hermes returned an empty commit message');
+});
 
 test('resolves a user-local Hermes install when it is outside PATH', () => {
 	const home = mkdtempSync(join(tmpdir(), 'hue-hermes-command-'));

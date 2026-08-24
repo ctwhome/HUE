@@ -41,6 +41,7 @@ const appStyles = read('../app.css');
 const styleFiles = [
 	'../styles/theme-base.css',
 	'../styles/workspace-forms.css',
+	'../styles/project-browser.css',
 	'../styles/conversation-composer.css',
 	'../styles/liquid-thinking-orb.css',
 	'../styles/mobile-overlays.css',
@@ -78,6 +79,7 @@ const workbenchFiles = [
 ].map(read);
 const workbench = workbenchFiles.join('\n');
 const projectWorkbench = workbenchFiles[0];
+const projectBrowserDock = read('../lib/components/ProjectBrowserDock.svelte');
 const button = read('../lib/components/ui/Button.svelte');
 const input = read('../lib/components/ui/Input.svelte');
 const textarea = read('../lib/components/ui/Textarea.svelte');
@@ -311,6 +313,9 @@ test('project workbench owns browser, terminal, and Git behavior', () => {
 	expect(workbench).toContain('inputSequence: Math.max(item.inputSequence, body.inputSequence)');
 	expect(workbench).toContain("action: 'stage'");
 	expect(workbench).toContain("action: 'commit'");
+	expect(workbench).toContain("action: 'generateCommitMessage'");
+	expect(workbench).toContain('aria-label="Generate commit message with Hermes"');
+	expect(workbench).toContain('aria-label="Commit message model"');
 	expect(workbench).toContain("action: 'push'");
 	expect(workbench).toContain('onDestroy(() =>');
 	expect(styles).toContain("grid-template-areas: 'browser repository' 'terminal worktrees'");
@@ -325,7 +330,15 @@ test('Project tools stay embedded with Sessions and collapse to an accessible do
 	expect(projectWorkbench).toContain('aria-expanded={open && activeTool === tool.id}');
 	expect(projectWorkbench).toContain('aria-label="Resize project tools"');
 	expect(projectWorkbench).toContain('onpointerdown={startResize}');
+	expect(projectWorkbench).not.toContain('Math.min(720');
 	expect(projectWorkbench).toContain('localStorage.setItem(`hue:project-tools:${projectId}:width`');
+	expect(workspace).toContain('<ProjectBrowserDock');
+	expect(projectBrowserDock).toContain('requestAnimationFrame');
+	expect(projectBrowserDock).toContain('aria-valuemin="240"');
+	expect(projectWorkbench).toContain("browserOpen ? 'Hide Browser' : 'Show Browser'");
+	expect(projectBrowserDock).not.toContain('project-browser-header');
+	expect(styles).toContain('.project-browser-dock');
+	expect(styles).toContain('.project-browser-dock:not(.open)');
 	expect(styles).toContain('.project-tool-dock.docked:not(.open)');
 	expect(styles).toContain('.project-tool-resizer');
 	for (const pane of ['Projects', 'Sessions']) {

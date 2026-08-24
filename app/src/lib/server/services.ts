@@ -414,6 +414,18 @@ export function projectRepository(projectRoot: string): ProjectRepository {
 	return { isRepository: true, branch: projectBranch(projectRoot), changes, worktrees, remotes };
 }
 
+export function projectStagedDiff(projectRoot: string) {
+	const diff = git(projectRoot, [
+		'diff',
+		'--cached',
+		'--no-ext-diff',
+		'--no-color',
+		'--unified=3'
+	])?.trim();
+	if (!diff) throw new Error('Stage files before generating a commit message');
+	return diff.slice(0, 100_000);
+}
+
 export function projectRepositoryAction(
 	projectRoot: string,
 	operation: ProjectRepositoryAction

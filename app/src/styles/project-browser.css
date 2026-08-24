@@ -1,0 +1,46 @@
+.project-browser-dock {
+	position: relative;
+	flex: 0 0 var(--project-browser-width, 440px);
+	border-left: 1px solid var(--border);
+}
+.project-browser-dock:not(.open) {
+	flex-basis: 0;
+	overflow: hidden;
+	border-left: 0;
+}
+.project-browser-dock:not(.open) .project-browser-content {
+	display: none;
+}
+.project-browser-dock .browser-panel {
+	height: 100%;
+}
+.project-browser-resizer {
+	position: absolute;
+	z-index: 4;
+	top: 0;
+	bottom: 0;
+	left: -5px;
+	width: 9px;
+	border: 0;
+	background: transparent;
+	padding: 0;
+	cursor: col-resize;
+	touch-action: none;
+}
+.project-browser-resizer::after {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 4px;
+	width: 1px;
+	background: transparent;
+	content: '';
+}
+.project-browser-resizer:hover::after,
+.project-browser-resizer:focus-visible::after {
+	width: 2px;
+	background: var(--primary);
+}
+.session-workspace.terminal-open > .project-browser-dock {
+	height: calc(100% - var(--terminal-panel-height, 300px));
+}

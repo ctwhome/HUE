@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Minus, Plus, RefreshCw } from 'lucide-svelte';
+	import { Minus, Plus, RefreshCw, Sparkles } from 'lucide-svelte';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
 	import { api } from './api';
@@ -11,6 +11,16 @@
 		changes: Array<{ path: string; index: string; worktree: string; fileUrl: string | null }>;
 		worktrees: Array<{ path: string; branch: string | null; head: string }>;
 		remotes: Array<{ name: string; webUrl: string | null }>;
+	};
+	type CommitModelsResponse = {
+		options?: {
+			providers?: Array<{
+				slug: string;
+				name: string;
+				authenticated: boolean;
+				models: string[];
+			}>;
+		};
 	};
 
 	let {
@@ -28,8 +38,13 @@
 	let repositoryLoading = $state(false);
 	let repositoryError = $state('');
 	let repositoryBusy = $state(false);
+	let commitMessageGenerating = $state(false);
 	let repositoryMessage = $state('');
 	let commitMessage = $state('');
+	let commitModel = $state('openai-codex:gpt-5.6-luna');
+	let commitModels = $state([
+		{ value: 'openai-codex:gpt-5.6-luna', label: 'Codex · GPT-5.6 Luna' }
+	]);
 	let mounted = false;
 	let repositoryRequestGeneration = 0;
 	const panel =
@@ -101,10 +116,50 @@
 		if (await mutateRepository({ action: 'commit', message: commitMessage }))
 			await mutateRepository({ action: 'push' });
 	}
+	async function generateCommitMessage() {
+		if (commitMessageGenerating || !stagedChanges().length) return;
+		commitMessageGenerating = true;
+		repositoryError = repositoryMessage = '';
+		try {
+			const separator = commitModel.indexOf(':');
+			const result = await api<{ message: string }>(`/api/projects/${projectId}/repository`, {
+				method: 'POST',
+				body: JSON.stringify({
+					action: 'generateCommitMessage',
+					provider: commitModel.slice(0, separator),
+					model: commitModel.slice(separator + 1)
+				})
+			});
+			commitMessage = result.message;
+			repositoryMessage = 'Drafted by Hermes';
+		} catch (cause) {
+			repositoryError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			commitMessageGenerating = false;
+		}
+	}
+	async function loadCommitModels() {
+		try {
+			const result = await api<CommitModelsResponse>('/api/hermes/admin?view=models');
+			const available = (result.options?.providers ?? []).flatMap((provider) =>
+				provider.authenticated
+					? provider.models.map((model) => ({
+							value: `${provider.slug}:${model}`,
+							label: `${provider.name} · ${model}`
+						}))
+					: []
+			);
+			if (available.length) commitModels = available;
+		} catch {
+			// The default remains available when Hermes model discovery is offline.
+		}
+	}
 
 	onMount(() => {
 		mounted = true;
+		commitModel = localStorage.getItem('hue:commit-message-model') || commitModel;
 		void loadRepository();
+		void loadCommitModels();
 		return () => {
 			mounted = false;
 			repositoryRequestGeneration += 1;
@@ -242,13 +297,38 @@
 			void mutateRepository({ action: 'commit', message: commitMessage });
 		}}
 	>
-		<div class="flex items-center justify-between">
-			<strong class="text-xs">Commit</strong><span class="text-[0.68rem] text-muted-foreground"
+		<div class="flex items-center gap-2">
+			<strong class="text-xs">Commit</strong><span
+				class="text-[0.68rem] text-muted-foreground"
+				class:ml-auto={!stagedChanges().length}
 				>{stagedChanges().length
 					? `${stagedChanges().length} staged`
 					: 'Stage files to commit'}</span
 			>
+			{#if stagedChanges().length}<Button
+					variant="outline"
+					size="icon"
+					class="size-8"
+					type="button"
+					aria-label="Generate commit message with Hermes"
+					title="Generate with Hermes using the selected model"
+					disabled={repositoryBusy || commitMessageGenerating}
+					onclick={generateCommitMessage}
+					>{#if commitMessageGenerating}<RefreshCw
+							size={15}
+							class="animate-spin"
+							aria-hidden="true"
+						/>{:else}<Sparkles size={15} aria-hidden="true" />{/if}</Button
+				>{/if}
 		</div>
+		<select
+			class="h-8 min-w-0 rounded-md border border-input bg-background px-2 text-xs"
+			aria-label="Commit message model"
+			bind:value={commitModel}
+			onchange={() => localStorage.setItem('hue:commit-message-model', commitModel)}
+		>
+			{#each commitModels as option}<option value={option.value}>{option.label}</option>{/each}
+		</select>
 		<Input
 			class="h-8 text-xs"
 			bind:value={commitMessage}
