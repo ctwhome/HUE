@@ -11,6 +11,15 @@
 	display: grid;
 	place-items: center;
 }
+.session-view.empty-session .transcript {
+	flex: 0 0 auto;
+	margin-top: auto;
+}
+.session-view.empty-session .composer {
+	position: static;
+	margin-top: 24px;
+	margin-bottom: auto;
+}
 
 .transcript article {
 	display: flex;

@@ -154,6 +154,15 @@ test('session rows expose archive on hover without redundant open tooltips', () 
 	);
 });
 
+test('Project rows do not show redundant open tooltips', () => {
+	const projectRail = read('../lib/components/workspace/ProjectRail.svelte');
+	expect(projectRail).not.toContain('title="Open sessions with no project"');
+	expect(projectRail).not.toContain('title={`Open ${project.name} · ${project.primaryPath}`}');
+	expect(projectRail).toContain('title="New session without a project"');
+	expect(projectRail).toContain('title={`Change ${project.name} icon`}');
+	expect(projectRail).toContain('title={`Edit ${project.name}`}');
+});
+
 test('session filters use one search field and a compact archive toggle', () => {
 	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
 	expect(contextPanel).not.toContain('>Search{#if loading}');

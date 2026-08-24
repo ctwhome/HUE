@@ -271,7 +271,9 @@ test('Project tools stay docked across Sessions and collapse to their rail', asy
 	await expect(dock).toBeVisible();
 	await expect(workbench).toBeVisible();
 	await expect(dock.getByRole('button', { name: 'Git, 3 changed files' })).toBeVisible();
-	await expect(page.getByText('GPT-5.6 · High', { exact: true })).toBeVisible();
+	expect(await page.locator('.message-identity strong').textContent()).toBe(
+		await page.getByRole('button', { name: 'Hermes model' }).locator('span').textContent()
+	);
 	const transcriptWidth = (await page.getByRole('region', { name: 'Conversation' }).boundingBox())!
 		.width;
 	const messageWidth = (await page.locator('.transcript article.assistant .message').boundingBox())!
@@ -339,7 +341,7 @@ test('Project tools stay docked across Sessions and collapse to their rail', asy
 		contentType: 'image/png'
 	});
 	await page.setViewportSize(viewports[1]);
-	await page.getByRole('button', { name: 'Open sessions with no project' }).click();
+	await page.getByRole('button', { name: 'No project', exact: true }).click();
 	await page
 		.locator('.project-rail nav .project-select')
 		.filter({ hasText: 'HUE' })
@@ -3762,6 +3764,13 @@ test('starts a new session without the previous session output', async ({ page }
 	await addProject(page);
 	await sessionButton(page, 'Old').click();
 	await expect(page.getByText('Previous session wall of text')).toBeVisible();
+	const populatedComposerBox = (await page.locator('.composer').boundingBox())!;
+	const populatedSessionViewBox = (await page.locator('.session-view').boundingBox())!;
+	expect(
+		populatedSessionViewBox.y +
+			populatedSessionViewBox.height -
+			(populatedComposerBox.y + populatedComposerBox.height)
+	).toBeLessThanOrEqual(24);
 	await page.getByRole('button', { name: 'Add new session', exact: true }).click();
 
 	await expect(page.getByRole('heading', { name: 'Start this Hermes Session' })).toBeVisible();
@@ -3772,15 +3781,17 @@ test('starts a new session without the previous session output', async ({ page }
 		await page.setViewportSize(viewport);
 		const welcome = page.getByRole('heading', { name: 'Start this Hermes Session' }).locator('..');
 		await expect(welcome).toBeVisible();
-		const conversationBox = (await page
-			.getByRole('region', { name: 'Conversation' })
-			.boundingBox())!;
 		const welcomeBox = (await welcome.boundingBox())!;
-		expect(
-			Math.abs(
-				welcomeBox.y + welcomeBox.height / 2 - (conversationBox.y + conversationBox.height / 2)
-			)
-		).toBeLessThanOrEqual(2);
+		const composerBox = (await page.locator('.composer').boundingBox())!;
+		const sessionViewBox = (await page.locator('.session-view').boundingBox())!;
+		const contentTop = await page
+			.getByRole('region', { name: 'Conversation' })
+			.evaluate((element) => element.previousElementSibling?.getBoundingClientRect().bottom ?? 0);
+		const centerDelta =
+			(welcomeBox.y + composerBox.y + composerBox.height) / 2 -
+			(contentTop + sessionViewBox.y + sessionViewBox.height) / 2;
+		expect(centerDelta).toBeGreaterThanOrEqual(-2);
+		expect(centerDelta).toBeLessThanOrEqual(2);
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
 		);
