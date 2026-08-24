@@ -740,6 +740,23 @@ describe('HermesACP update subscriptions', () => {
 		});
 	});
 
+	it('forwards session info updates independently of prompt subscribers', () => {
+		const updates: Array<{ sessionId: string; title: string | null | undefined }> = [];
+		const runtime = new HermesACP({
+			onSessionInfo: (sessionId, update) => updates.push({ sessionId, title: update.title })
+		});
+		const internals = runtime as unknown as {
+			dispatchUpdate: (sessionId: string, update: unknown) => void;
+		};
+
+		internals.dispatchUpdate('session-1', {
+			sessionUpdate: 'session_info_update',
+			title: 'Debug message delivery'
+		});
+
+		expect(updates).toEqual([{ sessionId: 'session-1', title: 'Debug message delivery' }]);
+	});
+
 	it('normalizes delegate_task children, status, and results from Hermes ACP updates', () => {
 		const started = normalizeDelegateTaskUpdate({
 			sessionUpdate: 'tool_call',

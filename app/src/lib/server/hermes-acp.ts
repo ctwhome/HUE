@@ -285,6 +285,10 @@ type HermesACPOptions = {
 	profile?: string;
 	env?: NodeJS.ProcessEnv;
 	onDiagnostic?: (message: string) => void;
+	onSessionInfo?: (
+		sessionId: string,
+		update: Extract<acp.SessionUpdate, { sessionUpdate: 'session_info_update' }>
+	) => void;
 };
 
 export function isolatedHermesEnvironment(
@@ -305,6 +309,7 @@ export class HermesACP implements PromptRuntime {
 	private readonly profile: string;
 	private readonly env: NodeJS.ProcessEnv;
 	private readonly onDiagnostic?: (message: string) => void;
+	private readonly onSessionInfo?: HermesACPOptions['onSessionInfo'];
 	private child: ChildProcessWithoutNullStreams | null = null;
 	private connection: acp.ClientConnection | null = null;
 	private starting: Promise<void> | null = null;
@@ -327,6 +332,7 @@ export class HermesACP implements PromptRuntime {
 		this.env = options.env ?? process.env;
 		this.runtimeInfo = { profile: this.profile };
 		this.onDiagnostic = options.onDiagnostic;
+		this.onSessionInfo = options.onSessionInfo;
 	}
 
 	async start(): Promise<void> {
@@ -773,6 +779,9 @@ export class HermesACP implements PromptRuntime {
 	}
 
 	private dispatchUpdate(sessionId: string, update: acp.SessionUpdate): void {
+		if (update.sessionUpdate === 'session_info_update') {
+			this.onSessionInfo?.(sessionId, update);
+		}
 		if (update.sessionUpdate === 'available_commands_update') {
 			this.availableCommands.set(sessionId, update.availableCommands);
 			for (const resolve of this.commandWaiters.get(sessionId) ?? []) resolve();

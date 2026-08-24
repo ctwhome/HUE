@@ -503,6 +503,7 @@ export class MessageState {
 				const state = this.options.session;
 				this.options.applyVoiceEvents(body.events, state.activeMessageId);
 				if (state.applyEvents(body.events)) this.options.transcriptFollow.settle();
+				this.options.getNavigation().applySessionInfoEvents(body.events);
 				if (body.runtime) state.runtime = { ...state.runtime, ...body.runtime };
 				if (!isTurnBusy(state.delivery)) {
 					this.options.getNavigation().setSessionBusySince(sessionId, null);

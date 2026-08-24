@@ -420,6 +420,18 @@
 	.session-view {
 		touch-action: pan-y;
 	}
+	.session-pane-grid[data-pane-count]:not([data-pane-count='1']) {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: none;
+		grid-auto-rows: minmax(100%, 1fr);
+		overflow-y: auto;
+	}
+	.session-pane-grid[data-pane-count='3'] > .session-view {
+		grid-row: auto;
+	}
+	.session-pane-resizer {
+		display: none;
+	}
 	.attachment-list figure {
 		flex-basis: 64px;
 	}
@@ -505,4 +517,25 @@
 	.drawer-backdrop {
 		transition-duration: 0ms !important;
 	}
+}
+
+.workspace.embedded {
+	display: block;
+	padding: 0;
+}
+.workspace.embedded > :not(.session-workspace) {
+	display: none;
+}
+.workspace.embedded > .session-workspace {
+	display: flex;
+	height: 100dvh;
+}
+.workspace.embedded .session-pane-grid {
+	height: 100%;
+}
+.workspace.embedded .project-browser-dock,
+.workspace.embedded .project-tool-dock,
+.workspace.embedded .workspace-terminal-dock,
+.workspace.embedded .mobile-project-tools {
+	display: none;
 }

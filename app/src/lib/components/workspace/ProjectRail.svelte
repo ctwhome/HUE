@@ -200,7 +200,11 @@
 							alt=""
 						/>{:else if project.icon}<span class="project-icon grid size-6 place-items-center rounded-md"
 							>{project.icon}</span
-						>{:else}<span class="project-dot size-2 rounded-full bg-muted-foreground"></span>{/if}
+						>{:else}<Folder
+							class="project-icon project-icon-default size-6 text-muted-foreground"
+							size={18}
+							aria-hidden="true"
+						/>{/if}
 				</button>
 				<button
 					class="project-select flex min-h-11 w-full items-center gap-2 rounded-lg bg-transparent py-2 pr-10 pl-11 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
@@ -214,9 +218,11 @@
 							alt=""
 						/>{:else if project.icon}<span
 							class="project-icon-inline size-6 place-items-center rounded-md">{project.icon}</span
-						>{:else}<span
-							class="project-icon-inline project-dot size-2 rounded-full bg-muted-foreground"
-						></span>{/if}
+						>{:else}<Folder
+							class="project-icon-inline project-icon-default size-6 text-muted-foreground"
+							size={18}
+							aria-hidden="true"
+						/>{/if}
 					<span class="min-w-0 truncate">{project.name}</span>
 					{#if !project.rootAvailable}<small class="text-amber-400">Missing</small>{/if}
 				</button>
@@ -391,7 +397,11 @@
 							{#if isImage(projectIcon)}<img
 									src={projectIcon ?? ''}
 									alt="Project icon preview"
-								/>{:else}<span>{projectIcon || '•'}</span>{/if}
+								/>{:else if projectIcon}<span>{projectIcon}</span>{:else}<Folder
+									class="project-icon-default text-muted-foreground"
+									size={24}
+									aria-hidden="true"
+								/>{/if}
 					</button>
 				</div>
 				<label class="grid gap-1"

@@ -31,6 +31,6 @@
 	onimage={navigation.chooseSessionImage}
 	onselect={(icon) => {
 		navigation.sessionIcon = icon;
-		void navigation.saveSession();
+		void navigation.saveSessionIcon();
 	}}
 />

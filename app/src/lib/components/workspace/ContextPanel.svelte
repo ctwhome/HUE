@@ -4,6 +4,7 @@
 		ArchiveRestore,
 		ArrowLeft,
 		Ellipsis,
+		Folder,
 		LoaderCircle,
 		Pin,
 		Plus,
@@ -88,6 +89,11 @@
 		const days = Math.floor((Date.now() - new Date(session.updatedAt).getTime()) / 86_400_000);
 		return days <= 0 ? 'Today' : days === 1 ? 'Yesterday' : days < 7 ? 'This week' : 'Older';
 	}
+	function dragSession(event: DragEvent, session: Session) {
+		if (!event.dataTransfer) return;
+		event.dataTransfer.effectAllowed = 'copy';
+		event.dataTransfer.setData('application/x-hue-session-id', session.sessionId);
+	}
 </script>
 
 <aside
@@ -108,15 +114,19 @@
 			onclick={onback}><ArrowLeft size={20} aria-hidden="true" /></button
 		>
 		<h1 class="selected-project-title flex min-w-0 flex-1 items-center gap-2 font-semibold">
-			{#if selectedProject?.icon}{#if isImage(selectedProject.icon)}<img
+			{#if selectedProject}{#if isImage(selectedProject.icon)}<img
 						class="title-icon grid size-6 shrink-0 place-items-center rounded-md object-cover"
-						src={selectedProject.icon}
+						src={selectedProject.icon ?? ''}
 						alt=""
 					/>
-				{:else}<span
+				{:else if selectedProject.icon}<span
 						class="title-icon grid size-6 shrink-0 place-items-center rounded-md object-cover"
 						>{selectedProject.icon}</span
-					>{/if}{/if}<span class="truncate">{selectedProject?.name ?? 'No project'}</span>
+					>{:else}<Folder
+						class="title-icon project-icon-default size-6 shrink-0 text-muted-foreground"
+						size={18}
+						aria-hidden="true"
+					/>{/if}{/if}<span class="truncate">{selectedProject?.name ?? 'No project'}</span>
 		</h1>
 		{#if mobile}<button
 				class="drawer-close grid size-11 shrink-0 place-items-center rounded-md"
@@ -190,10 +200,12 @@
 				</button>
 				<button
 					class="session-select flex min-h-12 w-full items-center gap-2.5 rounded-lg border border-transparent bg-transparent p-2.5 pr-16 pl-12 text-left hover:border-border hover:bg-accent [&.active]:border-border [&.active]:bg-accent"
+					draggable={session.available !== false}
 					class:active={selectedSession?.sessionId === session.sessionId}
 					aria-current={selectedSession?.sessionId === session.sessionId ? 'page' : undefined}
 					title={session.available === false ? session.recovery : undefined}
 					disabled={session.available === false}
+					ondragstart={(event) => dragSession(event, session)}
 					onclick={() => onopen(session)}
 				>
 					<div class="session-row-copy min-w-0 flex-1">

@@ -4,6 +4,7 @@ import {
 	HermesProjectMutationError,
 	HermesProjectsCapabilityError
 } from '$lib/server/hermes-projects';
+import { findProjectFavicon } from '$lib/server/project-icon';
 import { projectView, services, trustedProjectRoot } from '$lib/server/route-services';
 import type { RequestHandler } from './$types';
 
@@ -28,7 +29,13 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	try {
 		const body = (await request.json()) as Record<string, unknown>;
 		let project;
-		if (body.action === 'update') {
+		if (body.action === 'auto_icon') {
+			const current = await services().projects.get(params.projectId);
+			attempted = true;
+			project = await services().projects.update(current.id, {
+				icon: findProjectFavicon(current.primary_path)
+			});
+		} else if (body.action === 'update') {
 			if (body.name === undefined && body.icon === undefined) {
 				throw new Error('Project name or icon is required');
 			}

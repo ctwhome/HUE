@@ -156,6 +156,35 @@ describe('HUEStore project and workflow boundaries', () => {
 		store.close();
 	});
 
+	it('projects runtime titles as cursor events without replacing manual metadata', () => {
+		const store = makeDeliveryStore();
+		store.updateSession('hue', 'session-1', { icon: '⭐' });
+
+		const event = store.applyRuntimeSessionTitle('session-1', 'Debug message delivery');
+
+		expect(store.getSession('hue', 'session-1')).toMatchObject({
+			title: 'Debug message delivery',
+			icon: '⭐'
+		});
+		expect(event).toMatchObject({
+			projectId: 'hue',
+			sessionId: 'session-1',
+			type: 'session.info_updated',
+			payload: { title: 'Debug message delivery' }
+		});
+
+		store.updateSession('hue', 'session-1', { title: 'My manual title' });
+		expect(store.applyRuntimeSessionTitle('session-1', 'Late generated title')).toBeNull();
+		expect(store.getSession('hue', 'session-1')).toMatchObject({
+			title: 'My manual title',
+			icon: '⭐'
+		});
+		expect(
+			store.listEvents('hue', 'session-1').filter(({ type }) => type === 'session.info_updated')
+		).toHaveLength(1);
+		store.close();
+	});
+
 	it('searches Session title and durable user or assistant content with a bounded result limit', () => {
 		const store = makeDeliveryStore();
 		store.upsertSession('hue', { sessionId: 'session-2', cwd: '/work/hue', title: 'Deploy notes' });

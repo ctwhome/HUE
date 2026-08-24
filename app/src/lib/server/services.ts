@@ -40,6 +40,16 @@ function createServices(): HUEServices {
 	const runtime = new HermesACP({
 		command: hermesCommand,
 		profile,
+		onSessionInfo: (sessionId, update) => {
+			if (update.title === undefined) return;
+			try {
+				store.applyRuntimeSessionTitle(sessionId, update.title);
+			} catch (cause) {
+				console.error(
+					`[hermes-acp] Ignored invalid Session title: ${String(redactHermesValue(cause))}`
+				);
+			}
+		},
 		onDiagnostic: (message) => console.error(`[hermes-acp] ${String(redactHermesValue(message))}`)
 	});
 	const admin = new HermesServe({
