@@ -3,6 +3,105 @@
 	flex-direction: column;
 }
 
+.add-project-dialog {
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+}
+
+.workflow-dialog {
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	width: min(520px, calc(100vw - 32px));
+	max-height: calc(100dvh - 32px);
+	margin: 0;
+	transform: translate(-50%, -50%);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	background: var(--card);
+	padding: 0;
+	color: var(--foreground);
+	box-shadow: 0 24px 80px #000b;
+}
+
+.dialog-header {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	background: var(--card);
+}
+
+.dialog-body {
+	min-height: 0;
+	overflow: auto;
+	padding: 4px;
+}
+
+.dialog-footer {
+	position: sticky;
+	bottom: 0;
+	z-index: 2;
+	background: var(--card);
+	padding-top: 12px;
+}
+
+.workflow-dialog form {
+	min-height: 0;
+	overflow: hidden;
+}
+
+.destructive-separator {
+	flex-basis: 100%;
+	height: 1px;
+	background: var(--border);
+}
+
+.drawer-close,
+.session-list-back,
+.mobile-session-context,
+.mobile-install,
+.mobile-settings-selector {
+	display: none;
+}
+
+.session-details summary {
+	list-style: none;
+}
+
+.session-details summary::-webkit-details-marker {
+	display: none;
+}
+
+.session-details-menu dt {
+	color: var(--muted-foreground);
+}
+
+.session-details-menu dd {
+	min-width: 0;
+	margin: 2px 0 0;
+	overflow-wrap: anywhere;
+}
+
+.compact-workbench-tabs {
+	display: flex;
+	min-height: 44px;
+	gap: 4px;
+}
+
+.compact-workbench-tabs button {
+	display: inline-flex;
+	min-height: 44px;
+	align-items: center;
+	gap: 6px;
+	border-radius: 7px;
+	padding: 0 10px;
+}
+
+.compact-workbench-tabs button[aria-pressed='true'] {
+	background: var(--accent);
+}
+
 .add-project-dialog > header {
 	display: flex;
 	align-items: flex-start;

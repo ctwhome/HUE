@@ -303,7 +303,7 @@ export class WorkspaceNavigation {
 	};
 	addWorkflow = async (event: SubmitEvent) => {
 		event.preventDefault();
-		if (!this.selectedProject) return;
+		if (!this.selectedProject) return false;
 		try {
 			const body = await this.effects.api<{ workflow: Workflow }>(
 				`/api/projects/${this.selectedProject.id}/workflows`,
@@ -315,8 +315,10 @@ export class WorkspaceNavigation {
 			this.workflows = [...this.workflows, body.workflow];
 			this.workflowName = '';
 			this.workflowPrompt = '';
+			return true;
 		} catch (cause) {
 			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
+			return false;
 		}
 	};
 	runWorkflow = async (workflow: Workflow) => {

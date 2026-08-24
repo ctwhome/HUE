@@ -49,6 +49,7 @@
 		onlabel,
 		onarchiveRequest,
 		onarchive,
+		onclose,
 		isImage
 	}: {
 		element?: HTMLElement;
@@ -95,6 +96,7 @@
 		onlabel: (project: Project, path: string, label: string) => void;
 		onarchiveRequest: () => void;
 		onarchive: () => void;
+		onclose: () => void;
 		isImage: (icon: string | null) => boolean;
 	} = $props();
 
@@ -124,6 +126,12 @@
 			onclick={onprojectless}><Plus size={18} aria-hidden="true" /></button
 		>
 	</header>
+	{#if mobile}<button
+			class="drawer-close grid size-11 place-items-center rounded-md"
+			aria-label="Close Projects"
+			title="Close Projects"
+			onclick={onclose}><X size={20} aria-hidden="true" /></button
+		>{/if}
 
 	<div class="section-heading flex items-center justify-between">
 		<span
@@ -167,6 +175,7 @@
 			<button
 				class="project-select flex min-h-11 w-full items-center gap-2 rounded-lg bg-transparent px-2.5 py-2 pr-10 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
 				class:active={!selectedProject}
+				aria-current={!selectedProject ? 'page' : undefined}
 				title="Open sessions with no project"
 				onclick={() => onchoose(null)}
 			>
@@ -183,6 +192,7 @@
 				<button
 					class="project-select flex min-h-11 w-full items-center gap-2 rounded-lg bg-transparent px-2.5 py-2 pr-10 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
 					class:active={selectedProject?.id === project.id}
+					aria-current={selectedProject?.id === project.id ? 'page' : undefined}
 					title={`Open ${project.name} · ${project.primaryPath}`}
 					onclick={() => onchoose(project)}
 				>
@@ -217,7 +227,7 @@
 
 	<dialog
 		bind:this={addProjectDialog}
-		class="add-project-dialog fixed top-1/2 left-1/2 m-0 max-h-[calc(100dvh-32px)] w-[min(640px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-xl border border-border bg-card p-4 text-foreground shadow-2xl backdrop:bg-black/60"
+		class="add-project-dialog fixed m-0 max-h-[calc(100dvh-32px)] w-[min(640px,calc(100vw-32px))] overflow-auto rounded-xl border border-border bg-card p-4 text-foreground shadow-2xl backdrop:bg-black/60"
 		aria-labelledby="add-project-title"
 		onclick={(event) => event.target === event.currentTarget && addProjectDialog?.close()}
 	>
@@ -343,86 +353,94 @@
 
 	<dialog
 		bind:this={editProjectDialog}
-		class="add-project-dialog edit-project-dialog fixed top-1/2 left-1/2 m-0 max-h-[calc(100dvh-32px)] w-[min(620px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-xl border border-border bg-card p-4 text-foreground shadow-2xl backdrop:bg-black/60"
+		class="add-project-dialog edit-project-dialog fixed m-0 max-h-[calc(100dvh-32px)] w-[min(620px,calc(100vw-32px))] overflow-auto rounded-xl border border-border bg-card p-4 text-foreground shadow-2xl backdrop:bg-black/60"
 		aria-labelledby="edit-project-title"
 		onclick={(event) => event.target === event.currentTarget && editProjectDialog?.close()}
 	>
-		<header>
+		<header class="dialog-header">
 			<div>
 				<h2 id="edit-project-title">Edit Hermes Project</h2>
 				<p>Hermes owns identity and folders. HUE keeps linked workflow and delivery metadata.</p>
 			</div>
+			<button
+				class="icon-button grid size-11 place-items-center rounded-md"
+				aria-label="Close edit Project"
+				title="Close"
+				onclick={() => editProjectDialog?.close()}><X size={18} aria-hidden="true" /></button
+			>
 		</header>
-		<form class="grid gap-4" onsubmit={onsavemetadata}>
-			<fieldset class="project-icon-field m-0 min-w-0 border-0 p-0">
-				<legend>Project icon</legend>
-				<div
-					class="project-icon-editor mt-2 grid grid-cols-[58px_minmax(0,1fr)] items-center gap-3"
-				>
+		<div class="dialog-body">
+			<form class="grid gap-4" onsubmit={onsavemetadata}>
+				<fieldset class="project-icon-field m-0 min-w-0 border-0 p-0">
+					<legend>Project icon</legend>
 					<div
-						class="project-icon-preview grid size-[58px] place-items-center overflow-hidden rounded-xl border border-border bg-background text-3xl"
+						class="project-icon-editor mt-2 grid grid-cols-[58px_minmax(0,1fr)] items-center gap-3"
 					>
-						{#if isImage(projectIcon)}<img
-								src={projectIcon ?? ''}
-								alt="Project icon preview"
-							/>{:else}<span>{projectIcon || '•'}</span>{/if}
-					</div>
-					<div class="project-icon-options grid gap-2">
-						<div class="project-icon-upload flex flex-wrap gap-1.5">
-							<button
-								type="button"
-								class="min-h-11"
-								aria-label="Choose project emoji"
-								onclick={() => (projectEmojiPickerOpen = !projectEmojiPickerOpen)}
-								>Choose emoji</button
-							>
-							<label class="min-h-11" title="Choose custom image"
-								><span>Choose image</span><input
-									type="file"
-									accept="image/png,image/jpeg,image/gif,image/webp"
-									aria-label="Project icon image"
-									onchange={onimage}
-								/></label
-							>
-							<button type="button" class="min-h-11" onclick={() => (projectIcon = null)}
-								>Default</button
-							>
+						<div
+							class="project-icon-preview grid size-[58px] place-items-center overflow-hidden rounded-xl border border-border bg-background text-3xl"
+						>
+							{#if isImage(projectIcon)}<img
+									src={projectIcon ?? ''}
+									alt="Project icon preview"
+								/>{:else}<span>{projectIcon || '•'}</span>{/if}
+						</div>
+						<div class="project-icon-options grid gap-2">
+							<div class="project-icon-upload flex flex-wrap gap-1.5">
+								<button
+									type="button"
+									class="min-h-11"
+									aria-label="Choose project emoji"
+									onclick={() => (projectEmojiPickerOpen = !projectEmojiPickerOpen)}
+									>Choose emoji</button
+								>
+								<label class="min-h-11" title="Choose custom image"
+									><span>Choose image</span><input
+										type="file"
+										accept="image/png,image/jpeg,image/gif,image/webp"
+										aria-label="Project icon image"
+										onchange={onimage}
+									/></label
+								>
+								<button type="button" class="min-h-11" onclick={() => (projectIcon = null)}
+									>Default</button
+								>
+							</div>
 						</div>
 					</div>
-				</div>
-				{#if projectEmojiPickerOpen}<EmojiPicker
-						onselect={(emoji) => {
-							projectIcon = emoji;
-							projectEmojiPickerOpen = false;
-						}}
-					/>{/if}
-			</fieldset>
-			<label class="grid gap-1"
-				><span>Project name</span><input
-					class="min-h-11"
-					bind:value={projectName}
-					required
-				/></label
-			>
-			<button
-				type="submit"
-				class="min-h-11 justify-self-end"
-				disabled={projectSaving || !projectName.trim()}>Save name and icon</button
-			>
-		</form>
+					{#if projectEmojiPickerOpen}<EmojiPicker
+							onselect={(emoji) => {
+								projectIcon = emoji;
+								projectEmojiPickerOpen = false;
+							}}
+						/>{/if}
+				</fieldset>
+				<label class="grid gap-1"
+					><span>Project name</span><input
+						class="min-h-11"
+						bind:value={projectName}
+						required
+					/></label
+				>
+				<button
+					type="submit"
+					class="min-h-11 justify-self-end"
+					disabled={projectSaving || !projectName.trim()}>Save name and icon</button
+				>
+			</form>
 
-		<ProjectFoldersEditor
-			project={editingProject}
-			saving={projectSaving}
-			onadd={onlocate}
-			{onsetprimary}
-			onremove={onremovefolder}
-			{onlabel}
-		/>
-		{#if projectEditError}<p class="mt-3 text-sm text-destructive" role="alert">
-				{projectEditError}
-			</p>{/if}
-		<div class="mt-5 flex justify-between gap-3">
+			<ProjectFoldersEditor
+				project={editingProject}
+				saving={projectSaving}
+				onadd={onlocate}
+				{onsetprimary}
+				onremove={onremovefolder}
+				{onlabel}
+			/>
+			{#if projectEditError}<p class="mt-3 text-sm text-destructive" role="alert">
+					{projectEditError}
+				</p>{/if}
+		</div>
+		<footer class="dialog-footer mt-0 flex justify-between gap-3">
 			<button
 				type="button"
 				class="min-h-11 text-destructive"
@@ -431,18 +449,12 @@
 			>
 			<button type="button" class="min-h-11" onclick={() => editProjectDialog?.close()}>Done</button
 			>
-		</div>
-		<button
-			class="icon-button absolute top-3 right-3 grid size-11 place-items-center rounded-md"
-			aria-label="Close edit Project"
-			title="Close"
-			onclick={() => editProjectDialog?.close()}><X size={18} aria-hidden="true" /></button
-		>
+		</footer>
 	</dialog>
 
 	<dialog
 		bind:this={removeProjectDialog}
-		class="add-project-dialog confirmation-dialog fixed top-1/2 left-1/2 m-0 w-[min(420px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-4 text-foreground shadow-2xl backdrop:bg-black/60"
+		class="add-project-dialog confirmation-dialog fixed m-0 w-[min(420px,calc(100vw-32px))] rounded-xl border border-border bg-card p-4 text-foreground shadow-2xl backdrop:bg-black/60"
 		aria-labelledby="archive-project-title"
 		aria-describedby="archive-project-description"
 		onclick={(event) => event.target === event.currentTarget && removeProjectDialog?.close()}
