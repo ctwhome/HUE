@@ -1,37 +1,76 @@
 <script lang="ts">
+	import { Bell, FolderKanban, Menu, MessagesSquare } from 'lucide-svelte';
 	import type { MobilePane } from './mobile-navigation';
+	import type { Project, Session } from './types';
 
-	let { drawer, ready, backdrop, unreadCount, ontoggle, onclose, onnotifications, onsettings } =
-		$props<{
-			drawer: MobilePane;
-			ready: boolean;
-			backdrop: boolean;
-			unreadCount: number;
-			ontoggle: (pane: Exclude<MobilePane, null>, trigger: HTMLElement) => void;
-			onclose: () => void;
-			onnotifications: () => void;
-			onsettings: () => void;
-		}>();
+	let {
+		drawer,
+		ready,
+		backdrop,
+		unreadCount,
+		project,
+		session,
+		view,
+		ontoggle,
+		onclose,
+		onnotifications,
+		onsettings
+	} = $props<{
+		drawer: MobilePane;
+		ready: boolean;
+		backdrop: boolean;
+		unreadCount: number;
+		project: Project | null;
+		session: Session | null;
+		view: string | null;
+		ontoggle: (pane: Exclude<MobilePane, null>, trigger: HTMLElement) => void;
+		onclose: () => void;
+		onnotifications: () => void;
+		onsettings: () => void;
+	}>();
 </script>
 
 <nav class="mobile-navigation" aria-label="Workspace navigation">
-	{#each ['projects', 'sessions'] as pane}
-		<button
-			aria-controls={`${pane === 'projects' ? 'project' : 'session'}-drawer`}
-			aria-expanded={drawer === pane}
-			title={pane === 'projects' ? 'Projects' : 'Sessions'}
-			disabled={!ready}
-			onclick={(event) => ontoggle(pane as Exclude<MobilePane, null>, event.currentTarget)}
-			>{pane === 'projects' ? 'Projects' : 'Sessions'}</button
-		>
-	{/each}
 	<button
+		class="project-switcher"
+		aria-controls="project-drawer"
+		aria-expanded={drawer === 'projects'}
+		aria-current={drawer === 'projects' ? 'page' : undefined}
+		aria-label={`Projects, current ${project?.name ?? 'No project'}`}
+		title="Switch Project"
+		disabled={!ready}
+		onclick={(event) => ontoggle('projects', event.currentTarget)}
+		><FolderKanban size={19} aria-hidden="true" /><span>{project?.name ?? 'No project'}</span
+		></button
+	>
+	<button
+		aria-controls="session-drawer"
+		aria-expanded={drawer === 'sessions'}
+		aria-current={drawer === 'sessions' ? 'page' : undefined}
+		aria-label="Sessions"
+		title="Sessions"
+		disabled={!ready}
+		onclick={(event) => ontoggle('sessions', event.currentTarget)}
+		><MessagesSquare size={19} aria-hidden="true" /><span>Sessions</span></button
+	>
+	<button
+		class="mobile-icon-action"
 		aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
+		aria-current={view === 'notifications' ? 'page' : undefined}
 		title="Notifications"
 		onclick={onnotifications}
-		>Notifications{unreadCount ? ` ${unreadCount > 99 ? '99+' : unreadCount}` : ''}</button
+		><Bell size={20} aria-hidden="true" />{#if unreadCount}<span class="notification-badge"
+				>{unreadCount > 99 ? '99+' : unreadCount}</span
+			>{/if}</button
 	>
-	<button aria-label="Settings" title="Settings" onclick={onsettings}>Settings</button>
+	<button
+		class="mobile-icon-action"
+		aria-label="Settings"
+		aria-current={view && view !== 'notifications' ? 'page' : undefined}
+		title="More and Settings"
+		onclick={onsettings}
+		><Menu size={20} aria-hidden="true" /><span class="sr-only">Settings</span></button
+	>
 </nav>
 {#if backdrop}<button
 		class="drawer-backdrop"

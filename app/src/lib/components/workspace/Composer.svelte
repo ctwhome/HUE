@@ -6,6 +6,7 @@
 		ChevronRight,
 		Circle,
 		CircleDot,
+		CircleHelp,
 		GripVertical,
 		Mic,
 		MicOff,
@@ -133,7 +134,36 @@
 		modelCategories: () => Array<{ name: string; models: Model[] }>;
 		contextPercent: () => number | null;
 	} = $props();
+	let modelSearch = $state('');
+	function resizeComposer() {
+		if (!composerElement) return;
+		composerElement.style.height = 'auto';
+		composerElement.style.height = `${Math.min(160, Math.max(44, composerElement.scrollHeight))}px`;
+		composerElement.style.overflowY = composerElement.scrollHeight > 160 ? 'auto' : 'hidden';
+	}
+	function handleComposerInput(event: Event) {
+		oninput(event);
+		resizeComposer();
+	}
+	function filteredModelCategories() {
+		const query = modelSearch.trim().toLowerCase();
+		if (!query) return modelCategories();
+		return modelCategories()
+			.map((category) => ({
+				...category,
+				models: category.models.filter((model) =>
+					`${model.name} ${model.modelId} ${model.description ?? ''}`.toLowerCase().includes(query)
+				)
+			}))
+			.filter((category) => category.models.length);
+	}
+	$effect(() => {
+		composer;
+		resizeComposer();
+	});
 </script>
+
+<svelte:window onresize={resizeComposer} />
 
 <form
 	class="composer sticky bottom-0 mx-[clamp(10px,3vw,60px)] mb-5 rounded-2xl border border-border bg-card/95 px-3 py-2.5 shadow-2xl backdrop-blur-xl"
@@ -298,7 +328,7 @@
 	<textarea
 		bind:this={composerElement}
 		value={composer}
-		{oninput}
+		oninput={handleComposerInput}
 		{onkeydown}
 		{onpaste}
 		placeholder={busy
@@ -384,7 +414,7 @@
 				<div
 					bind:this={modelPopover}
 					id="hermes-model-menu"
-					class="model-menu max-h-[min(520px,calc(100vh-24px))] w-[min(360px,calc(100vw-24px))] overflow-y-auto rounded-2xl border border-border bg-card p-2 text-foreground shadow-2xl"
+					class="model-menu max-h-[min(520px,calc(100dvh-24px))] w-[min(360px,calc(100vw-24px))] overflow-y-auto rounded-2xl border border-border bg-card p-2 text-foreground shadow-2xl"
 					popover="auto"
 					role="menu"
 					aria-label="Choose Hermes model"
@@ -392,14 +422,31 @@
 						(modelMenuOpen = (event.currentTarget as HTMLElement).matches(':popover-open'))}
 				>
 					<header>
-						<strong>Models</strong>
-						<span>{runtime.models.availableModels.length} available</span>
+						<div>
+							<strong>Choose model</strong><small class="block text-muted-foreground"
+								>Current: {selectedModel?.name ?? runtime.models.currentModelId}</small
+							>
+						</div>
+						<button
+							type="button"
+							class="model-menu-close"
+							aria-label="Close model picker"
+							title="Close model picker"
+							onclick={() => modelPopover?.hidePopover()}><X size={18} aria-hidden="true" /></button
+						>
 					</header>
-					{#each modelCategories() as category}
+					<label class="model-search"
+						><span class="sr-only">Search models</span><input
+							bind:value={modelSearch}
+							type="search"
+							aria-label="Search models"
+							placeholder="Search models"
+						/></label
+					>
+					{#each filteredModelCategories() as category}
 						<details
-							open={category.models.some(
-								(model) => model.modelId === runtime.models?.currentModelId
-							)}
+							open={Boolean(modelSearch) ||
+								category.models.some((model) => model.modelId === runtime.models?.currentModelId)}
 						>
 							<summary>
 								<span>{category.name}</span>
@@ -432,6 +479,9 @@
 							</div>
 						</details>
 					{/each}
+					{#if filteredModelCategories().length === 0}<p class="p-3 text-sm text-muted-foreground">
+							No matching models.
+						</p>{/if}
 				</div>{/if}
 			{#if runtime.modes}<label
 					class="context-chip context-select context-mode inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs text-emerald-300 hover:bg-accent"
@@ -457,8 +507,14 @@
 				>{/if}
 		</div>
 		{#if delivery}<small
-				class="composer-delivery shrink-0 text-xs text-muted-foreground"
-				class:warning={delivery.includes('unknown')}>{delivery}</small
+				class="composer-delivery inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
+				class:warning={delivery.includes('unknown')}
+				title={delivery.includes('unknown')
+					? 'Hermes delivery acknowledgement was not confirmed'
+					: `Message ${delivery}`}
+				><CircleHelp size={14} aria-hidden="true" />{delivery.includes('unknown')
+					? 'Delivery status unknown'
+					: delivery}</small
 			>{/if}
 		{#if pendingEnvelope}<button
 				type="button"

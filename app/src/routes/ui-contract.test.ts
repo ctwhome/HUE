@@ -18,6 +18,9 @@ const workspacePaths = [
 	'../lib/components/workspace/dirty-navigation.ts',
 	'../lib/components/workspace/ProjectRail.svelte',
 	'../lib/components/workspace/SessionHeader.svelte',
+	'../lib/components/workspace/SessionManagerDialog.svelte',
+	'../lib/components/workspace/SessionManagerOverlay.svelte',
+	'../lib/components/workspace/MobileProjectEntry.svelte',
 	'../lib/components/workspace/ProjectFoldersEditor.svelte',
 	'../lib/components/workspace/message-state.svelte.ts',
 	'../lib/components/workspace/navigation.svelte.ts',
@@ -29,6 +32,7 @@ const workspacePaths = [
 ];
 const workspaceFiles = workspacePaths.map(read);
 const page = `${route}\n${workspaceFiles.join('\n')}`;
+const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
 const layout = read('./+layout.svelte');
 const appStyles = read('../app.css');
 const styleFiles = [
@@ -36,6 +40,7 @@ const styleFiles = [
 	'../styles/workspace-forms.css',
 	'../styles/conversation-composer.css',
 	'../styles/liquid-thinking-orb.css',
+	'../styles/mobile-overlays.css',
 	'../styles/responsive.css'
 ].map(read);
 const styles = [appStyles, ...styleFiles].join('\n');
@@ -263,7 +268,31 @@ test('mobile shell keeps drawers and 44px targets', () => {
 	expect(styles).toContain('min-height: 44px');
 	expect(styles).toContain('.project-rail.open');
 	expect(styles).toContain('.context-panel.open');
-	expect(styles).toContain('grid-template-columns: repeat(3, 44px) minmax(0, 1fr) 44px');
+	expect(page).toContain("aria-current={drawer === 'projects' ? 'page' : undefined}");
+	expect(page).toContain("aria-current={drawer === 'sessions' ? 'page' : undefined}");
+	expect(page).toContain('aria-label="Close Projects"');
+	expect(page).toContain('aria-label="Close Sessions"');
+	expect(styles).toContain('(pointer: coarse) and (max-height: 500px)');
+});
+
+test('mobile chat exposes resilient content, compact context, and auto-growing input contracts', () => {
+	expect(styles).toContain('overflow-wrap: anywhere');
+	expect(styles).toContain('max-inline-size: 100%');
+	expect(page).toContain('function resizeComposer()');
+	expect(page).toContain('aria-label="Session details"');
+	expect(page).toContain('Delivery status unknown');
+	expect(page).toContain('aria-label="Search models"');
+	expect(page).toContain('Edit Session');
+	expect(page).toContain('Save changes');
+});
+
+test('mobile secondary surfaces are self-explanatory and bounded', () => {
+	expect(page).toContain('A Workflow is a reusable Hermes prompt scoped to this Project.');
+	expect(page).toContain('New workflow');
+	expect(page).toContain('Run creates and opens a new Session.');
+	expect(panel).toContain('aria-label="Settings section"');
+	expect(styles).toContain('.dialog-body');
+	expect(styles).toContain('.dialog-footer');
 });
 
 test('composer exposes HUE work mode selector and timeline status item hooks', () => {
