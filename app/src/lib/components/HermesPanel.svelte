@@ -328,7 +328,7 @@
 		>
 	</header>
 	<nav
-		class="global-panel-tabs flex gap-1.5 overflow-x-auto border-b border-border px-6 py-2.5 max-[700px]:px-2.5"
+		class="global-panel-tabs flex gap-1.5 overflow-x-auto border-b border-border px-6 py-2.5"
 		aria-label="Hermes sections"
 	>
 		<Button
@@ -342,6 +342,18 @@
 				onclick={() => navigate(section.view)}>{section.label}</Button
 			>{/each}
 	</nav>
+	<label class="mobile-settings-selector border-b border-border p-2.5">
+		<span class="sr-only">Settings section</span>
+		<select
+			class="min-h-11 w-full rounded-md border border-border bg-card px-3"
+			aria-label="Settings section"
+			value={view}
+			onchange={(event) => navigate((event.currentTarget as HTMLSelectElement).value as GlobalView)}
+		>
+			<option value="settings">Overview</option>
+			{#each sections as section}<option value={section.view}>{section.label}</option>{/each}
+		</select>
+	</label>
 	<div
 		class="global-panel-content flex-1 overflow-auto px-[clamp(18px,5vw,70px)] py-7 max-[700px]:p-3"
 	>
