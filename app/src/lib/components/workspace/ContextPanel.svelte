@@ -115,15 +115,15 @@
 		>
 		<h1 class="selected-project-title flex min-w-0 flex-1 items-center gap-2 font-semibold">
 			{#if selectedProject}{#if isImage(selectedProject.icon)}<img
-						class="title-icon grid size-6 shrink-0 place-items-center rounded-md object-cover"
+						class="title-icon grid size-(--navigation-icon-size) shrink-0 place-items-center rounded-md object-cover"
 						src={selectedProject.icon ?? ''}
 						alt=""
 					/>
 				{:else if selectedProject.icon}<span
-						class="title-icon grid size-6 shrink-0 place-items-center rounded-md object-cover"
+						class="title-icon grid size-(--navigation-icon-size) shrink-0 place-items-center rounded-md object-cover"
 						>{selectedProject.icon}</span
 					>{:else}<Folder
-						class="title-icon project-icon-default size-6 shrink-0 text-muted-foreground"
+						class="title-icon project-icon-default size-(--navigation-icon-size) shrink-0 text-muted-foreground"
 						size={18}
 						aria-hidden="true"
 					/>{/if}{/if}<span class="truncate">{selectedProject?.name ?? 'No project'}</span>
@@ -137,7 +137,7 @@
 	</header>
 	<form class="flex gap-2 border-b border-border p-2" role="search" onsubmit={onsearch}>
 		<label
-			class="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border px-3"
+			class="flex min-h-(--control-height) min-w-0 flex-1 items-center gap-2 rounded-md border border-border px-2.5"
 		>
 			<Search size={16} aria-hidden="true" /><span class="sr-only">Search Sessions</span><input
 				class="min-w-0 flex-1 border-0 bg-transparent"
@@ -153,7 +153,7 @@
 				/>{/if}
 		</label>
 		<button
-			class="grid size-11 shrink-0 place-items-center rounded-lg border border-border hover:bg-accent"
+			class="grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border hover:bg-accent"
 			class:bg-accent={showArchived}
 			type="button"
 			aria-pressed={showArchived}
@@ -171,7 +171,7 @@
 	</form>
 	<div class="item-list grid gap-1 overflow-auto p-2">
 		<button
-			class="new-session-action sticky top-0 z-10 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 font-medium text-primary-foreground hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+			class="new-session-action sticky top-0 z-10 flex min-h-(--control-height) w-full items-center justify-center gap-2 rounded-md bg-primary px-3 font-medium text-primary-foreground hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
 			onclick={oncreate}
 			disabled={selectedProject?.rootAvailable === false}
 			><Plus size={18} aria-hidden="true" /> Add new session</button
@@ -184,22 +184,23 @@
 				</h2>{/if}
 			<div class="session-row relative w-full min-w-0">
 				<button
-					class="session-row-icon absolute top-1/2 left-0 z-1 grid size-12 -translate-y-1/2 place-items-center rounded-lg hover:bg-accent"
+					class="session-row-icon absolute top-1/2 left-0 z-1 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md hover:bg-accent"
 					aria-label={`Change ${session.title || 'Untitled session'} icon`}
 					title={`Change ${session.title || 'Untitled session'} icon`}
 					disabled={session.available === false}
 					onclick={(event) => onicon(event, session)}
 				>
 					{#if isImage(session.icon ?? null)}<img
-							class="session-icon session-icon-image size-7 rounded-lg object-cover"
+							class="session-icon session-icon-image size-(--navigation-icon-size) rounded-md object-cover"
 							src={session.icon ?? ''}
 							alt=""
-						/>{:else}<span class="session-icon grid size-7 place-items-center rounded-lg"
+						/>{:else}<span
+							class="session-icon grid size-(--navigation-icon-size) place-items-center rounded-md"
 							>{session.icon ?? automaticIcon(session.title)}</span
 						>{/if}
 				</button>
 				<button
-					class="session-select flex min-h-12 w-full items-center gap-2.5 rounded-lg border border-transparent bg-transparent p-2.5 pr-16 pl-12 text-left hover:border-border hover:bg-accent [&.active]:border-border [&.active]:bg-accent"
+					class="session-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md border border-transparent bg-transparent px-2 py-1 pr-16 pl-8 text-left hover:border-border hover:bg-accent [&.active]:border-border [&.active]:bg-accent"
 					draggable={session.available !== false}
 					class:active={selectedSession?.sessionId === session.sessionId}
 					aria-current={selectedSession?.sessionId === session.sessionId ? 'page' : undefined}

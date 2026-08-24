@@ -10,7 +10,7 @@
 	<link rel="icon" href={favicon} />
 	<link rel="manifest" href="/manifest.webmanifest" />
 	<link rel="apple-touch-icon" href="/icons/hue-192.png" />
-	<meta name="theme-color" content="#7c3aed" />
+	<meta name="theme-color" content="#181818" />
 	<meta name="application-name" content="HUE" />
 </svelte:head>
 {@render children()}

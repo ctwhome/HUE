@@ -37,14 +37,14 @@
 	} = $props();
 
 	const action =
-		'global-action size-10 text-muted-foreground [&.active]:border-orange-900 [&.active]:bg-orange-950 [&.active]:text-orange-300 [&>svg]:size-5';
+		'global-action text-muted-foreground [&.active]:border-ring [&.active]:bg-accent [&.active]:text-accent-foreground [&>svg]:size-4';
 </script>
 
 <nav
-	class="global-rail flex min-h-0 flex-col items-center gap-3 border-r border-border bg-background/95 px-2 py-4"
+	class="global-rail flex min-h-0 flex-col items-center gap-2 border-r border-border bg-[var(--surface-raised)] px-2 py-3"
 	aria-label="Global navigation"
 >
-	<BrandMark class="global-mark mb-2 size-10" />
+	<BrandMark class="global-mark mb-1 size-9" />
 	<Button
 		variant="outline"
 		size="icon"
@@ -70,7 +70,7 @@
 				>{unreadCount > 99 ? '99+' : unreadCount}</span
 			>{/if}
 	</Button>
-	<div class="global-admin mt-auto flex flex-col gap-3">
+	<div class="global-admin mt-auto flex flex-col gap-2">
 		<Button
 			variant="outline"
 			size="icon"

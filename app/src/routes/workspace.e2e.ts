@@ -227,16 +227,37 @@ test('drags Sessions into independently interactive resizable chat panes', async
 	await page.setViewportSize(viewports[0]);
 	await addProject(page);
 	await sessionButton(page, 'Pane alpha').click();
-	await sessionButton(page, 'Pane beta').dragTo(page.getByRole('main'));
-
 	const panes = page.getByRole('region', { name: 'Session panes' });
+	const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+	await sessionButton(page, 'Pane beta').dispatchEvent('dragstart', { dataTransfer });
+	await panes.dispatchEvent('dragenter', { dataTransfer });
+	await panes.dispatchEvent('dragover', { dataTransfer });
+	await expect(page.locator('.session-drop-preview')).toBeVisible();
+	await expect(page.locator('.session-drop-preview')).toHaveAttribute('data-destination', 'right');
+	await panes.dispatchEvent('drop', { dataTransfer });
+
 	await expect(panes).toHaveAttribute('data-pane-count', '2');
+	await expect(panes.locator(':scope > article > .session-pane-header')).toHaveCount(2);
+	await expect(page.getByRole('button', { name: 'Close Pane alpha pane' })).toBeVisible();
 	await expect(page.getByRole('complementary', { name: 'Project browser' })).toBeHidden();
 	expect((await page.getByRole('main').boundingBox())!.width).toBeGreaterThan(300);
 	await expect(page.getByLabel('Message Hermes')).toBeVisible();
 	const embedded = page.frameLocator('iframe[title="Pane beta"]');
 	await expect(embedded.getByLabel('Message Hermes')).toBeVisible();
-	expect((await page.getByRole('button', { name: 'Close Pane beta pane' }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+	expect(
+		(await page.getByRole('button', { name: 'Close Pane beta pane' }).boundingBox())!.height
+	).toBeGreaterThanOrEqual(44);
+	for (const viewport of viewports.slice(1)) {
+		await page.setViewportSize(viewport);
+		await expect(panes).toHaveAttribute('data-pane-count', '2');
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		expect(
+			(await page.getByRole('button', { name: 'Close Pane alpha pane' }).boundingBox())!.height
+		).toBeGreaterThanOrEqual(44);
+	}
+	await page.setViewportSize(viewports[0]);
 
 	const activePane = page.getByRole('main');
 	const widthBefore = (await activePane.boundingBox())!.width;
@@ -245,9 +266,15 @@ test('drags Sessions into independently interactive resizable chat panes', async
 	await expect
 		.poll(async () => (await activePane.boundingBox())!.width)
 		.toBeGreaterThan(widthBefore);
+	const resizedWidth = (await activePane.boundingBox())!.width;
+	await page.reload();
+	await expect(panes).toHaveAttribute('data-pane-count', '2');
+	await expect(embedded.getByLabel('Message Hermes')).toBeVisible();
+	expect(Math.abs((await activePane.boundingBox())!.width - resizedWidth)).toBeLessThan(3);
 
-	await page.getByRole('button', { name: 'Close Pane beta pane' }).click();
+	await page.getByRole('button', { name: 'Close Pane alpha pane' }).click();
 	await expect(panes).toHaveAttribute('data-pane-count', '1');
+	await expect(page).toHaveURL(/session=pane-beta/);
 });
 
 test('Project tools stay docked across Sessions and collapse to their rail', async ({
@@ -896,9 +923,7 @@ test('recovers missing primary folders with folder management, archive, or proje
 	}
 });
 
-test('reports current saved Preview address with visible touch-safe action text', async ({
-	page
-}) => {
+test('keeps the current saved Preview address in a compact bottom status bar', async ({ page }) => {
 	await page.route('http://preview.test/**', (route) =>
 		route.fulfill({ contentType: 'text/html', body: '<h1>Preview ready</h1>' })
 	);
@@ -907,16 +932,15 @@ test('reports current saved Preview address with visible touch-safe action text'
 	const preview = health.locator('[data-health-id="preview"]');
 
 	await expect(preview).toContainText('No saved address');
-	await expect(preview).toContainText('Enter address in Browser panel');
 	await page.getByLabel('Browser address').fill('http://preview.test');
 	await page.getByRole('button', { name: 'Go', exact: true }).click();
 
 	await expect(preview).toContainText('preview.test');
-	await expect(preview).toContainText('Preview saved in Browser panel');
 	await page.setViewportSize({ width: 320, height: 844 });
-	await page.getByRole('button', { name: 'Open Project tools' }).click();
 	await expect(preview).toBeVisible();
-	expect((await preview.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+	const healthBox = await health.boundingBox();
+	expect(healthBox?.height).toBeLessThanOrEqual(32);
+	expect(healthBox?.y).toBe(844 - (healthBox?.height ?? 0));
 });
 
 test('keeps workspace scrolling inside its panes', async ({ page }) => {
@@ -4937,9 +4961,7 @@ test('defers Git and keeps health usable when Git fails', async ({ page }) => {
 		await expect(workbench.getByRole('article', { name: 'Git status' })).toContainText(
 			'Git unavailable'
 		);
-		await expect(workbench.getByRole('region', { name: 'Runtime health' })).toContainText(
-			'Healthy'
-		);
+		await expect(page.getByRole('region', { name: 'Runtime health' })).toContainText('Healthy');
 		expect(repositoryRequests).toBe(1);
 		expect(healthRequests).toBe(1);
 		expect(browserErrors).toEqual([
@@ -4994,7 +5016,7 @@ test('defers health and keeps Git usable when health fails', async ({ page }) =>
 		await expect(workbench.getByRole('article', { name: 'Git status' })).toContainText(
 			'startup-ready'
 		);
-		await expect(workbench.getByRole('region', { name: 'Runtime health' })).toContainText(
+		await expect(page.getByRole('region', { name: 'Runtime health' })).toContainText(
 			'Health unavailable'
 		);
 		expect(repositoryRequests).toBe(1);
@@ -5049,10 +5071,12 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		});
 	});
 	await addProject(page);
+	const projectId = new URL(page.url()).searchParams.get('project')!;
 	await page.keyboard.press('Escape');
 
 	const workbench = page.getByRole('region', { name: /HUE workbench/ });
-	await expect(workbench.getByRole('article', { name: 'Project browser' })).toBeVisible();
+	const browser = page.getByRole('article', { name: 'Project browser' });
+	await expect(browser).toBeVisible();
 	await workbench.getByRole('button', { name: 'Start terminal' }).click();
 	const terminal = workbench.getByRole('article', { name: 'Project terminal' });
 	await expect(terminal.getByRole('tab', { name: /Terminal 1/ })).toBeVisible();
@@ -5073,7 +5097,6 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 	await workbench.getByRole('button', { name: 'Commit & push' }).click();
 	await expect.poll(() => gitActions).toEqual(['stage', 'commit', 'push']);
 
-	const browser = workbench.getByRole('article', { name: 'Project browser' });
 	await expect(browser.getByRole('tab', { name: 'Browser', exact: true })).toHaveAttribute(
 		'aria-selected',
 		'true'
@@ -5113,14 +5136,10 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 	await canvas.getByLabel('Browser address').fill('http://canvas.test');
 	await canvas.getByRole('button', { name: 'Go' }).click();
 	await expect
-		.poll(() =>
-			page.evaluate(() => {
-				const key = Object.keys(localStorage).find((item) =>
-					item.startsWith('hue:browser-canvas-address:v1:')
-				);
-				return localStorage.getItem(key ?? '');
-			})
-		)
+		.poll(async () => {
+			const body = await (await page.request.get(`/api/projects/${projectId}/excalidraw`)).json();
+			return body.state?.address;
+		})
 		.toBe('http://canvas.test/');
 	await canvas.getByRole('button', { name: 'Add desktop' }).click();
 	await canvas.getByRole('button', { name: 'Add mobile' }).click();
@@ -5135,19 +5154,15 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		await expect(frame).toHaveAttribute('referrerpolicy', 'no-referrer');
 	}
 	await expect
-		.poll(() =>
-			page.evaluate(() => {
-				const key = Object.keys(localStorage).find((item) =>
-					item.startsWith('hue:browser-canvas:v1:')
-				);
-				const scene = JSON.parse(localStorage.getItem(key ?? '') ?? '{}') as {
-					elements?: Array<{ type: string; width: number; height: number }>;
-				};
-				return (scene.elements ?? [])
-					.filter(({ type }) => type === 'embeddable')
-					.map(({ width, height }) => ({ width, height }));
-			})
-		)
+		.poll(async () => {
+			const body = await (await page.request.get(`/api/projects/${projectId}/excalidraw`)).json();
+			const scene = JSON.parse(body.state?.scene ?? '{}') as {
+				elements?: Array<{ type: string; width: number; height: number }>;
+			};
+			return (scene.elements ?? [])
+				.filter(({ type }) => type === 'embeddable')
+				.map(({ width, height }) => ({ width, height }));
+		})
 		.toEqual([
 			{ width: 1440, height: 900 },
 			{ width: 390, height: 844 }

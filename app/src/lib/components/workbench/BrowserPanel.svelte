@@ -3,7 +3,7 @@
 	import { ExternalLink, Plus, X } from 'lucide-svelte';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
-	import { normalizeBrowserUrl } from './browser-canvas';
+	import { normalizeBrowserUrl, restoreBrowserTabId, restoreBrowserView } from './browser-canvas';
 	import ExcalidrawPanel from './ExcalidrawPanel.svelte';
 
 	type BrowserTab = { id: string; title: string; url: string; draft: string };
@@ -24,6 +24,8 @@
 		'workbench-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card';
 
 	const storageKey = () => `hue:browser:${projectId}`;
+	const activeStorageKey = () => `${storageKey()}:active`;
+	const viewStorageKey = () => `${storageKey()}:view`;
 	const newBrowserTab = (): BrowserTab => ({
 		id: crypto.randomUUID(),
 		title: 'New tab',
@@ -51,8 +53,10 @@
 			browserTabs = [];
 		}
 		if (!browserTabs.length) browserTabs = [newBrowserTab()];
-		activeBrowserTabId = browserTabs[0].id;
-		onpreviewchange(activeBrowserTab()?.url ?? '');
+		activeBrowserTabId = restoreBrowserTabId(browserTabs, localStorage.getItem(activeStorageKey()));
+		view = restoreBrowserView(localStorage.getItem(viewStorageKey()));
+		excalidrawMounted = view === 'excalidraw';
+		onpreviewchange(view === 'browser' ? (activeBrowserTab()?.url ?? '') : '');
 	}
 	function saveBrowserTabs() {
 		try {
@@ -60,6 +64,7 @@
 				storageKey(),
 				JSON.stringify(browserTabs.map(({ id, title, url }) => ({ id, title, url })))
 			);
+			localStorage.setItem(activeStorageKey(), activeBrowserTabId);
 		} catch {
 			browserError = 'Browser tabs could not be saved in this browser.';
 		}
@@ -70,6 +75,11 @@
 	function selectView(next: View) {
 		view = next;
 		if (next === 'excalidraw') excalidrawMounted = true;
+		try {
+			localStorage.setItem(viewStorageKey(), next);
+		} catch {
+			browserError = 'Browser view could not be saved in this browser.';
+		}
 		onpreviewchange(next === 'browser' ? (activeBrowserTab()?.url ?? '') : excalidrawUrl);
 	}
 	function updateExcalidrawPreview(url: string) {
@@ -131,6 +141,7 @@
 	}
 	function selectBrowserTab(tab: BrowserTab) {
 		activeBrowserTabId = tab.id;
+		saveBrowserTabs();
 		onpreviewchange(tab.url);
 	}
 

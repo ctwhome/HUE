@@ -41,6 +41,12 @@ export function readPreferences(storage: Pick<Storage, 'getItem'>): HUEPreferenc
 	}
 }
 
+export function themeChromeColor(theme: HUEPreferences['theme'], prefersDark: boolean) {
+	if (theme === 'oled') return '#000000';
+	if (theme === 'light' || (theme === 'system' && !prefersDark)) return '#f3f3f3';
+	return '#181818';
+}
+
 export function applyPreferences(root: HTMLElement, preferences: HUEPreferences) {
 	root.dataset.theme = preferences.theme;
 	root.dataset.density = preferences.density;
@@ -48,6 +54,11 @@ export function applyPreferences(root: HTMLElement, preferences: HUEPreferences)
 	root.dataset.voice = preferences.voice;
 	root.dataset.showUsage = String(preferences.showUsage);
 	root.lang = preferences.language;
+	const prefersDark =
+		typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
+	root.ownerDocument
+		.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+		?.setAttribute('content', themeChromeColor(preferences.theme, prefersDark));
 }
 
 export function shouldSendMessage(

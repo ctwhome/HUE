@@ -19,6 +19,13 @@ export type Project = {
 	createdAt: string;
 };
 
+export type ProjectExcalidraw = {
+	projectId: string;
+	address: string;
+	scene: string;
+	updatedAt: string;
+};
+
 export type Workflow = {
 	id: string;
 	projectId: string;
@@ -266,6 +273,13 @@ export class HUEStore {
 
 			CREATE INDEX IF NOT EXISTS workflows_project_id_idx
 				ON workflows(project_id, created_at, id);
+
+			CREATE TABLE IF NOT EXISTS project_excalidraw (
+				project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+				address TEXT NOT NULL DEFAULT '',
+				scene TEXT NOT NULL DEFAULT '',
+				updated_at TEXT NOT NULL
+			);
 
 			CREATE TABLE IF NOT EXISTS project_sessions (
 				session_id TEXT PRIMARY KEY,
@@ -1182,6 +1196,55 @@ export class HUEStore {
 		return !!this.database.query('SELECT 1 FROM projects WHERE id = ?').get(id);
 	}
 
+	getProjectExcalidraw(projectId: string): ProjectExcalidraw | null {
+		const row = this.database
+			.query(
+				'SELECT project_id, address, scene, updated_at FROM project_excalidraw WHERE project_id = ?'
+			)
+			.get(projectId) as {
+			project_id: string;
+			address: string;
+			scene: string;
+			updated_at: string;
+		} | null;
+		return row
+			? {
+					projectId: row.project_id,
+					address: row.address,
+					scene: row.scene,
+					updatedAt: row.updated_at
+				}
+			: null;
+	}
+
+	updateProjectExcalidraw(
+		projectId: string,
+		input: { address?: string; scene?: string }
+	): ProjectExcalidraw {
+		if (input.address === undefined && input.scene === undefined) {
+			throw new Error('Excalidraw address or scene is required');
+		}
+		const now = new Date().toISOString();
+		this.database
+			.query(
+				`INSERT INTO project_excalidraw (project_id, address, scene, updated_at)
+				 VALUES (?, ?, ?, ?)
+				 ON CONFLICT(project_id) DO UPDATE SET
+				 address = CASE WHEN ? THEN excluded.address ELSE project_excalidraw.address END,
+				 scene = CASE WHEN ? THEN excluded.scene ELSE project_excalidraw.scene END,
+				 updated_at = excluded.updated_at`
+			)
+			.run(
+				projectId,
+				input.address ?? '',
+				input.scene ?? '',
+				now,
+				input.address === undefined ? 0 : 1,
+				input.scene === undefined ? 0 : 1
+			);
+		return this.getProjectExcalidraw(projectId)!;
+	}
+
 	adoptHermesProject(legacyId: string, hermesId: string): void {
 		if (
 			!legacyId.trim() ||
@@ -1201,6 +1264,13 @@ export class HUEStore {
 				return;
 			}
 			this.ensureProjectMetadata(hermesId);
+			this.database
+				.query(
+					`INSERT OR IGNORE INTO project_excalidraw (project_id, address, scene, updated_at)
+					 SELECT ?, address, scene, updated_at FROM project_excalidraw WHERE project_id = ?`
+				)
+				.run(hermesId, legacyId);
+			this.database.query('DELETE FROM project_excalidraw WHERE project_id = ?').run(legacyId);
 			for (const table of ['workflows', 'project_sessions', 'messages', 'session_events']) {
 				this.database
 					.query(`UPDATE ${table} SET project_id = ? WHERE project_id = ?`)

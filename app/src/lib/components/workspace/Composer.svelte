@@ -206,7 +206,7 @@
 <svelte:window onresize={resizeComposer} />
 
 <form
-	class="composer sticky bottom-0 mx-[clamp(10px,3vw,60px)] mb-5 rounded-2xl border border-border bg-card/95 px-3 py-2.5 shadow-2xl backdrop-blur-xl"
+	class="composer sticky bottom-0 mx-[clamp(10px,2vw,40px)] mb-4 rounded-lg border border-border bg-card/95 px-2.5 py-2 shadow-lg backdrop-blur-xl"
 	class:dragging={draggingImages}
 	{onsubmit}
 	ondragover={(event) => {
@@ -228,7 +228,7 @@
 		onclick={() => onscrolllatest('smooth')}><ArrowDown size={16} aria-hidden="true" /></button
 	>
 	{#if matchingCommands().length}<div
-			class="command-menu absolute right-0 bottom-[calc(100%+8px)] left-0 max-h-[min(360px,45vh)] overflow-y-auto rounded-xl border border-border bg-card p-1.5 shadow-2xl"
+			class="command-menu absolute right-0 bottom-[calc(100%+8px)] left-0 max-h-[min(360px,45vh)] overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-xl"
 			role="listbox"
 			aria-label="Hermes commands"
 		>
@@ -245,7 +245,7 @@
 				</button>{/each}
 		</div>{/if}
 	{#if queuedMessages.length}<section
-			class="message-queue mb-2 max-h-48 overflow-y-auto rounded-xl border border-border bg-muted/50 p-2.5"
+			class="message-queue mb-2 max-h-48 overflow-y-auto rounded-lg border border-border bg-muted/50 p-2"
 			aria-label="Queued messages"
 		>
 			<header><strong>Queued messages</strong><span>{queuedMessages.length}</span></header>
@@ -308,7 +308,7 @@
 				</article>{/each}
 		</div>{/if}
 	{#if callActive}<section
-			class="voice-call mb-1.5 flex min-w-0 items-center gap-2.5 rounded-xl border border-violet-900 bg-violet-950/40 p-2"
+			class="voice-call mb-1.5 flex min-w-0 items-center gap-2.5 rounded-lg border border-border bg-muted/50 p-2"
 			aria-label={voiceMessageOnly ? 'Voice message controls' : 'Voice call controls'}
 		>
 			<span
@@ -381,7 +381,7 @@
 	<div class="composer-toolbar flex min-w-0 items-center gap-2 pt-1">
 		{#if promptLibraryAvailable}<button
 				type="button"
-				class="attach-button flex min-h-9 shrink-0 items-center gap-2 rounded-lg border border-border px-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+				class="attach-button flex h-(--control-height-icon) shrink-0 items-center gap-2 rounded-md border border-border px-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
 				aria-label="Prompt library"
 				title="Open prompt library"
 				onclick={openPromptLibrary}
@@ -390,7 +390,7 @@
 				></button
 			>{/if}
 		<label
-			class="attach-button grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+			class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
 			aria-label="Attach images and files"
 			title="Attach documents, audio, video, archives, text, code, or images"
 		>
@@ -405,7 +405,7 @@
 		{#if !callActive}<button
 				bind:this={voiceMessageElement}
 				type="button"
-				class="attach-button voice-start grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+				class="attach-button voice-start grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
 				aria-label="Record voice message"
 				title="Record and send voice message"
 				onclick={onvoiceMessage}><Mic size={20} aria-hidden="true" /></button
@@ -413,7 +413,7 @@
 			<button
 				bind:this={voiceStartElement}
 				type="button"
-				class="attach-button voice-start grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+				class="attach-button voice-start grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
 				aria-label="Start voice call"
 				title="Start voice call"
 				onclick={onvoiceCall}><PhoneCall size={20} aria-hidden="true" /></button

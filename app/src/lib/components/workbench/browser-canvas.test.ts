@@ -13,6 +13,8 @@ import {
 	normalizeBrowserUrl,
 	parseStoredBrowserAddress,
 	parseStoredBrowserScene,
+	restoreBrowserTabId,
+	restoreBrowserView,
 	serializeBrowserScene
 } from './browser-canvas';
 
@@ -97,6 +99,19 @@ describe('browser embed creation', () => {
 });
 
 describe('browser scene storage', () => {
+	test('restores an existing active browser tab and falls back when it is gone', () => {
+		const tabs = [{ id: 'first' }, { id: 'second' }];
+		expect(restoreBrowserTabId(tabs, 'second')).toBe('second');
+		expect(restoreBrowserTabId(tabs, 'missing')).toBe('first');
+		expect(restoreBrowserTabId(tabs, null)).toBe('first');
+	});
+
+	test('restores the selected Browser or Excalidraw view', () => {
+		expect(restoreBrowserView('excalidraw')).toBe('excalidraw');
+		expect(restoreBrowserView('browser')).toBe('browser');
+		expect(restoreBrowserView('unknown')).toBe('browser');
+	});
+
 	test('uses isolated versioned project keys', () => {
 		expect(browserCanvasStorageKey('project-a')).toBe('hue:browser-canvas:v1:project-a');
 		expect(browserCanvasStorageKey('project-b')).not.toBe(browserCanvasStorageKey('project-a'));

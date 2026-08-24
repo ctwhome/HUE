@@ -4,7 +4,6 @@ import type {
 	ExcalidrawEmbeddableElement
 } from '@excalidraw/excalidraw/element/types';
 import {
-	browserCanvasStorageKey,
 	createBrowserEmbedSpec,
 	createExcalidrawEmbedElement,
 	normalizeBrowserEmbedUrl,
@@ -14,14 +13,15 @@ import {
 } from './browser-canvas';
 
 type MountOptions = {
-	projectId: string;
+	initialScene: string;
+	onsave: (scene: string) => Promise<void>;
 	onready: (restoredUrl: string) => void;
 	onerror: (message: string) => void;
 };
 
 export type BrowserCanvasController = {
 	addEmbed: (device: BrowserDevice, url: string) => void;
-	flush: () => void;
+	flush: () => Promise<void>;
 	destroy: () => void;
 };
 
@@ -49,8 +49,7 @@ export async function mountExcalidrawBrowserCanvas(
 		import('@excalidraw/excalidraw/index.css')
 	]);
 	const { CaptureUpdateAction, Excalidraw, restore } = excalidraw;
-	const storageKey = browserCanvasStorageKey(options.projectId);
-	const parsed = parseStoredBrowserScene(localStorage.getItem(storageKey));
+	const parsed = parseStoredBrowserScene(options.initialScene);
 	// Excalidraw restore utilities own field-level scene repair; outer schema and links are bounded above.
 	const restored = restore(
 		parsed
@@ -68,15 +67,18 @@ export async function mountExcalidrawBrowserCanvas(
 	let latestElements: readonly ExcalidrawElement[] = restored.elements;
 	let latestAppState: Partial<AppState> = restored.appState;
 	let destroyed = false;
+	let saveChain = Promise.resolve();
 
 	const flush = () => {
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = undefined;
-		try {
-			localStorage.setItem(storageKey, serializeBrowserScene(latestElements, latestAppState));
-		} catch {
-			options.onerror('Canvas could not be saved in this browser.');
-		}
+		const scene = serializeBrowserScene(latestElements, latestAppState);
+		saveChain = saveChain
+			.then(() => options.onsave(scene))
+			.catch(() => {
+				options.onerror('Canvas could not be saved to HUE.');
+			});
+		return saveChain;
 	};
 	const scheduleSave = () => {
 		if (saveTimer) clearTimeout(saveTimer);
@@ -155,7 +157,7 @@ export async function mountExcalidrawBrowserCanvas(
 		attributes: true,
 		attributeFilter: ['data-theme']
 	});
-	const pageHide = () => flush();
+	const pageHide = () => void flush();
 	window.addEventListener('pagehide', pageHide);
 	document.addEventListener('visibilitychange', pageHide);
 	render();
@@ -180,7 +182,7 @@ export async function mountExcalidrawBrowserCanvas(
 		flush,
 		destroy() {
 			destroyed = true;
-			flush();
+			void flush();
 			themeObserver.disconnect();
 			window.removeEventListener('pagehide', pageHide);
 			document.removeEventListener('visibilitychange', pageHide);

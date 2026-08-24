@@ -8,10 +8,22 @@
 	onMount(() => {
 		let picker: HTMLElement | undefined;
 		let disposed = false;
+		const root = document.documentElement;
+		const media = window.matchMedia('(prefers-color-scheme: dark)');
+		const updateTheme = () => {
+			const theme = root.dataset.theme;
+			picker?.classList.toggle(
+				'dark',
+				theme === 'dark' || theme === 'oled' || (theme === 'system' && media.matches)
+			);
+		};
+		const observer = new MutationObserver(updateTheme);
+		observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+		media.addEventListener('change', updateTheme);
 		void import('emoji-picker-element/picker').then(({ default: Picker }) => {
 			if (disposed) return;
 			picker = new Picker({ dataSource: emojiDataUrl });
-			picker.classList.add('dark');
+			updateTheme();
 			picker.addEventListener('emoji-click', (event) => {
 				onselect((event as CustomEvent<{ unicode: string }>).detail.unicode);
 			});
@@ -19,6 +31,8 @@
 		});
 		return () => {
 			disposed = true;
+			observer.disconnect();
+			media.removeEventListener('change', updateTheme);
 			picker?.remove();
 		};
 	});

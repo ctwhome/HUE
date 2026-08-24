@@ -23,6 +23,24 @@ function makeDeliveryStore() {
 }
 
 describe('HUEStore project and workflow boundaries', () => {
+	it('stores one independently updateable Excalidraw scene per Project', () => {
+		const store = makeStore();
+		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		expect(store.getProjectExcalidraw('hue')).toBeNull();
+
+		store.updateProjectExcalidraw('hue', { address: 'https://example.com/' });
+		store.updateProjectExcalidraw('hue', {
+			scene: '{"version":1,"elements":[],"appState":{}}'
+		});
+
+		expect(store.getProjectExcalidraw('hue')).toMatchObject({
+			projectId: 'hue',
+			address: 'https://example.com/',
+			scene: '{"version":1,"elements":[],"appState":{}}'
+		});
+		store.close();
+	});
+
 	it('persists Session rename pin archive folder and optional tags without changing ownership', () => {
 		const store = makeDeliveryStore();
 		store.updateSessionMetadata('hue', 'session-1', {
@@ -1165,6 +1183,9 @@ describe('HUEStore Hermes Project identity migration', () => {
 		});
 		store.updateMessageStatus('message-1', 'running');
 		store.updateMessageStatus('message-1', 'unknown');
+		store.updateProjectExcalidraw('legacy-hue', {
+			scene: '{"version":1,"elements":[],"appState":{}}'
+		});
 		store.database
 			.query(
 				'INSERT INTO dismissed_sessions (project_scope, session_id, dismissed_at) VALUES (?, ?, ?)'
@@ -1183,6 +1204,7 @@ describe('HUEStore Hermes Project identity migration', () => {
 			status: 'unknown'
 		});
 		expect(store.listEvents('p_hermes', 'session-1').length).toBeGreaterThan(0);
+		expect(store.getProjectExcalidraw('p_hermes')?.scene).toContain('"version":1');
 		expect(store.isSessionDismissed('p_hermes', 'dismissed-session')).toBe(true);
 		expect(store.database.query('PRAGMA foreign_key_check').all()).toEqual([]);
 		store.close();

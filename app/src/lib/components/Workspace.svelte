@@ -17,6 +17,7 @@
 	import HermesPanel from './HermesPanel.svelte';
 	import ProjectBrowserDock from './ProjectBrowserDock.svelte';
 	import ProjectWorkbench from './ProjectWorkbench.svelte';
+	import HealthStrip from './workbench/HealthStrip.svelte';
 	import ProjectTerminalDock from './workbench/ProjectTerminalDock.svelte';
 	import QuickCapture from './pwa/QuickCapture.svelte';
 	import Composer from './workspace/Composer.svelte';
@@ -269,18 +270,19 @@
 	let pendingEnvelope = $derived(messageState.pendingEnvelope);
 	let editingQueuedMessageId = $derived(messageState.editingQueuedMessageId);
 	let commandIndex = $derived(messageState.commandIndex);
-	let messageNotice = $derived(messageState.messageNotice);
-	let runtimeChanging = $derived(runtimeState.changing);
-	let stopping = $derived(messageState.stopping);
 	let workModeChanging = $state(false);
 	let browserOpen = $state(true);
+	let previewUrl = $state('');
 	let terminalOpen = $state(false);
-	let terminalHeight = $state(300);
+	let terminalHeight = $state(300),
+		sessionPaneCount = $state(1);
 	let pendingSessionDraft = '';
 	let sessionCreation: Promise<Session | null> | null = null;
 	$effect(() => {
 		projectTools = false;
+		previewUrl = '';
 		({ browserOpen, terminalOpen } = readProjectPanels(localStorage, panelProjectId));
+		if (sessionPaneCount > 1 && innerWidth < 1600) browserOpen = false;
 		terminalHeight = 300;
 	});
 	const changeWorkMode = async (workMode: WorkMode) => {
@@ -515,8 +517,10 @@
 		<SessionPaneGrid
 			{sessions}
 			projectId={selectedProject?.id ?? null}
-			selectedSessionId={selectedSession?.sessionId ?? null}
-			onpanecount={(count) => count > 1 && innerWidth < 1600 && (browserOpen = false)}
+			primarySession={selectedSession}
+			allowDocking={!embedded}
+			onpanecount={(count) => (sessionPaneCount = count)}
+			onprimaryclose={navigation.openSession}
 		>
 			<main
 				class="session-view flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
@@ -548,6 +552,7 @@
 							projectId={selectedProject.id}
 							projectName={selectedProject.name}
 							compact={true}
+							onpreviewchange={(url) => (previewUrl = url)}
 							onbranch={(value) => (branch = value)}
 							{dirtyGuard}
 						/>
@@ -555,7 +560,7 @@
 				{:else if selectedSession || (selectedProject?.rootAvailable && navigation.ready)}
 					<Conversation
 						{timeline}
-						{messageNotice}
+						messageNotice={messageState.messageNotice}
 						agentLabel={compactModelLabel(
 							runtime.models?.currentModelId ?? '',
 							runtimeState.currentModel()?.name ?? runtime.models?.currentModelId ?? 'Hermes'
@@ -600,14 +605,14 @@
 						{runtime}
 						workMode={selectedSession?.workMode ?? 'autonomous'}
 						{workModeChanging}
-						{runtimeChanging}
+						runtimeChanging={runtimeState.changing}
 						promptLibraryAvailable={Boolean(selectedProject?.rootAvailable)}
 						{workflows}
 						bind:workflowName={navigation.workflowName}
 						bind:workflowPrompt={navigation.workflowPrompt}
 						bind:modelMenuOpen={runtimeState.modelMenuOpen}
 						bind:modelPopover={runtimeState.modelPopover}
-						{stopping}
+						stopping={messageState.stopping}
 						showScrollToLatest={timeline.length > 0 && transcriptFollow.showScrollToLatest}
 						busy={isTurnBusy(delivery)}
 						onsubmit={submitDraft}
@@ -708,7 +713,11 @@
 		</SessionPaneGrid>
 		{#if selectedProject?.rootAvailable && navigation.ready && !mobile}
 			{#key selectedProject.id}
-				<ProjectBrowserDock projectId={selectedProject.id} open={browserOpen} />
+				<ProjectBrowserDock
+					projectId={selectedProject.id}
+					open={browserOpen}
+					onpreviewchange={(url) => (previewUrl = url)}
+				/>
 				<ProjectWorkbench
 					projectId={selectedProject.id}
 					projectName={selectedProject.name}
@@ -716,6 +725,7 @@
 					docked={true}
 					{browserOpen}
 					{terminalOpen}
+					onpreviewchange={(url) => (previewUrl = url)}
 					onbrowser={() =>
 						(browserOpen = togglePanel(localStorage, panelProjectId, 'browser', browserOpen))}
 					onterminal={() =>
@@ -731,6 +741,15 @@
 			{/key}
 		{/if}
 	</div>
+	{#if selectedProject && navigation.ready}
+		{#key selectedProject.id}
+			<HealthStrip
+				projectId={selectedProject.id}
+				projectName={selectedProject.name}
+				{previewUrl}
+			/>
+		{/key}
+	{/if}
 </div>
 
 <SessionManagerOverlay {navigation} />

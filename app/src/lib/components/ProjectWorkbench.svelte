@@ -11,7 +11,6 @@
 	} from 'lucide-svelte';
 	import BrowserPanel from './workbench/BrowserPanel.svelte';
 	import FilesPanel from './workbench/FilesPanel.svelte';
-	import HealthStrip from './workbench/HealthStrip.svelte';
 	import { afterInitialPaint } from './workbench/after-initial-paint';
 	import { api } from './workbench/api';
 	import type { DirtyGuard } from './workspace/dirty-guard';
@@ -33,6 +32,7 @@
 		terminalOpen = false,
 		onbrowser = () => {},
 		onterminal = () => {},
+		onpreviewchange = () => {},
 		onbranch,
 		dirtyGuard
 	}: {
@@ -44,11 +44,11 @@
 		terminalOpen?: boolean;
 		onbrowser?: () => void;
 		onterminal?: () => void;
+		onpreviewchange?: (url: string) => void;
 		onbranch: (branch: string | null) => void;
 		dirtyGuard: DirtyGuard;
 	} = $props();
 	type Tool = 'git' | 'files';
-	let previewUrl = $state('');
 	let view = $state<'develop' | 'files'>('develop');
 	let developView = $state<'browser' | 'terminal' | 'git'>('browser');
 	let open = $state(true);
@@ -237,7 +237,6 @@
 		aria-hidden={docked && !open}
 		inert={docked && !open ? true : undefined}
 	>
-		{#if !docked}<HealthStrip {projectId} {previewUrl} />{/if}
 		<nav
 			class="workbench-tabs flex gap-1 border-b border-border px-2.5 py-1.5"
 			aria-label="Project workbench views"
@@ -284,9 +283,9 @@
 							><GitBranch size={17} aria-hidden="true" />Git</button
 						>
 					</nav>{/if}
-				{#if (!compact && !docked) || developView === 'browser'}<BrowserPanel
+				{#if !docked && (!compact || developView === 'browser')}<BrowserPanel
 						{projectId}
-						onpreviewchange={(url) => (previewUrl = url)}
+						{onpreviewchange}
 					/>{/if}
 				{#if (!compact && !docked) || developView === 'terminal'}
 					{#if TerminalPanel}

@@ -82,6 +82,17 @@ export const browserCanvasAddressKey = (projectId: string) =>
 	`hue:browser-canvas-address:v${STORAGE_VERSION}:${projectId}`;
 export const legacyBrowserStorageKey = (projectId: string) => `hue:browser:${projectId}`;
 
+export function restoreBrowserTabId(
+	tabs: ReadonlyArray<{ id: string }>,
+	saved: string | null
+): string {
+	return (saved && tabs.some(({ id }) => id === saved) ? saved : tabs[0]?.id) ?? '';
+}
+
+export function restoreBrowserView(value: string | null): 'browser' | 'excalidraw' {
+	return value === 'excalidraw' ? 'excalidraw' : 'browser';
+}
+
 export function parseStoredBrowserAddress(value: string | null): string {
 	if (!value || value.length > 4096) return '';
 	try {

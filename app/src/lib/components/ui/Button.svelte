@@ -23,9 +23,9 @@
 		destructive: 'bg-destructive text-white hover:bg-destructive/90'
 	};
 	const sizes: Record<Size, string> = {
-		default: 'h-9 px-4 py-2',
-		sm: 'h-8 rounded-md px-3 text-xs',
-		icon: 'size-9'
+		default: 'h-(--control-height) px-3',
+		sm: 'h-(--control-height-sm) rounded-md px-2.5 text-xs',
+		icon: 'h-(--control-height-icon) w-(--control-height-icon)'
 	};
 </script>
 

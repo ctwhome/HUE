@@ -1,134 +1,77 @@
 # HUE
 
-> **A focused, fast workspace for Hermes Projects, Workflows, and Sessions.**
->
-> One calm interface around Hermes—without the broad Python dashboard or lossy browser terminal input.
+> **One flexible interface for AI-assisted work across Projects, Workflows, and Sessions.**
 
-![Project activity](https://img.shields.io/badge/development-resumed-16a34a) ![Product status](https://img.shields.io/badge/product-implementation%20started-2563eb) ![Runtime](https://img.shields.io/badge/runtime-Bun-f472b6) ![Hermes](https://img.shields.io/badge/protocol-ACP%20v1-7c3aed)
+An agent harness is the software layer that connects an AI agent to its models, tools, files, terminal, and approval loop; Hermes can serve as that shared harness instead of requiring separate environments such as OpenCode, Claude Code, or Codex. HUE (Hermes Unified Environment) gives Hermes an interactive web workspace with first-class Projects and Sessions, multi-panel layouts, multiple embedded browsers, Git controls, and access to GitHub issues, milestones, and pull requests.
 
-## Project activity status — resumed
+![Runtime](https://img.shields.io/badge/runtime-Bun-f472b6) ![Hermes](https://img.shields.io/badge/protocol-ACP%20v1-7c3aed)
 
-> **Focused HUE implementation resumed on 21 August 2026.**
+## What HUE provides
 
-Development was paused on 25 July 2026 while the maintainer evaluated whether Hermes WebUI plus direct OpenCode/Codex delegation could satisfy the workflow without another application. That experiment exposed the durable unmet need now addressed here: reliable Hermes message delivery and Project-scoped Session organization in a purpose-built interface.
+- **Projects** bind Hermes to trusted local working directories.
+- **Workflows** save reusable, Project-scoped prompts and launch settings.
+- **Sessions** create or resume Hermes conversations with durable message delivery.
+- **Workspace panels** place Sessions, files, terminals, repository tools, and web pages side by side.
+- **Git and GitHub tools** support common repository commands and show open issues and pull requests; embedded browsers keep milestones and other GitHub pages in the same workspace.
+- **Reliable reconnects** preserve complete message envelopes, deduplicate retries, and make uncertain delivery explicit instead of silently repeating a prompt.
 
-HUE is now a focused **Hermes workspace client**. HUE owns local Project and Workflow metadata plus reliable message-delivery state. Hermes ACP owns model/tool execution and Hermes Session persistence.
+HUE owns its local workspace metadata and delivery state. Hermes owns agent execution, tool use, and transcript persistence through ACP; HUE does not write Hermes databases directly or approve permission requests without user action.
 
-Implementation lives in `app`. The older broad personal-OS specification remains in the repository as historical design context, but [ADR-0002](docs/decisions/0002-bun-hermes-acp-workspace.md) is the active scope decision.
+## Install and run
 
-## The product in one sentence
+Install these prerequisites first:
 
-HUE lets a user open a local **Project**, launch a reusable **Workflow**, and create or resume reliable Hermes **Sessions** whose complete messages survive retries and reconnects.
+- [Bun 1.3.14](https://bun.sh/)
+- Hermes Agent with ACP v1 support, installed and configured for the current user
+- Git
+- [GitHub CLI](https://cli.github.com/) authenticated with `gh auth login` for GitHub issue and pull-request panels
 
-## Review the vision
-
-1. Start with **[VISION.md](VISION.md)**.
-2. Open the **[Astro/Starlight documentation website](https://ctwhome.github.io/HUE/)** and its embedded [interactive specification](https://ctwhome.github.io/HUE/prototype/), or run the docs and workspace locally with `make dev`.
-3. Review the specification in order:
-   - [Status, labels and review protocol](docs/00-status-and-review.md)
-   - [Problem, frustrations and product principles](docs/01-problem-and-principles.md)
-   - [Product experience and user journeys](docs/02-product-experience.md)
-   - [Information architecture](docs/03-information-architecture.md)
-   - [Spaces, sessions, knowledge and source ownership](docs/03-spaces-sessions-knowledge.md)
-   - [UI specification and screen wireframes](docs/04-ui-specification.md)
-   - [Target system architecture](docs/05-system-architecture.md)
-   - [Projects, context and layered memory](docs/06-projects-context-memory.md)
-   - [Orchestration, workers and adaptive routing](docs/07-orchestration-and-routing.md)
-   - [Tools, permissions and computer use](docs/08-tools-permissions-computer-use.md)
-   - [Data model, events and service contracts](docs/09-data-model-and-apis.md)
-   - [Security, privacy and trust](docs/10-security-privacy-trust.md)
-   - [Quality, evaluation and observability](docs/11-quality-evaluation-observability.md)
-   - [Deployment and operations](docs/12-deployment-operations.md)
-   - [Milestones and implementation sequence](docs/13-roadmap.md)
-   - [Decision register](docs/14-decision-register.md)
-   - [Accepted frontend ADR: SvelteKit + shadcn-svelte](docs/decisions/0001-sveltekit-shadcn-svelte.md)
-   - [Accepted focused workspace ADR: Bun + Hermes ACP](docs/decisions/0002-bun-hermes-acp-workspace.md)
-   - [Accepted Android proof ADR: bounded Capacitor shell](docs/decisions/0008-capacitor-android-native-shell.md)
-   - [Glossary](docs/15-glossary.md)
-   - [Notifications, attention and delivery](docs/16-notifications-attention-delivery.md)
-
-## Status vocabulary
-
-| Label           | Meaning                                                                             |
-| --------------- | ----------------------------------------------------------------------------------- |
-| **TBI**         | Target behavior is specified but not implemented.                                   |
-| **TBD**         | A decision is still open; implementation must not silently choose.                  |
-| **SPEC**        | Documentation exists and is reviewable; this does not imply product implementation. |
-| **POC**         | A disposable proof was built to answer a named question.                            |
-| **IMPLEMENTED** | Code exists and acceptance evidence is linked.                                      |
-| **VERIFIED**    | The implemented behavior passed its documented verification gates.                  |
-
-The canonical status rules live in [docs/00-status-and-review.md](docs/00-status-and-review.md).
-
-## Repository layout
-
-```text
-HUE/
-├── Makefile                  # starts the complete development workspace
-├── app/                      # SvelteKit/Bun Hermes workspace
-├── docs/                     # Astro app, specification, ADRs, roadmap, and spikes
-├── prototype/                # canonical clickable UI wireframe source
-├── VISION.md                 # stable product north star
-└── .github/workflows/        # verified GitHub Pages deployment
-```
-
-The canonical product Markdown remains in `VISION.md` and `docs/`. `docs/scripts/prepare_site.py` projects those files into Starlight at build time, rewrites their internal links, and copies the prototype and roadmap data. Generated projections are ignored by Git so the website cannot become a second hand-edited source of truth.
-
-## Documentation website
+From the cloned repository, one command installs the locked dependencies, builds the documentation, and starts HUE:
 
 ```bash
-bun install
-make dev          # app at :4010/ and documentation at :4010/docs/
-bun run --cwd docs verify
+make dev
 ```
 
-The production site is deployed to [ctwhome.github.io/HUE](https://ctwhome.github.io/HUE/) by GitHub Actions after every verified push to `main`.
+Open [http://127.0.0.1:4010](http://127.0.0.1:4010). HUE uses the default Hermes profile; set `HUE_HERMES_PROFILE` before starting it to select another profile.
 
-## Android native-shell proof
-
-Capacitor shell under `app/android` loads canonical HUE server; it does not embed another workspace or Hermes authority. JDK 21 and Android SDK 36 are required.
+For a local production build:
 
 ```bash
-bun install --frozen-lockfile
-bun run --cwd app android:sync # injects HUE_SERVER_URL into Capacitor before sync
-scripts/android-gradle.sh :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
-
-# Debug-only emulator or adb-reverse origin; cleartext accepts loopback only.
-scripts/android-gradle.sh -PHUE_SERVER_URL=http://10.0.2.2:4173 :app:assembleDebug
-
-# Release boundary proof: first command must fail, second must pass.
-scripts/android-gradle.sh -PHUE_SERVER_URL=http://127.0.0.1:4173 :app:validateHueReleaseConfig
-scripts/android-gradle.sh -PHUE_SERVER_URL=https://hue.example :app:validateHueReleaseConfig
-
-# Debug-only loopback API 36 proof.
-scripts/android-proof.sh
-
-# Exact HTTPS App Link API 36 proof; runtime value is never tracked.
-HUE_ANDROID_HTTPS_ORIGIN=https://your-hue-origin.example scripts/android-proof.sh
+bun install --frozen-lockfile && bun run --cwd app build && HOST=127.0.0.1 PORT=4173 HUE_DATABASE_PATH="$HOME/.hue/hue.db" bun run --cwd app start
 ```
 
-`scripts/android-env.sh` finds SDK at `$ANDROID_SDK_ROOT`, `$ANDROID_HOME`, or `/Volumes/DATA-ext/Android SDK/sdk` without `local.properties`. Production builds inject HTTPS origin through `HUE_SERVER_URL`; do not put credentials or auth tokens in origin. Native credentials, if later required, must use Android Keystore. See [ADR-0008](docs/decisions/0008-capacitor-android-native-shell.md).
+Then open [http://127.0.0.1:4173](http://127.0.0.1:4173).
 
-## Focused product contract
+## Why HUE should run natively
 
-- Exactly three user-facing product objects: **Projects, Workflows, Sessions**.
-- Projects are trusted working-directory boundaries; Workflows are reusable Project-scoped Hermes prompts; Sessions are Hermes ACP conversations.
-- The browser sends complete message envelopes, never PTY keystrokes.
-- HUE persists an envelope before acknowledging it, deduplicates client retries, and exposes monotonic reconnect cursors.
-- Unknown delivery remains visibly unknown and is never auto-retried.
-- HUE never writes Hermes' `state.db` directly and never silently grants ACP permission requests.
-- Data remains local by default in HUE SQLite plus the user's existing Hermes profile.
+When Hermes is installed on the computer, run HUE on that same computer as the same user. HUE starts the local `hermes` executable, uses its configured profiles and Sessions, accesses real Project paths, opens local shells, and invokes the host's `git` and `gh` commands.
 
-## Roadmap and issues
+A Docker container cannot access those resources by default. Making it work would require mounting the Hermes profile, HUE data, repositories, credentials, and shell tooling into the container while keeping host and container paths and permissions aligned. That adds fragile configuration and broadens access to sensitive host data without providing useful isolation, because Hermes and the Projects still live outside the container.
 
-The canonical source is:
+Use a container only when Hermes, HUE, every required repository, and the supporting command-line tools all run inside the same deliberately configured container environment. Do not expose the HUE server directly to an untrusted network.
 
-- [`docs/roadmap/milestones.json`](docs/roadmap/milestones.json)
-- [`docs/roadmap/issues.json`](docs/roadmap/issues.json)
-- [`docs/roadmap/dependency-graph.md`](docs/roadmap/dependency-graph.md)
+## Data and configuration
 
-The GitHub copy is generated from those files so the plan and implementation tracker cannot drift silently.
+- HUE stores its SQLite database at `~/.hue/hue.db` by default.
+- Hermes keeps its own profiles and Session transcripts.
+- `HUE_DATABASE_PATH` changes the HUE database location.
+- `HUE_HERMES_PROFILE` selects the Hermes profile; the default is `default`.
+- `HUE_HERMES_COMMAND` selects a non-standard Hermes executable path.
+- Project folders and Hermes data remain local unless the user configures external services.
+
+## Development
+
+```bash
+bun test
+bun run --cwd app check
+bun run --cwd app build
+bun run --cwd app test:e2e
+```
+
+The application lives in `app/`. Product documentation and architecture decisions live in `docs/`, and the interactive design reference lives in `prototype/`.
+
+Read the [documentation website](https://ctwhome.github.io/HUE/), [active architecture decision](docs/decisions/0002-bun-hermes-acp-workspace.md), and [contribution guide](CONTRIBUTING.md) for more detail.
 
 ## License
 
-**TBD-019:** The open-source license has not yet been selected. Until a license is explicitly adopted, this repository is source-visible but no reuse rights are granted by implication. The decision must balance ecosystem adoption, commercial embedding, contributor expectations and protection against closed hosted extraction.
+An open-source license has not yet been selected. Until one is adopted, this repository is source-visible but does not grant reuse rights by implication.
