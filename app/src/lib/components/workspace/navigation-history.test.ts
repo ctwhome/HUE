@@ -21,6 +21,7 @@ test('failed unavailable or deleted Session restoration leaves Session list reco
 	} as Session;
 	let persistedSessionId: string | null | undefined;
 	let cleared = 0;
+	const loads: Array<string | null | undefined> = [];
 	Object.defineProperty(globalThis, 'window', {
 		configurable: true,
 		value: { location: { href: 'http://hue.local/?project=project-1&session=deleted-session' } }
@@ -39,7 +40,8 @@ test('failed unavailable or deleted Session restoration leaves Session list reco
 		persistSelection() {
 			persistedSessionId = this.selectedSession?.sessionId ?? null;
 		},
-		async loadActiveTab() {
+		async loadActiveTab(sessionId?: string | null) {
+			loads.push(sessionId);
 			this.sessions = [session];
 		},
 		async openSession(selected: Session) {
@@ -60,4 +62,5 @@ test('failed unavailable or deleted Session restoration leaves Session list reco
 	expect(navigation.mobileDrawer).toBe('sessions');
 	expect(persistedSessionId).toBeNull();
 	expect(cleared).toBe(2);
+	expect(loads).toEqual(['deleted-session', null]);
 });

@@ -472,7 +472,10 @@ test('sessions and Projects share one floating icon editor from settings and vis
 	expect(sessionHeader).toContain('onclick={onicon}');
 	expect(sessionManager).toContain('onclick={onicon}');
 	expect(projectRail).toContain('onclick={(event) => onicon(event, project)}');
+	expect(projectRail).toContain('class="project-icon project-icon-default');
+	expect(projectRail).not.toContain('project-dot');
 	expect(contextPanel).toContain('onclick={(event) => onicon(event, session)}');
+	expect(contextPanel).toContain('class="title-icon project-icon-default');
 });
 
 test('chat messages use the available conversation width', () => {

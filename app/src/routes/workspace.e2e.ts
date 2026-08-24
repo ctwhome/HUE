@@ -201,6 +201,55 @@ test.beforeEach(async ({ page }) => {
 	await mockDefaultSessionRequests(page);
 });
 
+test('drags Sessions into independently interactive resizable chat panes', async ({ page }) => {
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({
+			json: {
+				sessions: [
+					{ sessionId: 'pane-alpha', cwd: '/work/hue', title: 'Pane alpha' },
+					{ sessionId: 'pane-beta', cwd: '/work/hue', title: 'Pane beta' }
+				]
+			}
+		})
+	);
+	await page.route(/\/sessions\/pane-(?:alpha|beta)$/, (route) =>
+		route.fulfill({
+			json: {
+				transcript: [],
+				messages: [],
+				events: [],
+				cursor: 0,
+				activeTurn: null
+			}
+		})
+	);
+
+	await page.setViewportSize(viewports[0]);
+	await addProject(page);
+	await sessionButton(page, 'Pane alpha').click();
+	await sessionButton(page, 'Pane beta').dragTo(page.getByRole('main'));
+
+	const panes = page.getByRole('region', { name: 'Session panes' });
+	await expect(panes).toHaveAttribute('data-pane-count', '2');
+	await expect(page.getByRole('complementary', { name: 'Project browser' })).toBeHidden();
+	expect((await page.getByRole('main').boundingBox())!.width).toBeGreaterThan(300);
+	await expect(page.getByLabel('Message Hermes')).toBeVisible();
+	const embedded = page.frameLocator('iframe[title="Pane beta"]');
+	await expect(embedded.getByLabel('Message Hermes')).toBeVisible();
+	expect((await page.getByRole('button', { name: 'Close Pane beta pane' }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+
+	const activePane = page.getByRole('main');
+	const widthBefore = (await activePane.boundingBox())!.width;
+	await page.getByRole('separator', { name: 'Resize Session panes' }).focus();
+	await page.keyboard.press('ArrowRight');
+	await expect
+		.poll(async () => (await activePane.boundingBox())!.width)
+		.toBeGreaterThan(widthBefore);
+
+	await page.getByRole('button', { name: 'Close Pane beta pane' }).click();
+	await expect(panes).toHaveAttribute('data-pane-count', '1');
+});
+
 test('Project tools stay docked across Sessions and collapse to their rail', async ({
 	page
 }, testInfo) => {
@@ -1250,7 +1299,9 @@ test('shows automatic session emojis and allows a custom override', async ({ pag
 	await rowIcon.click();
 	const rowEditor = page.getByRole('dialog', { name: 'Session icon' });
 	await expect(rowEditor).toBeVisible();
-	expect(await rowEditor.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+	expect(await rowEditor.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+		true
+	);
 	expect((await rowEditor.boundingBox())!.y).toBeGreaterThanOrEqual(
 		rowIconBox.y + rowIconBox.height
 	);
@@ -1270,7 +1321,9 @@ test('shows automatic session emojis and allows a custom override', async ({ pag
 		await page.getByRole('button', { name: 'Manage Friendly greeting' }).click();
 		const editor = page.getByRole('dialog', { name: 'Session icon' });
 		await expect(editor).toBeVisible();
-		expect(await editor.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+		expect(await editor.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+			true
+		);
 		const box = (await editor.boundingBox())!;
 		expect(box.x).toBeGreaterThanOrEqual(0);
 		expect(box.y).toBeGreaterThanOrEqual(0);

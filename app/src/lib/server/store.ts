@@ -672,6 +672,26 @@ export class HUEStore {
 		})();
 	}
 
+	applyRuntimeSessionTitle(sessionId: string, input: unknown): SessionEvent | null {
+		const title = cleanOptional(input, 200, 'title');
+		let event: SessionEvent | null = null;
+		this.database.transaction(() => {
+			const session = this.database
+				.query('SELECT project_id, title, title_custom FROM project_sessions WHERE session_id = ?')
+				.get(sessionId) as {
+				project_id: string | null;
+				title: string | null;
+				title_custom: number;
+			} | null;
+			if (!session || session.title_custom || session.title === title) return;
+			this.database
+				.query('UPDATE project_sessions SET title = ? WHERE session_id = ?')
+				.run(title, sessionId);
+			event = this.appendEvent(session.project_id, sessionId, 'session.info_updated', { title });
+		})();
+		return event;
+	}
+
 	hasSession(projectId: string | null, sessionId: string): boolean {
 		return !!this.database
 			.query('SELECT 1 FROM project_sessions WHERE project_id IS ? AND session_id = ?')

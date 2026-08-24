@@ -399,6 +399,19 @@ export class ProjectFiles {
 		};
 	}
 
+	readBytes(path: string, maxBytes: number) {
+		const opened = this.open(path);
+		try {
+			const stat = fstatSync(opened.fd, { bigint: true });
+			assertSafeFile(stat);
+			if (stat.size > BigInt(maxBytes)) throw new Error('Project file exceeds size limit');
+			return readFileSync(opened.fd);
+		} finally {
+			closeSync(opened.fd);
+			closeSync(opened.parentFd);
+		}
+	}
+
 	preview(path: string) {
 		const opened = this.open(path);
 		try {

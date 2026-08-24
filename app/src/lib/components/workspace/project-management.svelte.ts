@@ -212,11 +212,11 @@ export class ProjectManagement {
 				`/api/projects/${this.editingProject.id}`,
 				{
 					method: 'PATCH',
-					body: JSON.stringify({
-						action: 'update',
-						name: this.editingProject.name,
-						icon
-					})
+					body: JSON.stringify(
+						icon === null
+							? { action: 'auto_icon' }
+							: { action: 'update', name: this.editingProject.name, icon }
+					)
 				}
 			);
 			this.applyProject(body.project);

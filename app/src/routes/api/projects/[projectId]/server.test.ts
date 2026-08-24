@@ -1,4 +1,7 @@
 import { beforeEach, expect, mock, test } from 'bun:test';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { serviceExportStubs } from '$lib/server/services-test-stubs';
 import { HermesProjectMutationError } from '$lib/server/hermes-projects';
 
@@ -19,6 +22,7 @@ const closedProjects: string[] = [];
 let activeDelivery = false;
 let removeFailure: Error | null = null;
 const activeChecks: string[] = [];
+let projectRoot = '/work/old';
 
 mock.module('$lib/server/route-services', () => ({
 	...serviceExportStubs,
@@ -38,7 +42,7 @@ mock.module('$lib/server/route-services', () => ({
 		const projects = {
 			get: async (id: string) => {
 				calls.push({ method: 'get', args: [id] });
-				return original;
+				return { ...original, primary_path: projectRoot };
 			},
 			update: async (...args: unknown[]) => {
 				calls.push({ method: 'update', args });
@@ -91,6 +95,7 @@ beforeEach(() => {
 	activeDelivery = false;
 	removeFailure = null;
 	activeChecks.length = 0;
+	projectRoot = '/work/old';
 });
 
 async function patch(body: unknown, projectId = 'p_1') {
@@ -110,6 +115,23 @@ test('updates Hermes name and icon and returns authoritative readback', async ()
 	expect(response.status).toBe(200);
 	expect(calls).toEqual([{ method: 'update', args: ['p_1', { name: 'Renamed', icon: '🚀' }] }]);
 	expect((await response.json()).project).toMatchObject({ id: 'p_1', name: 'Renamed' });
+});
+
+test('automatic icon discovers a favicon within the Project', async () => {
+	projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-icon-'));
+	mkdirSync(join(projectRoot, 'public'));
+	writeFileSync(join(projectRoot, 'public', 'favicon.ico'), Buffer.from([0, 0, 1, 0]));
+
+	const response = await patch({ action: 'auto_icon' });
+
+	expect(response.status).toBe(200);
+	expect(calls).toEqual([
+		{ method: 'get', args: ['p_1'] },
+		{
+			method: 'update',
+			args: ['p_1', { icon: 'data:image/x-icon;base64,AAABAA==' }]
+		}
+	]);
 });
 
 test('adds a validated backend folder with label and primary choice', async () => {

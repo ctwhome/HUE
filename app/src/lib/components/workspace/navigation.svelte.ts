@@ -412,6 +412,23 @@ export class WorkspaceNavigation {
 			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
 		}
 	};
+	applySessionInfoEvents = (events: SessionLoad['events']) => {
+		const selected = this.selectedSession;
+		if (!selected) return;
+		const event = events.findLast(({ type }) => type === 'session.info_updated');
+		if (!event || (event.payload.title !== null && typeof event.payload.title !== 'string')) return;
+		const title = event.payload.title as string | null;
+		const patch = (session: Session) => ({
+			...session,
+			title,
+			icon: session.customIcon ?? automaticSessionIcon(title)
+		});
+		this.sessions = this.sessions.map((session) =>
+			session.sessionId === selected.sessionId ? patch(session) : session
+		);
+		this.sessionLists.set(this.selectedProject?.id ?? 'none', this.sessions);
+		this.selectedSession = patch(selected);
+	};
 
 	sessionIconPreview = () => this.sessionIcon ?? automaticSessionIcon(this.editingSession?.title);
 
@@ -435,15 +452,23 @@ export class WorkspaceNavigation {
 			reader.readAsDataURL(file);
 		});
 		this.sessionEditError = '';
-		await this.saveSession();
+		await this.saveSessionIcon();
+	};
+
+	saveSessionIcon = () => {
+		const editingSession = this.editingSession;
+		if (!editingSession) return this.sessionSaveChain;
+		this.sessionSaveChain = this.sessionSaveChain.then(() =>
+			this.persistSession(editingSession, { icon: this.sessionIcon })
+		);
+		return this.sessionSaveChain;
 	};
 
 	saveSession = () => {
 		const editingSession = this.editingSession;
 		if (!editingSession) return this.sessionSaveChain;
 		const input = {
-			icon: this.sessionIcon,
-			title: this.sessionTitle,
+			...(this.sessionTitle !== (editingSession.title ?? '') ? { title: this.sessionTitle } : {}),
 			pinned: this.sessionPinned,
 			archived: this.sessionArchived,
 			folder: this.sessionFolder.trim() || null,
@@ -452,20 +477,15 @@ export class WorkspaceNavigation {
 				.map((tag) => tag.trim())
 				.filter(Boolean)
 		};
-		this.sessionSaveChain = this.sessionSaveChain.then(() => this.persistSession(editingSession, input));
+		this.sessionSaveChain = this.sessionSaveChain.then(() =>
+			this.persistSession(editingSession, input)
+		);
 		return this.sessionSaveChain;
 	};
 
 	private persistSession = async (
 		editingSession: Session,
-		input: {
-			icon: string | null;
-			title: string;
-			pinned: boolean;
-			archived: boolean;
-			folder: string | null;
-			tags: string[];
-		}
+		input: Partial<Pick<Session, 'icon' | 'title' | 'pinned' | 'archived' | 'folder' | 'tags'>>
 	) => {
 		this.sessionSaving = true;
 		this.sessionEditError = '';
@@ -477,12 +497,13 @@ export class WorkspaceNavigation {
 					body: JSON.stringify(input)
 				}
 			);
+			const title = body.session?.title ?? input.title ?? editingSession.title;
 			const updated = {
 				...editingSession,
 				...input,
 				...(body.session ?? {}),
 				customIcon: body.icon,
-				icon: body.icon ?? automaticSessionIcon(input.title)
+				icon: body.icon ?? automaticSessionIcon(title)
 			};
 			this.sessions = this.sessions.map((session) =>
 				session.sessionId === updated.sessionId ? updated : session

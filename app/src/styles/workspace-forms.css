@@ -442,7 +442,7 @@
 .session-workspace {
 	position: relative;
 }
-.session-workspace.terminal-open > .session-view,
+.session-workspace.terminal-open > .session-pane-grid,
 .session-workspace.terminal-open .project-tool-dock.docked > section {
 	height: calc(100% - var(--terminal-panel-height, 300px));
 }

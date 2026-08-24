@@ -33,6 +33,19 @@ function manager(api: <T>(url: string, options?: RequestInit) => Promise<T>) {
 }
 
 describe('ProjectManagement Hermes authority', () => {
+	it('asks the server to discover the automatic Project icon', async () => {
+		const requests: Array<{ url: string; options?: RequestInit }> = [];
+		const state = manager(async <T>(url: string, options?: RequestInit) => {
+			requests.push({ url, options });
+			return { project: original } as T;
+		});
+		state.editingProject = original;
+
+		await state.saveProjectIcon(null);
+
+		expect(JSON.parse(String(requests[0]?.options?.body))).toEqual({ action: 'auto_icon' });
+	});
+
 	it('creates one Project with every selected folder and exactly one primary', async () => {
 		const requests: Array<{ url: string; options?: RequestInit }> = [];
 		const state = manager(async <T>(url: string, options?: RequestInit) => {

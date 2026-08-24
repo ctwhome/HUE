@@ -16,7 +16,7 @@ export function validateIcon(input: unknown): string | null {
 	const icon = input.trim();
 	if (!icon) return null;
 	const image = icon.match(
-		/^data:(image\/(?:png|jpeg|gif|webp));base64,((?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?)$/
+		/^data:(image\/(?:png|jpeg|gif|webp|avif|x-icon|svg\+xml));base64,((?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?)$/
 	);
 	if (image) {
 		if (Math.ceil((image[2].length * 3) / 4) > 1024 * 1024) {
@@ -25,7 +25,9 @@ export function validateIcon(input: unknown): string | null {
 		return icon;
 	}
 	if (icon.startsWith('data:') || Array.from(icon).length > 8) {
-		throw new Error('Project icon must be a short emoji or a PNG, JPEG, GIF, or WebP image');
+		throw new Error(
+			'Project icon must be a short emoji or a PNG, JPEG, GIF, WebP, AVIF, SVG, or ICO image'
+		);
 	}
 	return icon;
 }
