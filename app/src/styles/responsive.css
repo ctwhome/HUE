@@ -20,7 +20,7 @@
 	}
 }
 
-@media (max-width: 950px) and (min-width: 701px) {
+@media (max-width: 1200px) and (min-width: 701px) {
 	.workspace {
 		grid-template-columns: 56px 74px 280px minmax(0, 1fr);
 	}
@@ -49,6 +49,15 @@
 	.project-select {
 		justify-content: center;
 		padding-inline: 10px;
+	}
+	.project-icon-trigger {
+		display: none;
+	}
+	.project-icon-inline {
+		display: grid;
+	}
+	.shell-resizer {
+		display: none;
 	}
 }
 
@@ -104,6 +113,9 @@
 	.workspace {
 		display: block;
 		padding-top: calc(56px + env(safe-area-inset-top, 0px));
+	}
+	.shell-resizer {
+		display: none;
 	}
 	.global-rail {
 		display: none;
@@ -226,11 +238,18 @@
 		padding-right: 44px;
 	}
 	.project-edit,
-	.session-edit {
+	.session-edit,
+	.session-archive {
 		right: 0;
 		width: 44px;
 		height: 44px;
 		opacity: 1;
+	}
+	.session-archive {
+		right: 44px;
+	}
+	.session-select {
+		padding-right: 88px;
 	}
 	.context-panel .icon-button,
 	.section-heading .icon-button {
@@ -360,6 +379,25 @@
 	.session-details-menu {
 		max-height: calc(100dvh - 130px);
 		overflow: auto;
+	}
+	.session-manager-popover:popover-open {
+		top: auto !important;
+		right: 8px !important;
+		bottom: max(8px, env(safe-area-inset-bottom)) !important;
+		left: 8px !important;
+		width: auto;
+		max-height: min(82dvh, 680px);
+	}
+	.session-manager-popover button,
+	.session-manager-popover label:has(input[type='file']),
+	.icon-editor-popover button,
+	.icon-editor-popover label:has(input[type='file']) {
+		min-height: 44px;
+	}
+	.icon-editor-popover {
+		max-height: calc(100dvh - 24px);
+		overflow-x: hidden;
+		overflow-y: auto;
 	}
 	.runtime-pill {
 		display: none;

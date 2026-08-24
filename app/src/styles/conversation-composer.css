@@ -3,15 +3,28 @@
 	overflow-anchor: none;
 	overscroll-behavior: contain;
 }
+.transcript.empty {
+	overflow-y: hidden;
+	padding-top: 0;
+}
+.transcript.empty .transcript-content {
+	display: grid;
+	place-items: center;
+}
 
 .transcript article {
 	display: flex;
 	width: 100%;
 	min-width: 0;
-	max-width: 820px;
+	max-width: none;
 	align-items: flex-start;
+	flex-direction: column;
 	gap: 12px;
 	margin: 0 auto 26px;
+}
+.transcript article.assistant .message-stack {
+	width: 100%;
+	flex: 1;
 }
 .transcript-content,
 .message-stack,
@@ -52,6 +65,12 @@
 }
 
 .transcript article.user {
+	align-items: flex-end;
+}
+.transcript article.user .message-stack {
+	max-width: min(85%, 820px);
+}
+.transcript article.user .message-identity {
 	flex-direction: row-reverse;
 }
 .transcript article.user .message-actions {

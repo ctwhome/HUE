@@ -16,11 +16,13 @@
 	let {
 		projectId,
 		onbranch,
-		onopenfile
+		onopenfile,
+		onchanges
 	}: {
 		projectId: string;
 		onbranch: (branch: string | null) => void;
 		onopenfile: (path: string) => void;
+		onchanges: (count: number) => void;
 	} = $props();
 	let repository = $state<Repository | null>(null);
 	let repositoryLoading = $state(false);
@@ -42,6 +44,7 @@
 			if (!mounted || request !== repositoryRequestGeneration) return;
 			repository = result;
 			onbranch(result.branch);
+			onchanges(result.changes.length);
 		} catch (cause) {
 			if (!mounted || request !== repositoryRequestGeneration) return;
 			repositoryError = cause instanceof Error ? cause.message : String(cause);
@@ -78,6 +81,7 @@
 				method: 'POST',
 				body: JSON.stringify(operation)
 			});
+			onchanges(repository.changes.length);
 			repositoryMessage =
 				operation.action === 'commit'
 					? 'Committed'
