@@ -126,7 +126,7 @@
 			{#if !preview.version}<p class="mb-2 text-xs text-amber-300" role="status">
 					Concurrency-protected editing and moving unavailable: file exceeds hash limit.
 				</p>{/if}
-			<div class="mb-2 flex items-center gap-2">
+			<div class="file-preview-title mb-2 flex items-center gap-2">
 				<h2 class="min-w-0 flex-1 overflow-hidden font-semibold text-ellipsis">{preview.name}</h2>
 				<span class="text-xs text-muted-foreground">{formatFileSize(preview.size)}</span>
 				{#if preview.kind === 'markdown'}<Button

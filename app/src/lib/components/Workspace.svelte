@@ -21,7 +21,6 @@
 	import Conversation from './workspace/Conversation.svelte';
 	import { MessageState } from './workspace/message-state.svelte';
 	import MobileNavigation from './workspace/MobileNavigation.svelte';
-	import MobileProjectEntry from './workspace/MobileProjectEntry.svelte';
 	import { MobileShellController } from './workspace/mobile-shell';
 	import type { MobileGesture } from './workspace/mobile-navigation';
 	import { workspaceApi } from './workspace/api';
@@ -36,7 +35,7 @@
 	import { RuntimeState } from './workspace/runtime-state.svelte';
 	import { SessionState } from './workspace/session-state.svelte';
 	import { TranscriptFollow } from './workspace/transcript-follow.svelte';
-	import type { Project, SessionLoad, WorkspaceProps } from './workspace/types';
+	import type { Project, Session, SessionLoad, WorkspaceProps } from './workspace/types';
 	let {
 		projects: initialProjects,
 		projectsCapability = 'available',
@@ -52,6 +51,10 @@
 		dirtyGuardDirty = $state(false);
 	let mobile = $state(false),
 		projectTools = $state(false);
+	type ShellPane = 'projects' | 'sessions';
+	let projectPaneWidth = $state(220),
+		sessionPaneWidth = $state(320);
+	let shellResize: { pane: ShellPane; x: number; width: number } | null = null;
 	let workspaceElement: HTMLElement;
 	let projectDrawerElement = $state<HTMLElement>();
 	let sessionDrawerElement = $state<HTMLElement>();
@@ -67,6 +70,58 @@
 		if (!dirtyGuard.block(action)) action();
 	}
 	const setGlobalView = (view: GlobalView | null) => guarded(() => (globalView = view));
+	function shellPaneLimits(pane: ShellPane) {
+		const otherWidth = pane === 'projects' ? sessionPaneWidth : projectPaneWidth;
+		return {
+			min: pane === 'projects' ? 160 : 240,
+			max: Math.max(pane === 'projects' ? 160 : 240, innerWidth - 56 - otherWidth - 320)
+		};
+	}
+	function setShellPaneWidth(pane: ShellPane, next: number) {
+		const { min, max } = shellPaneLimits(pane);
+		const width = Math.min(max, Math.max(min, next));
+		if (pane === 'projects') projectPaneWidth = width;
+		else sessionPaneWidth = width;
+	}
+	function saveShellPaneWidth(pane: ShellPane) {
+		const width = pane === 'projects' ? projectPaneWidth : sessionPaneWidth;
+		localStorage.setItem(`hue:shell:${pane}:width`, String(Math.round(width)));
+	}
+	function startShellResize(event: PointerEvent) {
+		const target = event.currentTarget as HTMLElement;
+		const pane = target.dataset.pane as ShellPane;
+		target.setPointerCapture(event.pointerId);
+		shellResize = {
+			pane,
+			x: event.clientX,
+			width: pane === 'projects' ? projectPaneWidth : sessionPaneWidth
+		};
+	}
+	function resizeShellPane(event: PointerEvent) {
+		if (shellResize)
+			setShellPaneWidth(shellResize.pane, shellResize.width + event.clientX - shellResize.x);
+	}
+	function finishShellResize() {
+		if (!shellResize) return;
+		saveShellPaneWidth(shellResize.pane);
+		shellResize = null;
+	}
+	function resizeShellPaneWithKeyboard(event: KeyboardEvent) {
+		if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+		event.preventDefault();
+		const pane = (event.currentTarget as HTMLElement).dataset.pane as ShellPane;
+		const width = pane === 'projects' ? projectPaneWidth : sessionPaneWidth;
+		const { min, max } = shellPaneLimits(pane);
+		setShellPaneWidth(
+			pane,
+			event.key === 'Home'
+				? min
+				: event.key === 'End'
+					? max
+					: width + (event.key === 'ArrowRight' ? 24 : -24)
+		);
+		saveShellPaneWidth(pane);
+	}
 	let elapsedTimer: ReturnType<typeof setInterval> | null = null;
 	const navigationRef: { current: WorkspaceNavigation | null } = { current: null };
 	const voiceRef: { current: ReturnType<typeof createVoiceCall> | null } = { current: null };
@@ -210,6 +265,8 @@
 	let runtimeChanging = $derived(runtimeState.changing);
 	let stopping = $derived(messageState.stopping);
 	let workModeChanging = $state(false);
+	let pendingSessionDraft = '';
+	let sessionCreation: Promise<Session | null> | null = null;
 	$effect(() => {
 		selectedProject;
 		projectTools = false;
@@ -240,8 +297,40 @@
 			workModeChanging = false;
 		}
 	};
+	async function ensureDraftSession() {
+		if (navigation.selectedSession) return navigation.selectedSession;
+		if (!sessionCreation) {
+			sessionCreation = navigation.createSession().then(async (session) => {
+				if (session) {
+					messageState.composer = pendingSessionDraft;
+					messageState.saveCurrentDraft();
+					await tick();
+				}
+				return session;
+			});
+		}
+		try {
+			return await sessionCreation;
+		} finally {
+			sessionCreation = null;
+		}
+	}
+	function createSessionFromDraft(event: Event) {
+		pendingSessionDraft = (event.currentTarget as HTMLTextAreaElement).value;
+		messageState.updateDraft(event);
+		if (pendingSessionDraft && !navigation.selectedSession) void ensureDraftSession();
+	}
+	async function submitDraft(event: SubmitEvent) {
+		event.preventDefault();
+		if (!navigation.selectedSession && !(await ensureDraftSession())) return;
+		await messageState.submit(event);
+	}
 	onMount(() => {
 		applyPreferences(document.documentElement, readPreferences(localStorage));
+		for (const pane of ['projects', 'sessions'] as const) {
+			const savedWidth = Number(localStorage.getItem(`hue:shell:${pane}:width`));
+			if (savedWidth > 0) setShellPaneWidth(pane, savedWidth);
+		}
 		elapsedTimer = setInterval(() => (now = Date.now()), 1000);
 		mobileShell = new MobileShellController({
 			workspace: () => workspaceElement,
@@ -271,10 +360,11 @@
 />
 <div
 	bind:this={workspaceElement}
-	class="workspace grid h-dvh grid-cols-[56px_220px_320px_minmax(0,1fr)] overflow-hidden bg-background text-foreground"
+	class="workspace grid h-dvh overflow-hidden bg-background text-foreground"
 	class:ready={navigation.ready}
 	class:drawer-gesture-active={gestureActive}
 	class:gesture-reveal-projects={gestureAction === 'show-projects'}
+	style={`--project-pane-width: ${projectPaneWidth}px; --session-pane-width: ${sessionPaneWidth}px`}
 >
 	<GlobalNavigation view={globalView} unreadCount={unreadNotifications} onview={setGlobalView} />
 	<MobileNavigation
@@ -372,192 +462,241 @@
 		onopen={(session) => navigation.openSession(session, 'push')}
 		onback={() => mobileShell?.open('projects')}
 		onedit={navigation.openEditSession}
+		onarchive={navigation.archiveSession}
 		onsearch={navigation.searchSessionList}
 		onclose={() => mobileShell?.close()}
 		isImage={isImageIcon}
 		automaticIcon={automaticSessionIcon}
 		elapsed={formatElapsed}
 	/>
-	<main class="session-view flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-		<SessionHeader
-			project={selectedProject}
-			session={selectedSession}
-			{branch}
-			{runtime}
-			onsessions={() => mobileShell?.open('sessions')}
-			onmanage={(event) => selectedSession && navigation.openEditSession(event, selectedSession)}
-		/>
-		{#if error}<div
-				class="error mx-5 mt-3 rounded-lg border border-destructive/40 bg-destructive/15 px-3 py-2.5 text-sm text-destructive"
-				role="alert"
-			>
-				{error}
-			</div>{/if}
-		{#if selectedSession}
-			<Conversation
-				{timeline}
-				{messageNotice}
-				busy={isTurnBusy(delivery)}
-				mediaPath={navigation.sessionApiPath(selectedSession.sessionId, '/media')}
-				renderMarkdown={renderMessageMarkdown}
-				onedit={messageState.editMessage}
-				oncopy={messageState.copyMessage}
-				oncopycode={messageState.copyCode}
-				oninteraction={messageState.respondToInteraction}
-				onmedia={messageState.openMedia}
-				onretrylast={messageState.retryLastResponse}
-				bind:element={transcriptFollow.element}
-				follow={transcriptFollow.follow}
-			/>
-			<Composer
-				{composer}
-				plan={selectedPlan}
-				{timeline}
-				renderMarkdown={renderMessageMarkdown}
-				bind:composerElement={messageState.composerElement}
-				bind:draggingImages={messageState.draggingImages}
-				bind:images={messageState.images}
-				bind:attachments={messageState.attachments}
-				{delivery}
-				{pendingEnvelope}
-				{queuedMessages}
-				{editingQueuedMessageId}
-				{commandIndex}
-				callActive={voice.active}
-				voiceMessageOnly={voice.messageOnly}
-				callMuted={voice.muted}
-				callStatus={voice.status}
-				callError={voice.error}
-				bind:voiceCancelElement={voice.cancelElement}
-				bind:callMuteElement={voice.muteElement}
-				bind:voiceMessageElement={voice.messageElement}
-				bind:voiceStartElement={voice.startElement}
+	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions (ARIA separator is keyboard-operable.) -->
+	<div
+		class="shell-resizer project-pane-resizer"
+		role="separator"
+		aria-label="Resize Projects"
+		aria-orientation="vertical"
+		aria-valuemin="160"
+		aria-valuenow={Math.round(projectPaneWidth)}
+		tabindex="0"
+		data-pane="projects"
+		onpointerdown={startShellResize}
+		onpointermove={resizeShellPane}
+		onpointerup={finishShellResize}
+		onpointercancel={finishShellResize}
+		onkeydown={resizeShellPaneWithKeyboard}
+	></div>
+	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions (ARIA separator is keyboard-operable.) -->
+	<div
+		class="shell-resizer session-pane-resizer"
+		role="separator"
+		aria-label="Resize Sessions"
+		aria-orientation="vertical"
+		aria-valuemin="240"
+		aria-valuenow={Math.round(sessionPaneWidth)}
+		tabindex="0"
+		data-pane="sessions"
+		onpointerdown={startShellResize}
+		onpointermove={resizeShellPane}
+		onpointerup={finishShellResize}
+		onpointercancel={finishShellResize}
+		onkeydown={resizeShellPaneWithKeyboard}
+	></div>
+	<div class="session-workspace flex h-full min-h-0 min-w-0 overflow-hidden">
+		<main class="session-view flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+			<SessionHeader
+				project={selectedProject}
+				session={selectedSession}
+				{branch}
 				{runtime}
-				workMode={selectedSession.workMode ?? 'autonomous'}
-				{workModeChanging}
-				{runtimeChanging}
-				promptLibraryAvailable={Boolean(selectedProject?.rootAvailable)}
-				{workflows}
-				bind:workflowName={navigation.workflowName}
-				bind:workflowPrompt={navigation.workflowPrompt}
-				bind:modelMenuOpen={runtimeState.modelMenuOpen}
-				bind:modelPopover={runtimeState.modelPopover}
-				{stopping}
-				showScrollToLatest={transcriptFollow.showScrollToLatest}
-				busy={isTurnBusy(delivery)}
-				onsubmit={messageState.submit}
-				ondrop={messageState.handleDrop}
-				onpaste={messageState.handlePaste}
-				oninput={messageState.updateDraft}
-				onkeydown={messageState.handleComposerKeydown}
-				onimages={messageState.handleImageInput}
-				onvoiceMessage={voice.startMessage}
-				onvoiceCall={voice.startCall}
-				onmute={voice.toggleMute}
-				oninterrupt={voice.interrupt}
-				onendcall={() => voice.end()}
-				onstop={messageState.stopTurn}
-				onretry={messageState.retryPendingMessage}
-				oneditqueued={messageState.editQueuedMessage}
-				oncommand={messageState.chooseCommand}
-				onmodel={runtimeState.selectModel}
-				onruntime={runtimeState.change}
-				onworkmode={changeWorkMode}
-				onloadworkflows={navigation.loadWorkflows}
-				onworkflow={navigation.addWorkflow}
-				onrunworkflow={navigation.runWorkflow}
-				onscrolllatest={transcriptFollow.scrollToLatest}
-				matchingCommands={messageState.matchingCommands}
-				currentModel={runtimeState.currentModel}
-				modelCategories={runtimeState.modelCategories}
-				contextPercent={runtimeState.contextPercent}
+				onsessions={() => mobileShell?.open('sessions')}
+				onmanage={(event) => selectedSession && navigation.openEditSession(event, selectedSession)}
 			/>
-		{:else if selectedProject && !selectedProject.rootAvailable}
-			<section
-				class="mx-auto mt-[12vh] grid max-w-xl gap-4 p-8 text-center text-muted-foreground"
-				aria-label="Project folder unavailable"
-			>
-				<h2 class="text-foreground">Project folder unavailable</h2>
-				<p>
-					Primary folder {selectedProject.primaryPath} is unavailable. Choose an available Project folder
-					as primary before opening Sessions, Git, terminal, or preview tools.
-				</p>
-				<div class="flex flex-wrap justify-center gap-2">
-					<button
-						class="min-h-11 rounded-md bg-primary px-4 text-primary-foreground"
-						onclick={() => {
-							if (mobile) navigation.setMobileDrawer('projects', 'push');
-							projectManagement.openEditProject(null, selectedProject);
-						}}>Manage folders</button
+			{#if error}<div
+					class="error mx-5 mt-3 rounded-lg border border-destructive/40 bg-destructive/15 px-3 py-2.5 text-sm text-destructive"
+					role="alert"
+				>
+					{error}
+				</div>{/if}
+			{#if selectedProject?.rootAvailable && mobile}<button
+					class="mobile-project-tools mx-3 mt-2 min-h-11 rounded-md border border-border px-3 text-sm"
+					aria-label={projectTools ? 'Back to chat' : 'Open Project tools'}
+					onclick={() => (projectTools = !projectTools)}
+					>{projectTools ? 'Back to chat' : 'Project tools'}</button
+				>{/if}
+			{#if selectedProject?.rootAvailable && navigation.ready && mobile && projectTools}
+				{#key selectedProject.id}
+					<ProjectWorkbench
+						projectId={selectedProject.id}
+						projectName={selectedProject.name}
+						compact={true}
+						onbranch={(value) => (branch = value)}
+						{dirtyGuard}
+					/>
+				{/key}
+			{:else if selectedSession || (selectedProject?.rootAvailable && navigation.ready)}
+				<Conversation
+					{timeline}
+					{messageNotice}
+					busy={isTurnBusy(delivery)}
+					mediaPath={selectedSession
+						? navigation.sessionApiPath(selectedSession.sessionId, '/media')
+						: ''}
+					renderMarkdown={renderMessageMarkdown}
+					onedit={messageState.editMessage}
+					oncopy={messageState.copyMessage}
+					oncopycode={messageState.copyCode}
+					oninteraction={messageState.respondToInteraction}
+					onmedia={messageState.openMedia}
+					onretrylast={messageState.retryLastResponse}
+					bind:element={transcriptFollow.element}
+					follow={transcriptFollow.follow}
+				/>
+				<Composer
+					{composer}
+					plan={selectedPlan}
+					{timeline}
+					renderMarkdown={renderMessageMarkdown}
+					bind:composerElement={messageState.composerElement}
+					bind:draggingImages={messageState.draggingImages}
+					bind:images={messageState.images}
+					bind:attachments={messageState.attachments}
+					{delivery}
+					{pendingEnvelope}
+					{queuedMessages}
+					{editingQueuedMessageId}
+					{commandIndex}
+					callActive={voice.active}
+					voiceMessageOnly={voice.messageOnly}
+					callMuted={voice.muted}
+					callStatus={voice.status}
+					callError={voice.error}
+					bind:voiceCancelElement={voice.cancelElement}
+					bind:callMuteElement={voice.muteElement}
+					bind:voiceMessageElement={voice.messageElement}
+					bind:voiceStartElement={voice.startElement}
+					{runtime}
+					workMode={selectedSession?.workMode ?? 'autonomous'}
+					{workModeChanging}
+					{runtimeChanging}
+					promptLibraryAvailable={Boolean(selectedProject?.rootAvailable)}
+					{workflows}
+					bind:workflowName={navigation.workflowName}
+					bind:workflowPrompt={navigation.workflowPrompt}
+					bind:modelMenuOpen={runtimeState.modelMenuOpen}
+					bind:modelPopover={runtimeState.modelPopover}
+					{stopping}
+					showScrollToLatest={transcriptFollow.showScrollToLatest}
+					busy={isTurnBusy(delivery)}
+					onsubmit={submitDraft}
+					ondrop={messageState.handleDrop}
+					onpaste={messageState.handlePaste}
+					oninput={createSessionFromDraft}
+					onkeydown={messageState.handleComposerKeydown}
+					onimages={messageState.handleImageInput}
+					onvoiceMessage={voice.startMessage}
+					onvoiceCall={voice.startCall}
+					onmute={voice.toggleMute}
+					oninterrupt={voice.interrupt}
+					onendcall={() => voice.end()}
+					onstop={messageState.stopTurn}
+					onretry={messageState.retryPendingMessage}
+					oneditqueued={messageState.editQueuedMessage}
+					oncommand={messageState.chooseCommand}
+					onmodel={runtimeState.selectModel}
+					onruntime={runtimeState.change}
+					onworkmode={changeWorkMode}
+					onloadworkflows={navigation.loadWorkflows}
+					onworkflow={navigation.addWorkflow}
+					onrunworkflow={navigation.runWorkflow}
+					onscrolllatest={transcriptFollow.scrollToLatest}
+					matchingCommands={messageState.matchingCommands}
+					currentModel={runtimeState.currentModel}
+					modelCategories={runtimeState.modelCategories}
+					contextPercent={runtimeState.contextPercent}
+				/>
+			{:else if selectedProject && !selectedProject.rootAvailable}
+				<section
+					class="mx-auto mt-[12vh] grid max-w-xl gap-4 p-8 text-center text-muted-foreground"
+					aria-label="Project folder unavailable"
+				>
+					<h2 class="text-foreground">Project folder unavailable</h2>
+					<p>
+						Primary folder {selectedProject.primaryPath} is unavailable. Choose an available Project folder
+						as primary before opening Sessions, Git, terminal, or preview tools.
+					</p>
+					<div class="flex flex-wrap justify-center gap-2">
+						<button
+							class="min-h-11 rounded-md bg-primary px-4 text-primary-foreground"
+							onclick={() => {
+								if (mobile) navigation.setMobileDrawer('projects', 'push');
+								projectManagement.openEditProject(null, selectedProject);
+							}}>Manage folders</button
+						>
+						<button
+							class="min-h-11 rounded-md border border-border px-4"
+							onclick={() => {
+								if (mobile) navigation.setMobileDrawer('projects', 'push');
+								projectManagement.requestRemoveStaleProject(selectedProject);
+							}}>Archive</button
+						>
+						<button
+							class="min-h-11 rounded-md border border-border px-4"
+							onclick={() => navigation.chooseProject(null)}>Open without Project</button
+						>
+					</div>
+				</section>
+			{:else}
+				<section class="hero mx-auto mt-[12vh] max-w-2xl p-8 text-center text-muted-foreground">
+					<div
+						class="hero-mark mx-auto mb-5 grid size-12 place-items-center rounded-xl bg-gradient-to-br from-violet-300 to-violet-700 font-black text-violet-950 shadow-lg"
 					>
-					<button
-						class="min-h-11 rounded-md border border-border px-4"
-						onclick={() => {
-							if (mobile) navigation.setMobileDrawer('projects', 'push');
-							projectManagement.requestRemoveStaleProject(selectedProject);
-						}}>Archive</button
-					>
-					<button
-						class="min-h-11 rounded-md border border-border px-4"
-						onclick={() => navigation.chooseProject(null)}>Open without Project</button
-					>
-				</div>
-			</section>
-		{:else if selectedProject && navigation.ready && (!mobile || projectTools)}
+						H
+					</div>
+					<h2>
+						{projectManagement.projects.length
+							? 'Projects · Workflows · Sessions'
+							: 'Start your first HUE workspace'}
+					</h2>
+					<p>
+						{projectManagement.projects.length
+							? 'Choose a Project, or continue without one for a general Hermes Session.'
+							: 'Add a trusted local folder for project work, or start a private projectless Session.'}
+					</p>
+					<div class="mt-5 flex flex-wrap justify-center gap-2">
+						<button
+							class="min-h-11 rounded-md bg-primary px-4 text-primary-foreground"
+							disabled={projectsCapability !== 'available'}
+							title={projectsCapability === 'available' ? 'Add Project' : projectsError}
+							onclick={projectManagement.openAddProject}>Add Project</button
+						>
+						<button
+							class="min-h-11 rounded-md border border-border px-4"
+							onclick={navigation.createProjectlessSession}>Start without Project</button
+						>
+					</div>
+					<div class="principles mt-6 flex flex-wrap justify-center gap-2">
+						<span>Local SQLite</span><span>ACP v1</span><span>Project terminals</span><span
+							>Reconnect cursors</span
+						>
+					</div>
+				</section>
+			{/if}
+		</main>
+		{#if selectedProject?.rootAvailable && navigation.ready && !mobile}
 			{#key selectedProject.id}
 				<ProjectWorkbench
 					projectId={selectedProject.id}
 					projectName={selectedProject.name}
-					compact={mobile}
+					compact={false}
+					docked={true}
 					onbranch={(value) => (branch = value)}
 					{dirtyGuard}
 				/>
 			{/key}
-		{:else if selectedProject && mobile}
-			<MobileProjectEntry
-				project={selectedProject}
-				{sessions}
-				onresume={(session) => navigation.openSession(session, 'push')}
-				onsessions={() => mobileShell?.open('sessions')}
-				ontools={() => (projectTools = true)}
-			/>
-		{:else}
-			<section class="hero mx-auto mt-[12vh] max-w-2xl p-8 text-center text-muted-foreground">
-				<div
-					class="hero-mark mx-auto mb-5 grid size-12 place-items-center rounded-xl bg-gradient-to-br from-violet-300 to-violet-700 font-black text-violet-950 shadow-lg"
-				>
-					H
-				</div>
-				<h2>
-					{projectManagement.projects.length
-						? 'Projects · Workflows · Sessions'
-						: 'Start your first HUE workspace'}
-				</h2>
-				<p>
-					{projectManagement.projects.length
-						? 'Choose a Project, or continue without one for a general Hermes Session.'
-						: 'Add a trusted local folder for project work, or start a private projectless Session.'}
-				</p>
-				<div class="mt-5 flex flex-wrap justify-center gap-2">
-					<button
-						class="min-h-11 rounded-md bg-primary px-4 text-primary-foreground"
-						disabled={projectsCapability !== 'available'}
-						title={projectsCapability === 'available' ? 'Add Project' : projectsError}
-						onclick={projectManagement.openAddProject}>Add Project</button
-					>
-					<button
-						class="min-h-11 rounded-md border border-border px-4"
-						onclick={navigation.createProjectlessSession}>Start without Project</button
-					>
-				</div>
-				<div class="principles mt-6 flex flex-wrap justify-center gap-2">
-					<span>Local SQLite</span><span>ACP v1</span><span>Project terminals</span><span
-						>Reconnect cursors</span
-					>
-				</div>
-			</section>
 		{/if}
-	</main>
+	</div>
 </div>
 
 <SessionManagerOverlay {navigation} />

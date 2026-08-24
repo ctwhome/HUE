@@ -50,7 +50,7 @@
 					(session
 						? 'New Hermes Session'
 						: project
-							? 'Project workbench'
+							? 'Start a Hermes Session'
 							: 'Projects · Workflows · Sessions')}</span
 			>
 		</h2>
