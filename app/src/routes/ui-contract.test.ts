@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const route = read('./+page.svelte');
 const workspace = read('../lib/components/Workspace.svelte');
+const projectRail = read('../lib/components/workspace/ProjectRail.svelte');
 const workspacePaths = [
 	'../lib/components/Workspace.svelte',
 	'../lib/components/workspace/Composer.svelte',
@@ -17,6 +18,7 @@ const workspacePaths = [
 	'../lib/components/workspace/dirty-guard.ts',
 	'../lib/components/workspace/dirty-navigation.ts',
 	'../lib/components/workspace/ProjectRail.svelte',
+	'../lib/components/workspace/PromptLibraryDialog.svelte',
 	'../lib/components/workspace/SessionHeader.svelte',
 	'../lib/components/workspace/SessionManagerDialog.svelte',
 	'../lib/components/workspace/SessionManagerOverlay.svelte',
@@ -41,6 +43,7 @@ const styleFiles = [
 	'../styles/conversation-composer.css',
 	'../styles/liquid-thinking-orb.css',
 	'../styles/mobile-overlays.css',
+	'../styles/thinking-task.css',
 	'../styles/responsive.css'
 ].map(read);
 const styles = [appStyles, ...styleFiles].join('\n');
@@ -118,6 +121,45 @@ test('keeps major workspace surfaces in focused Svelte components', () => {
 test('workflow fields have accessible names', () => {
 	expect(page).toContain('aria-label="Workflow name"');
 	expect(page).toContain('aria-label="Workflow prompt"');
+});
+
+test('prompt library explains its purpose and empty state', () => {
+	expect(page).toContain('Repeat a Hermes task without rewriting its instructions');
+	expect(page).toContain('Run creates a new Session');
+	expect(page).toContain('No prompts yet');
+	expect(page).toContain('Create prompt');
+});
+
+test('prompt library opens from the composer instead of occupying session navigation', () => {
+	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
+	const composer = read('../lib/components/workspace/Composer.svelte');
+	expect(contextPanel).not.toContain('role="tablist"');
+	expect(contextPanel).not.toContain('>Workflows</button');
+	expect(composer).toContain('<PromptLibraryDialog');
+});
+
+test('long session titles stay inside the row so session actions remain reachable', () => {
+	expect(page).toContain('class="session-row relative w-full min-w-0"');
+	expect(page).toContain('class="session-row-title flex min-w-0 items-baseline gap-2"');
+});
+
+test('new session is a persistent full-width action at the top of the session list', () => {
+	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
+	const action = 'class="new-session-action sticky top-0 z-10 flex min-h-11 w-full';
+	expect(contextPanel).toContain(action);
+	expect(contextPanel).toContain('<Plus size={18} aria-hidden="true" /> Add new session');
+	expect(contextPanel.indexOf(action)).toBeLessThan(
+		contextPanel.indexOf('{#each sessions as session')
+	);
+});
+
+test('project context only uses a compact header in the mobile session drawer', () => {
+	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
+	expect(contextPanel).not.toContain('Session scope');
+	expect(styles).toMatch(/\.context-panel > \.project-context-header\s*{[^}]*display: none;/s);
+	expect(styles).toMatch(
+		/@media \(max-width: 700px\)[\s\S]*\.context-panel > \.project-context-header\s*{[^}]*display: flex;[^}]*min-height: 56px;/
+	);
 });
 
 test('tooltips use the app-level collision-aware provider', () => {
@@ -347,23 +389,29 @@ test('composer exposes HUE work mode selector and timeline status item hooks', (
 	expect(dialog).toContain('{item.label}');
 });
 
-test('clean chat moves private activity into focused thinking dialog and tasks into composer', () => {
+test('clean chat keeps thinking and tasks in responsive composer panels', () => {
 	const conversation = read('../lib/components/workspace/Conversation.svelte');
 	const composer = read('../lib/components/workspace/Composer.svelte');
 	const task = read('../lib/components/workspace/CurrentTask.svelte');
 	const dialog = read('../lib/components/workspace/ThinkingDialog.svelte');
 	const orb = read('../lib/components/workspace/LiquidThinkingOrb.svelte');
 	expect(conversation).toContain('selectTranscriptTimeline');
-	expect(conversation).toContain('<ThinkingDialog');
+	expect(conversation).not.toContain('<ThinkingDialog');
 	expect(conversation).not.toContain('<LiquidThinkingOrb');
 	expect(conversation).not.toContain("item.kind === 'plan'");
+	expect(composer).toContain('<ThinkingDialog');
+	expect(composer).toContain('class="composer-activity"');
 	expect(dialog).toContain('aria-label="Thinking activity"');
-	expect(dialog).toContain('aria-modal="true"');
-	expect(dialog).toContain("event.key === 'Escape'");
-	expect(dialog).toContain('trigger?.focus()');
+	expect(dialog).toContain('{#if busy}<section class="thinking-activity"');
+	expect(dialog).toContain('aria-expanded={open}');
+	expect(dialog).toContain('animate-spin');
 	expect(composer).toContain('<CurrentTask {plan}');
-	expect(task).toContain('Current task');
+	expect(task).toContain('>Tasks</span>');
 	expect(task).toContain('aria-expanded={tasksExpanded}');
+	expect(task).toContain('showModal()');
+	expect(task).toContain('aria-label="Tasks"');
+	expect(styles).toContain('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)');
+	expect(styles).toMatch(/@media \(max-width: 700px\)[\s\S]*\.task-dialog/);
 	expect(orb).toContain('Hermes reasoning');
 	expect(orb).toContain("import('./liquid-orb-renderer')");
 	expect(orb).toContain("canvas.getContext('webgpu')");
@@ -380,6 +428,10 @@ test('liquid orb adaptation carries upstream MIT notice', () => {
 test('project and session controls preserve accessible editing', () => {
 	expect(page).toContain('aria-label="Add Hermes Project"');
 	expect(page).toContain('aria-label="New session without a project"');
+	expect(projectRail).not.toContain('<header class="brand');
+	expect(projectRail).toMatch(
+		/class="project-row projectless-row[\s\S]*aria-label="New session without a project"/
+	);
 	expect(page).toContain('aria-label="Project icon image"');
 	expect(page).toContain('aria-label="Choose project emoji"');
 	expect(page).toContain('aria-label={`Edit ${project.name}`}');

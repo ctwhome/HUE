@@ -308,17 +308,6 @@ test('Project file workspace stays usable across required viewports', async ({
 	await page.getByRole('treeitem', { name: /README.md/ }).click();
 	await page.getByRole('button', { name: 'Edit Markdown' }).click();
 	await page.getByLabel('File content').fill('# Unsaved');
-	await page.getByRole('tab', { name: 'Workflows', exact: true }).click();
-	await page.getByRole('button', { name: 'Run Collect evidence' }).click();
-	await expect(page.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
-	expect(
-		await page.evaluate(() =>
-			document
-				.querySelector('.context-panel .tabs button:nth-child(2)')
-				?.classList.contains('active')
-		)
-	).toBe(true);
-	await page.getByRole('button', { name: 'Keep editing' }).click();
 	await page.setViewportSize(viewports[0]);
 	expect(await page.evaluate(() => window.innerWidth)).toBe(viewports[0].width);
 	expect(await page.evaluate(() => matchMedia('(max-width: 700px)').matches)).toBe(false);
@@ -800,6 +789,22 @@ test('opens project creation from the Projects heading and dismisses it with Esc
 		await expect(dialog).toBeVisible();
 		await expect(dialog.getByRole('button', { name: 'Documents' })).toBeFocused();
 		await expect(dialog.getByText('/Users/example', { exact: true })).toBeVisible();
+		const projectName = dialog.getByLabel('Project name');
+		const directoryBrowser = dialog.getByRole('region', { name: 'Directories' });
+		expect(
+			await dialog.evaluate((element) => {
+				const input = element.querySelector('input[required]');
+				const browser = element.querySelector('[aria-label="Directories"]');
+				return Boolean(
+					input &&
+					browser &&
+					input.compareDocumentPosition(browser) & Node.DOCUMENT_POSITION_FOLLOWING
+				);
+			})
+		).toBe(true);
+		expect(
+			await directoryBrowser.evaluate((browser) => getComputedStyle(browser).maxHeight)
+		).not.toBe('none');
 		const dialogBox = await dialog.boundingBox();
 		if (viewport.width > 700) {
 			expect(Math.abs(dialogBox!.x + dialogBox!.width / 2 - viewport.width / 2)).toBeLessThan(2);
@@ -2998,9 +3003,7 @@ test('keeps chat clean while Thinking dialog and current task preserve ACP activ
 			)
 	).toEqual([1, 2, 5, 7, 8, 9]);
 	await expect(page.getByRole('button', { name: 'Thinking' })).toBeVisible();
-	await expect(page.getByRole('button', { name: /Current task: Run checks/ })).toContainText(
-		'1 of 2'
-	);
+	await expect(page.getByRole('button', { name: 'Tasks' })).toContainText('1/2');
 	const conversationTimes = page.locator('.transcript article time');
 	await expect(conversationTimes).toHaveCount(2);
 	await expect(conversationTimes.first()).toHaveAttribute('datetime', '2026-08-22T09:59:59.000Z');
@@ -3010,8 +3013,9 @@ test('keeps chat clean while Thinking dialog and current task preserve ACP activ
 		await expect(time).toHaveAttribute('title', /2026/);
 	}
 	const thinkingTrigger = page.getByRole('button', { name: 'Thinking' });
+	const taskTrigger = page.getByRole('button', { name: 'Tasks' });
 	await thinkingTrigger.click();
-	const thinking = page.getByRole('dialog', { name: 'Thinking activity' });
+	const thinking = page.getByLabel('Thinking timeline');
 	await expect(thinking).toBeVisible();
 	expect(
 		await thinking
@@ -3034,21 +3038,13 @@ test('keeps chat clean while Thinking dialog and current task preserve ACP activ
 	await toolSummary.press('Enter');
 	await expect(toolGroup).toContainText('[REDACTED]');
 	await expect(thinking.getByText('Private published reasoning')).toBeVisible();
-	await thinking.getByRole('button', { name: 'Close Thinking' }).click();
-	await expect(thinking).toHaveCount(0);
-	await expect(thinkingTrigger).toBeFocused();
 	await thinkingTrigger.click();
-	await page.keyboard.press('Escape');
-	await expect(thinking).toHaveCount(0);
-	await expect(thinkingTrigger).toBeFocused();
-	await thinkingTrigger.click();
-	await page.mouse.click(1, 1);
-	await expect(thinking).toHaveCount(0);
-	await expect(thinkingTrigger).toBeFocused();
-	await page.getByRole('button', { name: /Current task: Run checks/ }).click();
+	await expect(thinking).toBeHidden();
+	await taskTrigger.click();
 	await expect(page.getByRole('region', { name: 'Current task plan' })).toContainText(
 		'Inspect files'
 	);
+	await taskTrigger.click();
 	await expect(
 		page.getByRole('group', { name: 'Permission required: Execute test suite' })
 	).toBeVisible();
@@ -3078,21 +3074,27 @@ test('keeps chat clean while Thinking dialog and current task preserve ACP activ
 		);
 		if (viewport.width <= 390)
 			await expectMinimumTouchTargets(page.locator('.composer button, .code-block button'));
-		await thinkingTrigger.click();
-		await expect(thinking).toBeVisible();
-		expect(
-			await thinking.evaluate((element) => ({
-				width: element.getBoundingClientRect().width,
-				overflow: element.scrollWidth - element.clientWidth
-			}))
-		).toMatchObject({ overflow: 0 });
-		expect((await thinking.boundingBox())!.width).toBeLessThanOrEqual(viewport.width);
-		if (viewport.width <= 390) await expectMinimumTouchTargets(thinking.locator('button, summary'));
-		await testInfo.attach(`thinking-${viewport.width}x${viewport.height}`, {
-			body: await page.screenshot(),
-			contentType: 'image/png'
-		});
-		await thinking.getByRole('button', { name: 'Close Thinking' }).click();
+		await taskTrigger.click();
+		if (viewport.width <= 700) {
+			const tasks = page.getByRole('dialog', { name: 'Tasks' });
+			await expect(tasks).toBeVisible();
+			expect((await tasks.boundingBox())!.width).toBeLessThanOrEqual(viewport.width);
+			await expectMinimumTouchTargets(tasks.locator('button'));
+			await testInfo.attach(`tasks-${viewport.width}x${viewport.height}`, {
+				body: await page.screenshot(),
+				contentType: 'image/png'
+			});
+			await tasks.getByRole('button', { name: 'Close Tasks' }).click();
+		} else {
+			await expect(page.getByRole('region', { name: 'Current task plan' })).toContainText(
+				'Run checks'
+			);
+			await testInfo.attach(`tasks-${viewport.width}x${viewport.height}`, {
+				body: await page.screenshot(),
+				contentType: 'image/png'
+			});
+			await taskTrigger.click();
+		}
 	}
 	expect(browserErrors).toEqual([]);
 });
@@ -3215,7 +3217,7 @@ test('interaction completion stays with its captured Session across navigation',
 	finishOriginRefresh();
 });
 
-test('shows loading beside new session without shifting the session list', async ({ page }) => {
+test('shows loading without shifting the session list action or rows', async ({ page }) => {
 	let finishSessionLoad = () => {};
 	let sessionLoad = Promise.resolve();
 	await page.route('**/api/projects/*/sessions', async (route) => {
@@ -3251,18 +3253,17 @@ test('shows loading beside new session without shifting the session list', async
 				.toBe(0);
 		}
 
-		const indicator = page.getByRole('status', { name: 'Loading project contents' });
+		const indicator = page.locator('[aria-label="Loading project contents"]');
 		await expect(indicator).toBeVisible();
 		expect(await indicator.evaluate((element) => getComputedStyle(element).animationName)).not.toBe(
 			'none'
 		);
 		const during = await session.boundingBox();
 		const addButton = await page
-			.getByRole('button', { name: 'New session', exact: true })
+			.getByRole('button', { name: 'Add new session', exact: true })
 			.boundingBox();
-		const indicatorBox = await indicator.boundingBox();
 		expect(during?.y).toBe(before?.y);
-		expect(indicatorBox!.x).toBeLessThan(addButton!.x);
+		expect(addButton!.y).toBeLessThan(during!.y);
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
 		);
@@ -3512,7 +3513,7 @@ test('starts a new session without the previous session output', async ({ page }
 	await addProject(page);
 	await sessionButton(page, 'Old').click();
 	await expect(page.getByText('Previous session wall of text')).toBeVisible();
-	await page.getByRole('button', { name: 'New session', exact: true }).click();
+	await page.getByRole('button', { name: 'Add new session', exact: true }).click();
 
 	await expect(page.getByRole('heading', { name: 'Start this Hermes Session' })).toBeVisible();
 	await expect(page.getByLabel('Message Hermes')).toBeFocused();
@@ -3528,6 +3529,80 @@ test('starts a new session without the previous session output', async ({ page }
 			await expectMinimumTouchTargets(page.locator('.composer textarea, .composer button'));
 		}
 	}
+	expect(browserErrors).toEqual([]);
+});
+
+test('opens the project prompt library from the composer across required viewports', async ({
+	page
+}, testInfo) => {
+	const browserErrors: string[] = [];
+	let sentPrompt = '';
+	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
+	page.on('pageerror', (error) => browserErrors.push(error.message));
+	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.request().method() === 'POST'
+			? route.fulfill({
+					json: { session: { sessionId: 'prompt-run', cwd: '/work/hue', title: 'Prepare release' } }
+				})
+			: route.fulfill({
+					json: {
+						sessions: [{ sessionId: 'prompt-origin', cwd: '/work/hue', title: 'Prompt origin' }]
+					}
+				})
+	);
+	await page.route(/\/sessions\/prompt-origin$/, (route) =>
+		route.fulfill({
+			json: { transcript: [], messages: [], events: [], cursor: 0, activeTurn: null }
+		})
+	);
+	await page.route(/\/sessions\/prompt-run\/messages$/, async (route) => {
+		sentPrompt = ((await route.request().postDataJSON()) as { text: string }).text;
+		await route.fulfill({ status: 202, json: { status: 'queued' } });
+	});
+	await page.route(/\/sessions\/prompt-run\/events.*/, (route) =>
+		route.fulfill({ json: { events: [] } })
+	);
+	await page.route('**/api/projects/*/workflows', (route) =>
+		route.fulfill({
+			json: {
+				workflows: [
+					{
+						id: 'release',
+						name: 'Prepare release',
+						prompt: 'Run checks and prepare release notes.'
+					}
+				]
+			}
+		})
+	);
+
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		await addProject(page);
+		await sessionButton(page, 'Prompt origin').click();
+		await page.getByRole('button', { name: 'Prompt library' }).click();
+		const dialog = page.getByRole('dialog', { name: 'Prompt library' });
+		await expect(dialog).toBeVisible();
+		await expect(dialog.getByText('Prepare release', { exact: true })).toBeVisible();
+		await expect(dialog.getByRole('button', { name: 'Run Prepare release' })).toBeVisible();
+		expect((await dialog.boundingBox())!.width).toBeLessThanOrEqual(viewport.width);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		if (viewport.width <= 390)
+			await expectMinimumTouchTargets(dialog.locator('button, input, textarea'));
+		await testInfo.attach(`prompt-library-${viewport.width}x${viewport.height}`, {
+			body: await page.screenshot(),
+			contentType: 'image/png'
+		});
+		await dialog.getByRole('button', { name: 'Close prompt library' }).click();
+	}
+	await page.getByRole('button', { name: 'Prompt library' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Prompt library' });
+	await dialog.getByRole('button', { name: 'Run Prepare release' }).click();
+	await expect(dialog).toBeHidden();
+	await expect.poll(() => sentPrompt).toBe('Run checks and prepare release notes.');
 	expect(browserErrors).toEqual([]);
 });
 
@@ -3857,17 +3932,6 @@ test('mobile uses explicit exclusive Projects and Sessions drawers', async ({ pa
 	await expect(page.locator('#project-drawer')).toBeHidden();
 	await expect(page.locator('#session-drawer')).toBeVisible();
 	await expectMinimumTouchTargets(page.locator('#session-drawer button'));
-	await page.getByRole('tab', { name: 'Workflows', exact: true }).click();
-	await expect(
-		page.getByText('A Workflow is a reusable Hermes prompt scoped to this Project.')
-	).toBeVisible();
-	await page.getByRole('button', { name: 'New workflow' }).click();
-	const workflowDialog = page.getByRole('dialog', { name: 'New workflow' });
-	await expect(workflowDialog.getByRole('button', { name: 'Save workflow' })).toBeVisible();
-	await workflowDialog.getByRole('button', { name: 'Close workflow editor' }).click();
-	await expectMinimumTouchTargets(
-		page.locator('#session-drawer button, #session-drawer input, #session-drawer textarea')
-	);
 });
 
 test('short mobile chat contains hostile content and keeps core controls reachable', async ({

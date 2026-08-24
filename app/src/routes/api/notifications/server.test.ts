@@ -32,6 +32,9 @@ test('lists bounded canonical metadata and counts', async () => {
 	expect(body.items).toEqual([
 		expect.objectContaining({ kind: 'completed', projectId: null, sessionId: 'session-1' })
 	]);
+	expect(new URL(body.items[0].path, 'http://localhost').searchParams.get('event')).toBe(
+		body.items[0].sourceEventId
+	);
 	expect(JSON.stringify(body)).not.toContain('private-message');
 });
 
@@ -69,6 +72,19 @@ test('notification lifecycle mutations require exact same origin', async () => {
 	} as never);
 	expect(response.status).toBe(200);
 	expect(await response.json()).toEqual(expect.objectContaining({ readAt: expect.any(String) }));
+});
+
+test('marks all unread notifications read with one same-origin mutation', async () => {
+	store.appendEvent(null, 'session-1', 'message.completed', { messageId: crypto.randomUUID() });
+	const { PATCH } = await import('./+server');
+	const request = new Request('http://localhost/api/notifications', {
+		method: 'PATCH',
+		headers: { host: 'localhost', origin: 'http://localhost' }
+	});
+	const response = await PATCH({ request, url: new URL(request.url) } as never);
+
+	expect(response.status).toBe(200);
+	expect(await response.json()).toEqual({ updated: 1, counts: { unread: 0, all: 2 } });
 });
 
 test('endpoint and presence APIs return safe metadata and support rename disable revoke delete', async () => {

@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { sameOriginMutationAllowed } from '$lib/server/same-origin';
 import { services } from '$lib/server/services';
 import type { RequestHandler } from './$types';
 
@@ -25,4 +26,15 @@ export const GET: RequestHandler = async ({ url }) => {
 	} catch {
 		return json({ error: 'Unable to list notifications' }, { status: 400 });
 	}
+};
+
+export const PATCH: RequestHandler = async ({ request, url }) => {
+	if (!sameOriginMutationAllowed(request, url)) {
+		return json({ error: 'Notification mutations require same-origin access' }, { status: 403 });
+	}
+	const state = services();
+	return json({
+		updated: state.store.markAllNotificationsRead(),
+		counts: state.store.notificationCounts()
+	});
 };

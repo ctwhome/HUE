@@ -39,7 +39,7 @@ function item(kind: Item['kind'], index: number): Item {
 		priority: kind === 'completed' ? 'normal' : 'high',
 		title: copy[0],
 		body: copy[1],
-		path: '/?project=none&session=session-1',
+		path: `/?project=none&session=session-1&event=${index}`,
 		createdAt: new Date(Date.UTC(2026, 7, 23, 10, 0, index)).toISOString(),
 		readAt: null,
 		dismissedAt: null,
@@ -73,6 +73,19 @@ async function mockNotifications(
 		}
 		if (url.pathname === '/api/notifications/presence') return route.fulfill({ status: 204 });
 		if (url.pathname === '/api/notifications') {
+			if (route.request().method() === 'PATCH') {
+				const now = new Date().toISOString();
+				let updated = 0;
+				for (const item of items) {
+					if (!item.readAt && !item.dismissedAt) {
+						item.readAt = now;
+						updated += 1;
+					}
+				}
+				return route.fulfill({
+					json: { updated, counts: { unread: 0, all: items.length } }
+				});
+			}
 			listRequests += 1;
 			if (listRequests > 1 && options.listDelayAfterFirst)
 				await new Promise((resolve) => setTimeout(resolve, options.listDelayAfterFirst));
@@ -98,24 +111,45 @@ async function mockNotifications(
 			const now = new Date().toISOString();
 			if (state === 'read') current.readAt = now;
 			if (state === 'dismissed') current.dismissedAt = now;
-			if (state === 'acted') current.actedAt = now;
+			if (state === 'acted') {
+				current.actedAt = now;
+				current.readAt ??= now;
+			}
 			return route.fulfill({ json: current });
 		}
 		return route.fulfill({ status: 404, json: { error: 'Not found' } });
 	});
 }
 
-async function mockProjectlessSession(page: import('@playwright/test').Page) {
+async function mockProjectlessSession(
+	page: import('@playwright/test').Page,
+	options: {
+		events?: Array<{
+			sequence: number;
+			type: string;
+			payload: Record<string, unknown>;
+		}>;
+		onLoad?: () => void;
+	} = {}
+) {
 	await page.route(/\/api\/sessions(?:\?.*)?$/, (route) =>
 		route.fulfill({
 			json: { sessions: [{ sessionId: 'session-1', cwd: '/private', title: 'Visible session' }] }
 		})
 	);
-	await page.route(/\/api\/sessions\/session-1$/, (route) =>
-		route.fulfill({
-			json: { transcript: [], messages: [], events: [], cursor: 0, activeTurn: null, commands: [] }
-		})
-	);
+	await page.route(/\/api\/sessions\/session-1$/, (route) => {
+		options.onLoad?.();
+		return route.fulfill({
+			json: {
+				transcript: [],
+				messages: [],
+				events: options.events ?? [],
+				cursor: options.events?.at(-1)?.sequence ?? 0,
+				activeTurn: null,
+				commands: []
+			}
+		});
+	});
 	await page.route(/\/api\/sessions\/session-1\/events.*/, (route) =>
 		route.fulfill({ json: { events: [] } })
 	);
@@ -173,7 +207,116 @@ test('attention center is complete responsive fallback for all five kinds exactl
 		.click();
 	await expect(page.locator('li')).toHaveCount(5);
 	const link = page.getByRole('link', { name: 'HUE needs your input' });
-	await expect(link).toHaveAttribute('href', '/?project=none&session=session-1');
+	await expect(link).toHaveAttribute('href', '/?project=none&session=session-1&event=2');
+});
+
+test('notification click acknowledges before focusing its exact actionable request', async ({
+	page
+}) => {
+	const items = [item('permission', 7)];
+	let actedBeforeSessionLoad = false;
+	const browserErrors: string[] = [];
+	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
+	page.on('pageerror', (error) => browserErrors.push(error.message));
+	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
+	await mockNotifications(page, items);
+	await mockProjectlessSession(page, {
+		events: [
+			{
+				sequence: 7,
+				type: 'agent.permission',
+				payload: {
+					messageId: 'message-1',
+					id: 'permission-1',
+					status: 'pending',
+					toolCall: { title: 'Run checks', args: { command: 'bun test' } },
+					options: [{ optionId: 'once', name: 'Allow once', kind: 'allow_once' }]
+				}
+			}
+		],
+		onLoad: () => (actedBeforeSessionLoad = Boolean(items[0]?.actedAt))
+	});
+	await page.goto('/');
+	await page.getByRole('button', { name: /Notifications/ }).click();
+
+	const link = page.getByRole('link', { name: 'HUE needs permission' });
+	expect(
+		await link.evaluate((element) => {
+			const event = new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true });
+			return { allowed: element.dispatchEvent(event), defaultPrevented: event.defaultPrevented };
+		})
+	).toEqual({ allowed: true, defaultPrevented: false });
+	await expect.poll(() => items[0]?.actedAt).not.toBeNull();
+	items[0]!.readAt = null;
+	items[0]!.actedAt = null;
+	await link.click();
+
+	await expect(page.getByRole('button', { name: 'Allow once' })).toBeFocused();
+	await expect(page.getByRole('group', { name: 'Permission required: Run checks' })).toHaveClass(
+		/notification-target/
+	);
+	expect(actedBeforeSessionLoad).toBe(true);
+	expect(new URL(page.url()).searchParams.has('event')).toBe(false);
+	expect(browserErrors).toEqual([]);
+});
+
+test('completed notification focuses the corresponding result message', async ({ page }, testInfo) => {
+	const items = [item('completed', 9)];
+	const browserErrors: string[] = [];
+	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
+	page.on('pageerror', (error) => browserErrors.push(error.message));
+	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
+	await mockNotifications(page, items);
+	await mockProjectlessSession(page, {
+		events: [
+			{
+				sequence: 8,
+				type: 'agent.chunk',
+				payload: { messageId: 'message-9', text: 'Exact completed result' }
+			},
+			{
+				sequence: 9,
+				type: 'message.completed',
+				payload: { messageId: 'message-9' }
+			}
+		]
+	});
+	for (const viewport of viewports) {
+		items[0]!.readAt = null;
+		items[0]!.actedAt = null;
+		await page.setViewportSize(viewport);
+		await page.goto('/');
+		await page.getByRole('button', { name: /Notifications/ }).click();
+		await page.getByRole('link', { name: 'Task completed' }).click();
+
+		const result = page.locator('[data-message-id="message-9"]');
+		await expect(result).toBeFocused();
+		await expect(result).toHaveClass(/notification-target/);
+		await expect(result).toContainText('Exact completed result');
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		await testInfo.attach(`notification-target-${viewport.width}x${viewport.height}`, {
+			body: await page.screenshot(),
+			contentType: 'image/png'
+		});
+	}
+	expect(browserErrors).toEqual([]);
+});
+
+test('marks every notification read from the panel', async ({ page }) => {
+	const items = [item('completed', 1), item('failed', 2), item('clarify', 3)];
+	await mockNotifications(page, items);
+	await page.goto('/');
+	await page.getByRole('button', { name: /Notifications/ }).click();
+
+	await page.getByRole('button', { name: 'Mark all read' }).click();
+
+	await expect(page.getByText('No notifications')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Mark all read' })).toHaveCount(0);
+	await page.getByRole('button', { name: 'All', exact: true }).click();
+	await expect(page.locator('li')).toHaveCount(3);
+	await expect(page.getByRole('button', { name: 'Mark read' })).toHaveCount(0);
 });
 
 test('background notification polling keeps the current list visible', async ({ page }) => {

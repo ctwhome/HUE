@@ -287,7 +287,7 @@ describe('notification delivery boundary', () => {
 			kind: 'completed',
 			title: 'Task completed',
 			body: 'Open HUE to review the result.',
-			path: '/?project=project-1&session=session-1'
+			path: '/?project=project-1&session=session-1&event=1'
 		});
 		store.close();
 	});

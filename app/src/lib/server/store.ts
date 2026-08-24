@@ -488,6 +488,10 @@ export class HUEStore {
 				ON project_sessions(project_id, archived, pinned DESC, updated_at DESC, session_id);
 		`);
 		this.projectPendingNotifications();
+		this.database.exec(`
+			UPDATE notifications SET path = path || '&event=' || source_event_id
+			 WHERE path NOT LIKE '%?event=%' AND path NOT LIKE '%&event=%'
+		`);
 		if (initializeEndpointBaselines) {
 			this.database.exec(`
 				UPDATE notification_endpoints SET notification_baseline =
@@ -531,8 +535,8 @@ export class HUEStore {
 		const presentation = notificationPresentation(event.type);
 		if (!presentation) return;
 		const path = event.project_id
-			? `/?project=${encodeURIComponent(event.project_id)}&session=${encodeURIComponent(event.session_id)}`
-			: `/?project=none&session=${encodeURIComponent(event.session_id)}`;
+			? `/?project=${encodeURIComponent(event.project_id)}&session=${encodeURIComponent(event.session_id)}&event=${event.sequence}`
+			: `/?project=none&session=${encodeURIComponent(event.session_id)}&event=${event.sequence}`;
 		this.database
 			.query(
 				`INSERT OR IGNORE INTO notifications
@@ -586,6 +590,17 @@ export class HUEStore {
 			)
 			.get() as { all_count: number; unread_count: number | null };
 		return { all: row.all_count, unread: row.unread_count ?? 0 };
+	}
+
+	markAllNotificationsRead(): number {
+		return Number(
+			this.database
+				.query(
+					`UPDATE notifications SET read_at = ?
+					 WHERE read_at IS NULL AND dismissed_at IS NULL`
+				)
+				.run(new Date().toISOString()).changes
+		);
 	}
 
 	getNotification(id: string): StoredNotification | null {

@@ -207,37 +207,14 @@
 	border-bottom: 1px solid var(--border);
 	padding: 14px 18px;
 }
-.brand strong,
-.brand small {
-	display: block;
+.context-panel > .project-context-header {
+	display: none;
 }
-.brand strong {
-	font-size: 0.88rem;
-	letter-spacing: 0.14em;
-}
-.brand small {
-	margin-top: 2px;
-	color: var(--muted-foreground);
-	font-size: 0.68rem;
-	white-space: nowrap;
-}
-
 .context-panel header small,
 .session-header small,
 .item-list small,
 .workflow-card p {
 	color: var(--muted-foreground);
-}
-
-.tabs button {
-	border-radius: 8px;
-	padding: 8px;
-	color: var(--muted-foreground);
-}
-
-.tabs button.active {
-	background: var(--accent);
-	color: var(--foreground);
 }
 
 .project-row:hover .project-edit,

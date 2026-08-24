@@ -46,6 +46,11 @@
 	max-inline-size: 100%;
 }
 
+.transcript .notification-target {
+	outline: 2px solid var(--ring);
+	outline-offset: 4px;
+}
+
 .transcript article.user {
 	flex-direction: row-reverse;
 }
