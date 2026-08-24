@@ -4627,8 +4627,13 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
 	page.on('pageerror', (error) => browserErrors.push(error.message));
 	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
-	await page.route('http://localhost:4001/**', (route) =>
-		route.fulfill({ contentType: 'text/html', body: '<h1>HUE browser canvas fixture</h1>' })
+	let previewRequests = 0;
+	await page.route('http://localhost:4001/**', (route) => {
+		previewRequests += 1;
+		return route.fulfill({ contentType: 'text/html', body: '<h1>HUE browser canvas fixture</h1>' });
+	});
+	await page.route('http://canvas.test/**', (route) =>
+		route.fulfill({ contentType: 'text/html', body: '<h1>HUE canvas fixture</h1>' })
 	);
 	const gitActions: string[] = [];
 	let changes = [{ path: 'app/src/routes/+page.svelte', index: ' ', worktree: 'M' }];
@@ -4683,11 +4688,44 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 	await expect.poll(() => gitActions).toEqual(['stage', 'commit', 'push']);
 
 	const browser = workbench.getByRole('article', { name: 'Project browser' });
-	await browser.getByLabel('Browser address').fill('not a url');
-	await browser.getByRole('button', { name: 'Go' }).click();
-	await expect(browser.getByRole('alert')).toContainText('Enter a valid http or https address');
-	await browser.getByLabel('Browser address').fill('http://localhost:4001');
-	await browser.getByRole('button', { name: 'Go' }).click();
+	await expect(browser.getByRole('tab', { name: 'Browser', exact: true })).toHaveAttribute(
+		'aria-selected',
+		'true'
+	);
+	await browser.getByRole('tab', { name: 'Browser', exact: true }).focus();
+	await page.keyboard.press('ArrowRight');
+	await expect(browser.getByRole('tab', { name: 'Excalidraw' })).toHaveAttribute(
+		'aria-selected',
+		'true'
+	);
+	await page.keyboard.press('ArrowLeft');
+	await page.keyboard.press('ArrowLeft');
+	await expect(browser.getByRole('tab', { name: 'Excalidraw' })).toHaveAttribute(
+		'aria-selected',
+		'true'
+	);
+	await page.keyboard.press('ArrowRight');
+	await expect(browser.getByRole('button', { name: 'New browser tab' })).toBeVisible();
+	const browserPreview = browser.getByRole('tabpanel', { name: 'Browser', exact: true });
+	await browserPreview.getByLabel('Browser address').fill('http://localhost:4001');
+	await browserPreview.getByRole('button', { name: 'Go' }).click();
+	await expect(browserPreview.locator('iframe[title="localhost"]')).toBeVisible();
+	const savedBrowserTabs = await page.evaluate(() => {
+		const key = Object.keys(localStorage).find((item) => item.startsWith('hue:browser:')) ?? '';
+		return { key, value: localStorage.getItem(key) };
+	});
+	expect(savedBrowserTabs.key).not.toBe('');
+	await browser.getByRole('tab', { name: 'Excalidraw' }).click();
+	await browser.getByRole('tab', { name: 'Browser', exact: true }).click();
+	await expect(browserPreview.locator('iframe[title="localhost"]')).toBeVisible();
+	expect(previewRequests).toBe(1);
+	await browser.getByRole('tab', { name: 'Excalidraw' }).click();
+	const canvas = browser.getByRole('tabpanel', { name: 'Excalidraw' });
+	await canvas.getByLabel('Browser address').fill('not a url');
+	await canvas.getByRole('button', { name: 'Go' }).click();
+	await expect(canvas.getByRole('alert')).toContainText('Enter a valid http or https address');
+	await canvas.getByLabel('Browser address').fill('http://canvas.test');
+	await canvas.getByRole('button', { name: 'Go' }).click();
 	await expect
 		.poll(() =>
 			page.evaluate(() => {
@@ -4697,13 +4735,13 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 				return localStorage.getItem(key ?? '');
 			})
 		)
-		.toBe('http://localhost:4001/');
-	await browser.getByRole('button', { name: 'Add desktop' }).click();
-	await browser.getByRole('button', { name: 'Add mobile' }).click();
-	await expect(browser.locator('.browser-embed iframe')).toHaveCount(2);
-	await expect(browser.locator('iframe[title*="Desktop"]')).toHaveAttribute('width', '1440');
-	await expect(browser.locator('iframe[title*="Mobile"]')).toHaveAttribute('width', '390');
-	for (const frame of await browser.locator('iframe').all()) {
+		.toBe('http://canvas.test/');
+	await canvas.getByRole('button', { name: 'Add desktop' }).click();
+	await canvas.getByRole('button', { name: 'Add mobile' }).click();
+	await expect(canvas.locator('.browser-embed iframe')).toHaveCount(2);
+	await expect(canvas.locator('iframe[title*="Desktop"]')).toHaveAttribute('width', '1440');
+	await expect(canvas.locator('iframe[title*="Mobile"]')).toHaveAttribute('width', '390');
+	for (const frame of await canvas.locator('iframe').all()) {
 		await expect(frame).toHaveAttribute(
 			'sandbox',
 			'allow-forms allow-modals allow-popups allow-same-origin allow-scripts'
@@ -4728,6 +4766,15 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 			{ width: 1440, height: 900 },
 			{ width: 390, height: 844 }
 		]);
+	expect(await page.evaluate((key) => localStorage.getItem(key), savedBrowserTabs.key)).toBe(
+		savedBrowserTabs.value
+	);
+	const previewHealth = workbench.locator('[data-health-id="preview"]');
+	await expect(previewHealth).toContainText('canvas.test');
+	await browser.getByRole('tab', { name: 'Browser', exact: true }).click();
+	await expect(previewHealth).toContainText('localhost:4001');
+	await browser.getByRole('tab', { name: 'Excalidraw' }).click();
+	await expect(previewHealth).toContainText('canvas.test');
 
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
@@ -4737,15 +4784,25 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 			);
 			const entry = page.getByRole('button', { name: 'Open Project tools' });
 			if (await entry.isVisible()) await entry.click();
-			await workbench.getByRole('button', { name: 'Browser', exact: true }).click();
+			const projectTools = workbench.getByRole('navigation', { name: 'Project tools' });
+			await projectTools.getByRole('button', { name: 'Browser', exact: true }).click();
 			await expect(workbench.getByRole('article', { name: 'Project browser' })).toBeVisible();
-			await workbench.getByRole('button', { name: 'Terminal', exact: true }).click();
+			await projectTools.getByRole('button', { name: 'Terminal', exact: true }).click();
 			await expect(workbench.getByRole('article', { name: 'Project terminal' })).toBeVisible();
-			await workbench.getByRole('button', { name: 'Git', exact: true }).click();
+			await projectTools.getByRole('button', { name: 'Git', exact: true }).click();
 			await expect(workbench.getByRole('article', { name: 'Git status' })).toBeVisible();
-			await workbench.getByRole('button', { name: 'Browser', exact: true }).click();
+			await projectTools.getByRole('button', { name: 'Browser', exact: true }).click();
 			await expect(workbench.getByRole('article', { name: 'Project browser' })).toBeVisible();
 		}
+		await browser.getByRole('tab', { name: 'Browser', exact: true }).click();
+		await expect(browserPreview).toBeVisible();
+		if (viewport.width <= 390)
+			await expectMinimumTouchTargets(
+				browserPreview.locator(
+					'.browser-tabs button, .browser-address input, .browser-address button'
+				)
+			);
+		await browser.getByRole('tab', { name: 'Excalidraw' }).click();
 		await expect(workbench).toBeVisible();
 		const browserBox = await browser.boundingBox();
 		expect(browserBox).not.toBeNull();
@@ -4763,7 +4820,7 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		);
 		if (viewport.width <= 390)
 			await expectMinimumTouchTargets(
-				browser.locator(
+				canvas.locator(
 					'.browser-canvas-toolbar button, .browser-canvas-toolbar a, .browser-canvas-toolbar input'
 				)
 			);
@@ -4826,21 +4883,42 @@ test('remounts project-scoped tools when switching projects', async ({ page }) =
 		});
 
 		await page.goto(`/?project=${projects[0].id}`);
+		await page.evaluate(
+			({ projectId }) =>
+				localStorage.setItem(
+					`hue:browser:${projectId}`,
+					JSON.stringify([{ id: 'bad', title: 'Bad', url: 'javascript:alert(1)' }])
+				),
+			{ projectId: projects[0].id }
+		);
+		await page.reload();
+		await expect(
+			page.getByRole('article', { name: 'Project browser' }).getByLabel('Browser address')
+		).toHaveValue('');
 		await expect(
 			page.locator('.session-header').getByText('branch-one', { exact: true })
 		).toBeVisible();
 		await page.getByRole('button', { name: 'Start terminal' }).click();
 		const firstBrowser = page.getByRole('article', { name: 'Project browser' });
-		await firstBrowser.getByLabel('Browser address').fill('http://localhost:4001');
-		await firstBrowser.getByRole('button', { name: 'Go' }).click();
-		await firstBrowser.getByRole('button', { name: 'Add mobile' }).click();
+		await firstBrowser.getByRole('tab', { name: 'Excalidraw' }).click();
+		const firstCanvas = firstBrowser.getByRole('tabpanel', { name: 'Excalidraw' });
+		await firstCanvas.getByLabel('Browser address').fill('http://localhost:4001');
+		await firstCanvas.getByRole('button', { name: 'Go' }).click();
+		await firstCanvas.getByRole('button', { name: 'Add mobile' }).click();
 		await page.locator('.project-select').filter({ hasText: projects[1].name }).click();
 
 		await expect(
 			page.locator('.session-header').getByText('branch-two', { exact: true })
 		).toBeVisible();
+		await page
+			.getByRole('article', { name: 'Project browser' })
+			.getByRole('tab', { name: 'Excalidraw' })
+			.click();
 		await expect(
-			page.getByRole('article', { name: 'Project browser' }).getByLabel('Browser address')
+			page
+				.getByRole('article', { name: 'Project browser' })
+				.getByRole('tabpanel', { name: 'Excalidraw' })
+				.getByLabel('Browser address')
 		).toHaveValue('');
 		await expect(
 			page.getByRole('article', { name: 'Project browser' }).locator('.browser-embed iframe')
@@ -4854,10 +4932,18 @@ test('remounts project-scoped tools when switching projects', async ({ page }) =
 			)
 			.toBe(true);
 		await page.locator('.project-select').filter({ hasText: projects[0].name }).click();
+		await page
+			.getByRole('article', { name: 'Project browser' })
+			.getByRole('tab', { name: 'Excalidraw' })
+			.click();
 		await expect(
 			page.getByRole('article', { name: 'Project browser' }).locator('iframe[title*="Mobile"]')
 		).toHaveCount(1);
 		await page.reload();
+		await page
+			.getByRole('article', { name: 'Project browser' })
+			.getByRole('tab', { name: 'Excalidraw' })
+			.click();
 		await expect(
 			page.getByRole('article', { name: 'Project browser' }).locator('iframe[title*="Mobile"]')
 		).toHaveCount(1);
