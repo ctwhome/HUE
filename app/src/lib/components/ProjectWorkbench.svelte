@@ -124,6 +124,7 @@
 	function toggleTool(tool: Tool) {
 		if (open && activeTool === tool) {
 			open = false;
+			if (docked) localStorage.setItem(`hue:project-tools:${projectId}:dock`, 'closed');
 			return;
 		}
 		open = true;
@@ -132,6 +133,7 @@
 			chooseDevelopView(tool);
 			openDevelop();
 		}
+		if (docked) localStorage.setItem(`hue:project-tools:${projectId}:dock`, tool);
 	}
 	function toggleTerminal() {
 		open = true;
@@ -183,7 +185,14 @@
 			setWidth(
 				savedWidth > 0 ? savedWidth : (dockElement.parentElement?.clientWidth ?? 960) * 0.46
 			);
-			if (innerWidth < 1280) open = false;
+			const savedDock = localStorage.getItem(`hue:project-tools:${projectId}:dock`);
+			if (savedDock === 'files') {
+				open = true;
+				openFiles();
+			} else if (savedDock === 'git') {
+				open = true;
+				chooseDevelopView('git');
+			}
 		}
 		const cancelRepositoryLoad = afterInitialPaint(() => {
 			void loadRepositoryPanels();

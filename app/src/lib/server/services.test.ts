@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
 	projectBranch,
+	projectGitHubItems,
 	mergeProjectSessionViews,
 	projectRepository,
 	projectRepositoryAction,
@@ -172,6 +173,36 @@ test('reports read-only repository status, remotes, and worktrees', () => {
 			}
 		]
 	});
+});
+
+test('lists open GitHub issues and pull requests for origin', () => {
+	const calls: string[][] = [];
+	const run = (_command: string, args: string[]) => {
+		calls.push(args);
+		if (args.includes('get-url')) {
+			return { status: 0, stdout: 'https://github.com/curi/hue.git\n' };
+		}
+		return {
+			status: 0,
+			stdout: JSON.stringify([
+				{ number: 42, title: 'Keep issue list focused', url: 'https://github.com/curi/hue/issues/42' }
+			])
+		};
+	};
+
+	expect(projectGitHubItems('/project', run)).toEqual({
+		issues: [
+			{ number: 42, title: 'Keep issue list focused', url: 'https://github.com/curi/hue/issues/42' }
+		],
+		pullRequests: [
+			{ number: 42, title: 'Keep issue list focused', url: 'https://github.com/curi/hue/issues/42' }
+		]
+	});
+	expect(calls).toEqual([
+		['-C', '/project', 'remote', 'get-url', 'origin'],
+		['issue', 'list', '--repo', 'https://github.com/curi/hue', '--state', 'open', '--limit', '20', '--json', 'number,title,url'],
+		['pr', 'list', '--repo', 'https://github.com/curi/hue', '--state', 'open', '--limit', '20', '--json', 'number,title,url']
+	]);
 });
 
 test('reports a project without Git without treating it as an error', () => {

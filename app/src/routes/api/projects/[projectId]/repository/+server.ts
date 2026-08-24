@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import {
 	projectRepository,
 	projectRepositoryAction,
+	projectGitHubItems,
 	projectStagedDiff,
 	authoritativeProject,
 	type ProjectRepositoryAction
@@ -23,9 +24,12 @@ export function _repositoryMutationAllowed(request: Request, clientAddress: stri
 	}
 }
 
-export const GET: RequestHandler = async ({ params }) => {
+export const GET: RequestHandler = async ({ params, url }) => {
 	try {
 		const project = await authoritativeProject(params.projectId);
+		if (url.searchParams.get('view') === 'github') {
+			return json(projectGitHubItems(project.primary_path));
+		}
 		return json(projectRepository(project.primary_path));
 	} catch (error) {
 		return json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
