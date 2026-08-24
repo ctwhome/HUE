@@ -18,7 +18,7 @@
 	margin: 0;
 	transform: translate(-50%, -50%);
 	border: 1px solid var(--border);
-	border-radius: 12px;
+	border-radius: var(--radius-panel);
 	background: var(--card);
 	padding: 0;
 	color: var(--foreground);
@@ -100,9 +100,9 @@
 	min-height: 40px;
 	align-items: center;
 	gap: 10px;
-	border-radius: 8px;
+	border-radius: var(--radius-control);
 	padding: 0 10px;
-	font-size: 0.875rem;
+	font-size: var(--font-size-body);
 	text-align: left;
 }
 
@@ -122,10 +122,10 @@
 	align-items: center;
 	justify-content: center;
 	gap: 8px;
-	border-radius: 8px;
+	border-radius: var(--radius-control);
 	background: var(--secondary);
 	padding: 0 8px;
-	font-size: 0.875rem;
+	font-size: var(--font-size-body);
 }
 
 .project-icon-inline {
@@ -143,7 +143,7 @@
 	min-height: 44px;
 	align-items: center;
 	gap: 6px;
-	border-radius: 7px;
+	border-radius: var(--radius-control);
 	padding: 0 10px;
 }
 
@@ -169,7 +169,7 @@
 .add-project-dialog legend,
 .add-project-dialog label span {
 	color: var(--muted-foreground);
-	font-size: 0.8rem;
+	font-size: var(--font-size-ui);
 }
 
 .add-project-dialog > .icon-button {
@@ -189,7 +189,7 @@
 .workflow-form textarea {
 	width: 100%;
 	border: 1px solid var(--input);
-	border-radius: 8px;
+	border-radius: var(--radius-control);
 	background: var(--background);
 	padding: 9px 10px;
 	color: var(--foreground);
@@ -207,7 +207,7 @@
 .workflow-form button,
 .workflow-card button {
 	min-height: 38px;
-	border-radius: 8px;
+	border-radius: var(--radius-control);
 	background: var(--secondary);
 	padding: 8px 11px;
 }
@@ -245,7 +245,7 @@
 	height: 320px;
 	--background: var(--background);
 	--border-color: var(--border);
-	--border-radius: 12px;
+	--border-radius: var(--radius-panel);
 	--button-active-background: #49377d;
 	--button-hover-background: var(--accent);
 	--indicator-color: #a78bfa;
@@ -301,7 +301,7 @@
 .workflow-card p {
 	max-height: 3.3em;
 	overflow: hidden;
-	font-size: 0.76rem;
+	font-size: var(--font-size-meta);
 }
 
 .workspace {
@@ -401,7 +401,7 @@
 	width: 44px;
 	height: 44px;
 	place-items: center;
-	border-radius: 7px;
+	border-radius: var(--radius-control);
 	color: var(--muted-foreground);
 }
 .project-tool-rail .terminal-tool {
@@ -529,7 +529,7 @@
 }
 .browser-frame-note {
 	min-width: 0;
-	font-size: 0.68rem;
+	font-size: var(--font-size-meta);
 	line-height: 1.25;
 	white-space: normal;
 }
@@ -569,7 +569,7 @@
 	height: 44px;
 	place-items: center;
 	border: 1px solid rgb(0 0 0 / 18%);
-	border-radius: 7px;
+	border-radius: var(--radius-control);
 	background: rgb(255 255 255 / 92%);
 	color: #111827;
 	font: 600 18px/1 system-ui;

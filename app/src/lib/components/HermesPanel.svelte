@@ -313,7 +313,7 @@
 	data-runtime-actions={runtimeActions.join(',')}
 >
 	<header
-		class="flex min-h-[76px] items-center justify-between border-b border-border px-6 py-3.5 max-[700px]:min-h-[62px] max-[700px]:px-3.5"
+		class="flex min-h-14 items-center justify-between border-b border-border px-4 py-2 max-[700px]:min-h-[62px] max-[700px]:px-3.5"
 	>
 		<div>
 			<small class="text-muted-foreground">{view === 'settings' ? 'HUE' : 'Hermes'}</small>
@@ -328,7 +328,7 @@
 		>
 	</header>
 	<nav
-		class="global-panel-tabs flex gap-1.5 overflow-x-auto border-b border-border px-6 py-2.5"
+		class="global-panel-tabs flex gap-1 overflow-x-auto border-b border-border px-4 py-1.5"
 		aria-label="Hermes sections"
 	>
 		<Button
@@ -355,7 +355,7 @@
 		</select>
 	</label>
 	<div
-		class="global-panel-content flex-1 overflow-auto px-[clamp(18px,5vw,70px)] py-7 max-[700px]:p-3"
+		class="global-panel-content flex-1 overflow-auto px-[clamp(14px,3vw,40px)] py-4 max-[700px]:p-3"
 	>
 		{#if loading && view !== 'commands'}<p
 				class="muted text-sm text-muted-foreground"

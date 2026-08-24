@@ -75,12 +75,12 @@
 .thinking-label {
 	margin: 0;
 	padding: 8px 12px;
-	font-size: 0.76rem;
+	font-size: var(--font-size-meta);
 	font-weight: 700;
 }
 .active-reasoning-text {
 	padding: 2px 12px 8px;
-	font-size: 0.84rem;
+	font-size: var(--font-size-ui);
 }
 @media (prefers-reduced-motion: reduce) {
 	.liquid-thinking-orb,

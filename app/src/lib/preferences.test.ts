@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import { normalizePreferences, shouldSendMessage } from './preferences';
+import {
+	isDarkTheme,
+	normalizePreferences,
+	shouldSendMessage,
+	themeChromeColor
+} from './preferences';
 
 describe('HUE preferences', () => {
 	it('accepts supported appearance, composer, language, voice, and visibility values', () => {
@@ -53,5 +58,30 @@ describe('HUE preferences', () => {
 				'mod-enter'
 			)
 		).toBe(false);
+	});
+
+	it('maps appearance preferences to coordinated browser chrome colors', () => {
+		expect(themeChromeColor('dark', false)).toBe('#181818');
+		expect(themeChromeColor('oled', false)).toBe('#000000');
+		expect(themeChromeColor('light', true)).toBe('#f3f3f3');
+		expect(themeChromeColor('system', true)).toBe('#181818');
+		expect(themeChromeColor('system', false)).toBe('#f3f3f3');
+	});
+
+	it('accepts additional light and dark themes', () => {
+		for (const theme of ['github-light', 'solarized-light', 'tokyo-night', 'nord'] as const) {
+			expect(normalizePreferences({ theme }).theme).toBe(theme);
+		}
+	});
+
+	it('classifies additional themes for browser and embedded surfaces', () => {
+		expect(isDarkTheme('tokyo-night', false)).toBe(true);
+		expect(isDarkTheme('nord', false)).toBe(true);
+		expect(isDarkTheme('github-light', true)).toBe(false);
+		expect(isDarkTheme('solarized-light', true)).toBe(false);
+		expect(themeChromeColor('tokyo-night', false)).toBe('#16161e');
+		expect(themeChromeColor('nord', false)).toBe('#2e3440');
+		expect(themeChromeColor('github-light', true)).toBe('#f6f8fa');
+		expect(themeChromeColor('solarized-light', true)).toBe('#eee8d5');
 	});
 });

@@ -90,7 +90,7 @@
 	width: 28px;
 	height: 28px;
 	place-items: center;
-	border-radius: 6px;
+	border-radius: var(--radius-control);
 	color: var(--muted-foreground);
 }
 .message-actions button:hover {
@@ -105,7 +105,7 @@
 	display: block;
 	width: 100%;
 	max-height: 220px;
-	border-radius: 9px;
+	border-radius: var(--radius-panel);
 	object-fit: cover;
 }
 
@@ -127,7 +127,7 @@
 	padding-left: 1.5em;
 }
 .markdown code {
-	border-radius: 4px;
+	border-radius: var(--radius-small);
 	background: var(--background);
 	padding: 0.12em 0.35em;
 	font-size: 0.9em;
@@ -135,7 +135,7 @@
 .markdown pre {
 	max-inline-size: 100%;
 	overflow-x: auto;
-	border-radius: 8px;
+	border-radius: var(--radius-panel);
 	background: var(--background);
 	padding: 10px 12px;
 }
@@ -157,10 +157,10 @@
 	right: 6px;
 	min-height: 44px;
 	border: 1px solid var(--border);
-	border-radius: 6px;
+	border-radius: var(--radius-control);
 	background: var(--secondary);
 	padding: 4px 8px;
-	font-size: 0.72rem;
+	font-size: var(--font-size-meta);
 }
 .code-block > pre {
 	padding-top: 56px;
@@ -176,10 +176,10 @@
 	background: var(--foreground);
 	padding: 5px 10px;
 	color: var(--background);
-	font-size: 0.75rem;
+	font-size: var(--font-size-meta);
 }
 .markdown a {
-	color: #c4b5fd;
+	color: var(--link);
 }
 
 .subagent-tree > summary,
@@ -199,7 +199,7 @@
 .subagent-child > summary {
 	position: relative;
 	padding: 8px 12px 8px 30px;
-	font-size: 0.8rem;
+	font-size: var(--font-size-ui);
 }
 .subagent-tree[open] > summary > .disclosure-icon,
 .subagent-child[open] > summary > .disclosure-icon {
@@ -238,7 +238,7 @@
 .activity-card time {
 	margin-left: auto;
 	color: var(--muted-foreground);
-	font-size: 0.72rem;
+	font-size: var(--font-size-meta);
 }
 .tool-card[open] > summary > .disclosure-icon {
 	transform: rotate(90deg);
@@ -251,16 +251,16 @@
 .activity-card pre {
 	max-height: 240px;
 	overflow: auto;
-	border-radius: 7px;
+	border-radius: var(--radius-control);
 	background: var(--background);
 	padding: 9px;
-	font-size: 0.76rem;
+	font-size: var(--font-size-meta);
 	white-space: pre-wrap;
 	word-break: break-word;
 }
 .todo-progress progress {
 	height: 6px;
-	accent-color: #8b5cf6;
+	accent-color: var(--primary);
 }
 .todo-progress ul {
 	display: grid;
@@ -277,7 +277,7 @@
 .clarify-card input {
 	min-height: 44px;
 	border: 1px solid var(--border);
-	border-radius: 7px;
+	border-radius: var(--radius-control);
 	padding: 8px 11px;
 }
 .clarify-card fieldset {
@@ -299,7 +299,7 @@
 	font-weight: 900;
 }
 .session-indicator.attention {
-	color: #fbbf24;
+	color: var(--warning);
 }
 .session-indicator.error {
 	color: var(--destructive);
@@ -307,12 +307,12 @@
 .agent-thought summary {
 	padding: 8px 12px;
 	cursor: pointer;
-	font-size: 0.76rem;
+	font-size: var(--font-size-meta);
 	font-weight: 700;
 }
 .agent-thought > .markdown {
 	padding: 2px 12px 10px;
-	font-size: 0.84rem;
+	font-size: var(--font-size-ui);
 }
 .welcome > span {
 	display: grid;
@@ -320,7 +320,7 @@
 	height: 48px;
 	place-items: center;
 	margin: 0 auto 18px;
-	border-radius: 12px;
+	border-radius: var(--radius-panel);
 	background: linear-gradient(145deg, #c4b5fd, #6d28d9);
 	color: #130d25;
 	font-weight: 900;
@@ -338,7 +338,7 @@
 	border-radius: 999px;
 	background: var(--card);
 	padding: 7px 10px;
-	font-size: 0.74rem;
+	font-size: var(--font-size-meta);
 }
 
 .scroll-to-latest.visible {
@@ -347,8 +347,8 @@
 	transform: translate(-50%, 0);
 }
 .composer.dragging {
-	border-color: #a78bfa;
-	box-shadow: 0 0 0 3px #a78bfa22;
+	border-color: var(--ring);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 25%, transparent);
 }
 .composer > textarea {
 	width: 100%;
@@ -363,13 +363,13 @@
 }
 .command-menu button {
 	width: 100%;
-	border-radius: 8px;
+	border-radius: var(--radius-control);
 	padding: 10px 12px;
 	text-align: left;
 }
 .command-menu button[aria-selected='true'],
 .command-menu button:hover {
-	background: #29213f;
+	background: var(--selection);
 }
 .message-queue > header,
 .message-queue article,
@@ -393,8 +393,8 @@
 	background: #77717f;
 }
 .voice-call-state > span.active {
-	background: #7ee2a1;
-	box-shadow: 0 0 0 4px #7ee2a119;
+	background: var(--success);
+	box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 10%, transparent);
 }
 .attachment-list figure {
 	position: relative;
@@ -402,7 +402,7 @@
 	overflow: hidden;
 	margin: 0;
 	border: 1px solid var(--border);
-	border-radius: 10px;
+	border-radius: var(--radius-panel);
 	background: var(--background);
 }
 .attachment-list img {
@@ -415,7 +415,7 @@
 	overflow: hidden;
 	padding: 5px 7px;
 	color: var(--muted-foreground);
-	font-size: 0.65rem;
+	font-size: var(--font-size-meta);
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
@@ -426,7 +426,7 @@
 	width: 26px;
 	height: 26px;
 	border-radius: 999px;
-	background: #0b0d11dd;
+	background: color-mix(in srgb, var(--surface-raised) 86%, transparent);
 }
 
 .context-select select {
@@ -483,7 +483,7 @@
 	min-height: 46px;
 	grid-template-columns: 20px minmax(0, 1fr);
 	gap: 7px;
-	border-radius: 9px;
+	border-radius: var(--radius-panel);
 	padding: 8px 10px;
 	text-align: left;
 }
@@ -501,23 +501,23 @@
 .syntax-fence,
 .syntax-list-marker,
 .syntax-heading-marker {
-	color: #ff9d4d;
+	color: var(--syntax-marker);
 }
 .syntax-frontmatter-key,
 .syntax-link {
-	color: #78b9ff;
+	color: var(--syntax-link);
 }
 .syntax-frontmatter-value,
 .syntax-code,
 .syntax-code-block {
-	color: #9edc9a;
+	color: var(--syntax-code);
 }
 .syntax-heading {
-	color: #f3d37a;
+	color: var(--syntax-heading);
 }
 .syntax-strong {
-	color: #e5a7ff;
+	color: var(--syntax-strong);
 }
 .syntax-emphasis {
-	color: #c6a7ff;
+	color: var(--syntax-emphasis);
 }

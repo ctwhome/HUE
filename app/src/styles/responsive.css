@@ -62,6 +62,13 @@
 }
 
 @media (max-width: 700px), (pointer: coarse) and (max-height: 500px) {
+	:root,
+	:root[data-density='compact'] {
+		--control-height: 2.75rem;
+		--control-height-sm: 2.75rem;
+		--control-height-icon: 2.75rem;
+		--navigation-icon-size: 1.5rem;
+	}
 	.files-panel {
 		display: block;
 		position: relative;
@@ -99,16 +106,10 @@
 	.add-project-dialog button,
 	.project-workbench button,
 	.project-workbench a,
-	.health-strip button,
-	.health-strip a,
 	.skill-controls input,
 	.skill-controls select,
 	.inventory-row {
 		min-height: 44px !important;
-	}
-	.health-strip button,
-	.health-strip a {
-		min-width: 44px !important;
 	}
 	.workspace {
 		display: block;
@@ -132,7 +133,7 @@
 		grid-template-columns: minmax(0, 1.6fr) minmax(72px, 1fr) 48px 48px;
 		gap: 4px;
 		border-bottom: 1px solid var(--border);
-		background: #0d1015ee;
+		background: color-mix(in srgb, var(--surface-raised) 94%, transparent);
 		padding: calc(6px + env(safe-area-inset-top, 0px)) 10px 6px;
 		backdrop-filter: blur(16px);
 	}
@@ -145,13 +146,13 @@
 		justify-content: center;
 		gap: 6px;
 		border: 1px solid var(--border);
-		border-radius: 9px;
+		border-radius: var(--radius-control);
 		background: var(--secondary);
 	}
 	.mobile-navigation button[aria-current='page'],
 	.mobile-navigation button[aria-expanded='true'] {
-		border-color: #4a3c70;
-		background: #29213f;
+		border-color: var(--ring);
+		background: var(--selection);
 	}
 	.mobile-navigation .project-switcher span {
 		min-width: 0;
@@ -185,7 +186,8 @@
 	.context-panel {
 		position: fixed;
 		z-index: 30;
-		inset: calc(56px + env(safe-area-inset-top, 0px)) auto 0 0;
+		inset: calc(56px + env(safe-area-inset-top, 0px)) auto
+			calc(var(--project-status-height) + env(safe-area-inset-bottom, 0px)) 0;
 		width: min(88vw, 320px);
 		min-height: 0;
 		visibility: hidden;
@@ -426,7 +428,7 @@
 		grid-auto-rows: minmax(100%, 1fr);
 		overflow-y: auto;
 	}
-	.session-pane-grid[data-pane-count='3'] > .session-view {
+	.session-pane-grid[data-pane-count='3'] > .session-pane-primary {
 		grid-row: auto;
 	}
 	.session-pane-resizer {

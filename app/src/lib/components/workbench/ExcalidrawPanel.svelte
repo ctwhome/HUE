@@ -4,12 +4,9 @@
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
 	import { afterInitialPaint } from './after-initial-paint';
-	import {
-		browserCanvasAddressKey,
-		normalizeBrowserUrl,
-		parseStoredBrowserAddress,
-		type BrowserDevice
-	} from './browser-canvas';
+	import { normalizeBrowserUrl, type BrowserDevice } from './browser-canvas';
+	import { api } from './api';
+	import { migrateLegacyExcalidraw, type ProjectExcalidrawState } from './excalidraw-migration';
 	import type { BrowserCanvasController } from './ExcalidrawBrowserCanvas';
 
 	let {
@@ -22,6 +19,22 @@
 	let currentUrl = $state('');
 	let error = $state('');
 	let canvasReady = $state(false);
+	let saveChain = Promise.resolve();
+	const endpoint = () => `/api/projects/${encodeURIComponent(projectId)}/excalidraw`;
+
+	function saveState(input: { address?: string; scene?: string }) {
+		const request = saveChain.then(() =>
+			api<{ state: ProjectExcalidrawState }>(endpoint(), {
+				method: 'PATCH',
+				body: JSON.stringify(input)
+			}).then(({ state }) => state)
+		);
+		saveChain = request.then(
+			() => undefined,
+			() => undefined
+		);
+		return request;
+	}
 
 	function useAddress(): string | null {
 		try {
@@ -30,11 +43,9 @@
 			currentUrl = normalized;
 			error = '';
 			onpreviewchange(normalized);
-			try {
-				localStorage.setItem(browserCanvasAddressKey(projectId), normalized);
-			} catch {
-				error = 'Address could not be saved in this browser.';
-			}
+			void saveState({ address: normalized }).catch((cause) => {
+				error = cause instanceof Error ? cause.message : 'Address could not be saved to HUE.';
+			});
 			return normalized;
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : 'Enter a valid http or https address';
@@ -54,39 +65,28 @@
 			error = cause instanceof Error ? cause.message : 'Canvas is still loading.';
 		}
 	}
-	function savedAddress() {
-		try {
-			return parseStoredBrowserAddress(localStorage.getItem(browserCanvasAddressKey(projectId)));
-		} catch {
-			return '';
-		}
-	}
-
 	onMount(() => {
 		let cancelled = false;
-		const restoredAddress = savedAddress();
-		if (restoredAddress) {
-			address = restoredAddress;
-			currentUrl = restoredAddress;
-			onpreviewchange(restoredAddress);
-		} else onpreviewchange('');
 		const mountCanvas = async () => {
 			try {
+				const loaded = await api<{ state: ProjectExcalidrawState | null }>(endpoint());
+				const state = loaded.state ?? (await migrateLegacyExcalidraw(projectId, saveState));
+				if (cancelled) return;
+				address = state?.address ?? '';
+				currentUrl = address;
+				onpreviewchange(address);
 				const { mountExcalidrawBrowserCanvas } = await import('./ExcalidrawBrowserCanvas');
 				const mounted = await mountExcalidrawBrowserCanvas(canvasHost, {
-					projectId,
+					initialScene: state?.scene ?? '',
+					onsave: async (scene) => void (await saveState({ scene })),
 					onready(restoredUrl) {
 						if (cancelled) return;
 						canvasReady = true;
-						if (restoredUrl) {
+						if (restoredUrl && !address) {
 							address = restoredUrl;
 							currentUrl = restoredUrl;
 							onpreviewchange(restoredUrl);
-							try {
-								localStorage.setItem(browserCanvasAddressKey(projectId), restoredUrl);
-							} catch {
-								error = 'Address could not be saved in this browser.';
-							}
+							void saveState({ address: restoredUrl });
 						}
 					},
 					onerror(message) {
@@ -108,7 +108,7 @@
 		};
 	});
 
-	onDestroy(() => controller?.flush());
+	onDestroy(() => void controller?.flush());
 </script>
 
 <div class="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Project Excalidraw">

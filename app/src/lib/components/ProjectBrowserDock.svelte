@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import BrowserPanel from './workbench/BrowserPanel.svelte';
-	import HealthStrip from './workbench/HealthStrip.svelte';
 
-	let { projectId, open }: { projectId: string; open: boolean } = $props();
+	let {
+		projectId,
+		open,
+		onpreviewchange
+	}: { projectId: string; open: boolean; onpreviewchange: (url: string) => void } = $props();
 	let dockElement: HTMLElement;
-	let previewUrl = $state('');
 	let width = $state(440);
 	let maxWidth = $state(440);
 	let resizeStart: { x: number; width: number } | null = null;
@@ -90,9 +92,8 @@
 		aria-hidden={!open}
 		inert={!open ? true : undefined}
 	>
-		<HealthStrip {projectId} {previewUrl} />
 		<div class="min-h-0 flex-1 p-2.5">
-			<BrowserPanel {projectId} onpreviewchange={(url) => (previewUrl = url)} />
+			<BrowserPanel {projectId} {onpreviewchange} />
 		</div>
 	</section>
 </aside>

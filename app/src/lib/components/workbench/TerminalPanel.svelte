@@ -25,12 +25,25 @@
 	let terminalFit: FitAddon | null = null;
 	let terminalResizeObserver: ResizeObserver | null = null;
 	let terminalPollTimer: ReturnType<typeof setTimeout> | null = null;
+	let terminalThemeObserver: MutationObserver | null = null;
+	let terminalThemeMedia: MediaQueryList | null = null;
 	let terminalInputFlight = Promise.resolve();
 	const panel =
 		'workbench-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card';
 
 	function activeTerminalTab() {
 		return terminalTabs.find((tab) => tab.id === activeTerminalTabId) ?? terminalTabs[0];
+	}
+	function terminalTheme() {
+		const styles = getComputedStyle(document.documentElement);
+		return {
+			background: styles.getPropertyValue('--terminal-background').trim(),
+			foreground: styles.getPropertyValue('--terminal-foreground').trim(),
+			cursor: styles.getPropertyValue('--terminal-cursor').trim()
+		};
+	}
+	function applyTerminalTheme() {
+		if (terminalRenderer) terminalRenderer.options.theme = terminalTheme();
 	}
 	function mountTerminal() {
 		if (!terminalElement) return;
@@ -42,7 +55,7 @@
 			cursorBlink: true,
 			fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
 			fontSize: 13,
-			theme: { background: '#090b0f', foreground: '#e7e9ef', cursor: '#a78bfa' },
+			theme: terminalTheme(),
 			scrollback: 5_000
 		});
 		terminalFit = new FitAddon();
@@ -204,6 +217,8 @@
 	async function closeTerminals() {
 		if (terminalPollTimer) clearTimeout(terminalPollTimer);
 		terminalResizeObserver?.disconnect();
+		terminalThemeObserver?.disconnect();
+		terminalThemeMedia?.removeEventListener('change', applyTerminalTheme);
 		terminalRenderer?.blur();
 		if (typeof window !== 'undefined') window.getSelection()?.removeAllRanges();
 		terminalRenderer?.dispose();
@@ -222,7 +237,16 @@
 		);
 	}
 
-	onMount(() => void addTerminalTab());
+	onMount(() => {
+		terminalThemeObserver = new MutationObserver(applyTerminalTheme);
+		terminalThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+		terminalThemeObserver.observe(document.documentElement, {
+			attributes: true,
+			attributeFilter: ['data-theme']
+		});
+		terminalThemeMedia.addEventListener('change', applyTerminalTheme);
+		void addTerminalTab();
+	});
 	onDestroy(() => void closeTerminals());
 </script>
 
@@ -273,7 +297,7 @@
 		>
 	</header>
 	<div
-		class="terminal-screen min-h-0 flex-1 bg-[#090b0f] p-2"
+		class="terminal-screen min-h-0 flex-1 bg-[var(--terminal-background)] p-2"
 		bind:this={terminalElement}
 		role="application"
 		aria-label="Interactive project terminal"

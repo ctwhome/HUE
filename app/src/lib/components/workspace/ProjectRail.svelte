@@ -115,7 +115,7 @@
 <aside
 	bind:this={element}
 	id="project-drawer"
-	class="project-rail flex min-h-dvh flex-col gap-5 border-r border-border bg-card/95 px-3.5 py-5"
+	class="project-rail flex min-h-dvh flex-col gap-3 border-r border-border bg-card/95 px-2 py-3"
 	class:open
 	inert={mobile && !open}
 	aria-hidden={mobile ? !open : undefined}
@@ -129,11 +129,11 @@
 		>{/if}
 	<div class="section-heading flex items-center justify-between">
 		<span
-			class="section-label px-2 text-[0.65rem] tracking-[0.15em] text-muted-foreground uppercase"
+			class="section-label px-2 text-xs font-medium tracking-wider text-muted-foreground uppercase"
 			>Projects</span
 		>
 		<button
-			class="icon-button grid size-11 shrink-0 place-items-center rounded-md border border-border bg-secondary hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+			class="icon-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border bg-secondary hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
 			aria-label="Add Hermes Project"
 			title={addDisabled ? projectsError : 'Add Hermes Project'}
 			disabled={addDisabled}
@@ -167,20 +167,20 @@
 	<nav>
 		<div class="project-row projectless-row relative">
 			<button
-				class="project-select flex min-h-11 w-full items-center gap-2 rounded-lg bg-transparent px-2.5 py-2 pr-10 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
+				class="project-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md bg-transparent px-2 py-1 pr-8 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
 				class:active={!selectedProject}
 				aria-current={!selectedProject ? 'page' : undefined}
 				onclick={() => onchoose(null)}
 			>
 				<Diamond
-					class="project-icon grid size-6 shrink-0 place-items-center rounded-md"
+					class="project-icon grid size-(--navigation-icon-size) shrink-0 place-items-center rounded-md"
 					size={18}
 					aria-hidden="true"
 				/>
 				<span>No project</span>
 			</button>
 			<button
-				class="icon-button workspace-session-add absolute top-1/2 right-0 grid size-11 -translate-y-1/2 place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+				class="icon-button workspace-session-add absolute top-1/2 right-0 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
 				aria-label="New session without a project"
 				title="New session without a project"
 				onclick={onprojectless}><Plus size={18} aria-hidden="true" /></button
@@ -189,37 +189,39 @@
 		{#each projects as project (project.id)}
 			<div class="project-row group relative">
 				<button
-					class="project-icon-trigger absolute top-1/2 left-0 z-1 grid size-11 -translate-y-1/2 place-items-center rounded-lg hover:bg-accent"
+					class="project-icon-trigger absolute top-1/2 left-0 z-1 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md hover:bg-accent"
 					aria-label={`Change ${project.name} icon`}
 					title={`Change ${project.name} icon`}
 					onclick={(event) => onicon(event, project)}
 				>
 					{#if isImage(project.icon)}<img
-							class="project-icon project-icon-image size-6 rounded-md object-cover"
+							class="project-icon project-icon-image size-(--navigation-icon-size) rounded-md object-cover"
 							src={project.icon ?? ''}
 							alt=""
-						/>{:else if project.icon}<span class="project-icon grid size-6 place-items-center rounded-md"
+						/>{:else if project.icon}<span
+							class="project-icon grid size-(--navigation-icon-size) place-items-center rounded-md"
 							>{project.icon}</span
 						>{:else}<Folder
-							class="project-icon project-icon-default size-6 text-muted-foreground"
+							class="project-icon project-icon-default size-(--navigation-icon-size) text-muted-foreground"
 							size={18}
 							aria-hidden="true"
 						/>{/if}
 				</button>
 				<button
-					class="project-select flex min-h-11 w-full items-center gap-2 rounded-lg bg-transparent py-2 pr-10 pl-11 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
+					class="project-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md bg-transparent py-1 pr-8 pl-8 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
 					class:active={selectedProject?.id === project.id}
 					aria-current={selectedProject?.id === project.id ? 'page' : undefined}
 					onclick={() => onchoose(project)}
 				>
 					{#if isImage(project.icon)}<img
-							class="project-icon-inline project-icon-image size-6 rounded-md object-cover"
+							class="project-icon-inline project-icon-image size-(--navigation-icon-size) rounded-md object-cover"
 							src={project.icon ?? ''}
 							alt=""
 						/>{:else if project.icon}<span
-							class="project-icon-inline size-6 place-items-center rounded-md">{project.icon}</span
+							class="project-icon-inline size-(--navigation-icon-size) place-items-center rounded-md"
+							>{project.icon}</span
 						>{:else}<Folder
-							class="project-icon-inline project-icon-default size-6 text-muted-foreground"
+							class="project-icon-inline project-icon-default size-(--navigation-icon-size) text-muted-foreground"
 							size={18}
 							aria-hidden="true"
 						/>{/if}
@@ -227,7 +229,7 @@
 					{#if !project.rootAvailable}<small class="text-amber-400">Missing</small>{/if}
 				</button>
 				<button
-					class="project-edit absolute top-1/2 right-0 grid size-11 -translate-y-1/2 place-items-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent focus:opacity-100"
+					class="project-edit absolute top-1/2 right-0 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent focus:opacity-100"
 					aria-label={`Edit ${project.name}`}
 					title={`Edit ${project.name}`}
 					onclick={(event) => onedit(event, project)}
@@ -394,14 +396,14 @@
 						aria-label="Change project icon"
 						onclick={(event) => editingProject && onicon(event, editingProject)}
 					>
-							{#if isImage(projectIcon)}<img
-									src={projectIcon ?? ''}
-									alt="Project icon preview"
-								/>{:else if projectIcon}<span>{projectIcon}</span>{:else}<Folder
-									class="project-icon-default text-muted-foreground"
-									size={24}
-									aria-hidden="true"
-								/>{/if}
+						{#if isImage(projectIcon)}<img
+								src={projectIcon ?? ''}
+								alt="Project icon preview"
+							/>{:else if projectIcon}<span>{projectIcon}</span>{:else}<Folder
+								class="project-icon-default text-muted-foreground"
+								size={24}
+								aria-hidden="true"
+							/>{/if}
 					</button>
 				</div>
 				<label class="grid gap-1"

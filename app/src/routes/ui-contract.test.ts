@@ -37,6 +37,7 @@ const workspaceFiles = workspacePaths.map(read);
 const page = `${route}\n${workspaceFiles.join('\n')}`;
 const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
 const layout = read('./+layout.svelte');
+const packageJson = read('../../package.json');
 const appStyles = read('../app.css');
 const styleFiles = [
 	'../styles/theme-base.css',
@@ -80,10 +81,15 @@ const workbenchFiles = [
 const workbench = workbenchFiles.join('\n');
 const projectWorkbench = workbenchFiles[0];
 const projectBrowserDock = read('../lib/components/ProjectBrowserDock.svelte');
+const healthStrip = read('../lib/components/workbench/HealthStrip.svelte');
 const panelState = read('../lib/components/workspace/panel-state.ts');
 const button = read('../lib/components/ui/Button.svelte');
 const input = read('../lib/components/ui/Input.svelte');
 const textarea = read('../lib/components/ui/Textarea.svelte');
+const composer = read('../lib/components/workspace/Composer.svelte');
+const sessionHeader = read('../lib/components/workspace/SessionHeader.svelte');
+const terminalPanel = read('../lib/components/workbench/TerminalPanel.svelte');
+const emojiPicker = read('../lib/components/EmojiPicker.svelte');
 const ui = [page, navigation, panel, workbench].join('\n');
 const e2e = read('./workspace.e2e.ts');
 
@@ -112,6 +118,56 @@ test('uses Tailwind tokens and local shadcn-style primitives', () => {
 	expect(textarea).toContain('focus-visible:ring-2 focus-visible:ring-ring');
 	expect(appStyles.split('\n').length).toBeLessThan(20);
 	for (const source of styleFiles) expect(source.split('\n').length).toBeLessThan(601);
+});
+
+test('uses the VS Code palette and Mira design tokens', () => {
+	expect(packageJson).toContain('@fontsource-variable/inter');
+	expect(appStyles).toContain("@import '@fontsource-variable/inter'");
+	expect(styles).toContain('--background: #1e1e1e');
+	expect(styles).toContain('--card: #252526');
+	expect(styles).toContain('--primary: #007acc');
+	expect(styles).toContain('--background: #ffffff');
+	expect(styles).toContain('--font-sans: var(--font-ui)');
+	expect(styles).toContain('--text-sm: var(--font-size-ui)');
+	expect(styles).toContain('--radius-md: var(--radius-control)');
+	expect(styles).toContain('--control-height: 2rem');
+	expect(styles).toContain(":root[data-density='compact']");
+	expect(button).toContain('h-(--control-height)');
+	expect(input).toContain('h-(--control-height)');
+	expect(layout).toContain('name="theme-color" content="#181818"');
+});
+
+test('offers coordinated additional light and dark themes', () => {
+	const preferencesView = read('../lib/components/hermes/PreferencesView.svelte');
+	for (const theme of ['github-light', 'solarized-light', 'tokyo-night', 'nord']) {
+		expect(preferencesView).toContain(`value="${theme}"`);
+		expect(styles).toContain(`:root[data-theme='${theme}']`);
+	}
+});
+
+test('applies theme and density tokens across the visible workbench', () => {
+	expect(styles).toContain('--terminal-background: #1e1e1e');
+	expect(styles).toContain('background: var(--surface-raised)');
+	expect(styles).toContain('background: var(--selection)');
+	expect(styles).toContain('color: var(--link)');
+	expect(navigation).not.toContain('global-action size-10');
+	expect(panel).not.toContain('min-h-[76px]');
+	expect(composer).toContain('rounded-lg border border-border bg-card/95');
+	expect(sessionHeader).toContain('h-(--control-height-icon)');
+	expect(terminalPanel).toContain("getPropertyValue('--terminal-background')");
+	expect(terminalPanel).toContain("matchMedia('(prefers-color-scheme: dark)')");
+	expect(terminalPanel).toContain('terminalThemeObserver?.disconnect()');
+	expect(emojiPicker).toContain('MutationObserver');
+	expect(styles).not.toMatch(/font-size: 0\.(?:65|68|7|72|74|75|76|78|8|84|875)rem/);
+	expect(styles).not.toMatch(/border-radius: (?:4|6|7|8|9|10|12|14)px/);
+	expect(projectRail).toContain('min-h-(--control-height)');
+	expect(projectRail).toContain('h-(--control-height-icon)');
+	expect(projectRail).not.toContain('text-[0.65rem]');
+	expect(contextPanel).toContain('min-h-(--control-height)');
+	expect(contextPanel).toContain('h-(--control-height-icon)');
+	expect(styles).toContain('--navigation-icon-size: 1.5rem');
+	expect(projectRail).toContain('size-(--navigation-icon-size)');
+	expect(contextPanel).toContain('size-(--navigation-icon-size)');
 });
 
 test('keeps major workspace surfaces in focused Svelte components', () => {
@@ -179,7 +235,7 @@ test('session filters use one search field and a compact archive toggle', () => 
 
 test('new session is a persistent full-width action at the top of the session list', () => {
 	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
-	const action = 'class="new-session-action sticky top-0 z-10 flex min-h-11 w-full';
+	const action = 'class="new-session-action sticky top-0 z-10 flex min-h-(--control-height) w-full';
 	expect(contextPanel).toContain(action);
 	expect(contextPanel).toContain('<Plus size={18} aria-hidden="true" /> Add new session');
 	expect(contextPanel.indexOf(action)).toBeLessThan(
@@ -347,6 +403,7 @@ test('Project tools stay embedded with Sessions and collapse to an accessible do
 	expect(projectBrowserDock).toContain('requestAnimationFrame');
 	expect(projectBrowserDock).toContain('aria-valuemin="240"');
 	expect(projectWorkbench).toContain("browserOpen ? 'Hide Browser' : 'Show Browser'");
+	expect(projectWorkbench).toContain("!docked && (!compact || developView === 'browser')");
 	expect(projectBrowserDock).not.toContain('project-browser-header');
 	expect(styles).toContain('.project-browser-dock');
 	expect(styles).toContain('.project-browser-dock:not(.open)');
@@ -383,6 +440,9 @@ test('Excalidraw tab lazy-loads a real canvas with safe live embeds', () => {
 	expect(excalidrawPanel).toContain("import('./ExcalidrawBrowserCanvas')");
 	expect(excalidrawPanel).toContain('afterInitialPaint');
 	expect(excalidrawPanel).not.toContain('migrateLegacyBrowserTabs');
+	expect(excalidrawPanel).toContain('/excalidraw');
+	expect(excalidrawPanel).not.toContain('localStorage');
+	expect(canvasAdapter).not.toContain('localStorage');
 	expect(excalidrawPanel).not.toMatch(/^\s*import .*@excalidraw\/excalidraw/m);
 	expect(excalidrawPanel).toContain('Sites that block framing');
 	expect(excalidrawPanel).toContain('X-Frame-Options');
@@ -597,6 +657,14 @@ test('workbench reports Project, Git, terminal, preview, ACP, and admin health s
 		expect(workbench).toContain(label);
 	}
 	expect(workbench).toContain('/api/health?projectId=');
+});
+
+test('current Project health stays in one shell-level bottom status bar', () => {
+	expect(workspace).toMatch(/<HealthStrip[\s\S]*projectId=\{selectedProject\.id\}/);
+	expect(projectWorkbench).not.toContain('<HealthStrip');
+	expect(projectBrowserDock).not.toContain('<HealthStrip');
+	expect(healthStrip).toContain('class="project-status-bar');
+	expect(healthStrip).toContain('{projectName}');
 });
 
 test('composer preserves complete-envelope and unknown-delivery controls', () => {

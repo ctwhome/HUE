@@ -197,7 +197,7 @@
 							</div>{/if}
 						{#if message.role === 'assistant'}
 							<div
-								class="message markdown rounded-2xl rounded-tl-md border border-border bg-card px-4 py-3 leading-relaxed"
+								class="message markdown rounded-lg rounded-tl-sm border border-border bg-card px-3 py-2.5 leading-relaxed"
 							>
 								{#if message.images?.length}<div
 										class="message-images mb-2 grid grid-cols-2 gap-1.5"
