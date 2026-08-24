@@ -18,6 +18,7 @@
 	let {
 		timeline,
 		messageNotice,
+		agentLabel,
 		busy,
 		renderMarkdown,
 		onedit,
@@ -32,6 +33,7 @@
 	}: {
 		timeline: WorkspaceTimelineItem[];
 		messageNotice: string;
+		agentLabel: string;
 		busy: boolean;
 		renderMarkdown: (text: string) => string;
 		onedit: (message: Message) => void;
@@ -98,7 +100,8 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <section
-	class="transcript min-h-0 flex-1 overflow-auto overflow-x-hidden px-[clamp(20px,7vw,110px)] pt-8"
+	class="transcript min-h-0 flex-1 overflow-auto overflow-x-hidden px-[clamp(12px,2.5vw,40px)] pt-8"
+	class:empty={transcriptTimeline.length === 0}
 	aria-label="Conversation"
 	aria-live="polite"
 	tabindex="0"
@@ -118,10 +121,11 @@
 					class:assistant={message.role === 'assistant'}
 					class:user={message.role === 'user'}
 				>
-					<div
-						class="avatar grid h-8 min-w-8 shrink-0 place-items-center rounded-lg bg-muted text-xs font-bold text-violet-300"
-					>
-						{message.role === 'assistant' ? 'H' : 'You'}
+					<div class="message-identity flex items-center gap-2 text-xs text-muted-foreground">
+						<span
+							class="avatar grid size-6 shrink-0 place-items-center rounded-md bg-muted font-bold text-violet-300"
+							>{message.role === 'assistant' ? 'H' : 'You'}</span
+						><strong>{message.role === 'assistant' ? agentLabel : 'You'}</strong>
 					</div>
 					<div class="message-stack grid min-w-0">
 						{#if message.attachments?.length}<div
@@ -330,12 +334,15 @@
 			{/if}
 		{/each}
 		{#if timeline.length === 0}<div
-				class="welcome mx-auto mt-[12vh] max-w-2xl text-center text-muted-foreground"
+				class="welcome mx-auto max-w-2xl text-center text-muted-foreground"
 			>
 				<span>H</span>
 				<h2>Start this Hermes Session</h2>
 				<p>Your complete message is saved before HUE sends it.</p>
 			</div>{/if}
-		<div class="transcript-spacer h-[max(48px,10vh)]" aria-hidden="true"></div>
+		{#if transcriptTimeline.length}<div
+				class="transcript-spacer h-[max(48px,10vh)]"
+				aria-hidden="true"
+			></div>{/if}
 	</div>
 </section>

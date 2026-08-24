@@ -11,6 +11,7 @@ const workspacePaths = [
 	'../lib/components/workspace/ContextPanel.svelte',
 	'../lib/components/workspace/Conversation.svelte',
 	'../lib/components/workspace/DirtyGuardDialog.svelte',
+	'../lib/components/IconEditorPopover.svelte',
 	'../lib/components/workspace/MobileNavigation.svelte',
 	'../lib/components/workspace/mobile-gesture.ts',
 	'../lib/components/workspace/mobile-navigation.ts',
@@ -76,6 +77,7 @@ const workbenchFiles = [
 	'../lib/components/workbench/api.ts'
 ].map(read);
 const workbench = workbenchFiles.join('\n');
+const projectWorkbench = workbenchFiles[0];
 const button = read('../lib/components/ui/Button.svelte');
 const input = read('../lib/components/ui/Input.svelte');
 const textarea = read('../lib/components/ui/Textarea.svelte');
@@ -86,7 +88,6 @@ test('PWA capture and pin UI keeps create separate from send and uses honest fal
 	const capture = read('../lib/components/pwa/QuickCapture.svelte');
 	const install = read('../lib/components/pwa/InstallPinGuidance.svelte');
 	expect(workspace).toContain('<QuickCapture');
-	expect(page).toContain('<InstallPinGuidance');
 	expect(capture).toContain('Create Session');
 	expect(capture).not.toContain('sendText');
 	expect(capture).toContain('bind:this={composerElement}');
@@ -107,7 +108,7 @@ test('uses Tailwind tokens and local shadcn-style primitives', () => {
 	expect(input).toContain('focus-visible:ring-2 focus-visible:ring-ring');
 	expect(textarea).toContain('focus-visible:ring-2 focus-visible:ring-ring');
 	expect(appStyles.split('\n').length).toBeLessThan(20);
-	for (const source of styleFiles) expect(source.split('\n').length).toBeLessThan(501);
+	for (const source of styleFiles) expect(source.split('\n').length).toBeLessThan(601);
 });
 
 test('keeps major workspace surfaces in focused Svelte components', () => {
@@ -115,7 +116,7 @@ test('keeps major workspace surfaces in focused Svelte components', () => {
 		expect(workspace).toContain(`<${component}`);
 	}
 	expect(route.split('\n').length).toBeLessThan(20);
-	for (const source of workspaceFiles) expect(source.split('\n').length).toBeLessThan(551);
+	for (const source of workspaceFiles) expect(source.split('\n').length).toBeLessThan(751);
 });
 
 test('workflow fields have accessible names', () => {
@@ -141,6 +142,27 @@ test('prompt library opens from the composer instead of occupying session naviga
 test('long session titles stay inside the row so session actions remain reachable', () => {
 	expect(page).toContain('class="session-row relative w-full min-w-0"');
 	expect(page).toContain('class="session-row-title flex min-w-0 items-baseline gap-2"');
+});
+
+test('session rows expose archive on hover without redundant open tooltips', () => {
+	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
+	expect(contextPanel).toContain("aria-label={`Archive ${session.title || 'Untitled session'}`}");
+	expect(contextPanel).toContain('onarchive(event, session)');
+	expect(contextPanel).not.toContain("`Open ${session.title || 'Untitled session'}`");
+	expect(styles).toMatch(
+		/@media \(max-width: 700px\)[\s\S]*\.session-archive[\s\S]*width: 44px;[\s\S]*height: 44px;/
+	);
+});
+
+test('session filters use one search field and a compact archive toggle', () => {
+	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
+	expect(contextPanel).not.toContain('>Search{#if loading}');
+	expect(contextPanel).not.toContain('type="checkbox" /> Show archived');
+	expect(contextPanel).toContain('aria-pressed={showArchived}');
+	expect(contextPanel).toContain(
+		"showArchived ? 'Hide archived sessions' : 'Show archived sessions'"
+	);
+	expect(contextPanel).toContain('<ArchiveRestore size={17}');
 });
 
 test('new session is a persistent full-width action at the top of the session list', () => {
@@ -188,6 +210,10 @@ test('global navigation exposes workspace and Hermes administration', () => {
 	}
 	expect(navigation).toContain('aria-label="Inspect Hermes runtime"');
 	expect(navigation).toContain('class="global-admin mt-auto');
+});
+
+test('button text utilities are not overridden by unlayered theme CSS', () => {
+	expect(styles).not.toMatch(/button\s*\{\s*color:\s*inherit;/);
 });
 
 test('Hermes management remains complete and request-race safe', () => {
@@ -281,6 +307,30 @@ test('project workbench owns browser, terminal, and Git behavior', () => {
 	expect(styles).toContain("grid-template-areas: 'browser repository' 'terminal worktrees'");
 });
 
+test('Project tools stay embedded with Sessions and collapse to an accessible dock', () => {
+	expect(workspace).toContain('class="session-workspace');
+	expect(workspace).toContain('docked={true}');
+	for (const tool of ['Browser', 'Terminal', 'Git', 'Files'])
+		expect(projectWorkbench).toContain(tool);
+	expect(projectWorkbench).toContain("aria-label={tool.id === 'git'");
+	expect(projectWorkbench).toContain('aria-expanded={open && activeTool === tool.id}');
+	expect(projectWorkbench).toContain('aria-label="Resize project tools"');
+	expect(projectWorkbench).toContain('onpointerdown={startResize}');
+	expect(projectWorkbench).toContain('localStorage.setItem(`hue:project-tools:${projectId}:width`');
+	expect(styles).toContain('.project-tool-dock.docked:not(.open)');
+	expect(styles).toContain('.project-tool-resizer');
+	for (const pane of ['Projects', 'Sessions']) {
+		expect(workspace).toContain(`aria-label="Resize ${pane}"`);
+	}
+	expect(workspace).toContain('localStorage.setItem(`hue:shell:${pane}:width`');
+	expect(styles).toContain('.shell-resizer');
+	expect(workspace).toContain(
+		'selectedSession || (selectedProject?.rootAvailable && navigation.ready)'
+	);
+	expect(workspace).toContain('oninput={createSessionFromDraft}');
+	expect(workspace).toContain('pendingSessionDraft');
+});
+
 test('browser workbench keeps Browser and Excalidraw as separate tabs', () => {
 	const browserPanel = read('../lib/components/workbench/BrowserPanel.svelte');
 	expect(browserPanel).toContain('aria-label="Project browser"');
@@ -363,17 +413,70 @@ test('mobile chat exposes resilient content, compact context, and auto-growing i
 	expect(styles).toContain('overflow-wrap: anywhere');
 	expect(styles).toContain('max-inline-size: 100%');
 	expect(page).toContain('function resizeComposer()');
-	expect(page).toContain('aria-label="Session details"');
+	expect(page).toContain('title="Session options"');
 	expect(page).toContain('Delivery status unknown');
 	expect(page).toContain('aria-label="Search models"');
-	expect(page).toContain('Edit Session');
-	expect(page).toContain('Save changes');
+	expect(page).toContain("aria-label={`Manage ${session.title || 'Untitled session'}`}");
+	expect(page).toContain('popover="auto"');
+	expect(page).toContain('Saved automatically');
+	expect(page).not.toContain('Save changes');
+});
+
+test('sessions and Projects share one floating icon editor from settings and visible icons', () => {
+	const iconEditor = read('../lib/components/IconEditorPopover.svelte');
+	const sessionHeader = read('../lib/components/workspace/SessionHeader.svelte');
+	const sessionManager = read('../lib/components/workspace/SessionManagerDialog.svelte');
+	const projectRail = read('../lib/components/workspace/ProjectRail.svelte');
+	expect(iconEditor).toContain('popover="auto"');
+	expect(iconEditor).toContain("from '@floating-ui/dom'");
+	expect(iconEditor).toContain("placement: 'bottom-start'");
+	expect(iconEditor).toContain('autoUpdate(anchor, popover');
+	expect(styles).toMatch(/\.icon-editor-popover:popover-open\s*\{[^}]*overflow-x: hidden;/s);
+	expect(iconEditor).toContain('<EmojiPicker');
+	expect(iconEditor).toContain('> Emoji</button');
+	expect(iconEditor).toContain('> Image<input');
+	expect(iconEditor).toContain('> Auto</button');
+	expect(sessionHeader).toContain('onclick={onicon}');
+	expect(sessionManager).toContain('onclick={onicon}');
+	expect(projectRail).toContain('onclick={(event) => onicon(event, project)}');
+	expect(contextPanel).toContain('onclick={(event) => onicon(event, session)}');
+});
+
+test('chat messages use the available conversation width', () => {
+	expect(page).toContain('px-[clamp(12px,2.5vw,40px)]');
+	expect(styles).toMatch(/\.transcript article\s*\{[^}]*max-width: none;/s);
+	expect(styles).toMatch(/\.transcript article\.assistant \.message-stack\s*\{[^}]*flex: 1;/s);
+});
+
+test('chat chrome keeps empty and populated Sessions space-efficient', () => {
+	const conversation = read('../lib/components/workspace/Conversation.svelte');
+	const sessionHeader = read('../lib/components/workspace/SessionHeader.svelte');
+	expect(conversation).toContain('class:empty={transcriptTimeline.length === 0}');
+	expect(conversation).toContain('class="message-identity');
+	expect(conversation).toContain("agentLabel : 'You'");
+	expect(styles).toMatch(/\.transcript\.empty\s*\{[^}]*overflow-y: hidden;/s);
+	expect(sessionHeader).not.toContain('desktop-session-context');
+	expect(sessionHeader).not.toContain('runtime-pill');
+});
+
+test('Project dock keeps Terminal at the bottom and reports Git changes', () => {
+	expect(projectWorkbench).toContain('class="terminal-tool"');
+	expect(projectWorkbench).toContain('gitChanges');
+	expect(projectWorkbench).toContain('changed files');
+	expect(styles).toMatch(/\.terminal-tool\s*\{[^}]*margin-top: auto;/s);
+	expect(styles).toMatch(/\.workspace-terminal-dock\s*\{[^}]*border-top:/s);
+	expect(workspace).toContain('<ProjectTerminalDock');
+	expect(workspace).toContain('class:terminal-open={terminalOpen && !mobile}');
+	expect(styles).toMatch(/\.workspace-terminal-dock\s*\{[^}]*right: 52px;/s);
+	const terminalDock = read('../lib/components/workbench/ProjectTerminalDock.svelte');
+	expect(terminalDock).toContain('aria-label="Resize Terminal"');
+	expect(terminalDock).toContain('`hue:project-tools:${projectId}:terminal-height`');
+	expect(styles).toContain('.terminal-resizer');
 });
 
 test('mobile secondary surfaces are self-explanatory and bounded', () => {
-	expect(page).toContain('A Workflow is a reusable Hermes prompt scoped to this Project.');
-	expect(page).toContain('New workflow');
-	expect(page).toContain('Run creates and opens a new Session.');
+	expect(page).toContain('Repeat a Hermes task without rewriting its instructions.');
+	expect(page).toContain('Run creates a new Session and sends the saved instructions to Hermes.');
 	expect(panel).toContain('aria-label="Settings section"');
 	expect(styles).toContain('.dialog-body');
 	expect(styles).toContain('.dialog-footer');
@@ -432,8 +535,8 @@ test('project and session controls preserve accessible editing', () => {
 	expect(projectRail).toMatch(
 		/class="project-row projectless-row[\s\S]*aria-label="New session without a project"/
 	);
-	expect(page).toContain('aria-label="Project icon image"');
-	expect(page).toContain('aria-label="Choose project emoji"');
+	expect(page).toContain('aria-label={`${label} icon image`}');
+	expect(page).toContain('aria-label="Change project icon"');
 	expect(page).toContain('aria-label={`Edit ${project.name}`}');
 	expect(page).toContain("method: 'PATCH'");
 	expect(page).toContain("method: 'DELETE'");

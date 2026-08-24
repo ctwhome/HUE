@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { ArrowUp, Check, Diamond, Ellipsis, Folder, FolderPlus, Plus, X } from 'lucide-svelte';
-	import EmojiPicker from '$lib/components/EmojiPicker.svelte';
+	import IconEditorPopover from '$lib/components/IconEditorPopover.svelte';
 	import ProjectFoldersEditor from './ProjectFoldersEditor.svelte';
 	import type { Directory, Project } from './types';
 
@@ -16,6 +16,9 @@
 		addProjectDialog = $bindable(),
 		editProjectDialog = $bindable(),
 		removeProjectDialog = $bindable(),
+		projectIconPopover = $bindable(),
+		projectSettingsIconPopover = $bindable(),
+		projectIconAnchor,
 		editingProject,
 		projectRoot,
 		projectDirectories,
@@ -25,7 +28,6 @@
 		directoryError,
 		projectName = $bindable(),
 		projectIcon = $bindable(),
-		projectEmojiPickerOpen = $bindable(),
 		projectEditError,
 		projectSaving,
 		locatingProject,
@@ -36,6 +38,8 @@
 		onchoose,
 		onlocate,
 		onedit,
+		onicon,
+		oniconselect,
 		onhidden,
 		ondirectory,
 		ontogglefolder,
@@ -63,6 +67,9 @@
 		addProjectDialog?: HTMLDialogElement;
 		editProjectDialog?: HTMLDialogElement;
 		removeProjectDialog?: HTMLDialogElement;
+		projectIconPopover?: HTMLElement;
+		projectSettingsIconPopover?: HTMLElement;
+		projectIconAnchor?: HTMLElement;
 		editingProject: Project | null;
 		projectRoot: string;
 		projectDirectories: Directory[];
@@ -72,7 +79,6 @@
 		directoryError: string;
 		projectName: string;
 		projectIcon: string | null;
-		projectEmojiPickerOpen: boolean;
 		projectEditError: string;
 		projectSaving: boolean;
 		locatingProject: Project | null;
@@ -83,6 +89,8 @@
 		onchoose: (project: Project | null) => void;
 		onlocate: (project: Project) => void;
 		onedit: (event: MouseEvent, project: Project) => void;
+		onicon: (event: MouseEvent, project: Project) => void;
+		oniconselect: (icon: string | null) => void;
 		onhidden: (event: Event) => void;
 		ondirectory: (path?: string) => void;
 		ontogglefolder: (path?: string) => void;
@@ -182,27 +190,35 @@
 		{#each projects as project (project.id)}
 			<div class="project-row group relative">
 				<button
-					class="project-select flex min-h-11 w-full items-center gap-2 rounded-lg bg-transparent px-2.5 py-2 pr-10 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
+					class="project-icon-trigger absolute top-1/2 left-0 z-1 grid size-11 -translate-y-1/2 place-items-center rounded-lg hover:bg-accent"
+					aria-label={`Change ${project.name} icon`}
+					title={`Change ${project.name} icon`}
+					onclick={(event) => onicon(event, project)}
+				>
+					{#if isImage(project.icon)}<img
+							class="project-icon project-icon-image size-6 rounded-md object-cover"
+							src={project.icon ?? ''}
+							alt=""
+						/>{:else if project.icon}<span class="project-icon grid size-6 place-items-center rounded-md"
+							>{project.icon}</span
+						>{:else}<span class="project-dot size-2 rounded-full bg-muted-foreground"></span>{/if}
+				</button>
+				<button
+					class="project-select flex min-h-11 w-full items-center gap-2 rounded-lg bg-transparent py-2 pr-10 pl-11 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
 					class:active={selectedProject?.id === project.id}
 					aria-current={selectedProject?.id === project.id ? 'page' : undefined}
 					title={`Open ${project.name} · ${project.primaryPath}`}
 					onclick={() => onchoose(project)}
 				>
-					{#if isImage(project.icon)}
-						<img
-							class="project-icon project-icon-image size-6 shrink-0 rounded-md object-cover"
+					{#if isImage(project.icon)}<img
+							class="project-icon-inline project-icon-image size-6 rounded-md object-cover"
 							src={project.icon ?? ''}
 							alt=""
-						/>
-					{:else if project.icon}
-						<span class="project-icon grid size-6 shrink-0 place-items-center rounded-md"
-							>{project.icon}</span
-						>
-					{:else}
-						<span
-							class="project-dot size-2 shrink-0 rounded-full bg-muted-foreground [.active_&]:bg-violet-400"
-						></span>
-					{/if}
+						/>{:else if project.icon}<span
+							class="project-icon-inline size-6 place-items-center rounded-md">{project.icon}</span
+						>{:else}<span
+							class="project-icon-inline project-dot size-2 rounded-full bg-muted-foreground"
+						></span>{/if}
 					<span class="min-w-0 truncate">{project.name}</span>
 					{#if !project.rootAvailable}<small class="text-amber-400">Missing</small>{/if}
 				</button>
@@ -366,49 +382,20 @@
 		</header>
 		<div class="dialog-body">
 			<form class="grid gap-4" onsubmit={onsavemetadata}>
-				<fieldset class="project-icon-field m-0 min-w-0 border-0 p-0">
-					<legend>Project icon</legend>
-					<div
-						class="project-icon-editor mt-2 grid grid-cols-[58px_minmax(0,1fr)] items-center gap-3"
+				<div class="grid gap-2">
+					<span class="text-sm">Project icon</span>
+					<button
+						type="button"
+						class="project-icon-preview grid size-[58px] place-items-center overflow-hidden rounded-xl border border-border bg-background text-3xl hover:ring-2 hover:ring-ring"
+						aria-label="Change project icon"
+						onclick={(event) => editingProject && onicon(event, editingProject)}
 					>
-						<div
-							class="project-icon-preview grid size-[58px] place-items-center overflow-hidden rounded-xl border border-border bg-background text-3xl"
-						>
 							{#if isImage(projectIcon)}<img
 									src={projectIcon ?? ''}
 									alt="Project icon preview"
 								/>{:else}<span>{projectIcon || '•'}</span>{/if}
-						</div>
-						<div class="project-icon-options grid gap-2">
-							<div class="project-icon-upload flex flex-wrap gap-1.5">
-								<button
-									type="button"
-									class="min-h-11"
-									aria-label="Choose project emoji"
-									onclick={() => (projectEmojiPickerOpen = !projectEmojiPickerOpen)}
-									>Choose emoji</button
-								>
-								<label class="min-h-11" title="Choose custom image"
-									><span>Choose image</span><input
-										type="file"
-										accept="image/png,image/jpeg,image/gif,image/webp"
-										aria-label="Project icon image"
-										onchange={onimage}
-									/></label
-								>
-								<button type="button" class="min-h-11" onclick={() => (projectIcon = null)}
-									>Default</button
-								>
-							</div>
-						</div>
-					</div>
-					{#if projectEmojiPickerOpen}<EmojiPicker
-							onselect={(emoji) => {
-								projectIcon = emoji;
-								projectEmojiPickerOpen = false;
-							}}
-						/>{/if}
-				</fieldset>
+					</button>
+				</div>
 				<label class="grid gap-1"
 					><span>Project name</span><input
 						class="min-h-11"
@@ -445,7 +432,22 @@
 			<button type="button" class="min-h-11" onclick={() => editProjectDialog?.close()}>Done</button
 			>
 		</footer>
+		<IconEditorPopover
+			bind:popover={projectSettingsIconPopover}
+			anchor={projectIconAnchor}
+			label="Project"
+			{onimage}
+			onselect={oniconselect}
+		/>
 	</dialog>
+
+	<IconEditorPopover
+		bind:popover={projectIconPopover}
+		anchor={projectIconAnchor}
+		label="Project"
+		{onimage}
+		onselect={oniconselect}
+	/>
 
 	<dialog
 		bind:this={removeProjectDialog}

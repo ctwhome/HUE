@@ -83,6 +83,55 @@
 	overflow-wrap: anywhere;
 }
 
+.session-manager-popover:popover-open {
+	display: block;
+	inset: auto;
+	z-index: 50;
+}
+
+.session-manager-popover img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.session-menu-action {
+	display: flex;
+	min-height: 40px;
+	align-items: center;
+	gap: 10px;
+	border-radius: 8px;
+	padding: 0 10px;
+	font-size: 0.875rem;
+	text-align: left;
+}
+
+.session-menu-action:hover:not(:disabled) {
+	background: var(--accent);
+}
+
+.icon-editor-popover:popover-open {
+	display: grid;
+	inset: auto;
+	overflow-x: hidden;
+}
+
+.icon-editor-action {
+	display: flex;
+	min-height: 40px;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	border-radius: 8px;
+	background: var(--secondary);
+	padding: 0 8px;
+	font-size: 0.875rem;
+}
+
+.project-icon-inline {
+	display: none;
+}
+
 .compact-workbench-tabs {
 	display: flex;
 	min-height: 44px;
@@ -184,8 +233,15 @@
 	object-fit: cover;
 }
 
+.emoji-picker-host {
+	min-width: 0;
+	max-width: 100%;
+	overflow-x: hidden;
+}
+
 .emoji-picker-host emoji-picker {
 	width: 100%;
+	max-width: 100%;
 	height: 320px;
 	--background: var(--background);
 	--border-color: var(--border);
@@ -219,8 +275,10 @@
 
 .project-row:hover .project-edit,
 .project-select.active + .project-edit,
+.session-row:hover .session-archive,
 .session-row:hover .session-edit,
-.session-select.active + .session-edit {
+.session-select.active ~ .session-archive,
+.session-select.active ~ .session-edit {
 	opacity: 1;
 }
 
@@ -244,6 +302,202 @@
 	max-height: 3.3em;
 	overflow: hidden;
 	font-size: 0.76rem;
+}
+
+.workspace {
+	position: relative;
+	grid-template-columns:
+		56px var(--project-pane-width, 220px) var(--session-pane-width, 320px)
+		minmax(0, 1fr);
+}
+.shell-resizer {
+	position: absolute;
+	z-index: 12;
+	top: 0;
+	bottom: 0;
+	width: 9px;
+	border: 0;
+	background: transparent;
+	cursor: col-resize;
+	touch-action: none;
+	transform: translateX(-4px);
+}
+.shell-resizer::after {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 4px;
+	width: 1px;
+	background: transparent;
+	content: '';
+}
+.shell-resizer:hover::after,
+.shell-resizer:focus-visible::after {
+	width: 2px;
+	background: var(--primary);
+}
+.project-pane-resizer {
+	left: calc(56px + var(--project-pane-width, 220px));
+}
+.session-pane-resizer {
+	left: calc(56px + var(--project-pane-width, 220px) + var(--session-pane-width, 320px));
+}
+
+.project-tool-dock.docked {
+	position: relative;
+	flex: 0 0 var(--project-tool-width, 46%);
+	border-left: 1px solid var(--border);
+}
+.project-tool-dock:not(.docked) {
+	flex: 1;
+}
+.project-tool-dock.docked:not(.open) {
+	flex-basis: 52px;
+}
+.project-tool-dock.docked:not(.open) > section {
+	display: none;
+}
+.project-tool-resizer {
+	position: absolute;
+	z-index: 4;
+	top: 0;
+	bottom: 0;
+	left: -5px;
+	width: 9px;
+	border: 0;
+	background: transparent;
+	padding: 0;
+	cursor: col-resize;
+	touch-action: none;
+}
+.project-tool-resizer::after {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 4px;
+	width: 1px;
+	background: transparent;
+	content: '';
+}
+.project-tool-resizer:hover::after,
+.project-tool-resizer:focus-visible::after {
+	width: 2px;
+	background: var(--primary);
+}
+.project-tool-rail {
+	display: flex;
+	width: 52px;
+	flex: 0 0 52px;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	border-left: 1px solid var(--border);
+	background: var(--card);
+	padding: 8px 4px;
+}
+.project-tool-rail button {
+	position: relative;
+	display: grid;
+	width: 44px;
+	height: 44px;
+	place-items: center;
+	border-radius: 7px;
+	color: var(--muted-foreground);
+}
+.project-tool-rail .terminal-tool {
+	margin-top: auto;
+}
+.git-change-badge {
+	position: absolute;
+	top: 2px;
+	right: 2px;
+	min-width: 17px;
+	border-radius: 999px;
+	background: var(--primary);
+	padding: 1px 4px;
+	color: var(--primary-foreground);
+	font-size: 10px;
+	line-height: 15px;
+}
+.project-tool-rail button:hover,
+.project-tool-rail button.active {
+	background: var(--accent);
+	color: var(--foreground);
+}
+.project-tool-rail button.active {
+	box-shadow: inset -2px 0 var(--primary);
+}
+.project-tool-dock.docked .project-workbench {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+.project-tool-dock.docked .workbench-tabs {
+	display: none;
+}
+.project-tool-dock.docked .project-workbench > .workbench-panel {
+	min-height: 0;
+	flex: 1;
+}
+.session-workspace {
+	position: relative;
+}
+.session-workspace.terminal-open > .session-view,
+.session-workspace.terminal-open .project-tool-dock.docked > section {
+	height: calc(100% - var(--terminal-panel-height, 300px));
+}
+.workspace-terminal-dock {
+	position: absolute;
+	z-index: 6;
+	right: 52px;
+	bottom: 0;
+	left: 0;
+	height: var(--terminal-panel-height, 300px);
+	border-top: 1px solid var(--border);
+	background: var(--background);
+	padding: 8px;
+}
+.terminal-resizer {
+	position: absolute;
+	z-index: 7;
+	top: -5px;
+	right: 0;
+	left: 0;
+	height: 9px;
+	cursor: row-resize;
+	touch-action: none;
+}
+.terminal-resizer::after {
+	position: absolute;
+	top: 4px;
+	right: 0;
+	left: 0;
+	height: 1px;
+	background: transparent;
+	content: '';
+}
+.terminal-resizer:hover::after,
+.terminal-resizer:focus-visible::after {
+	height: 2px;
+	background: var(--primary);
+}
+.workspace-terminal-dock > .workbench-panel {
+	height: 100%;
+}
+.project-tool-dock.docked .file-preview-title {
+	flex-wrap: wrap;
+}
+.project-tool-dock.docked .file-preview {
+	overflow: hidden;
+}
+.project-tool-dock.docked .files-panel {
+	grid-template-columns: minmax(120px, 40%) minmax(0, 1fr);
+}
+.project-tool-dock.docked .file-sidebar {
+	overflow: hidden;
+}
+.project-tool-dock.docked .file-preview-title h2 {
+	flex-basis: 100%;
 }
 
 .project-workbench {
