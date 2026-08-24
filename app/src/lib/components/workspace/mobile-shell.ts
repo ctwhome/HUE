@@ -1,5 +1,6 @@
 import { MobileGestureController } from './mobile-gesture';
 import type { MobileGesture, MobilePane } from './mobile-navigation';
+import { isDrawerHistoryEntry } from './navigation-history';
 
 type Drawer = Exclude<MobilePane, null>;
 type Navigation = {
@@ -60,9 +61,7 @@ export class MobileShellController {
 	}
 
 	close() {
-		const usingHistory = Boolean(
-			window.history.state?.hueWorkspace && window.history.state?.drawerEntry
-		);
+		const usingHistory = isDrawerHistoryEntry();
 		this.options.navigation.closeMobileDrawer();
 		if (!usingHistory) window.setTimeout(this.restoreFocus, 0);
 	}

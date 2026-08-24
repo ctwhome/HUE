@@ -31,6 +31,7 @@ export function renderMessageMarkdown(text: string): string {
 		return `<div class="code-block"><button type="button" data-copy-code aria-label="Copy code">Copy</button><pre><code${languageClass}>${highlighted}</code></pre></div>`;
 	};
 	return sanitizeHtml(marked.parse(text, { async: false, renderer }), {
+		parseStyleAttributes: false,
 		allowedTags: [...sanitizeHtml.defaults.allowedTags, 'button'],
 		allowedAttributes: {
 			'*': ['class'],

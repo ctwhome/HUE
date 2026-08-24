@@ -3,6 +3,17 @@ import { defineConfig } from 'vitest/config';
 import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
 
+const disableSanitizeHtmlPostcss = {
+	name: 'sanitize-html-browser',
+	resolveId(source: string, importer?: string) {
+		if (source === 'postcss' && importer?.includes('/sanitize-html/')) return '\0disabled-postcss';
+	},
+	load(id: string) {
+		if (id === '\0disabled-postcss')
+			return 'export function parse() { throw new Error("HTML style parsing is disabled"); }';
+	}
+};
+
 export default defineConfig({
 	plugins: [
 		{
@@ -31,6 +42,9 @@ export default defineConfig({
 		host: '127.0.0.1',
 		port: 4010,
 		strictPort: true
+	},
+	optimizeDeps: {
+		rolldownOptions: { plugins: [disableSanitizeHtmlPostcss] }
 	},
 	test: {
 		expect: { requireAssertions: true },

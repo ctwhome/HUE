@@ -1,7 +1,9 @@
-import { expect, test } from 'bun:test';
+import { expect, mock, test } from 'bun:test';
 import type { Api, Session, SessionEvent } from './types';
 
 Object.assign(globalThis, { $state: <T>(value?: T) => value });
+mock.module('$app/navigation', () => ({ pushState() {}, replaceState() {} }));
+mock.module('$app/state', () => ({ page: { state: {} } }));
 const { WorkspaceNavigation } = await import('./navigation.svelte');
 
 function navigation(api: Api = (async () => ({})) as Api) {
@@ -34,6 +36,19 @@ test('session info events update titles and derive icons without replacing custo
 	state.selectedSession = custom;
 	state.applySessionInfoEvents([infoEvent('Implement title updates')]);
 	expect(state.sessions[1]).toMatchObject({ title: 'Implement title updates', icon: '⭐' });
+});
+
+test('replaceSession works when passed as a callback', () => {
+	const session = { sessionId: 'session-1', cwd: '/work', title: 'Old title' } as Session;
+	const state = navigation();
+	state.sessions = [session];
+	state.selectedSession = session;
+	const replaceSession = state.replaceSession;
+
+	replaceSession({ ...session, title: 'New title' });
+
+	expect(state.sessions[0]?.title).toBe('New title');
+	expect(state.selectedSession?.title).toBe('New title');
 });
 
 test('saving a session icon does not claim title authority', async () => {

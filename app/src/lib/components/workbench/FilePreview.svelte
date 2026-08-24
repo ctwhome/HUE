@@ -50,7 +50,8 @@
 		onmarkdownmode: (value: 'preview' | 'edit') => void;
 	} = $props();
 
-	const markdown = (value: string) => sanitizeHtml(marked.parse(value, { async: false }));
+	const markdown = (value: string) =>
+		sanitizeHtml(marked.parse(value, { async: false }), { parseStyleAttributes: false });
 	const breadcrumbs = () => (selectedPath ? selectedPath.split('/').slice(0, -1) : []);
 </script>
 

@@ -5,6 +5,7 @@ import type { MobilePane } from './mobile-navigation';
 import {
 	persistNavigationSelection,
 	restoreNavigationSelection,
+	isDrawerHistoryEntry,
 	type HistoryMode
 } from './navigation-history';
 import type {
@@ -583,7 +584,7 @@ export class WorkspaceNavigation {
 
 	closeMobileDrawer() {
 		if (!this.mobileDrawer) return;
-		if (window.history.state?.hueWorkspace && window.history.state?.drawerEntry) {
+		if (isDrawerHistoryEntry()) {
 			window.history.back();
 			return;
 		}
@@ -603,14 +604,14 @@ export class WorkspaceNavigation {
 		this.sessions = [session, ...this.sessions];
 	}
 
-	replaceSession(session: Session) {
+	replaceSession = (session: Session) => {
 		this.sessions = this.sessions.map((item) =>
 			item.sessionId === session.sessionId ? { ...item, ...session } : item
 		);
 		if (this.selectedSession?.sessionId === session.sessionId) {
 			this.selectedSession = { ...this.selectedSession, ...session };
 		}
-	}
+	};
 
 	setSelectedProject(project: Project) {
 		this.selectedProject = project;
