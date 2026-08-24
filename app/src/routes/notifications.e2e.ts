@@ -47,8 +47,13 @@ function item(kind: Item['kind'], index: number): Item {
 	};
 }
 
-async function mockNotifications(page: import('@playwright/test').Page, items: Item[]) {
+async function mockNotifications(
+	page: import('@playwright/test').Page,
+	items: Item[],
+	options: { listDelayAfterFirst?: number } = {}
+) {
 	const keys = webPush.generateVAPIDKeys();
+	let listRequests = 0;
 	await page.route('**/api/notifications**', async (route) => {
 		const url = new URL(route.request().url());
 		if (url.pathname === '/api/notifications/status') {
@@ -68,6 +73,9 @@ async function mockNotifications(page: import('@playwright/test').Page, items: I
 		}
 		if (url.pathname === '/api/notifications/presence') return route.fulfill({ status: 204 });
 		if (url.pathname === '/api/notifications') {
+			listRequests += 1;
+			if (listRequests > 1 && options.listDelayAfterFirst)
+				await new Promise((resolve) => setTimeout(resolve, options.listDelayAfterFirst));
 			const visible =
 				url.searchParams.get('view') === 'all'
 					? items
@@ -166,6 +174,29 @@ test('attention center is complete responsive fallback for all five kinds exactl
 	await expect(page.locator('li')).toHaveCount(5);
 	const link = page.getByRole('link', { name: 'HUE needs your input' });
 	await expect(link).toHaveAttribute('href', '/?project=none&session=session-1');
+});
+
+test('background notification polling keeps the current list visible', async ({ page }) => {
+	const items = [item('completed', 1)];
+	await mockNotifications(page, items, { listDelayAfterFirst: 2_000 });
+	await page.goto('/');
+	await page.getByRole('button', { name: /Notifications/ }).click();
+	await expect(page.getByText('Task completed', { exact: true })).toBeVisible();
+	await page.evaluate(() => {
+		(window as Window & { __notificationLoadingSeen?: boolean }).__notificationLoadingSeen = false;
+		new MutationObserver(() => {
+			if (document.body.textContent?.includes('Loading notifications…'))
+				(window as Window & { __notificationLoadingSeen?: boolean }).__notificationLoadingSeen = true;
+		}).observe(document.body, { childList: true, subtree: true, characterData: true });
+	});
+
+	await page.waitForTimeout(7_200);
+	await expect(page.getByText('Task completed', { exact: true })).toBeVisible();
+	expect(
+		await page.evaluate(
+			() => (window as Window & { __notificationLoadingSeen?: boolean }).__notificationLoadingSeen
+		)
+	).toBe(false);
 });
 
 test('permission is requested on button gesture and exact visible context suppresses routine foreground alert', async ({
