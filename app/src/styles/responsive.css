@@ -382,7 +382,8 @@
 		max-height: calc(100dvh - 130px);
 		overflow: auto;
 	}
-	.session-manager-popover:popover-open {
+	.session-manager-popover:popover-open,
+	.project-manager-popover:popover-open {
 		top: auto !important;
 		right: 8px !important;
 		bottom: max(8px, env(safe-area-inset-bottom)) !important;
@@ -391,6 +392,7 @@
 		max-height: min(82dvh, 680px);
 	}
 	.session-manager-popover button,
+	.project-manager-popover button,
 	.session-manager-popover label:has(input[type='file']),
 	.icon-editor-popover button,
 	.icon-editor-popover label:has(input[type='file']) {

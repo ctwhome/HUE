@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import type { Database as BunDatabase } from 'bun:sqlite';
 import { validateIcon } from '$lib/icon';
 import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+import { validateProjectColor } from '$lib/project-color';
 import { DEFAULT_WORK_MODE, parseWorkMode, type WorkMode } from '$lib/work-mode';
 import { redactPersistedValue } from './redaction';
 
@@ -398,6 +399,9 @@ export class HUEStore {
 		}
 		if (!projectColumns.some((column) => column.name === 'legacy')) {
 			this.database.exec('ALTER TABLE projects ADD COLUMN legacy INTEGER NOT NULL DEFAULT 1');
+		}
+		if (!projectColumns.some((column) => column.name === 'color')) {
+			this.database.exec('ALTER TABLE projects ADD COLUMN color TEXT');
 		}
 		let sessionColumns = this.database.query('PRAGMA table_info(project_sessions)').all() as Array<{
 			name: string;
@@ -1196,6 +1200,21 @@ export class HUEStore {
 		return !!this.database.query('SELECT 1 FROM projects WHERE id = ?').get(id);
 	}
 
+	getProjectColor(id: string): string | null {
+		return (
+			(this.database.query('SELECT color FROM projects WHERE id = ?').get(id) as {
+				color: string | null;
+			} | null)?.color ?? null
+		);
+	}
+
+	updateProjectColor(id: string, color: string): void {
+		const result = this.database
+			.query('UPDATE projects SET color = ? WHERE id = ?')
+			.run(validateProjectColor(color), id);
+		if (!result.changes) throw new Error('Project metadata was not found');
+	}
+
 	getProjectExcalidraw(projectId: string): ProjectExcalidraw | null {
 		const row = this.database
 			.query(
@@ -1264,6 +1283,11 @@ export class HUEStore {
 				return;
 			}
 			this.ensureProjectMetadata(hermesId);
+			this.database
+				.query(
+					'UPDATE projects SET color = COALESCE(color, (SELECT color FROM projects WHERE id = ?)) WHERE id = ?'
+				)
+				.run(legacyId, hermesId);
 			this.database
 				.query(
 					`INSERT OR IGNORE INTO project_excalidraw (project_id, address, scene, updated_at)

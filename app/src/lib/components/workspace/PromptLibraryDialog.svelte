@@ -3,6 +3,7 @@
 	import type { Workflow } from './types';
 
 	let {
+		id,
 		dialog = $bindable(),
 		loading,
 		workflows,
@@ -11,6 +12,7 @@
 		onsubmit,
 		onrun
 	}: {
+		id: string;
 		dialog?: HTMLDialogElement;
 		loading: boolean;
 		workflows: Workflow[];
@@ -29,12 +31,12 @@
 <dialog
 	bind:this={dialog}
 	class="add-project-dialog prompt-library-dialog fixed top-1/2 left-1/2 m-0 max-h-[calc(100dvh-32px)] w-[min(680px,calc(100vw-32px))] overflow-auto rounded-xl border border-border bg-card p-4 text-foreground shadow-2xl backdrop:bg-black/60"
-	aria-labelledby="prompt-library-title"
+	aria-labelledby={id}
 	onclick={(event) => event.target === event.currentTarget && dialog?.close()}
 >
 	<header class="dialog-header">
 		<div>
-			<h2 id="prompt-library-title">Prompt library</h2>
+			<h2 {id}>Prompt library</h2>
 			<p>Repeat a Hermes task without rewriting its instructions.</p>
 		</div>
 		<button

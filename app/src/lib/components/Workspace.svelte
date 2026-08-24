@@ -36,6 +36,7 @@
 	import SessionManagerOverlay from './workspace/SessionManagerOverlay.svelte';
 	import SessionPaneGrid from './workspace/SessionPaneGrid.svelte';
 	import ShellResizer from './workspace/ShellResizer.svelte';
+	import WorkspaceWelcome from './workspace/WorkspaceWelcome.svelte';
 	import DirtyGuardDialog from './workspace/DirtyGuardDialog.svelte';
 	import { DirtyGuard } from './workspace/dirty-guard';
 	import { installDirtyNavigation } from './workspace/dirty-navigation';
@@ -267,9 +268,7 @@
 	let queuedMessages = $derived(sessionState.queuedMessages);
 	let delivery = $derived(sessionState.delivery);
 	let composer = $derived(messageState.composer);
-	let pendingEnvelope = $derived(messageState.pendingEnvelope);
 	let editingQueuedMessageId = $derived(messageState.editingQueuedMessageId);
-	let commandIndex = $derived(messageState.commandIndex);
 	let workModeChanging = $state(false);
 	let browserOpen = $state(true);
 	let previewUrl = $state('');
@@ -438,6 +437,7 @@
 		directoryError={projectManagement.directoryError}
 		bind:projectName={projectManagement.projectName}
 		bind:projectIcon={projectManagement.projectIcon}
+		bind:projectColor={projectManagement.projectColor}
 		projectEditError={projectManagement.projectEditError}
 		projectSaving={projectManagement.projectSaving}
 		locatingProject={projectManagement.locatingProject}
@@ -450,6 +450,7 @@
 		onedit={projectManagement.openEditProject}
 		onicon={projectManagement.openProjectIcon}
 		oniconselect={projectManagement.saveProjectIcon}
+		oncolor={projectManagement.saveProjectColor}
 		onhidden={projectManagement.toggleHiddenDirectories}
 		ondirectory={projectManagement.loadDirectory}
 		ontogglefolder={projectManagement.toggleSelectedFolder}
@@ -516,11 +517,18 @@
 	>
 		<SessionPaneGrid
 			{sessions}
+			project={selectedProject}
 			projectId={selectedProject?.id ?? null}
+			{workflows}
 			primarySession={selectedSession}
 			allowDocking={!embedded}
-			onpanecount={(count) => (sessionPaneCount = count)}
+			onpanecount={(count) => {
+				sessionPaneCount = count;
+				if (count > 1 && innerWidth < 1600) browserOpen = false;
+			}}
 			onprimaryclose={navigation.openSession}
+			onsessionupdate={navigation.replaceSession}
+			onrunworkflow={navigation.runWorkflow}
 		>
 			<main
 				class="session-view flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
@@ -589,10 +597,10 @@
 						bind:images={messageState.images}
 						bind:attachments={messageState.attachments}
 						{delivery}
-						{pendingEnvelope}
+						pendingEnvelope={messageState.pendingEnvelope}
 						{queuedMessages}
 						{editingQueuedMessageId}
-						{commandIndex}
+						commandIndex={messageState.commandIndex}
 						callActive={voice.active}
 						voiceMessageOnly={voice.messageOnly}
 						callMuted={voice.muted}
@@ -674,40 +682,13 @@
 						</div>
 					</section>
 				{:else}
-					<section class="hero mx-auto mt-[12vh] max-w-2xl p-8 text-center text-muted-foreground">
-						<div
-							class="hero-mark mx-auto mb-5 grid size-12 place-items-center rounded-xl bg-gradient-to-br from-violet-300 to-violet-700 font-black text-violet-950 shadow-lg"
-						>
-							H
-						</div>
-						<h2>
-							{projectManagement.projects.length
-								? 'Projects · Workflows · Sessions'
-								: 'Start your first HUE workspace'}
-						</h2>
-						<p>
-							{projectManagement.projects.length
-								? 'Choose a Project, or continue without one for a general Hermes Session.'
-								: 'Add a trusted local folder for project work, or start a private projectless Session.'}
-						</p>
-						<div class="mt-5 flex flex-wrap justify-center gap-2">
-							<button
-								class="min-h-11 rounded-md bg-primary px-4 text-primary-foreground"
-								disabled={projectsCapability !== 'available'}
-								title={projectsCapability === 'available' ? 'Add Project' : projectsError}
-								onclick={projectManagement.openAddProject}>Add Project</button
-							>
-							<button
-								class="min-h-11 rounded-md border border-border px-4"
-								onclick={navigation.createProjectlessSession}>Start without Project</button
-							>
-						</div>
-						<div class="principles mt-6 flex flex-wrap justify-center gap-2">
-							<span>Local SQLite</span><span>ACP v1</span><span>Project terminals</span><span
-								>Reconnect cursors</span
-							>
-						</div>
-					</section>
+					<WorkspaceWelcome
+						projectCount={projectManagement.projects.length}
+						{projectsCapability}
+						{projectsError}
+						onadd={projectManagement.openAddProject}
+						onprojectless={navigation.createProjectlessSession}
+					/>
 				{/if}
 			</main>
 		</SessionPaneGrid>
@@ -746,6 +727,7 @@
 			<HealthStrip
 				projectId={selectedProject.id}
 				projectName={selectedProject.name}
+				color={selectedProject.color}
 				{previewUrl}
 			/>
 		{/key}

@@ -29,7 +29,8 @@
 .session-pane-primary {
 	background: var(--background);
 }
-.session-pane-primary > .session-view {
+.session-pane-primary > .session-view,
+.session-pane > .session-view {
 	height: auto;
 	flex: 1;
 }

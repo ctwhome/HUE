@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ArrowUp, Check, Diamond, Ellipsis, Folder, FolderPlus, Plus, X } from 'lucide-svelte';
+	import { Archive, ArrowUp, Check, Diamond, Ellipsis, Folder, FolderPlus, Plus, X } from 'lucide-svelte';
 	import IconEditorPopover from '$lib/components/IconEditorPopover.svelte';
 	import ProjectFoldersEditor from './ProjectFoldersEditor.svelte';
 	import type { Directory, Project } from './types';
@@ -28,6 +28,7 @@
 		directoryError,
 		projectName = $bindable(),
 		projectIcon = $bindable(),
+		projectColor = $bindable(),
 		projectEditError,
 		projectSaving,
 		locatingProject,
@@ -40,6 +41,7 @@
 		onedit,
 		onicon,
 		oniconselect,
+		oncolor,
 		onhidden,
 		ondirectory,
 		ontogglefolder,
@@ -65,7 +67,7 @@
 		projectsError: string;
 		reconciliationIssues: Array<{ legacyProjectId: string; kind: string; message: string }>;
 		addProjectDialog?: HTMLDialogElement;
-		editProjectDialog?: HTMLDialogElement;
+		editProjectDialog?: HTMLElement;
 		removeProjectDialog?: HTMLDialogElement;
 		projectIconPopover?: HTMLElement;
 		projectSettingsIconPopover?: HTMLElement;
@@ -79,6 +81,7 @@
 		directoryError: string;
 		projectName: string;
 		projectIcon: string | null;
+		projectColor: string;
 		projectEditError: string;
 		projectSaving: boolean;
 		locatingProject: Project | null;
@@ -91,6 +94,7 @@
 		onedit: (event: MouseEvent, project: Project) => void;
 		onicon: (event: MouseEvent, project: Project) => void;
 		oniconselect: (icon: string | null) => void;
+		oncolor: (color: string) => void;
 		onhidden: (event: Event) => void;
 		ondirectory: (path?: string) => void;
 		ontogglefolder: (path?: string) => void;
@@ -98,7 +102,7 @@
 		oncreate: (event: SubmitEvent) => void;
 		onaddfolder: () => void;
 		onimage: (event: Event) => void;
-		onsavemetadata: (event: SubmitEvent) => void;
+		onsavemetadata: () => void;
 		onsetprimary: (project: Project, path: string) => void;
 		onremovefolder: (project: Project, path: string) => void;
 		onlabel: (project: Project, path: string, label: string) => void;
@@ -368,57 +372,58 @@
 		>
 	</dialog>
 
-	<dialog
+	<div
 		bind:this={editProjectDialog}
-		class="add-project-dialog edit-project-dialog fixed m-0 max-h-[calc(100dvh-32px)] w-[min(620px,calc(100vw-32px))] overflow-auto rounded-xl border border-border bg-card p-4 text-foreground shadow-2xl backdrop:bg-black/60"
+		popover="auto"
+		role="dialog"
+		class="project-manager-popover fixed m-0 max-h-[min(680px,calc(100dvh-24px))] w-[min(380px,calc(100vw-24px))] overflow-auto rounded-xl border border-border bg-card p-2 text-foreground shadow-2xl"
 		aria-labelledby="edit-project-title"
-		onclick={(event) => event.target === event.currentTarget && editProjectDialog?.close()}
 	>
-		<header class="dialog-header">
-			<div>
-				<h2 id="edit-project-title">Edit Hermes Project</h2>
-				<p>Hermes owns identity and folders. HUE keeps linked workflow and delivery metadata.</p>
+		<header class="flex items-center gap-3 px-2 py-2">
+			<button
+				type="button"
+				class="project-icon-preview grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-accent text-xl hover:ring-2 hover:ring-ring"
+				aria-label="Change project icon"
+				title="Change project icon"
+				onclick={(event) => editingProject && onicon(event, editingProject)}
+			>
+				{#if isImage(projectIcon)}<img src={projectIcon ?? ''} alt="" />{:else if projectIcon}<span
+						>{projectIcon}</span
+					>{:else}<Folder class="text-muted-foreground" size={20} aria-hidden="true" />{/if}
+			</button>
+			<div class="min-w-0 flex-1">
+				<h2 id="edit-project-title" class="truncate text-sm font-semibold">Project options</h2>
+				<p class="text-xs text-muted-foreground">
+					{projectSaving ? 'Saving...' : 'Saved automatically'}
+				</p>
 			</div>
 			<button
-				class="icon-button grid size-11 place-items-center rounded-md"
-				aria-label="Close edit Project"
+				class="grid size-9 place-items-center rounded-lg hover:bg-accent"
+				aria-label="Close project options"
 				title="Close"
-				onclick={() => editProjectDialog?.close()}><X size={18} aria-hidden="true" /></button
+				onclick={() => editProjectDialog?.hidePopover()}><X size={17} aria-hidden="true" /></button
 			>
 		</header>
-		<div class="dialog-body">
-			<form class="grid gap-4" onsubmit={onsavemetadata}>
-				<div class="grid gap-2">
-					<span class="text-sm">Project icon</span>
-					<button
-						type="button"
-						class="project-icon-preview grid size-[58px] place-items-center overflow-hidden rounded-xl border border-border bg-background text-3xl hover:ring-2 hover:ring-ring"
-						aria-label="Change project icon"
-						onclick={(event) => editingProject && onicon(event, editingProject)}
-					>
-						{#if isImage(projectIcon)}<img
-								src={projectIcon ?? ''}
-								alt="Project icon preview"
-							/>{:else if projectIcon}<span>{projectIcon}</span>{:else}<Folder
-								class="project-icon-default text-muted-foreground"
-								size={24}
-								aria-hidden="true"
-							/>{/if}
-					</button>
-				</div>
-				<label class="grid gap-1"
-					><span>Project name</span><input
-						class="min-h-11"
-						bind:value={projectName}
-						required
-					/></label
-				>
-				<button
-					type="submit"
-					class="min-h-11 justify-self-end"
-					disabled={projectSaving || !projectName.trim()}>Save name and icon</button
-				>
-			</form>
+		<div class="grid gap-3 px-2 pb-2">
+			<label class="grid gap-1.5 text-xs font-medium">Name<input
+					class="min-h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+					bind:value={projectName}
+					maxlength="200"
+					required
+					onchange={onsavemetadata}
+				/></label
+			>
+			<label class="flex min-h-11 items-center justify-between gap-3 rounded-lg px-2 text-sm hover:bg-accent">
+				<span>Project status bar color</span>
+				<input
+					class="size-11 cursor-pointer rounded border-0 bg-transparent p-0"
+					type="color"
+					bind:value={projectColor}
+					aria-label="Project status bar color"
+					disabled={projectSaving}
+					onchange={() => oncolor(projectColor)}
+				/>
+			</label>
 
 			<ProjectFoldersEditor
 				project={editingProject}
@@ -431,17 +436,15 @@
 			{#if projectEditError}<p class="mt-3 text-sm text-destructive" role="alert">
 					{projectEditError}
 				</p>{/if}
-		</div>
-		<footer class="dialog-footer mt-0 flex justify-between gap-3">
-			<button
+			<section class="grid gap-1 border-t border-border pt-2" aria-label="Project actions">
+				<button
 				type="button"
-				class="min-h-11 text-destructive"
+				class="session-menu-action text-destructive"
 				disabled={projectSaving}
-				onclick={onarchiveRequest}>Archive Project</button
-			>
-			<button type="button" class="min-h-11" onclick={() => editProjectDialog?.close()}>Done</button
-			>
-		</footer>
+				onclick={onarchiveRequest}><Archive size={16} aria-hidden="true" /> Archive Project</button
+				>
+			</section>
+		</div>
 		<IconEditorPopover
 			bind:popover={projectSettingsIconPopover}
 			anchor={projectIconAnchor}
@@ -449,7 +452,7 @@
 			{onimage}
 			onselect={oniconselect}
 		/>
-	</dialog>
+	</div>
 
 	<IconEditorPopover
 		bind:popover={projectIconPopover}

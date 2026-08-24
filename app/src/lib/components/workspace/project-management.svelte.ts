@@ -39,7 +39,7 @@ export class ProjectManagement {
 	directoryLoading = $state(false);
 	directoryError = $state('');
 	addProjectDialog = $state<HTMLDialogElement>();
-	editProjectDialog = $state<HTMLDialogElement>();
+	editProjectDialog = $state<HTMLElement>();
 	removeProjectDialog = $state<HTMLDialogElement>();
 	projectIconPopover = $state<HTMLElement>();
 	projectSettingsIconPopover = $state<HTMLElement>();
@@ -47,6 +47,7 @@ export class ProjectManagement {
 	editingProject = $state<Project | null>(null);
 	projectName = $state('');
 	projectIcon = $state<string | null>(null);
+	projectColor = $state('#007acc');
 	projectEditError = $state('');
 	projectSaving = $state(false);
 	locatingProject = $state<Project | null>(null);
@@ -168,9 +169,30 @@ export class ProjectManagement {
 		this.editingProject = project;
 		this.projectName = project.name;
 		this.projectIcon = project.icon;
+		this.projectColor = project.color ?? '#007acc';
 		this.projectEditError = '';
-		this.editProjectDialog?.showModal();
+		this.editProjectDialog?.showPopover();
+		const trigger = event?.currentTarget as HTMLElement | undefined;
+		void tick().then(() => this.positionProjectOptions(trigger));
 	};
+
+	private positionProjectOptions(trigger?: HTMLElement) {
+		const menu = this.editProjectDialog;
+		if (!menu) return;
+		const padding = 12;
+		const gap = 8;
+		const anchor = trigger?.getBoundingClientRect();
+		const left = anchor
+			? Math.min(Math.max(padding, anchor.left), window.innerWidth - menu.offsetWidth - padding)
+			: Math.max(padding, (window.innerWidth - menu.offsetWidth) / 2);
+		const top = anchor
+			? anchor.bottom + gap + menu.offsetHeight <= window.innerHeight - padding
+				? anchor.bottom + gap
+				: Math.max(padding, anchor.top - menu.offsetHeight - gap)
+			: Math.max(padding, (window.innerHeight - menu.offsetHeight) / 2);
+		menu.style.left = `${left}px`;
+		menu.style.top = `${top}px`;
+	}
 
 	chooseProjectImage = async (event: Event) => {
 		const input = event.currentTarget as HTMLInputElement;
@@ -197,8 +219,9 @@ export class ProjectManagement {
 			this.editingProject = project;
 			this.projectName = project.name;
 			this.projectIcon = project.icon;
+			this.projectColor = project.color ?? '#007acc';
 		}
-		const insideSettings = (event.currentTarget as HTMLElement).closest('dialog');
+		const insideSettings = (event.currentTarget as HTMLElement).closest('.project-manager-popover');
 		(insideSettings ? this.projectSettingsIconPopover : this.projectIconPopover)?.showPopover();
 	};
 
@@ -215,7 +238,7 @@ export class ProjectManagement {
 					body: JSON.stringify(
 						icon === null
 							? { action: 'auto_icon' }
-							: { action: 'update', name: this.editingProject.name, icon }
+							: { action: 'update', name: this.projectName.trim() || this.editingProject.name, icon }
 					)
 				}
 			);
@@ -228,9 +251,31 @@ export class ProjectManagement {
 		}
 	};
 
-	saveProject = async (event: SubmitEvent) => {
-		event.preventDefault();
+	saveProjectColor = async (color: string) => {
 		if (!this.editingProject) return;
+		const project = this.editingProject;
+		this.projectColor = color;
+		this.pendingMutations += 1;
+		this.projectSaving = true;
+		this.projectEditError = '';
+		this.applyProject({ ...project, color });
+		try {
+			const body = await this.options.api<{ project: Project }>(`/api/projects/${project.id}`, {
+				method: 'PATCH',
+				body: JSON.stringify({ action: 'set_color', color })
+			});
+			this.applyProject(body.project);
+		} catch (cause) {
+			this.applyProject(project);
+			this.projectEditError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			this.pendingMutations -= 1;
+			this.projectSaving = this.pendingMutations > 0;
+		}
+	};
+
+	saveProject = async () => {
+		if (!this.editingProject || !this.projectName.trim()) return;
 		this.projectSaving = true;
 		this.projectEditError = '';
 		try {
@@ -240,13 +285,12 @@ export class ProjectManagement {
 					method: 'PATCH',
 					body: JSON.stringify({
 						action: 'update',
-						name: this.projectName,
+						name: this.projectName.trim(),
 						icon: this.projectIcon
 					})
 				}
 			);
 			this.applyProject(body.project);
-			this.editProjectDialog?.close();
 		} catch (cause) {
 			this.restoreProject(cause);
 			this.projectEditError = cause instanceof Error ? cause.message : String(cause);
@@ -316,7 +360,7 @@ export class ProjectManagement {
 			await this.options.api(`/api/projects/${removedId}`, { method: 'DELETE' });
 			this.projects = this.projects.filter((project) => project.id !== removedId);
 			this.removeProjectDialog?.close();
-			this.editProjectDialog?.close();
+			this.editProjectDialog?.hidePopover();
 			if (this.options.getSelectedProject()?.id === removedId) {
 				await this.options.chooseProject(
 					this.projects.find(({ rootAvailable }) => rootAvailable) ?? null
@@ -370,7 +414,10 @@ export class ProjectManagement {
 		if (this.options.getSelectedProject()?.id === project.id) {
 			this.options.setSelectedProject(project);
 		}
-		if (this.editingProject?.id === project.id) this.editingProject = project;
+		if (this.editingProject?.id === project.id) {
+			this.editingProject = project;
+			this.projectColor = project.color ?? '#007acc';
+		}
 	}
 
 	private restoreProject(cause: unknown) {

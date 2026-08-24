@@ -59,9 +59,14 @@
 		>
 		<label class="grid gap-1 text-sm"
 			>Theme<select class={selectClass} bind:value={theme} onchange={apply}
-				><option value="system">System</option><option value="light">Light</option><option
-					value="dark">Dark</option
-				><option value="oled">OLED</option></select
+				><option value="system">System</option><optgroup label="Light themes"
+					><option value="light">VS Code Light</option><option value="github-light"
+						>GitHub Light</option
+					><option value="solarized-light">Solarized Light</option></optgroup
+				><optgroup label="Dark themes"
+					><option value="dark">VS Code Dark</option><option value="tokyo-night">Tokyo Night</option
+					><option value="nord">Nord</option><option value="oled">OLED</option></optgroup
+				></select
 			></label
 		>
 		<label class="grid gap-1 text-sm"

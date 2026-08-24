@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import emojiDataUrl from 'emoji-picker-element-data/en/emojibase/data.json?url';
+	import { isDarkTheme, type HUETheme } from '$lib/preferences';
 
 	let { onselect }: { onselect: (emoji: string) => void } = $props();
 	let container: HTMLDivElement;
@@ -12,10 +13,7 @@
 		const media = window.matchMedia('(prefers-color-scheme: dark)');
 		const updateTheme = () => {
 			const theme = root.dataset.theme;
-			picker?.classList.toggle(
-				'dark',
-				theme === 'dark' || theme === 'oled' || (theme === 'system' && media.matches)
-			);
+			picker?.classList.toggle('dark', isDarkTheme((theme ?? 'system') as HUETheme, media.matches));
 		};
 		const observer = new MutationObserver(updateTheme);
 		observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });

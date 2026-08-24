@@ -8,6 +8,7 @@ const original: Project = {
 	id: 'p_1',
 	name: 'HUE',
 	icon: null,
+	color: null,
 	primaryPath: '/work/app',
 	rootAvailable: true,
 	folders: [
@@ -44,6 +45,24 @@ describe('ProjectManagement Hermes authority', () => {
 		await state.saveProjectIcon(null);
 
 		expect(JSON.parse(String(requests[0]?.options?.body))).toEqual({ action: 'auto_icon' });
+	});
+
+	it('persists the selected status color in HUE metadata', async () => {
+		const requests: Array<{ url: string; options?: RequestInit }> = [];
+		const colored = { ...original, color: '#7aa2f7' };
+		const state = manager(async <T>(url: string, options?: RequestInit) => {
+			requests.push({ url, options });
+			return { project: colored } as T;
+		});
+		state.editingProject = original;
+
+		await state.saveProjectColor('#7aa2f7');
+
+		expect(JSON.parse(String(requests[0]?.options?.body))).toEqual({
+			action: 'set_color',
+			color: '#7aa2f7'
+		});
+		expect(state.projects[0].color).toBe('#7aa2f7');
 	});
 
 	it('creates one Project with every selected folder and exactly one primary', async () => {

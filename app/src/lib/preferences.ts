@@ -1,6 +1,19 @@
+export const themes = [
+	'system',
+	'light',
+	'github-light',
+	'solarized-light',
+	'dark',
+	'tokyo-night',
+	'nord',
+	'oled'
+] as const;
+
+export type HUETheme = (typeof themes)[number];
+
 export type HUEPreferences = {
 	sendKey: 'enter' | 'mod-enter';
-	theme: 'system' | 'light' | 'dark' | 'oled';
+	theme: HUETheme;
 	density: 'comfortable' | 'compact';
 	language: string;
 	voice: string;
@@ -20,7 +33,7 @@ export function normalizePreferences(value: unknown): HUEPreferences {
 	const input = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
 	return {
 		sendKey: input.sendKey === 'mod-enter' ? 'mod-enter' : 'enter',
-		theme: ['system', 'light', 'dark', 'oled'].includes(String(input.theme))
+		theme: themes.includes(input.theme as HUETheme)
 			? (input.theme as HUEPreferences['theme'])
 			: 'system',
 		density: input.density === 'compact' ? 'compact' : 'comfortable',
@@ -41,8 +54,22 @@ export function readPreferences(storage: Pick<Storage, 'getItem'>): HUEPreferenc
 	}
 }
 
-export function themeChromeColor(theme: HUEPreferences['theme'], prefersDark: boolean) {
+export function isDarkTheme(theme: HUETheme, prefersDark: boolean) {
+	return (
+		theme === 'dark' ||
+		theme === 'tokyo-night' ||
+		theme === 'nord' ||
+		theme === 'oled' ||
+		(theme === 'system' && prefersDark)
+	);
+}
+
+export function themeChromeColor(theme: HUETheme, prefersDark: boolean) {
 	if (theme === 'oled') return '#000000';
+	if (theme === 'tokyo-night') return '#16161e';
+	if (theme === 'nord') return '#2e3440';
+	if (theme === 'github-light') return '#f6f8fa';
+	if (theme === 'solarized-light') return '#eee8d5';
 	if (theme === 'light' || (theme === 'system' && !prefersDark)) return '#f3f3f3';
 	return '#181818';
 }

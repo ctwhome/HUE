@@ -23,6 +23,8 @@ const workspacePaths = [
 	'../lib/components/workspace/SessionHeader.svelte',
 	'../lib/components/workspace/SessionManagerDialog.svelte',
 	'../lib/components/workspace/SessionManagerOverlay.svelte',
+	'../lib/components/workspace/SessionPanel.svelte',
+	'../lib/components/workspace/WorkspaceWelcome.svelte',
 	'../lib/components/workspace/MobileProjectEntry.svelte',
 	'../lib/components/workspace/ProjectFoldersEditor.svelte',
 	'../lib/components/workspace/message-state.svelte.ts',
@@ -143,6 +145,7 @@ test('offers coordinated additional light and dark themes', () => {
 		expect(preferencesView).toContain(`value="${theme}"`);
 		expect(styles).toContain(`:root[data-theme='${theme}']`);
 	}
+	expect(styles).toContain('--primary: #0b6f9f');
 });
 
 test('applies theme and density tokens across the visible workbench', () => {
@@ -638,6 +641,14 @@ test('project and session controls preserve accessible editing', () => {
 	expect(page).toContain("method: 'DELETE'");
 });
 
+test('Project options match the compact auto-saving Session options treatment', () => {
+	expect(projectRail).toContain('popover="auto"');
+	expect(projectRail).toContain('Project options');
+	expect(projectRail).toContain('Saved automatically');
+	expect(projectRail).toContain('onchange={onsavemetadata}');
+	expect(projectRail).not.toContain('Save name and icon');
+});
+
 test('stale Projects and first run expose direct recovery instead of a broken workbench', () => {
 	for (const label of [
 		'Manage folders',
@@ -665,6 +676,10 @@ test('current Project health stays in one shell-level bottom status bar', () => 
 	expect(projectBrowserDock).not.toContain('<HealthStrip');
 	expect(healthStrip).toContain('class="project-status-bar');
 	expect(healthStrip).toContain('{projectName}');
+	expect(workspace).toContain('color={selectedProject.color}');
+	expect(healthStrip).toContain('projectColorForeground');
+	expect(healthStrip).toContain('--project-status-color');
+	expect(projectRail).toContain('aria-label="Project status bar color"');
 });
 
 test('composer preserves complete-envelope and unknown-delivery controls', () => {

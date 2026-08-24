@@ -23,6 +23,18 @@ function makeDeliveryStore() {
 }
 
 describe('HUEStore project and workflow boundaries', () => {
+	it('persists a local status color without changing Project identity', () => {
+		const store = makeStore();
+		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+
+		expect(store.getProjectColor('hue')).toBeNull();
+		store.updateProjectColor('hue', '#7aa2f7');
+
+		expect(store.getProjectColor('hue')).toBe('#7aa2f7');
+		expect(store.getProject('hue')).toMatchObject({ id: 'hue', name: 'HUE' });
+		store.close();
+	});
+
 	it('stores one independently updateable Excalidraw scene per Project', () => {
 		const store = makeStore();
 		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
