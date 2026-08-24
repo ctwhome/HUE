@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, type Component } from 'svelte';
-	import { Code2, Files } from 'lucide-svelte';
+	import { Code2, Files, GitBranch, Globe, TerminalSquare } from 'lucide-svelte';
 	import BrowserPanel from './workbench/BrowserPanel.svelte';
 	import FilesPanel from './workbench/FilesPanel.svelte';
 	import HealthStrip from './workbench/HealthStrip.svelte';
@@ -17,16 +17,19 @@
 	let {
 		projectId,
 		projectName,
+		compact,
 		onbranch,
 		dirtyGuard
 	}: {
 		projectId: string;
 		projectName: string;
+		compact: boolean;
 		onbranch: (branch: string | null) => void;
 		dirtyGuard: DirtyGuard;
 	} = $props();
 	let previewUrl = $state('');
 	let view = $state<'develop' | 'files'>('develop');
+	let developView = $state<'browser' | 'terminal' | 'git'>('browser');
 	let filesMounted = $state(false);
 	let fileRequest = $state<{ path: string; id: string } | null>(null);
 	let TerminalPanel = $state<Component<TerminalProps> | null>(null);
@@ -70,6 +73,11 @@
 	}
 	function openDevelop() {
 		if (!dirtyGuard.block(() => (view = 'develop'))) view = 'develop';
+	}
+	function chooseDevelopView(next: 'browser' | 'terminal' | 'git') {
+		developView = next;
+		if (next === 'terminal') void activateTerminal();
+		if (next === 'git') void loadRepositoryPanels();
 	}
 
 	onMount(() => {
@@ -115,61 +123,82 @@
 			</div>{/if}
 		<div
 			class="project-workbench absolute inset-0 grid min-h-0 min-w-0 gap-2.5 p-2.5"
+			class:compact
 			class:invisible={view !== 'develop'}
 			class:pointer-events-none={view !== 'develop'}
 			aria-hidden={view !== 'develop'}
 		>
-			<BrowserPanel {projectId} onpreviewchange={(url) => (previewUrl = url)} />
-			{#if TerminalPanel}
-				<TerminalPanel {projectId} />
-			{:else}
-				<article
-					class={`${panel} terminal-panel grid place-content-center gap-3 p-4 text-center`}
-					aria-label="Project terminal"
-				>
-					<strong class="text-sm">Terminal</strong>
-					<span class="text-xs text-muted-foreground">Start when needed.</span>
+			{#if compact}<nav class="compact-workbench-tabs" aria-label="Project tools">
 					<button
-						class="min-h-11 rounded-md border border-border px-4 text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-						disabled={terminalLoading}
-						onclick={activateTerminal}
-						>{terminalLoading ? 'Starting terminal…' : 'Start terminal'}</button
+						aria-pressed={developView === 'browser'}
+						onclick={() => chooseDevelopView('browser')}
+						><Globe size={17} aria-hidden="true" />Browser</button
+					><button
+						aria-pressed={developView === 'terminal'}
+						onclick={() => chooseDevelopView('terminal')}
+						><TerminalSquare size={17} aria-hidden="true" />Terminal</button
+					><button aria-pressed={developView === 'git'} onclick={() => chooseDevelopView('git')}
+						><GitBranch size={17} aria-hidden="true" />Git</button
 					>
-					{#if terminalError}<span class="text-xs text-destructive" role="alert"
-							>{terminalError}</span
-						>{/if}
-				</article>
+				</nav>{/if}
+			{#if !compact || developView === 'browser'}<BrowserPanel
+					{projectId}
+					onpreviewchange={(url) => (previewUrl = url)}
+				/>{/if}
+			{#if !compact || developView === 'terminal'}
+				{#if TerminalPanel}
+					<TerminalPanel {projectId} />
+				{:else}
+					<article
+						class={`${panel} terminal-panel grid place-content-center gap-3 p-4 text-center`}
+						aria-label="Project terminal"
+					>
+						<strong class="text-sm">Terminal</strong>
+						<span class="text-xs text-muted-foreground">Start when needed.</span>
+						<button
+							class="min-h-11 rounded-md border border-border px-4 text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+							disabled={terminalLoading}
+							onclick={activateTerminal}
+							>{terminalLoading ? 'Starting terminal…' : 'Start terminal'}</button
+						>
+						{#if terminalError}<span class="text-xs text-destructive" role="alert"
+								>{terminalError}</span
+							>{/if}
+					</article>
+				{/if}
 			{/if}
-			{#if RepositoryPanels}
-				<RepositoryPanels {projectId} {onbranch} onopenfile={openFile} />
-			{:else}
-				<article
-					class={`${panel} repository-panel`}
-					aria-label="Git status"
-					aria-busy={!repositoryError}
-				>
-					<header class="min-h-11 border-b border-border bg-muted/40 px-2.5 py-2">
-						<strong class="text-xs">Git</strong>
-					</header>
-					<div class="grid flex-1 place-content-center p-4 text-xs text-muted-foreground">
-						{repositoryError ? 'Git unavailable' : 'Loading Git status'}
-					</div>
-					{#if repositoryError}<span class="px-4 pb-4 text-xs text-destructive" role="alert"
-							>{repositoryError}</span
-						>{/if}
-				</article>
-				<article
-					class={`${panel} worktrees-panel`}
-					aria-label="Git worktrees"
-					aria-busy={!repositoryError}
-				>
-					<header class="min-h-11 border-b border-border bg-muted/40 px-2.5 py-2">
-						<strong class="text-xs">Worktrees</strong>
-					</header>
-					<div class="grid flex-1 place-content-center p-4 text-xs text-muted-foreground">
-						{repositoryError ? 'Git unavailable' : 'Loading Git worktrees'}
-					</div>
-				</article>
+			{#if !compact || developView === 'git'}
+				{#if RepositoryPanels}
+					<RepositoryPanels {projectId} {onbranch} onopenfile={openFile} />
+				{:else}
+					<article
+						class={`${panel} repository-panel`}
+						aria-label="Git status"
+						aria-busy={!repositoryError}
+					>
+						<header class="min-h-11 border-b border-border bg-muted/40 px-2.5 py-2">
+							<strong class="text-xs">Git</strong>
+						</header>
+						<div class="grid flex-1 place-content-center p-4 text-xs text-muted-foreground">
+							{repositoryError ? 'Git unavailable' : 'Loading Git status'}
+						</div>
+						{#if repositoryError}<span class="px-4 pb-4 text-xs text-destructive" role="alert"
+								>{repositoryError}</span
+							>{/if}
+					</article>
+					<article
+						class={`${panel} worktrees-panel`}
+						aria-label="Git worktrees"
+						aria-busy={!repositoryError}
+					>
+						<header class="min-h-11 border-b border-border bg-muted/40 px-2.5 py-2">
+							<strong class="text-xs">Worktrees</strong>
+						</header>
+						<div class="grid flex-1 place-content-center p-4 text-xs text-muted-foreground">
+							{repositoryError ? 'Git unavailable' : 'Loading Git worktrees'}
+						</div>
+					</article>
+				{/if}
 			{/if}
 		</div>
 	</div>

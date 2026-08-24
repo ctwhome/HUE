@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { ArrowLeft, Ellipsis, LoaderCircle, Pin, Plus, Search } from 'lucide-svelte';
-	import SessionManagerDialog from './SessionManagerDialog.svelte';
+	import { ArrowLeft, Ellipsis, LoaderCircle, Pin, Play, Plus, Search, X } from 'lucide-svelte';
 	type Project = {
 		id: string;
 		name: string;
@@ -39,19 +38,8 @@
 		workflows,
 		workflowName = $bindable(),
 		workflowPrompt = $bindable(),
-		editSessionDialog = $bindable(),
-		editingSession,
-		sessionIcon = $bindable(),
-		sessionTitle = $bindable(),
-		sessionPinned = $bindable(),
-		sessionArchived = $bindable(),
-		sessionFolder = $bindable(),
-		sessionTags = $bindable(),
 		sessionSearch = $bindable(),
 		showArchived = $bindable(),
-		sessionEmojiPickerOpen = $bindable(),
-		sessionEditError,
-		sessionSaving,
 		now,
 		oncreate,
 		ontab,
@@ -60,14 +48,9 @@
 		onedit,
 		onrun,
 		onworkflow,
-		onimage,
-		onsave,
 		onsearch,
-		onduplicate,
-		ondelete,
-		onexport,
+		onclose,
 		isImage,
-		iconPreview,
 		automaticIcon,
 		elapsed
 	}: {
@@ -82,19 +65,8 @@
 		workflows: Workflow[];
 		workflowName: string;
 		workflowPrompt: string;
-		editSessionDialog?: HTMLDialogElement;
-		editingSession: Session | null;
-		sessionIcon: string | null;
-		sessionTitle: string;
-		sessionPinned: boolean;
-		sessionArchived: boolean;
-		sessionFolder: string;
-		sessionTags: string;
 		sessionSearch: string;
 		showArchived: boolean;
-		sessionEmojiPickerOpen: boolean;
-		sessionEditError: string;
-		sessionSaving: boolean;
 		now: number;
 		oncreate: () => void;
 		ontab: (tab: 'sessions' | 'workflows') => void;
@@ -102,18 +74,14 @@
 		onback: () => void;
 		onedit: (event: MouseEvent, session: Session) => void;
 		onrun: (workflow: Workflow) => void;
-		onworkflow: (event: SubmitEvent) => void;
-		onimage: (event: Event) => void;
-		onsave: (event: SubmitEvent) => void;
+		onworkflow: (event: SubmitEvent) => Promise<boolean>;
 		onsearch: (event?: SubmitEvent) => void;
-		onduplicate: () => void;
-		ondelete: () => void;
-		onexport: (format: 'markdown' | 'json') => void;
+		onclose: () => void;
 		isImage: (icon: string | null) => boolean;
-		iconPreview: () => string;
 		automaticIcon: (title?: string | null) => string;
 		elapsed: (startedAt: string, now: number) => string;
 	} = $props();
+	let workflowDialog = $state<HTMLDialogElement>();
 
 	function group(session: Session): string {
 		if (session.pinned) return 'Pinned';
@@ -171,15 +139,25 @@
 					><Plus size={18} aria-hidden="true" /></button
 				>{/if}
 		</div>
+		{#if mobile}<button
+				class="drawer-close grid size-11 shrink-0 place-items-center rounded-md"
+				aria-label="Close Sessions"
+				title="Close Sessions"
+				onclick={onclose}><X size={20} aria-hidden="true" /></button
+			>{/if}
 	</header>
 	<div class="tabs grid grid-cols-2 gap-1 border-b border-border px-3.5 py-2.5" role="tablist">
 		<button
+			role="tab"
+			aria-selected={activeTab === 'sessions'}
 			title="Sessions"
 			class:active={activeTab === 'sessions'}
 			onclick={() => ontab('sessions')}>Sessions</button
 		>
 		{#if selectedProject?.rootAvailable}<button
 				title="Workflows"
+				role="tab"
+				aria-selected={activeTab === 'workflows'}
 				class:active={activeTab === 'workflows'}
 				onclick={() => ontab('workflows')}>Workflows</button
 			>{/if}
@@ -212,6 +190,7 @@
 					<button
 						class="session-select flex min-h-12 w-full items-center gap-2.5 rounded-lg border border-transparent bg-transparent p-2.5 pr-10 text-left hover:border-border hover:bg-accent [&.active]:border-border [&.active]:bg-accent"
 						class:active={selectedSession?.sessionId === session.sessionId}
+						aria-current={selectedSession?.sessionId === session.sessionId ? 'page' : undefined}
 						title={session.available === false
 							? session.recovery
 							: `${session.error ? 'Failed — ' : session.attention ? 'Needs attention — ' : ''}Open ${session.title || 'Untitled session'}`}
@@ -273,45 +252,85 @@
 				</p>{/if}
 		</div>
 	{:else}
+		<div class="flex items-center justify-between gap-2 border-b border-border p-3">
+			<p class="text-xs text-muted-foreground">
+				A Workflow is a reusable Hermes prompt scoped to this Project.
+			</p>
+			<button
+				class="min-h-11 shrink-0 rounded-md bg-primary px-3 text-primary-foreground"
+				onclick={() => workflowDialog?.showModal()}
+			>
+				<Plus size={17} aria-hidden="true" /> New workflow
+			</button>
+		</div>
 		<div class="item-list grid gap-1 overflow-auto p-2">
 			{#each workflows as workflow (workflow.id)}
 				<article
 					class="workflow-card flex items-start gap-2.5 rounded-xl border border-border bg-card p-3"
 				>
-					<div>
+					<div class="min-w-0">
 						<strong>{workflow.name}</strong>
 						<p>{workflow.prompt}</p>
+						<small>Project workflow · {workflow.profile || 'default'} profile</small>
 					</div>
-					<button title={`Run ${workflow.name}`} onclick={() => onrun(workflow)}>Run</button>
+					<button
+						aria-label={`Run ${workflow.name}`}
+						title={`Run ${workflow.name}`}
+						onclick={() => onrun(workflow)}><Play size={16} aria-hidden="true" /> Run</button
+					>
 				</article>
 			{/each}
+			{#if !loading && workflows.length === 0}<div
+					class="empty grid justify-items-center gap-2 p-5 text-center text-sm text-muted-foreground"
+				>
+					<Play size={24} aria-hidden="true" />
+					<strong class="text-foreground">No workflows yet</strong>
+					<p>Save a prompt you run often. Run creates and opens a new Session.</p>
+				</div>{/if}
 		</div>
-		<form class="workflow-form mt-auto grid gap-2 border-t border-border p-3" onsubmit={onworkflow}>
-			<input bind:value={workflowName} placeholder="Workflow name" aria-label="Workflow name" />
-			<textarea
-				bind:value={workflowPrompt}
-				placeholder="Reusable Hermes prompt"
-				aria-label="Workflow prompt"></textarea>
-			<button type="submit" title="Save workflow">Save workflow</button>
-		</form>
+		<dialog
+			bind:this={workflowDialog}
+			class="add-project-dialog workflow-dialog"
+			aria-labelledby="workflow-dialog-title"
+			onclick={(event) => event.target === event.currentTarget && workflowDialog?.close()}
+		>
+			<header class="dialog-header">
+				<div>
+					<h2 id="workflow-dialog-title">New workflow</h2>
+					<p>Run creates and opens a new Session.</p>
+				</div>
+				<button
+					class="icon-button"
+					aria-label="Close workflow editor"
+					title="Close workflow editor"
+					onclick={() => workflowDialog?.close()}><X size={18} aria-hidden="true" /></button
+				>
+			</header>
+			<form
+				class="workflow-form"
+				onsubmit={async (event) => {
+					if (await onworkflow(event)) workflowDialog?.close();
+				}}
+			>
+				<div class="dialog-body">
+					<input
+						bind:value={workflowName}
+						placeholder="Workflow name"
+						aria-label="Workflow name"
+						required
+					/><textarea
+						bind:value={workflowPrompt}
+						placeholder="Reusable Hermes prompt"
+						aria-label="Workflow prompt"
+						required></textarea>
+				</div>
+				<footer class="dialog-footer">
+					<button type="button" onclick={() => workflowDialog?.close()}>Cancel</button><button
+						type="submit"
+						title="Save workflow">Save workflow</button
+					>
+				</footer>
+			</form>
+		</dialog>
 	{/if}
-	<SessionManagerDialog
-		bind:dialog={editSessionDialog}
-		bind:title={sessionTitle}
-		bind:pinned={sessionPinned}
-		bind:archived={sessionArchived}
-		bind:folder={sessionFolder}
-		bind:tags={sessionTags}
-		bind:icon={sessionIcon}
-		bind:emojiOpen={sessionEmojiPickerOpen}
-		error={sessionEditError}
-		saving={sessionSaving}
-		{onimage}
-		{onsave}
-		{onduplicate}
-		{ondelete}
-		{onexport}
-		{isImage}
-		{iconPreview}
-	/>
 </aside>

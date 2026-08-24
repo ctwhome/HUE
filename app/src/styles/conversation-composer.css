@@ -6,10 +6,44 @@
 
 .transcript article {
 	display: flex;
+	width: 100%;
+	min-width: 0;
 	max-width: 820px;
 	align-items: flex-start;
 	gap: 12px;
 	margin: 0 auto 26px;
+}
+.transcript-content,
+.message-stack,
+.message,
+.markdown,
+.activity-card,
+.activity-body {
+	min-width: 0;
+	max-inline-size: 100%;
+}
+.message,
+.markdown,
+.user-message,
+.activity-card,
+.activity-body,
+.activity-card summary,
+.activity-card header {
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+.markdown table {
+	display: block;
+	max-inline-size: 100%;
+	overflow-x: auto;
+	white-space: nowrap;
+}
+.markdown img,
+.markdown video,
+.markdown iframe,
+.message-images,
+.activity-card media {
+	max-inline-size: 100%;
 }
 
 .transcript article.user {
@@ -66,13 +100,20 @@
 	font-size: 0.9em;
 }
 .markdown pre {
+	max-inline-size: 100%;
 	overflow-x: auto;
 	border-radius: 8px;
 	background: var(--background);
 	padding: 10px 12px;
 }
 .markdown pre code {
+	display: block;
+	width: max-content;
+	min-width: 100%;
 	padding: 0;
+	white-space: pre;
+	word-break: normal;
+	overflow-wrap: normal;
 }
 .code-block {
 	position: relative;
@@ -279,6 +320,7 @@
 .composer > textarea {
 	width: 100%;
 	min-height: 44px;
+	max-height: 160px;
 	resize: none;
 	border: 0;
 	background: transparent;
