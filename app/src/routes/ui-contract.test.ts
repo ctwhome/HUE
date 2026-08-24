@@ -239,20 +239,29 @@ test('project workbench owns browser, terminal, and Git behavior', () => {
 	expect(styles).toContain("grid-template-areas: 'browser repository' 'terminal worktrees'");
 });
 
-test('browser workbench lazy-loads a real Excalidraw canvas with safe live embeds', () => {
+test('browser workbench keeps Browser and Excalidraw as separate tabs', () => {
 	const browserPanel = read('../lib/components/workbench/BrowserPanel.svelte');
-	const canvasAdapter = read('../lib/components/workbench/ExcalidrawBrowserCanvas.tsx');
 	expect(browserPanel).toContain('aria-label="Project browser"');
-	expect(browserPanel).toContain('Add desktop');
-	expect(browserPanel).toContain('Add mobile');
-	expect(browserPanel).toContain("import('./ExcalidrawBrowserCanvas')");
-	expect(browserPanel).toContain('afterInitialPaint');
-	expect(browserPanel).toContain('migrateLegacyBrowserTabs');
-	expect(browserPanel).toContain('localStorage.removeItem(legacyKey)');
-	expect(browserPanel).not.toMatch(/^\s*import .*@excalidraw\/excalidraw/m);
-	expect(browserPanel).toContain('Sites that block framing');
-	expect(browserPanel).toContain('X-Frame-Options');
-	expect(browserPanel).toContain('CSP');
+	expect(browserPanel).toContain('aria-label="Browser and Excalidraw views"');
+	expect(browserPanel).toContain('>Browser</button');
+	expect(browserPanel).toContain('>Excalidraw</button');
+	expect(browserPanel).toContain("import ExcalidrawPanel from './ExcalidrawPanel.svelte'");
+	expect(browserPanel).toContain('New browser tab');
+	expect(browserPanel).not.toContain('migrateLegacyBrowserTabs');
+});
+
+test('Excalidraw tab lazy-loads a real canvas with safe live embeds', () => {
+	const excalidrawPanel = read('../lib/components/workbench/ExcalidrawPanel.svelte');
+	const canvasAdapter = read('../lib/components/workbench/ExcalidrawBrowserCanvas.tsx');
+	expect(excalidrawPanel).toContain('Add desktop');
+	expect(excalidrawPanel).toContain('Add mobile');
+	expect(excalidrawPanel).toContain("import('./ExcalidrawBrowserCanvas')");
+	expect(excalidrawPanel).toContain('afterInitialPaint');
+	expect(excalidrawPanel).not.toContain('migrateLegacyBrowserTabs');
+	expect(excalidrawPanel).not.toMatch(/^\s*import .*@excalidraw\/excalidraw/m);
+	expect(excalidrawPanel).toContain('Sites that block framing');
+	expect(excalidrawPanel).toContain('X-Frame-Options');
+	expect(excalidrawPanel).toContain('CSP');
 	for (const dependency of ['react', 'react-dom/client', '@excalidraw/excalidraw'])
 		expect(canvasAdapter).toContain(`import('${dependency}')`);
 	expect(canvasAdapter).toContain("import('@excalidraw/excalidraw/index.css')");
