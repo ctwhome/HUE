@@ -19,7 +19,7 @@ type MobileShellOptions = {
 };
 
 export class MobileShellController {
-	private query = matchMedia('(max-width: 700px)');
+	private query = matchMedia('(max-width: 700px), (pointer: coarse) and (max-height: 500px)');
 	private returnFocus: HTMLElement | null = null;
 	private gesture: MobileGestureController;
 
