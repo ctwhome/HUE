@@ -846,7 +846,7 @@ export class HermesACP implements PromptRuntime {
 
 	async cancelSession(sessionId: string): Promise<void> {
 		const context = await this.context();
-		await context.request(acp.methods.agent.session.cancel, { sessionId });
+		await context.notify(acp.methods.agent.session.cancel, { sessionId });
 	}
 
 	private async waitForSessionState(sessionId: string): Promise<void> {
