@@ -5,6 +5,7 @@
 	import FilesPanel from './workbench/FilesPanel.svelte';
 	import HealthStrip from './workbench/HealthStrip.svelte';
 	import { afterInitialPaint } from './workbench/after-initial-paint';
+	import { api } from './workbench/api';
 	import type { DirtyGuard } from './workspace/dirty-guard';
 
 	type TerminalProps = { projectId: string };
@@ -12,6 +13,7 @@
 		projectId: string;
 		onbranch: (branch: string | null) => void;
 		onopenfile: (path: string) => void;
+		onchanges: (count: number) => void;
 	};
 
 	let {
@@ -19,6 +21,8 @@
 		projectName,
 		compact,
 		docked = false,
+		terminalOpen = false,
+		onterminal = () => {},
 		onbranch,
 		dirtyGuard
 	}: {
@@ -26,16 +30,21 @@
 		projectName: string;
 		compact: boolean;
 		docked?: boolean;
+		terminalOpen?: boolean;
+		onterminal?: () => void;
 		onbranch: (branch: string | null) => void;
 		dirtyGuard: DirtyGuard;
 	} = $props();
-	type Tool = 'browser' | 'terminal' | 'git' | 'files';
+	type Tool = 'browser' | 'git' | 'files';
 	let previewUrl = $state('');
 	let view = $state<'develop' | 'files'>('develop');
 	let developView = $state<'browser' | 'terminal' | 'git'>('browser');
 	let open = $state(true);
+	let gitChanges = $state(0);
 	let width = $state(440);
-	let activeTool = $derived<Tool>(view === 'files' ? 'files' : developView);
+	let activeTool = $derived<Tool>(
+		view === 'files' ? 'files' : developView === 'git' ? 'git' : 'browser'
+	);
 	let dockElement: HTMLElement;
 	let resizeStart: { x: number; width: number } | null = null;
 	let filesMounted = $state(false);
@@ -50,7 +59,6 @@
 		'workbench-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card';
 	const tools = [
 		{ id: 'browser', label: 'Browser', icon: Globe },
-		{ id: 'terminal', label: 'Terminal', icon: TerminalSquare },
 		{ id: 'git', label: 'Git', icon: GitBranch },
 		{ id: 'files', label: 'Files', icon: Files }
 	] as const;
@@ -74,6 +82,14 @@
 			if (mounted) RepositoryPanels = module.default;
 		} catch (cause) {
 			if (mounted) repositoryError = cause instanceof Error ? cause.message : String(cause);
+		}
+	}
+	async function loadGitChangeCount() {
+		try {
+			gitChanges = (await api<{ changes: unknown[] }>(`/api/projects/${projectId}/repository`))
+				.changes.length;
+		} catch {
+			gitChanges = 0;
 		}
 	}
 	function openFile(path: string) {
@@ -104,6 +120,10 @@
 			chooseDevelopView(tool);
 			openDevelop();
 		}
+	}
+	function toggleTerminal() {
+		open = true;
+		onterminal();
 	}
 	function resizeLimits() {
 		const available = dockElement.parentElement?.clientWidth ?? innerWidth;
@@ -151,7 +171,10 @@
 			);
 			if (innerWidth < 1280) open = false;
 		}
-		const cancelRepositoryLoad = afterInitialPaint(() => void loadRepositoryPanels());
+		const cancelRepositoryLoad = afterInitialPaint(() => {
+			void loadRepositoryPanels();
+			void loadGitChangeCount();
+		});
 		return () => {
 			mounted = false;
 			cancelRepositoryLoad();
@@ -266,7 +289,12 @@
 				{/if}
 				{#if (!compact && !docked) || developView === 'git'}
 					{#if RepositoryPanels}
-						<RepositoryPanels {projectId} {onbranch} onopenfile={openFile} />
+						<RepositoryPanels
+							{projectId}
+							{onbranch}
+							onopenfile={openFile}
+							onchanges={(count) => (gitChanges = count)}
+						/>
 					{:else}
 						<article
 							class={`${panel} repository-panel`}
@@ -306,13 +334,28 @@
 				<button
 					type="button"
 					class:active={open && activeTool === tool.id}
-					aria-label={tool.label}
+					aria-label={tool.id === 'git' && gitChanges
+						? `Git, ${gitChanges} changed files`
+						: tool.label}
 					aria-expanded={open && activeTool === tool.id}
 					title={`${open && activeTool === tool.id ? 'Hide' : 'Show'} ${tool.label}`}
 					onclick={() => toggleTool(tool.id)}
 				>
 					<Icon size={19} aria-hidden="true" />
+					{#if tool.id === 'git' && gitChanges}<span class="git-change-badge">{gitChanges}</span
+						>{/if}
 				</button>
 			{/each}
+			<button
+				type="button"
+				class="terminal-tool"
+				class:active={terminalOpen}
+				aria-label="Terminal"
+				aria-expanded={terminalOpen}
+				title={`${terminalOpen ? 'Hide' : 'Show'} Terminal`}
+				onclick={toggleTerminal}
+			>
+				<TerminalSquare size={19} aria-hidden="true" />
+			</button>
 		</nav>{/if}
 </div>

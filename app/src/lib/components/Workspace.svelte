@@ -15,6 +15,7 @@
 	import AttentionCenter from './notifications/AttentionCenter.svelte';
 	import HermesPanel from './HermesPanel.svelte';
 	import ProjectWorkbench from './ProjectWorkbench.svelte';
+	import ProjectTerminalDock from './workbench/ProjectTerminalDock.svelte';
 	import QuickCapture from './pwa/QuickCapture.svelte';
 	import Composer from './workspace/Composer.svelte';
 	import ContextPanel from './workspace/ContextPanel.svelte';
@@ -265,11 +266,15 @@
 	let runtimeChanging = $derived(runtimeState.changing);
 	let stopping = $derived(messageState.stopping);
 	let workModeChanging = $state(false);
+	let terminalOpen = $state(false);
+	let terminalHeight = $state(300);
 	let pendingSessionDraft = '';
 	let sessionCreation: Promise<Session | null> | null = null;
 	$effect(() => {
 		selectedProject;
 		projectTools = false;
+		terminalOpen = false;
+		terminalHeight = 300;
 	});
 	const changeWorkMode = async (workMode: WorkMode) => {
 		if (!navigation.selectedSession || workModeChanging) return;
@@ -411,6 +416,9 @@
 		bind:addProjectDialog={projectManagement.addProjectDialog}
 		bind:editProjectDialog={projectManagement.editProjectDialog}
 		bind:removeProjectDialog={projectManagement.removeProjectDialog}
+		bind:projectIconPopover={projectManagement.projectIconPopover}
+		bind:projectSettingsIconPopover={projectManagement.projectSettingsIconPopover}
+		projectIconAnchor={projectManagement.projectIconAnchor}
 		editingProject={projectManagement.editingProject}
 		projectRoot={projectManagement.projectRoot}
 		projectDirectories={projectManagement.projectDirectories}
@@ -420,7 +428,6 @@
 		directoryError={projectManagement.directoryError}
 		bind:projectName={projectManagement.projectName}
 		bind:projectIcon={projectManagement.projectIcon}
-		bind:projectEmojiPickerOpen={projectManagement.projectEmojiPickerOpen}
 		projectEditError={projectManagement.projectEditError}
 		projectSaving={projectManagement.projectSaving}
 		locatingProject={projectManagement.locatingProject}
@@ -431,6 +438,8 @@
 		onchoose={navigation.chooseProject}
 		onlocate={projectManagement.openLocateProject}
 		onedit={projectManagement.openEditProject}
+		onicon={projectManagement.openProjectIcon}
+		oniconselect={projectManagement.saveProjectIcon}
 		onhidden={projectManagement.toggleHiddenDirectories}
 		ondirectory={projectManagement.loadDirectory}
 		ontogglefolder={projectManagement.toggleSelectedFolder}
@@ -462,6 +471,7 @@
 		onopen={(session) => navigation.openSession(session, 'push')}
 		onback={() => mobileShell?.open('projects')}
 		onedit={navigation.openEditSession}
+		onicon={navigation.openSessionIconEditor}
 		onarchive={navigation.archiveSession}
 		onsearch={navigation.searchSessionList}
 		onclose={() => mobileShell?.close()}
@@ -503,14 +513,17 @@
 		onpointercancel={finishShellResize}
 		onkeydown={resizeShellPaneWithKeyboard}
 	></div>
-	<div class="session-workspace flex h-full min-h-0 min-w-0 overflow-hidden">
+	<div
+		class="session-workspace flex h-full min-h-0 min-w-0 overflow-hidden"
+		class:terminal-open={terminalOpen && !mobile}
+		style={`--terminal-panel-height: ${terminalHeight}px`}
+	>
 		<main class="session-view flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 			<SessionHeader
-				project={selectedProject}
 				session={selectedSession}
-				{branch}
-				{runtime}
 				onsessions={() => mobileShell?.open('sessions')}
+				onicon={(event) =>
+					selectedSession && navigation.openSessionIconEditor(event, selectedSession)}
 				onmanage={(event) => selectedSession && navigation.openEditSession(event, selectedSession)}
 			/>
 			{#if error}<div
@@ -539,6 +552,7 @@
 				<Conversation
 					{timeline}
 					{messageNotice}
+					agentLabel={`${runtimeState.currentModel()?.name ?? runtime.models?.currentModelId ?? 'Hermes'}${runtime.modes?.currentModeId ? ` · ${runtime.modes.availableModes.find(({ id }) => id === runtime.modes?.currentModeId)?.name ?? runtime.modes.currentModeId}` : ''}`}
 					busy={isTurnBusy(delivery)}
 					mediaPath={selectedSession
 						? navigation.sessionApiPath(selectedSession.sessionId, '/media')
@@ -587,7 +601,7 @@
 					bind:modelMenuOpen={runtimeState.modelMenuOpen}
 					bind:modelPopover={runtimeState.modelPopover}
 					{stopping}
-					showScrollToLatest={transcriptFollow.showScrollToLatest}
+					showScrollToLatest={timeline.length > 0 && transcriptFollow.showScrollToLatest}
 					busy={isTurnBusy(delivery)}
 					onsubmit={submitDraft}
 					ondrop={messageState.handleDrop}
@@ -691,9 +705,16 @@
 					projectName={selectedProject.name}
 					compact={false}
 					docked={true}
+					{terminalOpen}
+					onterminal={() => (terminalOpen = !terminalOpen)}
 					onbranch={(value) => (branch = value)}
 					{dirtyGuard}
 				/>
+			{/key}
+		{/if}
+		{#if terminalOpen && selectedProject?.rootAvailable && !mobile}
+			{#key selectedProject.id}
+				<ProjectTerminalDock projectId={selectedProject.id} bind:height={terminalHeight} />
 			{/key}
 		{/if}
 	</div>

@@ -41,10 +41,12 @@ export class ProjectManagement {
 	addProjectDialog = $state<HTMLDialogElement>();
 	editProjectDialog = $state<HTMLDialogElement>();
 	removeProjectDialog = $state<HTMLDialogElement>();
+	projectIconPopover = $state<HTMLElement>();
+	projectSettingsIconPopover = $state<HTMLElement>();
+	projectIconAnchor = $state<HTMLElement>();
 	editingProject = $state<Project | null>(null);
 	projectName = $state('');
 	projectIcon = $state<string | null>(null);
-	projectEmojiPickerOpen = $state(false);
 	projectEditError = $state('');
 	projectSaving = $state(false);
 	locatingProject = $state<Project | null>(null);
@@ -166,7 +168,6 @@ export class ProjectManagement {
 		this.editingProject = project;
 		this.projectName = project.name;
 		this.projectIcon = project.icon;
-		this.projectEmojiPickerOpen = false;
 		this.projectEditError = '';
 		this.editProjectDialog?.showModal();
 	};
@@ -186,6 +187,45 @@ export class ProjectManagement {
 		}
 		this.projectIcon = await imageDataUrl(file);
 		this.projectEditError = '';
+		await this.saveProjectIcon(this.projectIcon);
+	};
+
+	openProjectIcon = (event: MouseEvent, project: Project) => {
+		event.stopPropagation();
+		this.projectIconAnchor = event.currentTarget as HTMLElement;
+		if (this.editingProject?.id !== project.id) {
+			this.editingProject = project;
+			this.projectName = project.name;
+			this.projectIcon = project.icon;
+		}
+		const insideSettings = (event.currentTarget as HTMLElement).closest('dialog');
+		(insideSettings ? this.projectSettingsIconPopover : this.projectIconPopover)?.showPopover();
+	};
+
+	saveProjectIcon = async (icon: string | null) => {
+		if (!this.editingProject) return;
+		this.projectIcon = icon;
+		this.projectSaving = true;
+		this.projectEditError = '';
+		try {
+			const body = await this.options.api<{ project: Project }>(
+				`/api/projects/${this.editingProject.id}`,
+				{
+					method: 'PATCH',
+					body: JSON.stringify({
+						action: 'update',
+						name: this.editingProject.name,
+						icon
+					})
+				}
+			);
+			this.applyProject(body.project);
+		} catch (cause) {
+			this.restoreProject(cause);
+			this.projectEditError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			this.projectSaving = false;
+		}
 	};
 
 	saveProject = async (event: SubmitEvent) => {

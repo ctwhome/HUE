@@ -1,5 +1,15 @@
 <script lang="ts">
-	import { Archive, ArrowLeft, Ellipsis, LoaderCircle, Pin, Plus, Search, X } from 'lucide-svelte';
+	import {
+		Archive,
+		ArchiveRestore,
+		ArrowLeft,
+		Ellipsis,
+		LoaderCircle,
+		Pin,
+		Plus,
+		Search,
+		X
+	} from 'lucide-svelte';
 	type Project = {
 		id: string;
 		name: string;
@@ -40,6 +50,7 @@
 		onopen,
 		onback,
 		onedit,
+		onicon,
 		onarchive,
 		onsearch,
 		onclose,
@@ -61,6 +72,7 @@
 		onopen: (session: Session) => void;
 		onback: () => void;
 		onedit: (event: MouseEvent, session: Session) => void;
+		onicon: (event: MouseEvent, session: Session) => void;
 		onarchive: (event: MouseEvent, session: Session) => void;
 		onsearch: (event?: SubmitEvent) => void;
 		onclose: () => void;
@@ -123,22 +135,30 @@
 				type="search"
 				placeholder="Search Sessions"
 			/>
-		</label>
-		<button
-			class="flex min-h-11 min-w-[76px] items-center justify-center gap-2 px-3"
-			type="submit"
-			title="Search Sessions"
-			>Search{#if loading}<LoaderCircle
+			{#if loading}<LoaderCircle
 					size={14}
-					class="loading-indicator active animate-spin"
+					class="loading-indicator active shrink-0 animate-spin"
 					role="status"
 					aria-label="Loading project contents"
+				/>{/if}
+		</label>
+		<button
+			class="grid size-11 shrink-0 place-items-center rounded-lg border border-border hover:bg-accent"
+			class:bg-accent={showArchived}
+			type="button"
+			aria-pressed={showArchived}
+			aria-label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'}
+			title={showArchived ? 'Hide archived sessions' : 'Show archived sessions'}
+			onclick={() => {
+				showArchived = !showArchived;
+				onsearch();
+			}}
+			>{#if showArchived}<ArchiveRestore size={17} aria-hidden="true" />{:else}<Archive
+					size={17}
+					aria-hidden="true"
 				/>{/if}</button
 		>
 	</form>
-	<label class="flex min-h-11 items-center gap-2 border-b border-border px-3 text-sm"
-		><input bind:checked={showArchived} onchange={() => onsearch()} type="checkbox" /> Show archived</label
-	>
 	<div class="item-list grid gap-1 overflow-auto p-2">
 		<button
 			class="new-session-action sticky top-0 z-10 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 font-medium text-primary-foreground hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
@@ -154,21 +174,28 @@
 				</h2>{/if}
 			<div class="session-row relative w-full min-w-0">
 				<button
-					class="session-select flex min-h-12 w-full items-center gap-2.5 rounded-lg border border-transparent bg-transparent p-2.5 pr-16 text-left hover:border-border hover:bg-accent [&.active]:border-border [&.active]:bg-accent"
+					class="session-row-icon absolute top-1/2 left-0 z-1 grid size-12 -translate-y-1/2 place-items-center rounded-lg hover:bg-accent"
+					aria-label={`Change ${session.title || 'Untitled session'} icon`}
+					title={`Change ${session.title || 'Untitled session'} icon`}
+					disabled={session.available === false}
+					onclick={(event) => onicon(event, session)}
+				>
+					{#if isImage(session.icon ?? null)}<img
+							class="session-icon session-icon-image size-7 rounded-lg object-cover"
+							src={session.icon ?? ''}
+							alt=""
+						/>{:else}<span class="session-icon grid size-7 place-items-center rounded-lg"
+							>{session.icon ?? automaticIcon(session.title)}</span
+						>{/if}
+				</button>
+				<button
+					class="session-select flex min-h-12 w-full items-center gap-2.5 rounded-lg border border-transparent bg-transparent p-2.5 pr-16 pl-12 text-left hover:border-border hover:bg-accent [&.active]:border-border [&.active]:bg-accent"
 					class:active={selectedSession?.sessionId === session.sessionId}
 					aria-current={selectedSession?.sessionId === session.sessionId ? 'page' : undefined}
 					title={session.available === false ? session.recovery : undefined}
 					disabled={session.available === false}
 					onclick={() => onopen(session)}
 				>
-					{#if isImage(session.icon ?? null)}<img
-							class="session-icon session-icon-image size-7 shrink-0 rounded-lg object-cover"
-							src={session.icon ?? ''}
-							alt=""
-						/>
-					{:else}<span class="session-icon grid size-7 shrink-0 place-items-center rounded-lg"
-							>{session.icon ?? automaticIcon(session.title)}</span
-						>{/if}
 					<div class="session-row-copy min-w-0 flex-1">
 						<div class="session-row-title flex min-w-0 items-baseline gap-2">
 							<strong>{session.title || 'Untitled session'}</strong>{#if session.pinned}<Pin

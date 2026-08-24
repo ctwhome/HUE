@@ -58,7 +58,9 @@ export class WorkspaceNavigation {
 	ready = $state(false);
 	workflowName = $state('');
 	workflowPrompt = $state('');
-	editSessionDialog = $state<HTMLDialogElement>();
+	editSessionMenu = $state<HTMLElement>();
+	sessionIconMenu = $state<HTMLElement>();
+	sessionIconAnchor = $state<HTMLElement>();
 	editingSession = $state<Session | null>(null);
 	sessionIcon = $state<string | null>(null);
 	sessionTitle = $state('');
@@ -73,6 +75,7 @@ export class WorkspaceNavigation {
 	sessionSaving = $state(false);
 	private sessionRequestGeneration = 0;
 	private tabRequestGeneration = 0;
+	private sessionSaveChain = Promise.resolve();
 	private sessionLists = new Map<string, Session[]>();
 	private workflowLists = new Map<string, Workflow[]>();
 	constructor(
@@ -351,6 +354,29 @@ export class WorkspaceNavigation {
 	};
 	openEditSession = (event: MouseEvent, session: Session) => {
 		event.stopPropagation();
+		this.prepareEditingSession(session);
+		this.editSessionMenu?.showPopover();
+		const trigger = event.currentTarget as HTMLElement;
+		void tick().then(() => {
+			const menu = this.editSessionMenu;
+			if (!menu) return;
+			const anchor = trigger.getBoundingClientRect();
+			const gap = 8;
+			const padding = 12;
+			const left = Math.min(
+				Math.max(padding, anchor.left),
+				window.innerWidth - menu.offsetWidth - padding
+			);
+			const top =
+				anchor.bottom + gap + menu.offsetHeight <= window.innerHeight - padding
+					? anchor.bottom + gap
+					: Math.max(padding, anchor.top - menu.offsetHeight - gap);
+			menu.style.left = `${left}px`;
+			menu.style.top = `${top}px`;
+		});
+	};
+
+	private prepareEditingSession(session: Session) {
 		this.editingSession = session;
 		this.sessionIcon = session.customIcon ?? null;
 		this.sessionTitle = session.title ?? '';
@@ -360,7 +386,14 @@ export class WorkspaceNavigation {
 		this.sessionTags = (session.tags ?? []).join(', ');
 		this.sessionEmojiPickerOpen = false;
 		this.sessionEditError = '';
-		this.editSessionDialog?.showModal();
+	}
+
+	openSessionIconEditor = (event: MouseEvent, session?: Session) => {
+		event.stopPropagation();
+		this.sessionIconAnchor = event.currentTarget as HTMLElement;
+		if (session) this.prepareEditingSession(session);
+		if (!this.editingSession) return;
+		this.sessionIconMenu?.showPopover();
 	};
 	archiveSession = async (event: MouseEvent, session: Session) => {
 		event.stopPropagation();
@@ -402,42 +435,59 @@ export class WorkspaceNavigation {
 			reader.readAsDataURL(file);
 		});
 		this.sessionEditError = '';
+		await this.saveSession();
 	};
 
-	saveSession = async (event: SubmitEvent) => {
-		event.preventDefault();
-		if (!this.editingSession) return;
+	saveSession = () => {
+		const editingSession = this.editingSession;
+		if (!editingSession) return this.sessionSaveChain;
+		const input = {
+			icon: this.sessionIcon,
+			title: this.sessionTitle,
+			pinned: this.sessionPinned,
+			archived: this.sessionArchived,
+			folder: this.sessionFolder.trim() || null,
+			tags: this.sessionTags
+				.split(',')
+				.map((tag) => tag.trim())
+				.filter(Boolean)
+		};
+		this.sessionSaveChain = this.sessionSaveChain.then(() => this.persistSession(editingSession, input));
+		return this.sessionSaveChain;
+	};
+
+	private persistSession = async (
+		editingSession: Session,
+		input: {
+			icon: string | null;
+			title: string;
+			pinned: boolean;
+			archived: boolean;
+			folder: string | null;
+			tags: string[];
+		}
+	) => {
 		this.sessionSaving = true;
 		this.sessionEditError = '';
 		try {
 			const body = await this.effects.api<{ session?: Session; icon: string | null }>(
-				this.sessionApiPath(this.editingSession.sessionId),
+				this.sessionApiPath(editingSession.sessionId),
 				{
 					method: 'PATCH',
-					body: JSON.stringify({
-						icon: this.sessionIcon,
-						title: this.sessionTitle,
-						pinned: this.sessionPinned,
-						archived: this.sessionArchived,
-						folder: this.sessionFolder.trim() || null,
-						tags: this.sessionTags
-							.split(',')
-							.map((tag) => tag.trim())
-							.filter(Boolean)
-					})
+					body: JSON.stringify(input)
 				}
 			);
 			const updated = {
-				...this.editingSession,
+				...editingSession,
+				...input,
 				...(body.session ?? {}),
 				customIcon: body.icon,
-				icon: body.icon ?? automaticSessionIcon(this.editingSession.title)
+				icon: body.icon ?? automaticSessionIcon(input.title)
 			};
 			this.sessions = this.sessions.map((session) =>
 				session.sessionId === updated.sessionId ? updated : session
 			);
 			if (this.selectedSession?.sessionId === updated.sessionId) this.selectedSession = updated;
-			this.editSessionDialog?.close();
 		} catch (cause) {
 			this.sessionEditError = cause instanceof Error ? cause.message : String(cause);
 		} finally {
@@ -452,6 +502,7 @@ export class WorkspaceNavigation {
 
 	duplicateSession = async () => {
 		if (!this.editingSession) return;
+		await this.sessionSaveChain;
 		this.sessionSaving = true;
 		try {
 			const body = await this.effects.api<{ session: Session }>(
@@ -462,7 +513,7 @@ export class WorkspaceNavigation {
 				}
 			);
 			this.prependSession(body.session);
-			this.editSessionDialog?.close();
+			this.editSessionMenu?.hidePopover();
 			await this.openSession(body.session, 'push');
 		} catch (cause) {
 			this.sessionEditError = cause instanceof Error ? cause.message : String(cause);
@@ -495,7 +546,7 @@ export class WorkspaceNavigation {
 				this.effects.clearSession();
 				this.persistSelection();
 			}
-			this.editSessionDialog?.close();
+			this.editSessionMenu?.hidePopover();
 		} catch (cause) {
 			this.sessionEditError = cause instanceof Error ? cause.message : String(cause);
 		} finally {
