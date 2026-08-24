@@ -63,7 +63,7 @@
 </script>
 
 <section
-	class="flex min-w-0 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-card px-2.5 py-2"
+	class="health-strip flex min-w-0 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-card px-2.5 py-2"
 	aria-label="Runtime health"
 	aria-busy={loading}
 >

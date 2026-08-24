@@ -17,6 +17,7 @@
 	import Conversation from './workspace/Conversation.svelte';
 	import { MessageState } from './workspace/message-state.svelte';
 	import MobileNavigation from './workspace/MobileNavigation.svelte';
+	import MobileProjectEntry from './workspace/MobileProjectEntry.svelte';
 	import { MobileShellController } from './workspace/mobile-shell';
 	import type { MobileGesture } from './workspace/mobile-navigation';
 	import { workspaceApi } from './workspace/api';
@@ -24,6 +25,7 @@
 	import { isImageIcon, ProjectManagement } from './workspace/project-management.svelte';
 	import ProjectRail from './workspace/ProjectRail.svelte';
 	import SessionHeader from './workspace/SessionHeader.svelte';
+	import SessionManagerOverlay from './workspace/SessionManagerOverlay.svelte';
 	import DirtyGuardDialog from './workspace/DirtyGuardDialog.svelte';
 	import { DirtyGuard } from './workspace/dirty-guard';
 	import { installDirtyNavigation } from './workspace/dirty-navigation';
@@ -44,7 +46,8 @@
 	let now = $state(Date.now());
 	let dirtyGuardOpen = $state(false),
 		dirtyGuardDirty = $state(false);
-	let mobile = $state(false);
+	let mobile = $state(false),
+		projectTools = $state(false);
 	let workspaceElement: HTMLElement;
 	let projectDrawerElement = $state<HTMLElement>();
 	let sessionDrawerElement = $state<HTMLElement>();
@@ -168,9 +171,6 @@
 	let runtime = $derived(sessionState.runtime);
 	let branch = $derived(sessionState.branch);
 	let queuedMessages = $derived(sessionState.queuedMessages);
-	let pendingAssistant = $derived(sessionState.pendingAssistant);
-	let pendingImages = $derived(sessionState.pendingImages);
-	let pendingThought = $derived(sessionState.pendingThought);
 	let delivery = $derived(sessionState.delivery);
 	let composer = $derived(messageState.composer);
 	let pendingEnvelope = $derived(messageState.pendingEnvelope);
@@ -180,7 +180,10 @@
 	let runtimeChanging = $derived(runtimeState.changing);
 	let stopping = $derived(messageState.stopping);
 	let workModeChanging = $state(false);
-
+	$effect(() => {
+		selectedProject;
+		projectTools = false;
+	});
 	const changeWorkMode = async (workMode: WorkMode) => {
 		if (!navigation.selectedSession || workModeChanging) return;
 		workModeChanging = true;
@@ -206,7 +209,6 @@
 			workModeChanging = false;
 		}
 	};
-
 	onMount(() => {
 		applyPreferences(document.documentElement, readPreferences(localStorage));
 		elapsedTimer = setInterval(() => (now = Date.now()), 1000);
@@ -249,6 +251,9 @@
 		ready={navigation.ready}
 		backdrop={Boolean(navigation.mobileDrawer || gestureActive)}
 		unreadCount={unreadNotifications}
+		project={selectedProject}
+		session={selectedSession}
+		view={globalView}
 		ontoggle={(pane, trigger) => mobileShell?.toggle(pane, trigger)}
 		onclose={() => mobileShell?.close()}
 		onnotifications={() => setGlobalView('notifications')}
@@ -318,6 +323,7 @@
 		onlabel={projectManagement.setFolderLabel}
 		onarchiveRequest={projectManagement.requestRemoveProject}
 		onarchive={projectManagement.removeProject}
+		onclose={() => mobileShell?.close()}
 		isImage={isImageIcon}
 	/>
 	<ContextPanel
@@ -332,19 +338,8 @@
 		{workflows}
 		bind:workflowName={navigation.workflowName}
 		bind:workflowPrompt={navigation.workflowPrompt}
-		bind:editSessionDialog={navigation.editSessionDialog}
-		editingSession={navigation.editingSession}
-		bind:sessionIcon={navigation.sessionIcon}
-		bind:sessionTitle={navigation.sessionTitle}
-		bind:sessionPinned={navigation.sessionPinned}
-		bind:sessionArchived={navigation.sessionArchived}
-		bind:sessionFolder={navigation.sessionFolder}
-		bind:sessionTags={navigation.sessionTags}
 		bind:sessionSearch={navigation.sessionSearch}
 		bind:showArchived={navigation.showArchived}
-		bind:sessionEmojiPickerOpen={navigation.sessionEmojiPickerOpen}
-		sessionEditError={navigation.sessionEditError}
-		sessionSaving={navigation.sessionSaving}
 		{now}
 		oncreate={navigation.createSession}
 		ontab={navigation.changeTab}
@@ -353,19 +348,21 @@
 		onedit={navigation.openEditSession}
 		onrun={navigation.runWorkflow}
 		onworkflow={navigation.addWorkflow}
-		onimage={navigation.chooseSessionImage}
-		onsave={navigation.saveSession}
 		onsearch={navigation.searchSessionList}
-		onduplicate={navigation.duplicateSession}
-		ondelete={navigation.deleteSession}
-		onexport={navigation.exportSession}
+		onclose={() => mobileShell?.close()}
 		isImage={isImageIcon}
-		iconPreview={navigation.sessionIconPreview}
 		automaticIcon={automaticSessionIcon}
 		elapsed={formatElapsed}
 	/>
 	<main class="session-view flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-		<SessionHeader project={selectedProject} session={selectedSession} {branch} {runtime} />
+		<SessionHeader
+			project={selectedProject}
+			session={selectedSession}
+			{branch}
+			{runtime}
+			onsessions={() => mobileShell?.open('sessions')}
+			onmanage={(event) => selectedSession && navigation.openEditSession(event, selectedSession)}
+		/>
 		{#if error}<div
 				class="error mx-5 mt-3 rounded-lg border border-destructive/40 bg-destructive/15 px-3 py-2.5 text-sm text-destructive"
 				role="alert"
@@ -473,15 +470,24 @@
 					>
 				</div>
 			</section>
-		{:else if selectedProject && navigation.ready}
+		{:else if selectedProject && navigation.ready && (!mobile || projectTools)}
 			{#key selectedProject.id}
 				<ProjectWorkbench
 					projectId={selectedProject.id}
 					projectName={selectedProject.name}
+					compact={mobile}
 					onbranch={(value) => (branch = value)}
 					{dirtyGuard}
 				/>
 			{/key}
+		{:else if selectedProject && mobile}
+			<MobileProjectEntry
+				project={selectedProject}
+				{sessions}
+				onresume={(session) => navigation.openSession(session, 'push')}
+				onsessions={() => mobileShell?.open('sessions')}
+				ontools={() => (projectTools = true)}
+			/>
 		{:else}
 			<section class="hero mx-auto mt-[12vh] max-w-2xl p-8 text-center text-muted-foreground">
 				<div
@@ -520,6 +526,8 @@
 		{/if}
 	</main>
 </div>
+
+<SessionManagerOverlay {navigation} />
 
 <QuickCapture
 	bind:this={quickCapture}
