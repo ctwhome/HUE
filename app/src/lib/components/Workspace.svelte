@@ -25,6 +25,7 @@
 	import MobileNavigation from './workspace/MobileNavigation.svelte';
 	import { MobileShellController } from './workspace/mobile-shell';
 	import { compactModelLabel, type MobileGesture } from './workspace/mobile-navigation';
+	import { readProjectPanels, togglePanelState as togglePanel } from './workspace/panel-state';
 	import { workspaceApi } from './workspace/api';
 	import { WorkspaceNavigation } from './workspace/navigation.svelte';
 	import { isImageIcon, ProjectManagement } from './workspace/project-management.svelte';
@@ -249,6 +250,7 @@
 	});
 	voiceRef.current = voice;
 	let selectedProject = $derived(navigation.selectedProject);
+	let panelProjectId = $derived(selectedProject?.id ?? '');
 	let sessions = $derived(navigation.sessions);
 	let workflows = $derived(navigation.workflows);
 	let selectedSession = $derived(navigation.selectedSession);
@@ -273,10 +275,8 @@
 	let pendingSessionDraft = '';
 	let sessionCreation: Promise<Session | null> | null = null;
 	$effect(() => {
-		selectedProject;
 		projectTools = false;
-		browserOpen = true;
-		terminalOpen = false;
+		({ browserOpen, terminalOpen } = readProjectPanels(localStorage, panelProjectId));
 		terminalHeight = 300;
 	});
 	const changeWorkMode = async (workMode: WorkMode) => {
@@ -717,8 +717,10 @@
 					docked={true}
 					{browserOpen}
 					{terminalOpen}
-					onbrowser={() => (browserOpen = !browserOpen)}
-					onterminal={() => (terminalOpen = !terminalOpen)}
+					onbrowser={() =>
+						(browserOpen = togglePanel(localStorage, panelProjectId, 'browser', browserOpen))}
+					onterminal={() =>
+						(terminalOpen = togglePanel(localStorage, panelProjectId, 'terminal', terminalOpen))}
 					onbranch={(value) => (branch = value)}
 					{dirtyGuard}
 				/>

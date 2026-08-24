@@ -80,6 +80,7 @@ const workbenchFiles = [
 const workbench = workbenchFiles.join('\n');
 const projectWorkbench = workbenchFiles[0];
 const projectBrowserDock = read('../lib/components/ProjectBrowserDock.svelte');
+const panelState = read('../lib/components/workspace/panel-state.ts');
 const button = read('../lib/components/ui/Button.svelte');
 const input = read('../lib/components/ui/Input.svelte');
 const textarea = read('../lib/components/ui/Textarea.svelte');
@@ -316,6 +317,12 @@ test('project workbench owns browser, terminal, and Git behavior', () => {
 	expect(workbench).toContain("action: 'generateCommitMessage'");
 	expect(workbench).toContain('aria-label="Generate commit message with Hermes"');
 	expect(workbench).toContain('aria-label="Commit message model"');
+	expect(workbench).toContain('aria-label="GitHub issues"');
+	expect(workbench).toContain('aria-label="GitHub pull requests"');
+	expect(workbench).toContain('target="_blank"');
+	expect(workbench).toContain("worktreesOpen ? 'Collapse worktrees' : 'Expand worktrees'");
+	expect(workbench).toContain('aria-expanded={worktreesOpen}');
+	expect(workbench).toContain('max-[700px]:size-11');
 	expect(workbench).toContain("action: 'push'");
 	expect(workbench).toContain('onDestroy(() =>');
 	expect(styles).toContain("grid-template-areas: 'browser repository' 'terminal worktrees'");
@@ -332,6 +339,10 @@ test('Project tools stay embedded with Sessions and collapse to an accessible do
 	expect(projectWorkbench).toContain('onpointerdown={startResize}');
 	expect(projectWorkbench).not.toContain('Math.min(720');
 	expect(projectWorkbench).toContain('localStorage.setItem(`hue:project-tools:${projectId}:width`');
+	expect(projectWorkbench).toContain('`hue:project-tools:${projectId}:dock`');
+	expect(workbench).toContain('`hue:project-tools:${projectId}:worktrees-open`');
+	expect(workspace).toContain('togglePanel(localStorage');
+	expect(panelState).toContain('`hue:project-tools:${projectId}:${panel}-open`');
 	expect(workspace).toContain('<ProjectBrowserDock');
 	expect(projectBrowserDock).toContain('requestAnimationFrame');
 	expect(projectBrowserDock).toContain('aria-valuemin="240"');

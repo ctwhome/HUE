@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Minus, Plus, RefreshCw, Sparkles } from 'lucide-svelte';
+	import { ChevronDown, ChevronRight, Minus, Plus, RefreshCw, Sparkles } from 'lucide-svelte';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
 	import { api } from './api';
@@ -12,6 +12,8 @@
 		worktrees: Array<{ path: string; branch: string | null; head: string }>;
 		remotes: Array<{ name: string; webUrl: string | null }>;
 	};
+	type GitHubItem = { number: number; title: string; url: string };
+	type GitHubItems = { issues: GitHubItem[]; pullRequests: GitHubItem[] };
 	type CommitModelsResponse = {
 		options?: {
 			providers?: Array<{
@@ -40,7 +42,10 @@
 	let repositoryBusy = $state(false);
 	let commitMessageGenerating = $state(false);
 	let repositoryMessage = $state('');
+	let githubItems = $state<GitHubItems | null>(null);
+	let githubError = $state('');
 	let commitMessage = $state('');
+	let worktreesOpen = $state(true);
 	let commitModel = $state('openai-codex:gpt-5.6-luna');
 	let commitModels = $state([
 		{ value: 'openai-codex:gpt-5.6-luna', label: 'Codex · GPT-5.6 Luna' }
@@ -60,12 +65,32 @@
 			repository = result;
 			onbranch(result.branch);
 			onchanges(result.changes.length);
+			if (isGitHubRepository(result)) void loadGitHubItems();
 		} catch (cause) {
 			if (!mounted || request !== repositoryRequestGeneration) return;
 			repositoryError = cause instanceof Error ? cause.message : String(cause);
 		} finally {
 			if (mounted && request === repositoryRequestGeneration) repositoryLoading = false;
 		}
+	}
+	function isGitHubRepository(result = repository) {
+		return result?.remotes.some(
+			(remote) =>
+				remote.name === 'origin' &&
+				remote.webUrl &&
+				new URL(remote.webUrl).hostname === 'github.com'
+		);
+	}
+	async function loadGitHubItems() {
+		githubError = '';
+		try {
+			githubItems = await api<GitHubItems>(`/api/projects/${projectId}/repository?view=github`);
+		} catch (cause) {
+			githubError = cause instanceof Error ? cause.message : String(cause);
+		}
+	}
+	function refreshRepository() {
+		void loadRepository();
 	}
 	function repositoryLinks() {
 		const url = repository?.remotes.find((remote) => remote.webUrl)?.webUrl;
@@ -154,10 +179,16 @@
 			// The default remains available when Hermes model discovery is offline.
 		}
 	}
+	function toggleWorktrees() {
+		worktreesOpen = !worktreesOpen;
+		localStorage.setItem(`hue:project-tools:${projectId}:worktrees-open`, String(worktreesOpen));
+	}
 
 	onMount(() => {
 		mounted = true;
 		commitModel = localStorage.getItem('hue:commit-message-model') || commitModel;
+		worktreesOpen =
+			localStorage.getItem(`hue:project-tools:${projectId}:worktrees-open`) !== 'false';
 		void loadRepository();
 		void loadCommitModels();
 		return () => {
@@ -191,7 +222,7 @@
 				title="Refresh Git status"
 				aria-label="Refresh Git status"
 				disabled={repositoryBusy}
-				onclick={loadRepository}><RefreshCw size={15} aria-hidden="true" /></Button
+				onclick={refreshRepository}><RefreshCw size={15} aria-hidden="true" /></Button
 			>
 		</div>
 	</header>
@@ -219,6 +250,41 @@
 						title={`Open ${link.label}`}>{link.label}</a
 					>{/each}
 			</nav>
+			{#if isGitHubRepository()}
+				<div class="grid grid-cols-2 gap-2 border-y border-border py-2">
+					<section class="min-w-0" aria-label="GitHub issues">
+						<strong class="px-1 text-xs">Issues</strong>
+						<ul class="mt-1 grid list-none gap-0.5 p-0">
+							{#each githubItems?.issues ?? [] as item}<li><a
+									class="block overflow-hidden rounded-md px-1.5 py-1 text-xs text-ellipsis whitespace-nowrap hover:bg-muted hover:underline"
+									href={item.url}
+									target="_blank"
+									rel="noopener noreferrer"
+									title={`Open issue #${item.number}: ${item.title}`}>#{item.number} {item.title}</a
+								></li>{/each}
+						</ul>
+						{#if githubItems && !githubItems.issues.length}<small class="px-1 text-muted-foreground"
+								>No open issues</small
+							>{/if}
+					</section>
+					<section class="min-w-0" aria-label="GitHub pull requests">
+						<strong class="px-1 text-xs">Pull requests</strong>
+						<ul class="mt-1 grid list-none gap-0.5 p-0">
+							{#each githubItems?.pullRequests ?? [] as item}<li><a
+									class="block overflow-hidden rounded-md px-1.5 py-1 text-xs text-ellipsis whitespace-nowrap hover:bg-muted hover:underline"
+									href={item.url}
+									target="_blank"
+									rel="noopener noreferrer"
+									title={`Open pull request #${item.number}: ${item.title}`}>#{item.number} {item.title}</a
+								></li>{/each}
+						</ul>
+						{#if githubItems && !githubItems.pullRequests.length}<small
+								class="px-1 text-muted-foreground">No open pull requests</small
+							>{/if}
+					</section>
+				</div>
+				{#if githubError}<p class="px-1 pt-2 text-xs text-destructive" role="alert">{githubError}</p>{/if}
+			{/if}
 			<section class="git-section mt-2" aria-label="Staged changes">
 				<header class="flex min-h-8 items-center gap-2 px-1">
 					<strong class="text-xs">Staged changes</strong><span class="text-xs text-muted-foreground"
@@ -356,33 +422,51 @@
 	</form>
 </article>
 
-<article class={`${panel} worktrees-panel`} aria-label="Git worktrees">
+<article
+	class={`${panel} worktrees-panel`}
+	style:flex={worktreesOpen ? undefined : '0 0 auto'}
+	aria-label="Git worktrees"
+>
 	<header
 		class="flex min-h-11 items-center justify-between border-b border-border bg-muted/40 px-2.5 py-2"
 	>
-		<strong class="text-xs">Worktrees</strong><span class="text-[0.68rem] text-muted-foreground"
-			>{repository?.worktrees.length ?? 0}</span
-		>
+		<strong class="text-xs">Worktrees</strong>
+		<div class="flex items-center gap-1">
+			<span class="text-[0.68rem] text-muted-foreground">{repository?.worktrees.length ?? 0}</span>
+			<button
+				type="button"
+				class="grid size-8 place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring max-[700px]:size-11"
+				aria-label={worktreesOpen ? 'Collapse worktrees' : 'Expand worktrees'}
+				aria-expanded={worktreesOpen}
+				title={worktreesOpen ? 'Collapse worktrees' : 'Expand worktrees'}
+				onclick={toggleWorktrees}
+			>
+				{#if worktreesOpen}<ChevronDown size={16} aria-hidden="true" />{:else}<ChevronRight
+						size={16}
+						aria-hidden="true"
+					/>{/if}
+			</button>
+		</div>
 	</header>
-	<div class="worktree-list grid min-h-0 content-start gap-1 overflow-auto p-2">
-		{#each repository?.worktrees ?? [] as worktree}<article
-				class="flex min-w-0 items-start justify-between gap-2 rounded-lg border border-border bg-background/50 p-2"
-			>
-				<div class="grid min-w-0 gap-1">
-					<strong class="text-xs">{worktree.branch ?? 'Detached HEAD'}</strong><code
-						class="overflow-hidden text-[0.68rem] text-ellipsis whitespace-nowrap text-muted-foreground"
-						>{worktree.path}</code
-					>
-				</div>
-				<small class="font-mono text-violet-300">{worktree.head.slice(0, 7)}</small>
-			</article>{/each}{#if !repositoryLoading && repository?.isRepository && !repository.worktrees.length}<p
-				class="muted text-xs text-muted-foreground"
-			>
-				No linked worktrees.
-			</p>{/if}{#if !repositoryLoading && repository && !repository.isRepository}<p
-				class="muted text-xs text-muted-foreground"
-			>
-				Available when this project uses Git.
-			</p>{/if}
-	</div>
+	{#if worktreesOpen}<div class="worktree-list grid min-h-0 content-start gap-1 overflow-auto p-2">
+			{#each repository?.worktrees ?? [] as worktree}<article
+					class="flex min-w-0 items-start justify-between gap-2 rounded-lg border border-border bg-background/50 p-2"
+				>
+					<div class="grid min-w-0 gap-1">
+						<strong class="text-xs">{worktree.branch ?? 'Detached HEAD'}</strong><code
+							class="overflow-hidden text-[0.68rem] text-ellipsis whitespace-nowrap text-muted-foreground"
+							>{worktree.path}</code
+						>
+					</div>
+					<small class="font-mono text-violet-300">{worktree.head.slice(0, 7)}</small>
+				</article>{/each}{#if !repositoryLoading && repository?.isRepository && !repository.worktrees.length}<p
+					class="muted text-xs text-muted-foreground"
+				>
+					No linked worktrees.
+				</p>{/if}{#if !repositoryLoading && repository && !repository.isRepository}<p
+					class="muted text-xs text-muted-foreground"
+				>
+					Available when this project uses Git.
+				</p>{/if}
+		</div>{/if}
 </article>

@@ -320,6 +320,38 @@ export type ProjectRepositoryAction =
 	| { action: 'stageAll' | 'unstageAll' | 'push' }
 	| { action: 'commit'; message: string };
 
+export type ProjectGitHubItem = { number: number; title: string; url: string };
+type CommandRunner = (
+	command: string,
+	args: string[],
+	options?: { cwd?: string; encoding?: BufferEncoding; timeout?: number }
+) => { status: number | null; stdout: string | Buffer };
+
+export function projectGitHubItems(
+	projectRoot: string,
+	run: CommandRunner = (command, args, options) => spawnSync(command, args, options)
+): { issues: ProjectGitHubItem[]; pullRequests: ProjectGitHubItem[] } {
+	const origin = run('git', ['-C', projectRoot, 'remote', 'get-url', 'origin'], {
+		encoding: 'utf8',
+		timeout: 2_000
+	});
+	if (origin.status !== 0) throw new Error('Git origin is not configured');
+	const webUrl = repositoryWebUrl(origin.stdout.toString().trim());
+	if (!webUrl || new URL(webUrl).hostname !== 'github.com') {
+		throw new Error('Git origin is not hosted on GitHub');
+	}
+	const list = (kind: 'issue' | 'pr') => {
+		const result = run(
+			'gh',
+			[kind, 'list', '--repo', webUrl, '--state', 'open', '--limit', '20', '--json', 'number,title,url'],
+			{ cwd: projectRoot, encoding: 'utf8', timeout: 10_000 }
+		);
+		if (result.status !== 0) throw new Error(`GitHub CLI could not list ${kind === 'issue' ? 'issues' : 'pull requests'}`);
+		return JSON.parse(result.stdout.toString()) as ProjectGitHubItem[];
+	};
+	return { issues: list('issue'), pullRequests: list('pr') };
+}
+
 function git(projectRoot: string, args: string[], allowFailure = false): string | null {
 	const result = spawnSync('git', ['-C', projectRoot, ...args], {
 		encoding: 'utf8',
