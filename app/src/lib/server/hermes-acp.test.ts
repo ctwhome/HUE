@@ -296,6 +296,34 @@ describe('HermesACP update subscriptions', () => {
 		expect(completed.result).toBe('Read config.json successfully.');
 	});
 
+	it('sends session cancellation as an ACP notification', async () => {
+		const runtime = new HermesACP();
+		let requestCalled = false;
+		let notifiedMethod = '';
+		let cancelledSessionId = '';
+		const internals = runtime as unknown as {
+			context: () => Promise<{
+				request: () => Promise<void>;
+				notify: (method: string, params: { sessionId: string }) => Promise<void>;
+			}>;
+		};
+		internals.context = async () => ({
+			request: async () => {
+				requestCalled = true;
+			},
+			notify: async (method, { sessionId }) => {
+				notifiedMethod = method;
+				cancelledSessionId = sessionId;
+			}
+		});
+
+		await runtime.cancelSession('session-1');
+
+		expect(requestCalled).toBe(false);
+		expect(notifiedMethod).toBe('session/cancel');
+		expect(cancelledSessionId).toBe('session-1');
+	});
+
 	it('forwards chronological tool and active plan updates from ACP', async () => {
 		const runtime = new HermesACP();
 		const internals = runtime as unknown as {
