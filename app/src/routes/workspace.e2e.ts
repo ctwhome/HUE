@@ -122,7 +122,7 @@ async function mockProjectWorkbenchRequests(page: import('@playwright/test').Pag
 			json: { isRepository: false, branch: null, changes: [], worktrees: [], remotes: [] }
 		})
 	);
-	await page.route('**/api/projects/*/sessions', (route) =>
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) =>
 		route.fulfill({ json: { sessions: [] } })
 	);
 	await mockTerminalRequests(page);
@@ -199,6 +199,148 @@ async function chooseHermesSection(
 test.beforeEach(async ({ page }) => {
 	await mockTerminalRequests(page);
 	await mockDefaultSessionRequests(page);
+});
+
+test('Project tools stay docked across Sessions and collapse to their rail', async ({
+	page
+}, testInfo) => {
+	const browserErrors: string[] = [];
+	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
+	page.on('pageerror', (error) => browserErrors.push(error.message));
+	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({
+			json: {
+				sessions: [
+					{ sessionId: 'dock-alpha', cwd: '/work/hue', title: 'Dock alpha' },
+					{ sessionId: 'dock-beta', cwd: '/work/hue', title: 'Dock beta' }
+				]
+			}
+		})
+	);
+	await page.route(/\/sessions\/dock-(?:alpha|beta)$/, (route) =>
+		route.fulfill({
+			json: {
+				transcript: route.request().url().endsWith('dock-alpha')
+					? [
+							{
+								role: 'assistant',
+								text: 'A long assistant response should use the available conversation width instead of collapsing into a narrow centered column.'
+							}
+						]
+					: [],
+				messages: [],
+				events: [],
+				cursor: 0,
+				activeTurn: null
+			}
+		})
+	);
+
+	await page.setViewportSize(viewports[0]);
+	await addProject(page);
+	await sessionButton(page, 'Dock alpha').click();
+	const dock = page.getByRole('navigation', { name: 'Project tools' });
+	const workbench = page.getByRole('region', { name: 'HUE workbench' });
+	await expect(dock).toBeVisible();
+	await expect(workbench).toBeVisible();
+	const transcriptWidth = (await page.getByRole('region', { name: 'Conversation' }).boundingBox())!
+		.width;
+	const messageWidth = (await page.locator('.transcript article.assistant .message').boundingBox())!
+		.width;
+	expect(messageWidth).toBeGreaterThan(transcriptWidth * 0.7);
+	for (const [paneName, separatorName] of [
+		['Projects', 'Resize Projects'],
+		['Project contents', 'Resize Sessions']
+	] as const) {
+		const pane = page.getByRole('complementary', { name: paneName });
+		const widthBeforeResize = (await pane.boundingBox())!.width;
+		await page.getByRole('separator', { name: separatorName }).focus();
+		await page.keyboard.press('ArrowRight');
+		await expect
+			.poll(async () => (await pane.boundingBox())!.width)
+			.toBeGreaterThan(widthBeforeResize);
+	}
+	await expect(dock.getByRole('button', { name: 'Browser', exact: true })).toHaveAttribute(
+		'aria-expanded',
+		'true'
+	);
+	const splitter = page.getByRole('separator', { name: 'Resize project tools' });
+	const widthBefore = (await workbench.boundingBox())!.width;
+	await splitter.focus();
+	await page.keyboard.press('ArrowLeft');
+	await expect
+		.poll(async () => (await workbench.boundingBox())!.width)
+		.toBeGreaterThan(widthBefore);
+	await dock.getByRole('button', { name: 'Browser', exact: true }).click();
+	await expect(workbench).toBeHidden();
+	await dock.getByRole('button', { name: 'Terminal', exact: true }).click();
+	await expect(workbench).toBeVisible();
+	await expect(dock.getByRole('button', { name: 'Terminal', exact: true })).toHaveAttribute(
+		'aria-expanded',
+		'true'
+	);
+	await sessionButton(page, 'Dock beta').click();
+	await expect(page).toHaveURL(/session=dock-beta/);
+	await expect(dock.getByRole('button', { name: 'Terminal', exact: true })).toHaveAttribute(
+		'aria-expanded',
+		'true'
+	);
+	await testInfo.attach('session-project-tools-1440x900', {
+		body: await page.screenshot(),
+		contentType: 'image/png'
+	});
+	await page.setViewportSize(viewports[1]);
+	await page.getByRole('button', { name: 'Open sessions with no project' }).click();
+	await page
+		.locator('.project-rail nav .project-select')
+		.filter({ hasText: 'HUE' })
+		.evaluate((button: HTMLButtonElement) => button.click());
+	await sessionButton(page, 'Dock beta').click();
+	await expect(page.getByRole('navigation', { name: 'Project tools' })).toBeVisible();
+	await expect(page.getByRole('region', { name: 'HUE workbench' })).toBeHidden();
+	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1024);
+	await testInfo.attach('session-project-tools-1024x768', {
+		body: await page.screenshot(),
+		contentType: 'image/png'
+	});
+
+	for (const viewport of viewports.slice(2)) {
+		await page.setViewportSize(viewport);
+		await expect(page.getByRole('navigation', { name: 'Project tools' })).toHaveCount(0);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		await testInfo.attach(`session-project-tools-${viewport.width}x${viewport.height}`, {
+			body: await page.screenshot(),
+			contentType: 'image/png'
+		});
+	}
+	expect(browserErrors).toEqual([]);
+});
+
+test('typing in an empty Project chat creates a Session without losing the draft', async ({
+	page
+}) => {
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) =>
+		route.request().method() === 'POST'
+			? route.fulfill({
+					status: 201,
+					json: {
+						session: { sessionId: 'draft-session', cwd: '/work/hue', title: 'New Session' },
+						commands: []
+					}
+				})
+			: route.fulfill({ json: { sessions: [] } })
+	);
+	await page.setViewportSize(viewports[0]);
+	await addProject(page);
+	const composer = page.getByLabel('Message Hermes');
+	await expect(composer).toBeVisible();
+	await expect(page.getByRole('navigation', { name: 'Project tools' })).toBeVisible();
+	await composer.fill('Plan the release');
+	await expect(page).toHaveURL(/session=draft-session/);
+	await expect(composer).toHaveValue('Plan the release');
 });
 
 test('Project file workspace stays usable across required viewports', async ({
@@ -313,7 +455,9 @@ test('Project file workspace stays usable across required viewports', async ({
 	expect(await page.evaluate(() => matchMedia('(max-width: 700px)').matches)).toBe(false);
 	for (const action of [
 		page.getByRole('button', { name: 'Refresh files' }),
-		page.getByRole('button', { name: 'Develop' }),
+		page
+			.getByRole('navigation', { name: 'Project tools' })
+			.getByRole('button', { name: 'Browser', exact: true }),
 		...[
 			'Settings',
 			'Inspect Hermes runtime',
@@ -353,9 +497,9 @@ test('Project file workspace stays usable across required viewports', async ({
 	await expect(page.getByRole('region', { name: 'Project files' })).toBeVisible();
 	await expect(
 		page
-			.getByRole('navigation', { name: 'Project workbench views' })
+			.getByRole('navigation', { name: 'Project tools' })
 			.getByRole('button', { name: 'Files', exact: true })
-	).toHaveAttribute('aria-pressed', 'true');
+	).toHaveAttribute('aria-expanded', 'true');
 	await page
 		.getByRole('navigation', { name: 'Global navigation' })
 		.getByRole('button', { name: 'Inspect Hermes runtime' })

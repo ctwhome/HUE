@@ -98,7 +98,7 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <section
-	class="transcript min-h-0 flex-1 overflow-auto overflow-x-hidden px-[clamp(20px,7vw,110px)] pt-8"
+	class="transcript min-h-0 flex-1 overflow-auto overflow-x-hidden px-[clamp(12px,2.5vw,40px)] pt-8"
 	aria-label="Conversation"
 	aria-live="polite"
 	tabindex="0"

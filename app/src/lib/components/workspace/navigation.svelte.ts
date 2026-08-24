@@ -362,6 +362,23 @@ export class WorkspaceNavigation {
 		this.sessionEditError = '';
 		this.editSessionDialog?.showModal();
 	};
+	archiveSession = async (event: MouseEvent, session: Session) => {
+		event.stopPropagation();
+		try {
+			const body = await this.effects.api<{ session: Session }>(
+				this.sessionApiPath(session.sessionId),
+				{ method: 'PATCH', body: JSON.stringify({ archived: true }) }
+			);
+			const updated = { ...session, ...body.session, archived: true };
+			this.sessions = this.showArchived
+				? this.sessions.map((item) => (item.sessionId === session.sessionId ? updated : item))
+				: this.sessions.filter((item) => item.sessionId !== session.sessionId);
+			this.sessionLists.set(this.selectedProject?.id ?? 'none', this.sessions);
+			if (this.selectedSession?.sessionId === session.sessionId) this.selectedSession = updated;
+		} catch (cause) {
+			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
+		}
+	};
 
 	sessionIconPreview = () => this.sessionIcon ?? automaticSessionIcon(this.editingSession?.title);
 

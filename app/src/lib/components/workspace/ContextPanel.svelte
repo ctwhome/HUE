@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ArrowLeft, Ellipsis, LoaderCircle, Pin, Plus, Search, X } from 'lucide-svelte';
+	import { Archive, ArrowLeft, Ellipsis, LoaderCircle, Pin, Plus, Search, X } from 'lucide-svelte';
 	type Project = {
 		id: string;
 		name: string;
@@ -40,6 +40,7 @@
 		onopen,
 		onback,
 		onedit,
+		onarchive,
 		onsearch,
 		onclose,
 		isImage,
@@ -60,6 +61,7 @@
 		onopen: (session: Session) => void;
 		onback: () => void;
 		onedit: (event: MouseEvent, session: Session) => void;
+		onarchive: (event: MouseEvent, session: Session) => void;
 		onsearch: (event?: SubmitEvent) => void;
 		onclose: () => void;
 		isImage: (icon: string | null) => boolean;
@@ -152,12 +154,10 @@
 				</h2>{/if}
 			<div class="session-row relative w-full min-w-0">
 				<button
-					class="session-select flex min-h-12 w-full items-center gap-2.5 rounded-lg border border-transparent bg-transparent p-2.5 pr-10 text-left hover:border-border hover:bg-accent [&.active]:border-border [&.active]:bg-accent"
+					class="session-select flex min-h-12 w-full items-center gap-2.5 rounded-lg border border-transparent bg-transparent p-2.5 pr-16 text-left hover:border-border hover:bg-accent [&.active]:border-border [&.active]:bg-accent"
 					class:active={selectedSession?.sessionId === session.sessionId}
 					aria-current={selectedSession?.sessionId === session.sessionId ? 'page' : undefined}
-					title={session.available === false
-						? session.recovery
-						: `${session.error ? 'Failed — ' : session.attention ? 'Needs attention — ' : ''}Open ${session.title || 'Untitled session'}`}
+					title={session.available === false ? session.recovery : undefined}
 					disabled={session.available === false}
 					onclick={() => onopen(session)}
 				>
@@ -200,6 +200,13 @@
 							aria-label="Session needs attention">•</span
 						>{/if}
 				</button>
+				{#if session.available !== false && !session.archived}<button
+						class="session-archive absolute top-1/2 right-8 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
+						aria-label={`Archive ${session.title || 'Untitled session'}`}
+						title={`Archive ${session.title || 'Untitled session'}`}
+						onclick={(event) => onarchive(event, session)}
+						><Archive size={15} aria-hidden="true" /></button
+					>{/if}
 				{#if session.available !== false}<button
 						class="session-edit absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
 						aria-label={`Edit ${session.title || 'Untitled session'}`}

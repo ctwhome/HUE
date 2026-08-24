@@ -76,6 +76,7 @@ const workbenchFiles = [
 	'../lib/components/workbench/api.ts'
 ].map(read);
 const workbench = workbenchFiles.join('\n');
+const projectWorkbench = workbenchFiles[0];
 const button = read('../lib/components/ui/Button.svelte');
 const input = read('../lib/components/ui/Input.svelte');
 const textarea = read('../lib/components/ui/Textarea.svelte');
@@ -143,6 +144,16 @@ test('long session titles stay inside the row so session actions remain reachabl
 	expect(page).toContain('class="session-row-title flex min-w-0 items-baseline gap-2"');
 });
 
+test('session rows expose archive on hover without redundant open tooltips', () => {
+	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
+	expect(contextPanel).toContain("aria-label={`Archive ${session.title || 'Untitled session'}`}");
+	expect(contextPanel).toContain('onarchive(event, session)');
+	expect(contextPanel).not.toContain("`Open ${session.title || 'Untitled session'}`");
+	expect(styles).toMatch(
+		/@media \(max-width: 700px\)[\s\S]*\.session-archive[\s\S]*width: 44px;[\s\S]*height: 44px;/
+	);
+});
+
 test('new session is a persistent full-width action at the top of the session list', () => {
 	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
 	const action = 'class="new-session-action sticky top-0 z-10 flex min-h-11 w-full';
@@ -188,6 +199,10 @@ test('global navigation exposes workspace and Hermes administration', () => {
 	}
 	expect(navigation).toContain('aria-label="Inspect Hermes runtime"');
 	expect(navigation).toContain('class="global-admin mt-auto');
+});
+
+test('button text utilities are not overridden by unlayered theme CSS', () => {
+	expect(styles).not.toMatch(/button\s*\{\s*color:\s*inherit;/);
 });
 
 test('Hermes management remains complete and request-race safe', () => {
@@ -281,6 +296,30 @@ test('project workbench owns browser, terminal, and Git behavior', () => {
 	expect(styles).toContain("grid-template-areas: 'browser repository' 'terminal worktrees'");
 });
 
+test('Project tools stay embedded with Sessions and collapse to an accessible dock', () => {
+	expect(workspace).toContain('class="session-workspace');
+	expect(workspace).toContain('docked={true}');
+	for (const tool of ['Browser', 'Terminal', 'Git', 'Files'])
+		expect(projectWorkbench).toContain(tool);
+	expect(projectWorkbench).toContain('aria-label={tool.label}');
+	expect(projectWorkbench).toContain('aria-expanded={open && activeTool === tool.id}');
+	expect(projectWorkbench).toContain('aria-label="Resize project tools"');
+	expect(projectWorkbench).toContain('onpointerdown={startResize}');
+	expect(projectWorkbench).toContain('localStorage.setItem(`hue:project-tools:${projectId}:width`');
+	expect(styles).toContain('.project-tool-dock.docked:not(.open)');
+	expect(styles).toContain('.project-tool-resizer');
+	for (const pane of ['Projects', 'Sessions']) {
+		expect(workspace).toContain(`aria-label="Resize ${pane}"`);
+	}
+	expect(workspace).toContain('localStorage.setItem(`hue:shell:${pane}:width`');
+	expect(styles).toContain('.shell-resizer');
+	expect(workspace).toContain(
+		'selectedSession || (selectedProject?.rootAvailable && navigation.ready)'
+	);
+	expect(workspace).toContain('oninput={createSessionFromDraft}');
+	expect(workspace).toContain('pendingSessionDraft');
+});
+
 test('browser workbench keeps Browser and Excalidraw as separate tabs', () => {
 	const browserPanel = read('../lib/components/workbench/BrowserPanel.svelte');
 	expect(browserPanel).toContain('aria-label="Project browser"');
@@ -368,6 +407,12 @@ test('mobile chat exposes resilient content, compact context, and auto-growing i
 	expect(page).toContain('aria-label="Search models"');
 	expect(page).toContain('Edit Session');
 	expect(page).toContain('Save changes');
+});
+
+test('chat messages use the available conversation width', () => {
+	expect(page).toContain('px-[clamp(12px,2.5vw,40px)]');
+	expect(styles).toMatch(/\.transcript article\s*\{[^}]*max-width: none;/s);
+	expect(styles).toMatch(/\.transcript article\.assistant \.message-stack\s*\{[^}]*flex: 1;/s);
 });
 
 test('mobile secondary surfaces are self-explanatory and bounded', () => {
