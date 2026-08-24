@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
-	import { formatElapsed, isTurnBusy } from '$lib';
+	import { formatElapsed, isTurnBusy, selectLatestPlan } from '$lib';
 	import { automaticSessionIcon } from '$lib/icon';
 	import { applyPreferences, readPreferences } from '$lib/preferences';
 	import type { CaptureInput } from '$lib/pwa/quick-capture';
@@ -163,6 +163,7 @@
 	let selectedSession = $derived(navigation.selectedSession);
 	let activeTab = $derived(navigation.activeTab);
 	let timeline = $derived(sessionState.timeline);
+	let selectedPlan = $derived(selectLatestPlan(timeline));
 	let commands = $derived(sessionState.commands);
 	let runtime = $derived(sessionState.runtime);
 	let branch = $derived(sessionState.branch);
@@ -389,6 +390,7 @@
 			/>
 			<Composer
 				{composer}
+				plan={selectedPlan}
 				bind:composerElement={messageState.composerElement}
 				bind:draggingImages={messageState.draggingImages}
 				bind:images={messageState.images}

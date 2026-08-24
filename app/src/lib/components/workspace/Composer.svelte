@@ -17,31 +17,18 @@
 		Square,
 		X
 	} from 'lucide-svelte';
+	import type { WorkspacePlanEntry } from '$lib';
 	import type { ImageAttachment, InputAttachment } from '$lib/message-content';
 	import { compactModelLabel } from './mobile-navigation';
+	import CurrentTask from './CurrentTask.svelte';
+	import type { HermesCommand as Command, HermesRuntime as Runtime, QueuedMessage } from './types';
 	import type { WorkMode } from '$lib/work-mode';
 
-	type Command = { name: string; description: string; input?: { hint: string } | null };
-	type QueuedMessage = {
-		id: string;
-		text: string;
-		images: ImageAttachment[];
-		attachments: InputAttachment[];
-		status: 'queued';
-	};
-	type Runtime = {
-		profile: string;
-		models?: {
-			currentModelId: string;
-			availableModels: Array<{ modelId: string; name: string; description?: string | null }>;
-		} | null;
-		modes?: { currentModeId: string; availableModes: Array<{ id: string; name: string }> } | null;
-		usage?: { used: number; size: number };
-	};
 	type Model = NonNullable<Runtime['models']>['availableModels'][number];
 
 	let {
 		composer,
+		plan,
 		composerElement = $bindable(),
 		draggingImages = $bindable(),
 		images = $bindable(),
@@ -94,6 +81,7 @@
 		busy
 	}: {
 		composer: string;
+		plan: WorkspacePlanEntry[];
 		composerElement?: HTMLTextAreaElement;
 		draggingImages: boolean;
 		images: ImageAttachment[];
@@ -306,6 +294,7 @@
 				{/if}
 			</div>
 		</section>{/if}
+	<CurrentTask {plan} />
 	<textarea
 		bind:this={composerElement}
 		value={composer}
