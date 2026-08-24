@@ -110,6 +110,7 @@
 	let panelSession = $derived(navigation.selectedSession);
 	let timeline = $derived(sessionState.timeline);
 	let runtime = $derived(sessionState.runtime);
+	let lastPublishedSession = fixedSession;
 
 	$effect(() => {
 		navigation.workflows = workflows;
@@ -118,7 +119,10 @@
 		const updated = navigation.sessions.find(
 			({ sessionId }) => sessionId === fixedSession.sessionId
 		);
-		if (updated) onupdate(updated);
+		if (updated && updated !== lastPublishedSession) {
+			lastPublishedSession = updated;
+			untrack(() => onupdate(updated));
+		}
 	});
 
 	async function changeWorkMode(workMode: WorkMode) {

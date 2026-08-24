@@ -1,3 +1,5 @@
+import { pushState, replaceState } from '$app/navigation';
+import { page } from '$app/state';
 import {
 	NAVIGATION_MEMORY_KEY,
 	resolveLaunchDestination,
@@ -7,6 +9,9 @@ import {
 import type { Project, Session } from './types';
 
 export type HistoryMode = 'push' | 'replace' | 'none';
+
+export const isDrawerHistoryEntry = () =>
+	Boolean(page.state.hueWorkspace && page.state.drawerEntry);
 
 type NavigationState = {
 	ready: boolean;
@@ -48,18 +53,13 @@ export function persistNavigationSelection(
 	else url.searchParams.delete('session');
 	if (navigation.mobileDrawer) url.searchParams.set('pane', navigation.mobileDrawer);
 	else url.searchParams.delete('pane');
-	window.history[mode === 'push' ? 'pushState' : 'replaceState'](
-		{
-			...(window.history.state ?? {}),
-			hueWorkspace: true,
-			drawerEntry,
-			projectId: navigation.selectedProject?.id ?? null,
-			sessionId: navigation.selectedSession?.sessionId ?? null,
-			pane: navigation.mobileDrawer
-		},
-		'',
-		url
-	);
+	(mode === 'push' ? pushState : replaceState)(url, {
+		hueWorkspace: true,
+		drawerEntry,
+		projectId: navigation.selectedProject?.id ?? null,
+		sessionId: navigation.selectedSession?.sessionId ?? null,
+		pane: navigation.mobileDrawer
+	});
 	if (remember)
 		localStorage.setItem(
 			NAVIGATION_MEMORY_KEY,

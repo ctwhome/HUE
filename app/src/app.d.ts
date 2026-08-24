@@ -5,7 +5,13 @@ declare global {
 		// interface Error {}
 		// interface Locals {}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			hueWorkspace?: boolean;
+			drawerEntry?: boolean;
+			projectId?: string | null;
+			sessionId?: string | null;
+			pane?: import('$lib/components/workspace/mobile-navigation').MobilePane;
+		}
 		// interface Platform {}
 	}
 }

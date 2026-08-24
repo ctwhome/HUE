@@ -1,6 +1,9 @@
-import { afterEach, expect, test } from 'bun:test';
-import { restoreNavigationSelection } from './navigation-history';
+import { afterEach, expect, mock, test } from 'bun:test';
 import type { Project, Session } from './types';
+
+mock.module('$app/navigation', () => ({ pushState() {}, replaceState() {} }));
+mock.module('$app/state', () => ({ page: { state: {} } }));
+const { restoreNavigationSelection } = await import('./navigation-history');
 
 const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
 const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
