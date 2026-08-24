@@ -157,7 +157,7 @@ async function addProject(page: import('@playwright/test').Page) {
 	await openMobileProjects(page);
 	const existing = page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' });
 	if (await existing.count()) {
-		await existing.click({ position: { x: 20, y: 22 } });
+		await existing.click({ position: { x: 80, y: 22 } });
 		return;
 	}
 	const response = await page.request.post('/api/projects', {
@@ -173,7 +173,7 @@ async function addProject(page: import('@playwright/test').Page) {
 	await page
 		.locator('.project-rail nav .project-select')
 		.filter({ hasText: 'HUE' })
-		.click({ position: { x: 20, y: 22 } });
+		.click({ position: { x: 80, y: 22 } });
 }
 
 async function removeProjects(page: import('@playwright/test').Page) {
@@ -232,7 +232,33 @@ test('Project tools stay docked across Sessions and collapse to their rail', asy
 				messages: [],
 				events: [],
 				cursor: 0,
-				activeTurn: null
+				activeTurn: null,
+				runtime: {
+					profile: 'default',
+					models: {
+						currentModelId: 'openai:gpt-5.6',
+						availableModels: [{ modelId: 'openai:gpt-5.6', name: 'GPT-5.6' }]
+					},
+					modes: {
+						currentModeId: 'high',
+						availableModes: [{ id: 'high', name: 'High' }]
+					}
+				}
+			}
+		})
+	);
+	await page.route('**/api/projects/*/repository', (route) =>
+		route.fulfill({
+			json: {
+				isRepository: true,
+				branch: 'main',
+				changes: [
+					{ path: 'one.ts', index: ' ', worktree: 'M', fileUrl: null },
+					{ path: 'two.ts', index: 'M', worktree: ' ', fileUrl: null },
+					{ path: 'three.ts', index: '?', worktree: '?', fileUrl: null }
+				],
+				worktrees: [],
+				remotes: []
 			}
 		})
 	);
@@ -244,6 +270,8 @@ test('Project tools stay docked across Sessions and collapse to their rail', asy
 	const workbench = page.getByRole('region', { name: 'HUE workbench' });
 	await expect(dock).toBeVisible();
 	await expect(workbench).toBeVisible();
+	await expect(dock.getByRole('button', { name: 'Git, 3 changed files' })).toBeVisible();
+	await expect(page.getByText('GPT-5.6 · High', { exact: true })).toBeVisible();
 	const transcriptWidth = (await page.getByRole('region', { name: 'Conversation' }).boundingBox())!
 		.width;
 	const messageWidth = (await page.locator('.transcript article.assistant .message').boundingBox())!
@@ -280,6 +308,26 @@ test('Project tools stay docked across Sessions and collapse to their rail', asy
 		'aria-expanded',
 		'true'
 	);
+	const terminalPanel = page.getByRole('article', { name: 'Project terminal' });
+	await expect(terminalPanel).toBeVisible();
+	const terminalBox = (await page
+		.getByRole('region', { name: 'Workspace terminal panel' })
+		.boundingBox())!;
+	const chatBox = (await page.getByRole('main').boundingBox())!;
+	const browserBox = (await page.getByRole('article', { name: 'Project browser' }).boundingBox())!;
+	expect(terminalBox.x).toBeLessThanOrEqual(chatBox.x + 1);
+	expect(terminalBox.x + terminalBox.width).toBeGreaterThan(browserBox.x + browserBox.width - 2);
+	expect(terminalBox.y).toBeGreaterThan(browserBox.y);
+	expect((await page.locator('.composer').boundingBox())!.y).toBeLessThan(terminalBox.y);
+	const terminalHeight = terminalBox.height;
+	await page.getByRole('separator', { name: 'Resize Terminal' }).focus();
+	await page.keyboard.press('ArrowUp');
+	await expect
+		.poll(
+			async () =>
+				(await page.getByRole('region', { name: 'Workspace terminal panel' }).boundingBox())!.height
+		)
+		.toBeGreaterThan(terminalHeight);
 	await sessionButton(page, 'Dock beta').click();
 	await expect(page).toHaveURL(/session=dock-beta/);
 	await expect(dock.getByRole('button', { name: 'Terminal', exact: true })).toHaveAttribute(
@@ -338,6 +386,11 @@ test('typing in an empty Project chat creates a Session without losing the draft
 	const composer = page.getByLabel('Message Hermes');
 	await expect(composer).toBeVisible();
 	await expect(page.getByRole('navigation', { name: 'Project tools' })).toBeVisible();
+	expect(
+		await page
+			.getByRole('region', { name: 'Conversation' })
+			.evaluate((element) => getComputedStyle(element).overflowY)
+	).toBe('hidden');
 	await composer.fill('Plan the release');
 	await expect(page).toHaveURL(/session=draft-session/);
 	await expect(composer).toHaveValue('Plan the release');
@@ -520,9 +573,7 @@ test('Project file workspace stays usable across required viewports', async ({
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		if (viewport.width <= 700) {
-			await page.waitForFunction(
-				() => document.querySelector('.mobile-project-entry, .project-workbench.compact') !== null
-			);
+			await page.waitForFunction(() => document.querySelector('.mobile-project-tools') !== null);
 			const entry = page.getByRole('button', { name: 'Open Project tools' });
 			if (await entry.isVisible()) await entry.click();
 			const filesView = page
@@ -530,7 +581,12 @@ test('Project file workspace stays usable across required viewports', async ({
 				.getByRole('button', { name: 'Files', exact: true });
 			if ((await filesView.getAttribute('aria-pressed')) !== 'true') await filesView.click();
 			const backToFiles = page.getByRole('button', { name: 'Back to files' });
-			if (await backToFiles.isVisible()) await backToFiles.click();
+			if (await backToFiles.isVisible()) {
+				await backToFiles.click();
+				const guard = page.getByRole('dialog', { name: 'Discard unsaved changes?' });
+				if (await guard.isVisible())
+					await page.getByRole('button', { name: 'Discard changes' }).click();
+			}
 			await page.getByRole('treeitem', { name: /README.md/ }).click();
 			await page.getByRole('button', { name: 'Edit Markdown' }).click();
 		}
@@ -684,6 +740,15 @@ test('shows honest first-run actions without persisted Projects', async ({ page 
 
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
+		await page.getByRole('button', { name: 'Manage Friendly greeting' }).click();
+		const iconEditor = page.getByRole('dialog', { name: 'Session icon' });
+		await expect(iconEditor).toBeVisible();
+		const box = (await iconEditor.boundingBox())!;
+		expect(box.x).toBeGreaterThanOrEqual(0);
+		expect(box.y).toBeGreaterThanOrEqual(0);
+		expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+		expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+		await iconEditor.getByRole('button', { name: 'Close Session icon editor' }).click();
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
 		);
@@ -1008,6 +1073,17 @@ test('edits authoritative Project metadata and folders, then archives it', async
 			await page.setViewportSize(viewport);
 			await page.goto('/');
 			await openMobileProjects(page);
+			if (viewport.width === 1440) {
+				const iconTrigger = page.getByRole('button', { name: `Change ${currentName} icon` });
+				const iconTriggerBox = (await iconTrigger.boundingBox())!;
+				await iconTrigger.click();
+				const iconEditor = page.getByRole('dialog', { name: 'Project icon' });
+				await expect(iconEditor).toBeVisible();
+				expect((await iconEditor.boundingBox())!.y).toBeGreaterThanOrEqual(
+					iconTriggerBox.y + iconTriggerBox.height
+				);
+				await page.getByRole('button', { name: 'Close Project icon editor' }).click();
+			}
 			const editButton = page.getByRole('button', { name: `Edit ${currentName}` });
 			await editButton.click();
 			const dialog = page.getByRole('dialog', { name: 'Edit Hermes Project' });
@@ -1035,29 +1111,38 @@ test('edits authoritative Project metadata and folders, then archives it', async
 				const firstFolder = dialog.locator('div.rounded-lg', { hasText: rootPath });
 				await firstFolder.getByRole('button', { name: 'Remove' }).click();
 				await expect(dialog.getByText(rootPath, { exact: true })).toHaveCount(0);
-				await dialog.getByRole('button', { name: 'Choose project emoji' }).click();
-				const picker = dialog.locator('emoji-picker');
+				await dialog.getByRole('button', { name: 'Change project icon' }).click();
+				const iconEditor = page.getByRole('dialog', { name: 'Project icon' });
+				const picker = iconEditor.locator('emoji-picker');
 				await expect(picker).toBeVisible();
-				await picker.getByRole('combobox', { name: 'Search' }).fill('rocket');
-				await picker.getByRole('option', { name: /rocket/i }).click();
-				await expect(dialog.locator('.project-icon-preview')).toHaveText('🚀');
+				await picker.getByRole('combobox', { name: 'Search' }).fill('bug');
+				await picker.getByRole('option', { name: /bug/i }).first().click();
+				await expect(dialog.locator('.project-icon-preview')).toHaveText('🐛');
 			}
 			if (viewport.width === 390) {
-				await dialog.getByLabel('Project icon image').setInputFiles({
-					name: 'project.png',
-					mimeType: 'image/png',
-					buffer: Buffer.from(
-						'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-						'base64'
-					)
-				});
+				await dialog.getByRole('button', { name: 'Change project icon' }).click();
+				await page
+					.getByRole('dialog', { name: 'Project icon' })
+					.getByLabel('Project icon image')
+					.setInputFiles({
+						name: 'project.png',
+						mimeType: 'image/png',
+						buffer: Buffer.from(
+							'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+							'base64'
+						)
+					});
 				await expect(dialog.getByRole('img', { name: 'Project icon preview' })).toBeVisible();
 			}
 			if (viewport.width === 320) {
-				await dialog.getByRole('button', { name: 'Choose project emoji' }).click();
+				await dialog.getByRole('button', { name: 'Change project icon' }).click();
 				await expect(
-					dialog.locator('emoji-picker').getByRole('combobox', { name: 'Search' })
+					page
+						.getByRole('dialog', { name: 'Project icon' })
+						.locator('emoji-picker')
+						.getByRole('combobox', { name: 'Search' })
 				).toBeVisible();
+				await page.getByRole('button', { name: 'Close Project icon editor' }).click();
 			}
 			const renamed = `Renamed ${viewport.width}`;
 			await dialog.getByLabel('Project name').fill(renamed);
@@ -1067,10 +1152,10 @@ test('edits authoritative Project metadata and folders, then archives it', async
 			await expect(renamedProject).toBeAttached();
 			if (viewport.width === 1440) {
 				await renamedProject.click();
-				await expect(page.locator('.selected-project-title .title-icon')).toHaveText('🚀');
+				await expect(page.locator('.selected-project-title .title-icon')).toHaveText('🐛');
 			}
 			if (viewport.width < 390) {
-				await expect(page.locator('.project-select .project-icon-image')).toBeVisible();
+				await expect(page.locator('.project-icon-trigger .project-icon-image')).toBeVisible();
 			}
 			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 				viewport.width
@@ -1157,21 +1242,39 @@ test('shows automatic session emojis and allows a custom override', async ({ pag
 	});
 
 	await addProject(page);
-	await expect(page.locator('.session-select .session-icon')).toHaveText('👋');
-	await page.getByRole('button', { name: 'Edit Friendly greeting' }).click();
-	const dialog = page.getByRole('dialog', { name: 'Edit Session' });
-	await dialog.getByRole('button', { name: 'Choose session emoji' }).click();
-	const picker = dialog.locator('emoji-picker');
+	await expect(page.locator('.session-row-icon .session-icon')).toHaveText('👋');
+	const rowIcon = page.getByRole('button', { name: 'Change Friendly greeting icon' });
+	const rowIconBox = (await rowIcon.boundingBox())!;
+	await rowIcon.click();
+	const rowEditor = page.getByRole('dialog', { name: 'Session icon' });
+	await expect(rowEditor).toBeVisible();
+	expect(await rowEditor.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+	expect((await rowEditor.boundingBox())!.y).toBeGreaterThanOrEqual(
+		rowIconBox.y + rowIconBox.height
+	);
+	await rowEditor.getByRole('button', { name: 'Close Session icon editor' }).click();
+	await sessionButton(page, 'Friendly greeting').click();
+	await page.getByRole('button', { name: 'Manage Friendly greeting' }).click();
+	const menu = page.getByRole('dialog', { name: 'Session icon' });
+	const picker = menu.locator('emoji-picker');
 	await picker.getByRole('combobox', { name: 'Search' }).fill('bug');
 	await picker.getByRole('option', { name: /bug/i }).first().click();
-	await dialog.getByRole('button', { name: 'Save changes' }).click();
-	expect(savedIcon).toBe('🐛');
-	await expect(page.locator('.session-select .session-icon')).toHaveText('🐛');
-	await page.locator('.session-select').click();
-	await expect(page.locator('.selected-session-title .title-icon')).toHaveText('🐛');
+	await expect.poll(() => savedIcon).toBe('🐛');
+	await expect(page.locator('.session-row-icon .session-icon')).toHaveText('🐛');
+	await expect(page.locator('.session-icon-trigger .title-icon')).toHaveText('🐛');
 
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
+		await page.getByRole('button', { name: 'Manage Friendly greeting' }).click();
+		const editor = page.getByRole('dialog', { name: 'Session icon' });
+		await expect(editor).toBeVisible();
+		expect(await editor.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+		const box = (await editor.boundingBox())!;
+		expect(box.x).toBeGreaterThanOrEqual(0);
+		expect(box.y).toBeGreaterThanOrEqual(0);
+		expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+		expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+		await editor.getByRole('button', { name: 'Close Session icon editor' }).click();
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
 		);
@@ -2488,13 +2591,9 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 		await page.setViewportSize(viewport);
 		await expect(page.getByRole('listbox', { name: 'Hermes commands' })).toBeVisible();
 		await expect(modelTrigger).toBeVisible();
-		if (viewport.width <= 700) {
-			await page.locator('summary[aria-label="Session details"]').click();
-			await expect(
-				page.locator('.session-details-menu').getByText('main', { exact: true })
-			).toBeVisible();
-			await page.locator('summary[aria-label="Session details"]').click();
-		} else await expect(page.locator('.desktop-session-context .header-branch')).toHaveText('main');
+		await page.locator('.session-header button[title="Session options"]').click();
+		await expect(page.getByRole('dialog', { name: 'Session options' })).toBeVisible();
+		await page.getByRole('button', { name: 'Close session options' }).click();
 		await expect(page.getByText('25%', { exact: true })).toBeVisible();
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
@@ -3573,20 +3672,26 @@ test('searches and manages rename pin archive duplicate export and delete impact
 
 	await addProject(page);
 	await page.getByRole('searchbox', { name: 'Search Sessions' }).fill('Manage');
-	await page.getByRole('button', { name: 'Search', exact: true }).click();
+	await page.getByRole('searchbox', { name: 'Search Sessions' }).press('Enter');
 	expect(searched).toBe('Manage');
 	await sessionButton(page, 'Manage me').click();
-	await page.getByRole('button', { name: 'Edit Manage me' }).click();
+	await page.getByRole('button', { name: 'Session options for Manage me' }).click();
+	await page.getByRole('button', { name: 'Change session icon' }).click();
+	await expect(page.getByRole('dialog', { name: 'Session icon' })).toBeVisible();
+	await page.getByRole('button', { name: 'Close Session icon editor' }).click();
+	await page.getByRole('button', { name: 'Session options for Manage me' }).click();
 	await expect(page.getByRole('button', { name: 'Import unavailable' })).toBeDisabled();
 	await expect(page.getByRole('button', { name: 'Import unavailable' })).toHaveAttribute(
 		'title',
 		'Hermes ACP does not provide a Session import seam'
 	);
 	await page.getByLabel('Title').fill('Managed');
-	await page.getByLabel('Pinned').check();
-	await page.getByLabel('Archived', { exact: true }).check();
-	await page.getByRole('button', { name: 'Save changes' }).click();
-	expect(metadata).toMatchObject({ title: 'Managed', pinned: true, archived: true });
+	await page.getByRole('button', { name: 'Pin session' }).click();
+	await page.getByRole('button', { name: 'Archive session' }).click();
+	await expect(page.getByRole('button', { name: 'Save changes' })).toHaveCount(0);
+	await expect
+		.poll(() => metadata)
+		.toMatchObject({ title: 'Managed', pinned: true, archived: true });
 	await expect(sessionButton(page, 'Managed')).toBeVisible();
 
 	await page.getByRole('button', { name: 'Edit Managed' }).click();
@@ -3665,7 +3770,17 @@ test('starts a new session without the previous session output', async ({ page }
 	await expect(page.getByText('Delivery status unknown', { exact: true })).toBeHidden();
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
-		await expect(page.getByRole('heading', { name: 'Start this Hermes Session' })).toBeVisible();
+		const welcome = page.getByRole('heading', { name: 'Start this Hermes Session' }).locator('..');
+		await expect(welcome).toBeVisible();
+		const conversationBox = (await page
+			.getByRole('region', { name: 'Conversation' })
+			.boundingBox())!;
+		const welcomeBox = (await welcome.boundingBox())!;
+		expect(
+			Math.abs(
+				welcomeBox.y + welcomeBox.height / 2 - (conversationBox.y + conversationBox.height / 2)
+			)
+		).toBeLessThanOrEqual(2);
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
 		);
@@ -4172,13 +4287,12 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 	expect((await model.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 	await picker.getByRole('button', { name: 'Close model picker' }).click();
 
-	await page.locator('summary[aria-label="Session details"]').click();
-	await page.getByRole('button', { name: 'Edit Session' }).click();
-	const dialog = page.getByRole('dialog', { name: 'Edit Session' });
-	await expect(dialog.getByRole('button', { name: 'Save changes' })).toBeVisible();
-	const saveBox = (await dialog.getByRole('button', { name: 'Save changes' }).boundingBox())!;
-	expect(saveBox.y + saveBox.height).toBeLessThanOrEqual(844);
-	const close = dialog.getByRole('button', { name: 'Close session manager' });
+	await page.locator('.session-header button[title="Session options"]').click();
+	const dialog = page.getByRole('dialog', { name: 'Session options' });
+	await expect(dialog.getByText('Saved automatically')).toBeVisible();
+	const removeBox = (await dialog.getByRole('button', { name: 'Remove' }).boundingBox())!;
+	expect(removeBox.y + removeBox.height).toBeLessThanOrEqual(844);
+	const close = dialog.getByRole('button', { name: 'Close session options' });
 	const closeBox = (await close.boundingBox())!;
 	expect(closeBox.y).toBeGreaterThanOrEqual(0);
 	expect(closeBox.y + closeBox.height).toBeLessThanOrEqual(844);
@@ -4362,7 +4476,7 @@ test('mobile swipe hierarchy tracks, snaps back, excludes native interactions, a
 		.getByRole('button', { name: 'Sessions' });
 	await sessionsButton.click();
 	await page.getByRole('button', { name: 'Edit Gesture session' }).click();
-	const sessionDialog = page.getByRole('dialog', { name: 'Edit Session' });
+	const sessionDialog = page.getByRole('dialog', { name: 'Session options' });
 	await expect(sessionDialog).toBeVisible();
 	await touchDrag(page, { x: 32, y: 300 }, { x: 180, y: 302 });
 	await expect(sessionDialog).toBeVisible();

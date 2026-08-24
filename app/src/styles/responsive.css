@@ -50,6 +50,12 @@
 		justify-content: center;
 		padding-inline: 10px;
 	}
+	.project-icon-trigger {
+		display: none;
+	}
+	.project-icon-inline {
+		display: grid;
+	}
 	.shell-resizer {
 		display: none;
 	}
@@ -373,6 +379,25 @@
 	.session-details-menu {
 		max-height: calc(100dvh - 130px);
 		overflow: auto;
+	}
+	.session-manager-popover:popover-open {
+		top: auto !important;
+		right: 8px !important;
+		bottom: max(8px, env(safe-area-inset-bottom)) !important;
+		left: 8px !important;
+		width: auto;
+		max-height: min(82dvh, 680px);
+	}
+	.session-manager-popover button,
+	.session-manager-popover label:has(input[type='file']),
+	.icon-editor-popover button,
+	.icon-editor-popover label:has(input[type='file']) {
+		min-height: 44px;
+	}
+	.icon-editor-popover {
+		max-height: calc(100dvh - 24px);
+		overflow-x: hidden;
+		overflow-y: auto;
 	}
 	.runtime-pill {
 		display: none;
