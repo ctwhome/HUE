@@ -4623,6 +4623,13 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 	page
 }) => {
 	await page.unroute('**/api/projects/*/terminal**');
+	const browserErrors: string[] = [];
+	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
+	page.on('pageerror', (error) => browserErrors.push(error.message));
+	page.on('requestfailed', (request) => browserErrors.push(`${request.method()} ${request.url()}`));
+	await page.route('http://localhost:4001/**', (route) =>
+		route.fulfill({ contentType: 'text/html', body: '<h1>HUE browser canvas fixture</h1>' })
+	);
 	const gitActions: string[] = [];
 	let changes = [{ path: 'app/src/routes/+page.svelte', index: ' ', worktree: 'M' }];
 	await page.route(/\/api\/projects\/[^/]+\/repository$/, async (route) => {
@@ -4676,13 +4683,51 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 	await expect.poll(() => gitActions).toEqual(['stage', 'commit', 'push']);
 
 	const browser = workbench.getByRole('article', { name: 'Project browser' });
-	await browser.getByRole('button', { name: 'New browser tab' }).click();
-	await expect(browser.getByRole('tab')).toHaveCount(2);
-	await browser.getByRole('button', { name: 'Close New tab' }).last().click();
-	await expect(browser.getByRole('tab')).toHaveCount(1);
 	await browser.getByLabel('Browser address').fill('not a url');
 	await browser.getByRole('button', { name: 'Go' }).click();
 	await expect(browser.getByRole('alert')).toContainText('Enter a valid http or https address');
+	await browser.getByLabel('Browser address').fill('http://localhost:4001');
+	await browser.getByRole('button', { name: 'Go' }).click();
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const key = Object.keys(localStorage).find((item) =>
+					item.startsWith('hue:browser-canvas-address:v1:')
+				);
+				return localStorage.getItem(key ?? '');
+			})
+		)
+		.toBe('http://localhost:4001/');
+	await browser.getByRole('button', { name: 'Add desktop' }).click();
+	await browser.getByRole('button', { name: 'Add mobile' }).click();
+	await expect(browser.locator('.browser-embed iframe')).toHaveCount(2);
+	await expect(browser.locator('iframe[title*="Desktop"]')).toHaveAttribute('width', '1440');
+	await expect(browser.locator('iframe[title*="Mobile"]')).toHaveAttribute('width', '390');
+	for (const frame of await browser.locator('iframe').all()) {
+		await expect(frame).toHaveAttribute(
+			'sandbox',
+			'allow-forms allow-modals allow-popups allow-same-origin allow-scripts'
+		);
+		await expect(frame).toHaveAttribute('referrerpolicy', 'no-referrer');
+	}
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const key = Object.keys(localStorage).find((item) =>
+					item.startsWith('hue:browser-canvas:v1:')
+				);
+				const scene = JSON.parse(localStorage.getItem(key ?? '') ?? '{}') as {
+					elements?: Array<{ type: string; width: number; height: number }>;
+				};
+				return (scene.elements ?? [])
+					.filter(({ type }) => type === 'embeddable')
+					.map(({ width, height }) => ({ width, height }));
+			})
+		)
+		.toEqual([
+			{ width: 1440, height: 900 },
+			{ width: 390, height: 844 }
+		]);
 
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
@@ -4698,13 +4743,34 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 			await expect(workbench.getByRole('article', { name: 'Project terminal' })).toBeVisible();
 			await workbench.getByRole('button', { name: 'Git', exact: true }).click();
 			await expect(workbench.getByRole('article', { name: 'Git status' })).toBeVisible();
+			await workbench.getByRole('button', { name: 'Browser', exact: true }).click();
+			await expect(workbench.getByRole('article', { name: 'Project browser' })).toBeVisible();
 		}
 		await expect(workbench).toBeVisible();
+		const browserBox = await browser.boundingBox();
+		expect(browserBox).not.toBeNull();
+		expect(browserBox!.x).toBeGreaterThanOrEqual(0);
+		expect(browserBox!.x + browserBox!.width).toBeLessThanOrEqual(viewport.width);
+		if (viewport.width <= 1200)
+			expect(
+				await page.locator('.project-workbench').evaluate((element) => ({
+					overflowX: getComputedStyle(element).overflowX,
+					scrollLeft: element.scrollLeft
+				}))
+			).toEqual({ overflowX: 'hidden', scrollLeft: 0 });
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
 		);
-		if (viewport.width <= 390) await expectMinimumTouchTargets(workbench.locator('button, a'));
+		if (viewport.width <= 390)
+			await expectMinimumTouchTargets(
+				browser.locator(
+					'.browser-canvas-toolbar button, .browser-canvas-toolbar a, .browser-canvas-toolbar input'
+				)
+			);
+		if (process.env.HUE_CAPTURE_BROWSER_CANVAS)
+			await browser.screenshot({ path: `/tmp/hue-browser-canvas-${viewport.width}.png` });
 	}
+	expect(browserErrors).toEqual([]);
 });
 
 test('remounts project-scoped tools when switching projects', async ({ page }) => {
@@ -4767,6 +4833,7 @@ test('remounts project-scoped tools when switching projects', async ({ page }) =
 		const firstBrowser = page.getByRole('article', { name: 'Project browser' });
 		await firstBrowser.getByLabel('Browser address').fill('http://localhost:4001');
 		await firstBrowser.getByRole('button', { name: 'Go' }).click();
+		await firstBrowser.getByRole('button', { name: 'Add mobile' }).click();
 		await page.locator('.project-select').filter({ hasText: projects[1].name }).click();
 
 		await expect(
@@ -4775,6 +4842,9 @@ test('remounts project-scoped tools when switching projects', async ({ page }) =
 		await expect(
 			page.getByRole('article', { name: 'Project browser' }).getByLabel('Browser address')
 		).toHaveValue('');
+		await expect(
+			page.getByRole('article', { name: 'Project browser' }).locator('.browser-embed iframe')
+		).toHaveCount(0);
 		await page.getByRole('button', { name: 'Start terminal' }).click();
 		await expect
 			.poll(() =>
@@ -4783,6 +4853,14 @@ test('remounts project-scoped tools when switching projects', async ({ page }) =
 				)
 			)
 			.toBe(true);
+		await page.locator('.project-select').filter({ hasText: projects[0].name }).click();
+		await expect(
+			page.getByRole('article', { name: 'Project browser' }).locator('iframe[title*="Mobile"]')
+		).toHaveCount(1);
+		await page.reload();
+		await expect(
+			page.getByRole('article', { name: 'Project browser' }).locator('iframe[title*="Mobile"]')
+		).toHaveCount(1);
 		await expect
 			.poll(() =>
 				terminalActions.some(

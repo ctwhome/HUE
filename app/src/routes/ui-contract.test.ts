@@ -239,6 +239,39 @@ test('project workbench owns browser, terminal, and Git behavior', () => {
 	expect(styles).toContain("grid-template-areas: 'browser repository' 'terminal worktrees'");
 });
 
+test('browser workbench lazy-loads a real Excalidraw canvas with safe live embeds', () => {
+	const browserPanel = read('../lib/components/workbench/BrowserPanel.svelte');
+	const canvasAdapter = read('../lib/components/workbench/ExcalidrawBrowserCanvas.tsx');
+	expect(browserPanel).toContain('aria-label="Project browser"');
+	expect(browserPanel).toContain('Add desktop');
+	expect(browserPanel).toContain('Add mobile');
+	expect(browserPanel).toContain("import('./ExcalidrawBrowserCanvas')");
+	expect(browserPanel).toContain('afterInitialPaint');
+	expect(browserPanel).toContain('migrateLegacyBrowserTabs');
+	expect(browserPanel).toContain('localStorage.removeItem(legacyKey)');
+	expect(browserPanel).not.toMatch(/^\s*import .*@excalidraw\/excalidraw/m);
+	expect(browserPanel).toContain('Sites that block framing');
+	expect(browserPanel).toContain('X-Frame-Options');
+	expect(browserPanel).toContain('CSP');
+	for (const dependency of ['react', 'react-dom/client', '@excalidraw/excalidraw'])
+		expect(canvasAdapter).toContain(`import('${dependency}')`);
+	expect(canvasAdapter).toContain("import('@excalidraw/excalidraw/index.css')");
+	expect(canvasAdapter).toContain('validateEmbeddable');
+	expect(canvasAdapter).toContain('renderEmbeddable');
+	expect(canvasAdapter).toContain('restore(');
+	expect(canvasAdapter).toContain('CaptureUpdateAction.IMMEDIATELY');
+	expect(canvasAdapter).toContain('tools: { image: false }');
+	expect(canvasAdapter).toContain(
+		"sandbox: 'allow-forms allow-modals allow-popups allow-same-origin allow-scripts'"
+	);
+	expect(canvasAdapter).not.toContain('allow-top-navigation');
+	expect(canvasAdapter).not.toContain('allow-downloads');
+	expect(canvasAdapter).not.toContain('allow-clipboard');
+	expect(styles).toMatch(/\.browser-embed-external\s*\{[^}]*width: 44px;[^}]*height: 44px;/s);
+	expect(styles).toMatch(/\.browser-frame-note\s*\{[^}]*white-space: normal;/s);
+	expect(styles).not.toMatch(/\.browser-frame-note\s*\{[^}]*display: none;/s);
+});
+
 test('Project files expose bounded accessible tree, previews, evidence, and guarded mutations', () => {
 	for (const label of [
 		'Project files',

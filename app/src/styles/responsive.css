@@ -12,7 +12,8 @@
 
 @media (max-width: 1200px) {
 	.project-workbench {
-		overflow: auto;
+		overflow-x: hidden;
+		overflow-y: auto;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		grid-template-rows: minmax(320px, 1fr) minmax(240px, auto) minmax(220px, auto);
 		grid-template-areas: 'browser browser' 'terminal terminal' 'repository worktrees';
@@ -318,9 +319,23 @@
 		flex: 1;
 	}
 	.browser-address input,
+	.browser-address button,
+	.browser-external,
+	.browser-device-actions button,
 	.change-list button {
 		min-width: 44px;
 		min-height: 44px;
+	}
+	.browser-frame-note {
+		grid-column: 1 / -1;
+		padding-inline: 2px;
+	}
+	.browser-device-actions {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+	.browser-device-actions button {
+		width: 100%;
 	}
 	.change-list li {
 		grid-template-columns: 44px 18px minmax(0, 1fr);
