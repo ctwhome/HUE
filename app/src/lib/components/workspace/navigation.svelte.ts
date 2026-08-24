@@ -28,8 +28,12 @@ type NavigationEffects = {
 		commands?: HermesCommand[];
 		runtime?: HermesRuntime;
 		branch?: string | null;
-	}) => void;
+	}) => void | Promise<void>;
 	applyLoadedSession: (body: SessionLoad) => void;
+	focusNotificationTarget: (
+		events: SessionLoad['events'],
+		sourceEventId: string | null
+	) => Promise<boolean>;
 	stopPolling: () => void;
 	startPolling: () => void;
 	restoreDraft: () => void;
@@ -212,6 +216,20 @@ export class WorkspaceNavigation {
 		this.activeTab = tab;
 		await this.loadActiveTab();
 	};
+	loadWorkflows = async () => {
+		const project = this.selectedProject;
+		if (!project?.rootAvailable) return;
+		try {
+			const body = await this.effects.api<{ workflows: Workflow[] }>(
+				`/api/projects/${project.id}/workflows`
+			);
+			if (this.selectedProject?.id !== project.id) return;
+			this.workflows = body.workflows;
+			this.workflowLists.set(project.id, body.workflows);
+		} catch (cause) {
+			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
+		}
+	};
 	createSession = async (): Promise<Session | null> => {
 		if (this.effects.guard(() => void this.createSession())) return null;
 		this.effects.endVoice();
@@ -232,7 +250,7 @@ export class WorkspaceNavigation {
 			this.selectedSession = body.session;
 			this.mobileDrawer = null;
 			this.persistSelection('push');
-			this.effects.applyCreatedSession(body);
+			await this.effects.applyCreatedSession(body);
 			this.effects.setError('');
 			this.effects.restoreDraft();
 			this.mobileDrawer = null;
@@ -253,6 +271,8 @@ export class WorkspaceNavigation {
 			return false;
 		}
 		if (this.selectedSession?.sessionId !== session.sessionId) this.effects.endVoice();
+		const sourceEventId =
+			historyMode === 'none' ? new URL(window.location.href).searchParams.get('event') : null;
 		const request = {
 			generation: ++this.sessionRequestGeneration,
 			projectId: this.selectedProject?.id ?? '',
@@ -290,6 +310,7 @@ export class WorkspaceNavigation {
 			this.effects.cacheSession();
 			this.effects.beginTranscriptEntryStick();
 			await this.effects.scrollToLatest();
+			await this.effects.focusNotificationTarget(body.events, sourceEventId);
 			if (body.activeTurn && body.activeTurn.status !== 'unknown') this.effects.startPolling();
 			return true;
 		} catch (cause) {
@@ -313,6 +334,7 @@ export class WorkspaceNavigation {
 				}
 			);
 			this.workflows = [...this.workflows, body.workflow];
+			this.workflowLists.set(this.selectedProject.id, this.workflows);
 			this.workflowName = '';
 			this.workflowPrompt = '';
 		} catch (cause) {

@@ -1,5 +1,7 @@
 import { tick } from 'svelte';
 import { isTurnBusy } from '$lib';
+import { resolveNotificationTarget } from './notification-target';
+import type { SessionEvent } from './types';
 
 export class TranscriptFollow {
 	element = $state<HTMLElement>();
@@ -8,6 +10,8 @@ export class TranscriptFollow {
 	private automaticScrollUntil = 0;
 	private settleUntil = 0;
 	private beginEntryStick: (() => void) | null = null;
+	private endEntryStick: (() => void) | null = null;
+	private highlightTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(private getDelivery: () => string) {}
 
@@ -20,6 +24,37 @@ export class TranscriptFollow {
 	scrollToLatest = async (behavior: ScrollBehavior = 'auto') => {
 		await tick();
 		this.writeLatest(behavior);
+	};
+
+	focusNotificationTarget = async (events: SessionEvent[], sourceEventId: string | null) => {
+		const target = resolveNotificationTarget(events, sourceEventId);
+		if (!target || !this.element) return false;
+		await tick();
+		const bySequence = [...this.element.querySelectorAll<HTMLElement>('[data-timeline-sequence]')].find(
+			(element) => element.dataset.timelineSequence === String(target.sequence)
+		);
+		const byMessage = target.messageId
+			? [...this.element.querySelectorAll<HTMLElement>('[data-message-id]')]
+					.filter((element) => element.dataset.messageId === target.messageId)
+					.at(-1)
+			: null;
+		const element = bySequence ?? byMessage;
+		if (!element) return false;
+		this.endEntryStick?.();
+		this.following = false;
+		this.showScrollToLatest = false;
+		element.scrollIntoView({
+			block: 'center',
+			behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+		});
+		element.classList.add('notification-target');
+		const focusTarget = target.actionable
+			? element.querySelector<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea:not([disabled])')
+			: null;
+		(focusTarget ?? element).focus({ preventScroll: true });
+		if (this.highlightTimer) clearTimeout(this.highlightTimer);
+		this.highlightTimer = setTimeout(() => element.classList.remove('notification-target'), 4_000);
+		return true;
 	};
 
 	private writeLatest(behavior: ScrollBehavior = 'auto') {
@@ -47,7 +82,13 @@ export class TranscriptFollow {
 			quietTimer = setTimeout(() => (entryStick = false), 600);
 			capTimer = setTimeout(() => (entryStick = false), 8_000);
 		};
+		const endEntryStick = () => {
+			entryStick = false;
+			clearTimeout(quietTimer);
+			clearTimeout(capTimer);
+		};
 		this.beginEntryStick = beginEntryStick;
+		this.endEntryStick = endEntryStick;
 		beginEntryStick();
 
 		const distanceFromBottom = () => node.scrollHeight - node.scrollTop - node.clientHeight;
@@ -124,8 +165,10 @@ export class TranscriptFollow {
 		if (node.firstElementChild) observer.observe(node.firstElementChild);
 
 		return {
-			destroy: () => {
-				if (this.beginEntryStick === beginEntryStick) this.beginEntryStick = null;
+				destroy: () => {
+					if (this.beginEntryStick === beginEntryStick) this.beginEntryStick = null;
+					if (this.endEntryStick === endEntryStick) this.endEntryStick = null;
+					if (this.highlightTimer) clearTimeout(this.highlightTimer);
 				clearTimeout(quietTimer);
 				clearTimeout(capTimer);
 				observer.disconnect();

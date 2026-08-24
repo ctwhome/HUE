@@ -26,19 +26,14 @@
 		folder?: string | null;
 		tags?: string[];
 	};
-	type Workflow = { id: string; name: string; prompt: string; profile: string };
 	let {
 		element = $bindable(),
 		open,
 		mobile,
 		selectedProject,
 		loading,
-		activeTab,
 		sessions,
 		selectedSession,
-		workflows,
-		workflowName = $bindable(),
-		workflowPrompt = $bindable(),
 		editSessionDialog = $bindable(),
 		editingSession,
 		sessionIcon = $bindable(),
@@ -54,12 +49,9 @@
 		sessionSaving,
 		now,
 		oncreate,
-		ontab,
 		onopen,
 		onback,
 		onedit,
-		onrun,
-		onworkflow,
 		onimage,
 		onsave,
 		onsearch,
@@ -76,12 +68,8 @@
 		mobile: boolean;
 		selectedProject: Project | null;
 		loading: boolean;
-		activeTab: 'sessions' | 'workflows';
 		sessions: Session[];
 		selectedSession: Session | null;
-		workflows: Workflow[];
-		workflowName: string;
-		workflowPrompt: string;
 		editSessionDialog?: HTMLDialogElement;
 		editingSession: Session | null;
 		sessionIcon: string | null;
@@ -97,12 +85,9 @@
 		sessionSaving: boolean;
 		now: number;
 		oncreate: () => void;
-		ontab: (tab: 'sessions' | 'workflows') => void;
 		onopen: (session: Session) => void;
 		onback: () => void;
 		onedit: (event: MouseEvent, session: Session) => void;
-		onrun: (workflow: Workflow) => void;
-		onworkflow: (event: SubmitEvent) => void;
 		onimage: (event: Event) => void;
 		onsave: (event: SubmitEvent) => void;
 		onsearch: (event?: SubmitEvent) => void;
@@ -133,7 +118,7 @@
 	aria-hidden={mobile ? !open : undefined}
 	aria-label="Project contents"
 >
-	<header>
+	<header class="project-context-header">
 		<button
 			class="session-projects-back grid size-11 shrink-0 place-items-center rounded-md hover:bg-accent"
 			data-drawer-focus
@@ -141,160 +126,121 @@
 			title="Back to Projects"
 			onclick={onback}><ArrowLeft size={20} aria-hidden="true" /></button
 		>
-		<div>
-			<small>Session scope</small>
-			<h1 class="selected-project-title mt-1 flex items-center gap-2 font-semibold">
-				{#if selectedProject?.icon}{#if isImage(selectedProject.icon)}<img
-							class="title-icon grid size-6 shrink-0 place-items-center rounded-md object-cover"
-							src={selectedProject.icon}
+		<h1 class="selected-project-title flex min-w-0 flex-1 items-center gap-2 font-semibold">
+			{#if selectedProject?.icon}{#if isImage(selectedProject.icon)}<img
+						class="title-icon grid size-6 shrink-0 place-items-center rounded-md object-cover"
+						src={selectedProject.icon}
+						alt=""
+					/>
+				{:else}<span
+						class="title-icon grid size-6 shrink-0 place-items-center rounded-md object-cover"
+						>{selectedProject.icon}</span
+					>{/if}{/if}<span class="truncate">{selectedProject?.name ?? 'No project'}</span>
+		</h1>
+	</header>
+	<form class="flex gap-2 border-b border-border p-2" role="search" onsubmit={onsearch}>
+		<label
+			class="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border px-3"
+		>
+			<Search size={16} aria-hidden="true" /><span class="sr-only">Search Sessions</span><input
+				class="min-w-0 flex-1 border-0 bg-transparent"
+				bind:value={sessionSearch}
+				type="search"
+				placeholder="Search Sessions"
+			/>
+		</label>
+		<button
+			class="flex min-h-11 min-w-[76px] items-center justify-center gap-2 px-3"
+			type="submit"
+			title="Search Sessions"
+			>Search{#if loading}<LoaderCircle
+					size={14}
+					class="loading-indicator active animate-spin"
+					role="status"
+					aria-label="Loading project contents"
+				/>{/if}</button
+		>
+	</form>
+	<label class="flex min-h-11 items-center gap-2 border-b border-border px-3 text-sm"
+		><input bind:checked={showArchived} onchange={() => onsearch()} type="checkbox" /> Show archived</label
+	>
+	<div class="item-list grid gap-1 overflow-auto p-2">
+		<button
+			class="new-session-action sticky top-0 z-10 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 font-medium text-primary-foreground hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+			onclick={oncreate}
+			disabled={selectedProject?.rootAvailable === false}
+			><Plus size={18} aria-hidden="true" /> Add new session</button
+		>
+		{#each sessions as session, index (session.sessionId)}
+			{#if index === 0 || group(sessions[index - 1]) !== group(session)}<h2
+					class="px-2 pt-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+				>
+					{group(session)}
+				</h2>{/if}
+			<div class="session-row relative w-full min-w-0">
+				<button
+					class="session-select flex min-h-12 w-full items-center gap-2.5 rounded-lg border border-transparent bg-transparent p-2.5 pr-10 text-left hover:border-border hover:bg-accent [&.active]:border-border [&.active]:bg-accent"
+					class:active={selectedSession?.sessionId === session.sessionId}
+					title={session.available === false
+						? session.recovery
+						: `${session.error ? 'Failed — ' : session.attention ? 'Needs attention — ' : ''}Open ${session.title || 'Untitled session'}`}
+					disabled={session.available === false}
+					onclick={() => onopen(session)}
+				>
+					{#if isImage(session.icon ?? null)}<img
+							class="session-icon session-icon-image size-7 shrink-0 rounded-lg object-cover"
+							src={session.icon ?? ''}
 							alt=""
 						/>
-					{:else}<span
-							class="title-icon grid size-6 shrink-0 place-items-center rounded-md object-cover"
-							>{selectedProject.icon}</span
-						>{/if}{/if}<span>{selectedProject?.name ?? 'No project'}</span>
-			</h1>
-		</div>
-		<div class="context-actions flex items-center gap-2">
-			<LoaderCircle
-				class={loading ? 'loading-indicator active animate-spin' : 'loading-indicator'}
-				role="status"
-				aria-label="Loading project contents"
-				aria-hidden={!loading}
-			/>
-			{#if activeTab === 'sessions'}<button
-					class="icon-button grid size-8 shrink-0 place-items-center rounded-md border border-border bg-secondary hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-					onclick={oncreate}
-					aria-label="New session"
-					title="New session"
-					disabled={selectedProject?.rootAvailable === false}
-					><Plus size={18} aria-hidden="true" /></button
-				>{/if}
-		</div>
-	</header>
-	<div class="tabs grid grid-cols-2 gap-1 border-b border-border px-3.5 py-2.5" role="tablist">
-		<button
-			title="Sessions"
-			class:active={activeTab === 'sessions'}
-			onclick={() => ontab('sessions')}>Sessions</button
-		>
-		{#if selectedProject?.rootAvailable}<button
-				title="Workflows"
-				class:active={activeTab === 'workflows'}
-				onclick={() => ontab('workflows')}>Workflows</button
-			>{/if}
-	</div>
-	{#if activeTab === 'sessions'}
-		<form class="flex gap-2 border-b border-border p-2" role="search" onsubmit={onsearch}>
-			<label
-				class="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border px-3"
-			>
-				<Search size={16} aria-hidden="true" /><span class="sr-only">Search Sessions</span><input
-					class="min-w-0 flex-1 border-0 bg-transparent"
-					bind:value={sessionSearch}
-					type="search"
-					placeholder="Search Sessions"
-				/>
-			</label>
-			<button class="min-h-11 px-3" type="submit" title="Search Sessions">Search</button>
-		</form>
-		<label class="flex min-h-11 items-center gap-2 border-b border-border px-3 text-sm"
-			><input bind:checked={showArchived} onchange={() => onsearch()} type="checkbox" /> Show archived</label
-		>
-		<div class="item-list grid gap-1 overflow-auto p-2">
-			{#each sessions as session, index (session.sessionId)}
-				{#if index === 0 || group(sessions[index - 1]) !== group(session)}<h2
-						class="px-2 pt-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-					>
-						{group(session)}
-					</h2>{/if}
-				<div class="session-row relative">
-					<button
-						class="session-select flex min-h-12 w-full items-center gap-2.5 rounded-lg border border-transparent bg-transparent p-2.5 pr-10 text-left hover:border-border hover:bg-accent [&.active]:border-border [&.active]:bg-accent"
-						class:active={selectedSession?.sessionId === session.sessionId}
-						title={session.available === false
-							? session.recovery
-							: `${session.error ? 'Failed — ' : session.attention ? 'Needs attention — ' : ''}Open ${session.title || 'Untitled session'}`}
-						disabled={session.available === false}
-						onclick={() => onopen(session)}
-					>
-						{#if isImage(session.icon ?? null)}<img
-								class="session-icon session-icon-image size-7 shrink-0 rounded-lg object-cover"
-								src={session.icon ?? ''}
-								alt=""
-							/>
-						{:else}<span class="session-icon grid size-7 shrink-0 place-items-center rounded-lg"
-								>{session.icon ?? automaticIcon(session.title)}</span
-							>{/if}
-						<div class="session-row-copy min-w-0 flex-1">
-							<div class="session-row-title flex items-baseline gap-2">
-								<strong>{session.title || 'Untitled session'}</strong>{#if session.pinned}<Pin
-										size={12}
-										aria-label="Pinned"
-									/>{/if}
-								{#if session.busySince}<span
-										class="busy-timer text-xs whitespace-nowrap text-sky-400 tabular-nums"
-										aria-label={`Busy for ${elapsed(session.busySince, now)}`}
-										>{elapsed(session.busySince, now)}</span
-									>{/if}
-							</div>
-							<small class:text-amber-400={session.available === false}
-								>{session.updatedAt
-									? new Date(session.updatedAt).toLocaleString()
-									: session.available === false
-										? session.recovery
-										: 'New session'}{session.folder ? ` · ${session.folder}` : ''}{session.tags
-									?.length
-									? ` · ${session.tags.join(', ')}`
-									: ''}</small
-							>
-						</div>
-						{#if session.error}<span class="session-indicator error" aria-label="Session failed"
-								>!</span
-							>
-						{:else if session.attention}<span
-								class="session-indicator attention"
-								aria-label="Session needs attention">•</span
-							>{/if}
-					</button>
-					{#if session.available !== false}<button
-							class="session-edit absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
-							aria-label={`Edit ${session.title || 'Untitled session'}`}
-							title={`Edit ${session.title || 'Untitled session'}`}
-							onclick={(event) => onedit(event, session)}
-							><Ellipsis size={16} aria-hidden="true" /></button
+					{:else}<span class="session-icon grid size-7 shrink-0 place-items-center rounded-lg"
+							>{session.icon ?? automaticIcon(session.title)}</span
 						>{/if}
-				</div>
-			{/each}
-			{#if !loading && sessions.length === 0}<p
-					class="empty p-4 text-center text-sm text-muted-foreground"
-				>
-					No persisted Hermes Sessions yet.
-				</p>{/if}
-		</div>
-	{:else}
-		<div class="item-list grid gap-1 overflow-auto p-2">
-			{#each workflows as workflow (workflow.id)}
-				<article
-					class="workflow-card flex items-start gap-2.5 rounded-xl border border-border bg-card p-3"
-				>
-					<div>
-						<strong>{workflow.name}</strong>
-						<p>{workflow.prompt}</p>
+					<div class="session-row-copy min-w-0 flex-1">
+						<div class="session-row-title flex min-w-0 items-baseline gap-2">
+							<strong>{session.title || 'Untitled session'}</strong>{#if session.pinned}<Pin
+									size={12}
+									aria-label="Pinned"
+								/>{/if}
+							{#if session.busySince}<span
+									class="busy-timer text-xs whitespace-nowrap text-sky-400 tabular-nums"
+									aria-label={`Busy for ${elapsed(session.busySince, now)}`}
+									>{elapsed(session.busySince, now)}</span
+								>{/if}
+						</div>
+						<small class:text-amber-400={session.available === false}
+							>{session.updatedAt
+								? new Date(session.updatedAt).toLocaleString()
+								: session.available === false
+									? session.recovery
+									: 'New session'}{session.folder ? ` · ${session.folder}` : ''}{session.tags
+								?.length
+								? ` · ${session.tags.join(', ')}`
+								: ''}</small
+						>
 					</div>
-					<button title={`Run ${workflow.name}`} onclick={() => onrun(workflow)}>Run</button>
-				</article>
-			{/each}
-		</div>
-		<form class="workflow-form mt-auto grid gap-2 border-t border-border p-3" onsubmit={onworkflow}>
-			<input bind:value={workflowName} placeholder="Workflow name" aria-label="Workflow name" />
-			<textarea
-				bind:value={workflowPrompt}
-				placeholder="Reusable Hermes prompt"
-				aria-label="Workflow prompt"></textarea>
-			<button type="submit" title="Save workflow">Save workflow</button>
-		</form>
-	{/if}
+					{#if session.error}<span class="session-indicator error" aria-label="Session failed"
+							>!</span
+						>
+					{:else if session.attention}<span
+							class="session-indicator attention"
+							aria-label="Session needs attention">•</span
+						>{/if}
+				</button>
+				{#if session.available !== false}<button
+						class="session-edit absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
+						aria-label={`Edit ${session.title || 'Untitled session'}`}
+						title={`Edit ${session.title || 'Untitled session'}`}
+						onclick={(event) => onedit(event, session)}
+						><Ellipsis size={16} aria-hidden="true" /></button
+					>{/if}
+			</div>
+		{/each}
+		{#if !loading && sessions.length === 0}<p
+				class="empty p-4 text-center text-sm text-muted-foreground"
+			>
+				No persisted Hermes Sessions yet.
+			</p>{/if}
+	</div>
 	<SessionManagerDialog
 		bind:dialog={editSessionDialog}
 		bind:title={sessionTitle}

@@ -12,6 +12,11 @@
 	margin: 0 auto 26px;
 }
 
+.transcript .notification-target {
+	outline: 2px solid var(--ring);
+	outline-offset: 4px;
+}
+
 .transcript article.user {
 	flex-direction: row-reverse;
 }

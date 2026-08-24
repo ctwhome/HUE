@@ -17,6 +17,7 @@ test('global attention entry has accessible unread badge and center states', () 
 		expect(center).toContain(state);
 	}
 	expect(center).toContain('Mark read');
+	expect(center).toContain('Mark all read');
 	expect(center).toContain('Dismiss');
 	expect(center).toContain('Notification settings');
 	expect(center).toContain('acknowledgeThenNavigate');

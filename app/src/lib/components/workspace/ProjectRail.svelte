@@ -111,20 +111,6 @@
 	aria-hidden={mobile ? !open : undefined}
 	aria-label="Projects"
 >
-	<header class="brand flex items-center gap-2.5 px-1.5">
-		<span
-			class="brand-mark grid size-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-violet-300 to-violet-700 font-black text-violet-950 shadow-lg"
-			>H</span
-		>
-		<div><strong>HUE</strong><small>Hermes workspace</small></div>
-		<button
-			class="icon-button workspace-session-add ml-auto grid size-11 shrink-0 place-items-center rounded-md border border-border bg-secondary hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-			aria-label="New session without a project"
-			title="New session without a project"
-			onclick={onprojectless}><Plus size={18} aria-hidden="true" /></button
-		>
-	</header>
-
 	<div class="section-heading flex items-center justify-between">
 		<span
 			class="section-label px-2 text-[0.65rem] tracking-[0.15em] text-muted-foreground uppercase"
@@ -163,7 +149,7 @@
 	{/if}
 
 	<nav>
-		<div class="project-row relative">
+		<div class="project-row projectless-row relative">
 			<button
 				class="project-select flex min-h-11 w-full items-center gap-2 rounded-lg bg-transparent px-2.5 py-2 pr-10 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
 				class:active={!selectedProject}
@@ -177,6 +163,12 @@
 				/>
 				<span>No project</span>
 			</button>
+			<button
+				class="icon-button workspace-session-add absolute top-1/2 right-0 grid size-11 -translate-y-1/2 place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+				aria-label="New session without a project"
+				title="New session without a project"
+				onclick={onprojectless}><Plus size={18} aria-hidden="true" /></button
+		>
 		</div>
 		{#each projects as project (project.id)}
 			<div class="project-row group relative">
@@ -236,6 +228,16 @@
 				><input type="checkbox" checked={showHiddenDirectories} onchange={onhidden} /> Show hidden</label
 			>
 		</header>
+		{#if !locatingProject}
+			<label class="mb-3 grid gap-1"
+				><span>Project name</span><input
+					class="min-h-11"
+					form="create-project-form"
+					bind:value={projectName}
+					required
+				/></label
+			>
+		{/if}
 		<div class="directory-location mb-3 flex min-w-0 items-center gap-2.5">
 			<button
 				class="grid size-11 shrink-0 place-items-center"
@@ -247,7 +249,7 @@
 			<code class="min-w-0 overflow-hidden text-ellipsis">{projectRoot || 'Loading…'}</code>
 		</div>
 		<section
-			class="directory-browser min-h-56 overflow-auto rounded-xl border border-border bg-background p-2"
+			class="directory-browser max-h-80 min-h-56 overflow-auto rounded-xl border border-border bg-background p-2"
 			aria-label="Directories"
 		>
 			<strong>Directories</strong>
@@ -277,7 +279,7 @@
 				</button>
 			</div>
 		{:else}
-			<form class="mt-3 grid gap-3" onsubmit={oncreate}>
+			<form id="create-project-form" class="mt-3 grid gap-3" onsubmit={oncreate}>
 				<button
 					type="button"
 					class="min-h-11"
@@ -316,13 +318,6 @@
 							>Selected radio is primary folder.</small
 						>{/if}
 				</fieldset>
-				<label class="grid gap-1"
-					><span>Project name</span><input
-						class="min-h-11"
-						bind:value={projectName}
-						required
-					/></label
-				>
 				<button
 					type="submit"
 					class="min-h-11"

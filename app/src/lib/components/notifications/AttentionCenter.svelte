@@ -66,6 +66,7 @@
 	let audioContext: AudioContext | null = null;
 	let refreshGeneration = 0;
 	let refreshesInFlight = 0;
+	let markingAllRead = $state(false);
 	let centerState = $derived(attentionState({ loading, error, items, unread }));
 	const endpointKey = 'hue:notification:endpoint-id';
 	const deviceKey = 'hue:notification:device-id';
@@ -166,12 +167,8 @@
 			});
 			notice.onclick = () => {
 				notice.close();
-				void acknowledgeThenNavigate(
-					() =>
-						api(`/api/notifications/${encodeURIComponent(item.id)}`, {
-							method: 'PATCH',
-							body: JSON.stringify({ state: 'acted' })
-						}),
+			void acknowledgeThenNavigate(
+					() => markActed(item),
 					() => window.focus(),
 					() => window.location.assign(item.path)
 				);
@@ -220,6 +217,39 @@
 			await refresh();
 		} catch {
 			error = 'Unable to update notification';
+		}
+	}
+
+	function markActed(item: Item, keepalive = false) {
+		return api(`/api/notifications/${encodeURIComponent(item.id)}`, {
+			method: 'PATCH',
+			body: JSON.stringify({ state: 'acted' }),
+			keepalive
+		});
+	}
+
+	async function openNotification(event: MouseEvent, item: Item) {
+		if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+			void markActed(item, true).catch(() => undefined);
+			return;
+		}
+		event.preventDefault();
+		await acknowledgeThenNavigate(
+			() => markActed(item),
+			() => window.focus(),
+			() => window.location.assign(item.path)
+		);
+	}
+
+	async function markAllRead() {
+		markingAllRead = true;
+		try {
+			await api('/api/notifications', { method: 'PATCH' });
+			await refresh();
+		} catch {
+			error = 'Unable to update notifications';
+		} finally {
+			markingAllRead = false;
 		}
 	}
 
@@ -497,6 +527,11 @@
 						void refresh();
 					}}>All</button
 				>
+				{#if unread > 0}<button
+						class="ml-auto min-h-11 rounded-md border border-border px-3 disabled:opacity-50"
+						disabled={markingAllRead}
+						onclick={() => void markAllRead()}>Mark all read</button
+					>{/if}
 			</div>
 			<div class="flex-1 overflow-auto p-[clamp(12px,3vw,36px)]" aria-live="polite">
 				{#if centerState.view === 'loading'}
@@ -538,7 +573,7 @@
 										<a
 											class="font-semibold hover:underline"
 											href={item.path}
-											onclick={() => void mutate(item.id, 'acted')}>{item.title}</a
+											onclick={(event) => void openNotification(event, item)}>{item.title}</a
 										>
 										<p class="mt-1 text-sm text-muted-foreground">{item.body}</p>
 										<time class="mt-2 block text-xs text-muted-foreground" datetime={item.createdAt}

@@ -26,17 +26,24 @@
 	.project-rail {
 		padding-inline: 10px;
 	}
-	.brand > div,
 	.section-label,
 	.project-select > span:last-child {
 		display: none;
 	}
-	.brand {
+	.projectless-row {
 		flex-direction: column;
-		justify-content: center;
+		display: flex;
+		align-items: center;
 	}
-	.workspace-session-add {
+	.projectless-row .project-select {
+		padding-right: 10px;
+	}
+	.projectless-row .workspace-session-add {
+		position: relative;
+		top: auto;
+		right: auto;
 		margin-left: 0;
+		translate: none;
 	}
 	.project-select {
 		justify-content: center;
@@ -167,19 +174,9 @@
 		visibility: visible;
 		transform: translateX(0);
 	}
-	.project-rail .brand {
-		flex-direction: row;
-		justify-content: flex-start;
-	}
-	.project-rail .brand > div,
 	.project-rail .section-label,
 	.project-rail .project-select > span:last-child {
 		display: initial;
-	}
-	.project-rail .workspace-session-add {
-		width: 44px;
-		height: 44px;
-		margin-left: auto;
 	}
 	.project-select {
 		justify-content: flex-start;
@@ -202,7 +199,12 @@
 	.session-projects-back {
 		display: grid;
 	}
-	.tabs button,
+	.context-panel > .project-context-header {
+		display: flex;
+		min-height: 56px;
+		gap: 4px;
+		padding: 6px 8px;
+	}
 	.workflow-card button,
 	.workflow-form input,
 	.workflow-form textarea,
