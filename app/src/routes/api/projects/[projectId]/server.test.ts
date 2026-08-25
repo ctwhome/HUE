@@ -28,10 +28,12 @@ let projectRoot = '/work/old';
 
 mock.module('$lib/server/route-services', () => ({
 	...serviceExportStubs,
-	projectView: (project: typeof original) => ({
+	projectView: (project: typeof original, color: string | null = null, group: string | null = null) => ({
 		id: project.id,
 		name: project.name,
 		icon: project.icon,
+		color,
+		group,
 		primaryPath: project.primary_path,
 		folders: project.folders,
 		rootAvailable: true

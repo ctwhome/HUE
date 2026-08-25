@@ -24,6 +24,13 @@ function optionalLabel(value: unknown): string | null | undefined {
 	return value.trim() || null;
 }
 
+function projectGroup(value: unknown): string | null {
+	if (value !== null && typeof value !== 'string') throw new Error('Project group is invalid');
+	const group = value?.trim() || null;
+	if ((group?.length ?? 0) > 100 || group?.includes('\0')) throw new Error('Project group is invalid');
+	return group;
+}
+
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	let attempted = false;
 	let closeTerminals = false;

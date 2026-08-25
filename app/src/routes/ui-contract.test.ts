@@ -553,6 +553,18 @@ test('sessions and Projects share one floating icon editor from settings and vis
 	expect(contextPanel).toContain('class="title-icon project-icon-default');
 });
 
+test('Project groups expose editable, persistent, accessible collapsible headings', () => {
+	const projectRail = read('../lib/components/workspace/ProjectRail.svelte');
+	expect(projectRail).toContain('Group label');
+	expect(projectRail).toContain('<datalist');
+	expect(projectRail).toContain("aria-expanded={!collapsedGroups.includes(group.name)}");
+	expect(projectRail).toContain('title={`Toggle ${group.name} group`}');
+	expect(projectRail).toContain("localStorage.getItem('hue:project-groups:collapsed')");
+	expect(projectRail).toContain("localStorage.setItem('hue:project-groups:collapsed'");
+	expect(projectRail).toContain('<ChevronRight');
+	expect(projectRail).toContain('min-h-11');
+});
+
 test('chat messages use the available conversation width', () => {
 	expect(page).toContain('px-[clamp(12px,2.5vw,40px)]');
 	expect(styles).toMatch(/\.transcript article\s*\{[^}]*max-width: none;/s);
