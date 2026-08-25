@@ -1222,19 +1222,17 @@ export class HUEStore {
 	}
 
 	getProjectGroup(id: string): string | null {
-		return (
-			(
-				this.database.query('SELECT group_name FROM projects WHERE id = ?').get(id) as {
-					group_name: string | null;
-				} | null
-			)?.group_name ?? null
-		);
+		const row = this.database.query('SELECT group_name FROM projects WHERE id = ?').get(id) as {
+			group_name: string | null;
+		} | null;
+		if (!row) throw new Error('Project metadata was not found');
+		return row.group_name;
 	}
 
 	updateProjectGroup(id: string, group: string | null): void {
 		const normalized = group?.trim() || null;
 		if (normalized && (normalized.length > 100 || normalized.includes('\0'))) {
-			throw new Error('Project group must be 100 characters or fewer');
+			throw new Error('Project group is invalid');
 		}
 		const result = this.database
 			.query('UPDATE projects SET group_name = ? WHERE id = ?')
