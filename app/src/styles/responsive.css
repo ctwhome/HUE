@@ -1,11 +1,9 @@
 .file-preview-back {
 	display: none;
 }
-
 .session-projects-back {
 	display: none;
 }
-
 .workspace > .global-rail {
 	grid-column: 1;
 }
@@ -40,8 +38,16 @@
 .workspace:not(.ready) > :not(.mobile-navigation) {
 	visibility: hidden;
 }
-
 @media (max-width: 1200px) {
+	.composer-toolbar {
+		flex-wrap: wrap;
+	}
+	.composer-context {
+		order: -1;
+		flex-basis: 100%;
+		width: 100%;
+		margin-left: 0;
+	}
 	.project-workbench {
 		overflow-x: hidden;
 		overflow-y: auto;
@@ -337,14 +343,21 @@
 		grid-row: 1;
 		width: 100%;
 		margin-left: 0;
+		justify-content: flex-start;
 	}
 	.composer-context .context-profile {
 		display: none;
 	}
+	.model-menu,
+	.session-option-menu {
+		position-area: unset;
+		margin: auto;
+	}
 	.scroll-to-latest {
 		min-width: 44px;
 	}
-	.composer-toolbar > .attach-button {
+	.composer-toolbar > .attach-button,
+	.composer-toolbar > .session-option-trigger {
 		grid-row: 2;
 		width: 44px;
 	}
@@ -385,7 +398,7 @@
 	.browser-address input,
 	.browser-address button,
 	.browser-external,
-	.browser-device-actions button,
+	.browser-preset-actions button,
 	.change-list button {
 		min-width: 44px;
 		min-height: 44px;
@@ -396,9 +409,9 @@
 	}
 	.browser-device-actions {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-template-columns: minmax(0, 1fr);
 	}
-	.browser-device-actions button {
+	.browser-preset-actions button {
 		width: 100%;
 	}
 	.change-list li {

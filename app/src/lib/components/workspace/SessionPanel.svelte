@@ -221,8 +221,6 @@
 		workflows={navigation.workflows}
 		bind:workflowName={navigation.workflowName}
 		bind:workflowPrompt={navigation.workflowPrompt}
-		bind:modelMenuOpen={runtimeState.modelMenuOpen}
-		bind:modelPopover={runtimeState.modelPopover}
 		stopping={messageState.stopping}
 		showScrollToLatest={timeline.length > 0 && transcriptFollow.showScrollToLatest}
 		busy={isTurnBusy(sessionState.delivery)}
@@ -243,14 +241,13 @@
 		oncommand={messageState.chooseCommand}
 		onmodel={runtimeState.selectModel}
 		onruntime={runtimeState.change}
+		onconfig={runtimeState.changeConfig}
 		onworkmode={changeWorkMode}
 		onloadworkflows={navigation.loadWorkflows}
 		onworkflow={navigation.addWorkflow}
 		{onrunworkflow}
 		onscrolllatest={transcriptFollow.scrollToLatest}
 		matchingCommands={messageState.matchingCommands}
-		currentModel={runtimeState.currentModel}
-		modelCategories={runtimeState.modelCategories}
 		contextPercent={runtimeState.contextPercent}
 	/>
 </main>

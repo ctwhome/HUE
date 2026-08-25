@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
 	BROWSER_CANVAS_MAX_BYTES,
 	BROWSER_CANVAS_MAX_ELEMENTS,
+	browserDeviceLabel,
 	browserCanvasAddressKey,
 	browserCanvasStorageKey,
 	createBrowserEmbedSpec,
@@ -45,7 +46,13 @@ describe('browser URL normalization', () => {
 });
 
 describe('browser embed creation', () => {
-	test('creates exact desktop and mobile viewport specs', () => {
+	test('labels each preset from its dimensions', () => {
+		expect(browserDeviceLabel(1440, 900)).toBe('Desktop');
+		expect(browserDeviceLabel(768, 1024)).toBe('Tablet');
+		expect(browserDeviceLabel(390, 844)).toBe('Mobile');
+	});
+
+	test('creates exact desktop, tablet, and mobile viewport specs', () => {
 		expect(createBrowserEmbedSpec('desktop', 'http://localhost:5173/', [], 'desktop-1')).toEqual({
 			id: 'desktop-1',
 			device: 'desktop',
@@ -60,6 +67,12 @@ describe('browser embed creation', () => {
 			device: 'mobile',
 			width: 390,
 			height: 844
+		});
+		expect(createBrowserEmbedSpec('tablet', 'https://example.com/', [], 'tablet-1')).toMatchObject({
+			id: 'tablet-1',
+			device: 'tablet',
+			width: 768,
+			height: 1024
 		});
 	});
 

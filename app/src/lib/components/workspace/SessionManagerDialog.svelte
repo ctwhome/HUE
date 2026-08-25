@@ -2,6 +2,7 @@
 	import {
 		Archive,
 		ArchiveRestore,
+		BookOpenText,
 		Copy,
 		Download,
 		FileJson,
@@ -9,6 +10,7 @@
 		PinOff,
 		Trash2,
 		Upload,
+		UserRound,
 		X
 	} from 'lucide-svelte';
 	let {
@@ -20,11 +22,14 @@
 		tags = $bindable(),
 		error,
 		saving,
+		profile,
+		promptLibraryAvailable,
 		onicon,
 		onsave,
 		onduplicate,
 		ondelete,
 		onexport,
+		onprompts,
 		isImage,
 		iconPreview
 	}: {
@@ -36,11 +41,14 @@
 		tags: string;
 		error: string;
 		saving: boolean;
+		profile: string;
+		promptLibraryAvailable: boolean;
 		onicon: (event: MouseEvent) => void;
 		onsave: () => void | Promise<void>;
 		onduplicate: () => void;
 		ondelete: () => void;
 		onexport: (format: 'markdown' | 'json') => void;
+		onprompts: () => void;
 		isImage: (icon: string | null) => boolean;
 		iconPreview: () => string;
 	} = $props();
@@ -104,6 +112,20 @@
 				/></label
 			>
 		</div>
+		<section class="grid gap-1 border-t border-border pt-2" aria-label="Hermes context">
+			<div class="flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm" aria-label="Hermes profile">
+				<UserRound size={16} aria-hidden="true" /><span class="text-muted-foreground">Profile</span><strong
+					class="ml-auto font-medium">{profile}</strong
+				>
+			</div>
+			{#if promptLibraryAvailable}<button
+					class="session-menu-action"
+					onclick={() => {
+						menu?.hidePopover();
+						onprompts();
+					}}><BookOpenText size={16} aria-hidden="true" /> Prompt library</button
+				>{/if}
+		</section>
 
 		<div class="grid grid-cols-2 gap-2 border-y border-border py-2">
 			<button

@@ -339,6 +339,9 @@
 	border-color: var(--ring);
 	box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 25%, transparent);
 }
+.composer {
+	container-type: inline-size;
+}
 .composer > textarea {
 	width: 100%;
 	min-height: 44px;
@@ -418,6 +421,13 @@
 	background: color-mix(in srgb, var(--surface-raised) 86%, transparent);
 }
 
+.composer-context {
+	flex: 1 1 320px;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	overflow-x: visible;
+}
+
 .context-select select {
 	width: auto;
 	max-width: 160px;
@@ -427,18 +437,33 @@
 	outline: none;
 }
 .model-menu {
-	position-anchor: --model-trigger;
 	position-area: top span-left;
 	margin: 0 0 8px;
 }
-.context-model {
-	anchor-name: --model-trigger;
+.session-option-menu {
+	position-area: top span-left;
+	margin: 0 0 8px;
 }
 .context-model > span {
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+@container (max-width: 700px) {
+	.composer-toolbar {
+		flex-wrap: wrap;
+	}
+	.composer-context {
+		order: -1;
+		flex-basis: 100%;
+		width: 100%;
+		margin-left: 0;
+	}
+	.composer-prompt-label {
+		display: none;
+	}
 }
 .model-menu > header,
 .model-menu summary {

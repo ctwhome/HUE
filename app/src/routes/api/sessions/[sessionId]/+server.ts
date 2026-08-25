@@ -123,6 +123,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		const body = (await request.json()) as {
 			modelId?: string;
 			modeId?: string;
+			configId?: string;
+			configValue?: unknown;
 			workMode?: unknown;
 			icon?: unknown;
 			title?: unknown;
@@ -133,6 +135,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		};
 		const modelId = body.modelId?.trim();
 		const modeId = body.modeId?.trim();
+		const configId = body.configId?.trim();
+		const hasConfig = 'configId' in body || 'configValue' in body;
 		const hasWorkMode = 'workMode' in body;
 		const hasIcon = 'icon' in body;
 		const metadataKeys = ['title', 'pinned', 'archived', 'folder', 'tags'].filter(
@@ -141,6 +145,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		if (
 			(modelId ? 1 : 0) +
 				(modeId ? 1 : 0) +
+				(hasConfig ? 1 : 0) +
 				(hasWorkMode ? 1 : 0) +
 				(hasIcon || metadataKeys.length ? 1 : 0) !==
 			1
@@ -150,6 +155,11 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				{ status: 400 }
 			);
 		}
+		if (
+			hasConfig &&
+			(!configId || !('configValue' in body) || !['string', 'boolean'].includes(typeof body.configValue))
+		)
+			return json({ error: 'Invalid Session configuration update' }, { status: 400 });
 		if (hasWorkMode) {
 			const { session, event } = applyExplicitWorkMode(
 				services().store,
@@ -190,7 +200,13 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		}
 		const runtime = modelId
 			? await services().runtime.setModel(params.sessionId, modelId)
-			: await services().runtime.setMode(params.sessionId, modeId!);
+			: modeId
+				? await services().runtime.setMode(params.sessionId, modeId)
+				: await services().runtime.setConfigOption(
+						params.sessionId,
+						configId!,
+						body.configValue as string | boolean
+					);
 		return json({ runtime });
 	} catch (cause) {
 		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 400 });

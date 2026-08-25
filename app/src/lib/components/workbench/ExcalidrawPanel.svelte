@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { ExternalLink, Monitor, Smartphone } from 'lucide-svelte';
+	import { ExternalLink, Monitor, Smartphone, Tablet } from 'lucide-svelte';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
 	import { afterInitialPaint } from './after-initial-paint';
@@ -131,12 +131,33 @@
 				>{/if}
 		</form>
 		<div class="browser-device-actions">
-			<Button size="sm" disabled={!canvasReady} onclick={() => addBrowser('desktop')}
-				><Monitor size={15} aria-hidden="true" />Add desktop</Button
+			<div
+				class="browser-preset-actions inline-flex gap-1 max-[700px]:grid max-[700px]:grid-cols-3"
+				role="group"
+				aria-label="Add preview preset"
 			>
-			<Button size="sm" disabled={!canvasReady} onclick={() => addBrowser('mobile')}
-				><Smartphone size={15} aria-hidden="true" />Add mobile</Button
-			>
+				<Button
+					size="sm"
+					disabled={!canvasReady}
+					onclick={() => addBrowser('desktop')}
+					aria-label="Add desktop"
+					title="Add desktop (1440 × 900)"><Monitor size={15} aria-hidden="true" />Desktop</Button
+				>
+				<Button
+					size="sm"
+					disabled={!canvasReady}
+					onclick={() => addBrowser('tablet')}
+					aria-label="Add tablet"
+					title="Add tablet (768 × 1024)"><Tablet size={15} aria-hidden="true" />Tablet</Button
+				>
+				<Button
+					size="sm"
+					disabled={!canvasReady}
+					onclick={() => addBrowser('mobile')}
+					aria-label="Add mobile"
+					title="Add mobile (390 × 844)"><Smartphone size={15} aria-hidden="true" />Mobile</Button
+				>
+			</div>
 			<span
 				class="browser-frame-note text-muted-foreground"
 				title="Sites that block framing through X-Frame-Options, CSP, or mixed-content rules must open externally."
@@ -153,7 +174,7 @@
 				class="panel-empty pointer-events-none absolute inset-0 z-10 grid place-content-center gap-1.5 p-5 text-center text-xs text-muted-foreground"
 			>
 				<strong class="text-foreground">Loading Excalidraw canvas…</strong><span
-					>Draw freely, then add desktop and mobile live previews.</span
+					>Draw freely, then add live previews from a device preset.</span
 				>
 			</div>{/if}
 	</div>

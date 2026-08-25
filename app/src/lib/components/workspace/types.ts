@@ -57,6 +57,32 @@ export type HermesRuntime = {
 		currentModeId: string;
 		availableModes: Array<{ id: string; name: string; description?: string | null }>;
 	} | null;
+	configOptions?: Array<
+		| {
+				type: 'select';
+				id: string;
+				name: string;
+				description?: string | null;
+				category?: string | null;
+				currentValue: string;
+				options: Array<
+					| { value: string; name: string; description?: string | null }
+					| {
+							groupId: string;
+							name: string;
+							options: Array<{ value: string; name: string; description?: string | null }>;
+						}
+				>;
+			}
+		| {
+				type: 'boolean';
+				id: string;
+				name: string;
+				description?: string | null;
+				category?: string | null;
+				currentValue: boolean;
+			}
+	> | null;
 	usage?: { used: number; size: number };
 };
 export type TranscriptMessage = {

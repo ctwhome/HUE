@@ -91,6 +91,8 @@ const button = read('../lib/components/ui/Button.svelte');
 const input = read('../lib/components/ui/Input.svelte');
 const textarea = read('../lib/components/ui/Textarea.svelte');
 const composer = read('../lib/components/workspace/Composer.svelte');
+const modelPicker = read('../lib/components/ModelPicker.svelte');
+const sessionOptionPicker = read('../lib/components/SessionOptionPicker.svelte');
 const sessionHeader = read('../lib/components/workspace/SessionHeader.svelte');
 const terminalPanel = read('../lib/components/workbench/TerminalPanel.svelte');
 const emojiPicker = read('../lib/components/EmojiPicker.svelte');
@@ -388,7 +390,7 @@ test('project workbench owns browser, terminal, and Git behavior', () => {
 	expect(workbench).toContain("action: 'commit'");
 	expect(workbench).toContain("action: 'generateCommitMessage'");
 	expect(workbench).toContain('aria-label="Generate commit message with Hermes"');
-	expect(workbench).toContain('aria-label="Commit message model"');
+	expect(workbench).toContain('ariaLabel="Commit message model"');
 	expect(workbench).toContain('aria-label="GitHub issues"');
 	expect(workbench).toContain('aria-label="GitHub pull requests"');
 	expect(workbench).toContain('target="_blank"');
@@ -464,7 +466,9 @@ test('Excalidraw tab lazy-loads a real canvas with safe live embeds', () => {
 	const excalidrawPanel = read('../lib/components/workbench/ExcalidrawPanel.svelte');
 	const canvasAdapter = read('../lib/components/workbench/ExcalidrawBrowserCanvas.tsx');
 	expect(excalidrawPanel).toContain('Add desktop');
+	expect(excalidrawPanel).toContain('Add tablet');
 	expect(excalidrawPanel).toContain('Add mobile');
+	expect(excalidrawPanel).toContain('aria-label="Add preview preset"');
 	expect(excalidrawPanel).toContain("import('./ExcalidrawBrowserCanvas')");
 	expect(excalidrawPanel).toContain('afterInitialPaint');
 	expect(excalidrawPanel).not.toContain('migrateLegacyBrowserTabs');
@@ -536,7 +540,17 @@ test('mobile chat exposes resilient content, compact context, and auto-growing i
 	expect(page).toContain('function resizeComposer()');
 	expect(page).toContain('title="Session options"');
 	expect(page).toContain('Delivery status unknown');
-	expect(page).toContain('aria-label="Search models"');
+	expect(modelPicker).toContain('aria-label="Search models"');
+	expect(modelPicker).toContain('class="model-list min-h-0 flex-1 overflow-y-auto"');
+	expect(modelPicker).not.toContain('model-menu max-h-[min(520px,calc(100dvh-24px))] w-[min(360px,calc(100vw-24px))] overflow-y-auto');
+	expect(composer).toContain("import ModelPicker from '../ModelPicker.svelte'");
+	expect(composer).not.toContain(
+		'composer-context ml-auto flex min-w-0 items-center gap-1 overflow-x-auto'
+	);
+	expect(styles).toContain('flex-wrap: wrap');
+	expect(composer.indexOf('<ModelPicker')).toBeLessThan(
+		composer.indexOf('ariaLabel="Work mode"')
+	);
 	expect(page).toContain("aria-label={`Manage ${session.title || 'Untitled session'}`}");
 	expect(page).toContain('popover="auto"');
 	expect(page).toContain('Saved automatically');
@@ -620,13 +634,22 @@ test('mobile secondary surfaces are self-explanatory and bounded', () => {
 
 test('composer exposes HUE work mode selector and timeline status item hooks', () => {
 	const composer = read('../lib/components/workspace/Composer.svelte');
+	const sessionManager = read('../lib/components/workspace/SessionManagerDialog.svelte');
 	const dialog = read('../lib/components/workspace/ThinkingDialog.svelte');
-	expect(composer).toContain('Work mode');
+	expect(composer).toContain('ariaLabel="Work mode"');
 	expect(composer).toContain('Autonomous');
 	expect(composer).toContain('Live');
-	expect(composer).toContain('Edit approvals');
+	expect(composer).toContain("import SessionOptionPicker from '../SessionOptionPicker.svelte'");
+	expect(composer).toContain('ariaLabel="Edit approvals"');
+	expect(composer).toContain('ariaLabel="Reasoning"');
+	expect(sessionOptionPicker).toContain('role="menuitemradio"');
+	expect(sessionOptionPicker).toContain('<Icon size={16}');
 	expect(composer).toContain('Other permission requests still ask.');
-	expect(composer).toContain('Edits only');
+	expect(composer).not.toContain('<Sparkles');
+	expect(composer).not.toContain('aria-label="Composer options"');
+	expect(composer).not.toContain('<span class="hidden xl:inline">Work mode</span>');
+	expect(sessionManager).toContain('aria-label="Hermes profile"');
+	expect(sessionManager).toContain('<UserRound');
 	expect(dialog).toContain("item.kind === 'status'");
 	expect(dialog).toContain('{item.label}');
 });
@@ -736,7 +759,7 @@ test('composer preserves complete-envelope and unknown-delivery controls', () =>
 	expect(page).toContain('Retry exact message');
 	expect(page).toContain("this.setError(body.transcriptError ?? '');");
 	expect(page).toContain('popover="auto"');
-	expect(page).toContain('role="menuitemradio"');
+	expect(modelPicker).toContain('role="menuitemradio"');
 });
 
 test('chat remains internally scrollable and exposes message actions', () => {

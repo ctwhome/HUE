@@ -16,7 +16,7 @@ const ELEMENT_TYPES = new Set([
 	'iframe'
 ]);
 
-export type BrowserDevice = 'desktop' | 'mobile';
+export type BrowserDevice = 'desktop' | 'tablet' | 'mobile';
 export type BrowserEmbedSpec = {
 	id: string;
 	device: BrowserDevice;
@@ -112,13 +112,25 @@ export function nextBrowserEmbedPosition(
 	};
 }
 
+export const browserDeviceLabel = (width: number, height: number) =>
+	width === 390 && height === 844
+		? 'Mobile'
+		: width === 768 && height === 1024
+			? 'Tablet'
+			: 'Desktop';
+
 export function createBrowserEmbedSpec(
 	device: BrowserDevice,
 	url: string,
 	elements: ReadonlyArray<Pick<BrowserEmbedSpec, 'x' | 'y' | 'width' | 'height'>>,
 	id: string = crypto.randomUUID()
 ): BrowserEmbedSpec {
-	const size = device === 'desktop' ? { width: 1440, height: 900 } : { width: 390, height: 844 };
+	const size =
+		device === 'desktop'
+			? { width: 1440, height: 900 }
+			: device === 'tablet'
+				? { width: 768, height: 1024 }
+				: { width: 390, height: 844 };
 	return {
 		id,
 		device,

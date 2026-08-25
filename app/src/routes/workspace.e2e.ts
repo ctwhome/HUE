@@ -2523,7 +2523,9 @@ test('shows a live timer beside each busy session', async ({ page }) => {
 
 test('discovers Hermes slash commands and sends an attached image', async ({ page }) => {
 	let envelope: { text: string; images: Array<{ name: string; mimeType: string; data: string }> };
-	let selectedModel = '';
+	let selectedModel = 'openai:gpt-5.6';
+	let selectedReasoning = 'balanced';
+	let selectedMode = 'default';
 	const browserErrors: string[] = [];
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
 	page.on('pageerror', (error) => browserErrors.push(error.message));
@@ -2534,7 +2536,16 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 	);
 	await page.route(/\/sessions\/session-rich$/, async (route) => {
 		if (route.request().method() === 'PATCH') {
-			selectedModel = ((await route.request().postDataJSON()) as { modelId: string }).modelId;
+			const update = (await route.request().postDataJSON()) as {
+				modelId?: string;
+				modeId?: string;
+				configId?: string;
+				configValue?: string;
+			};
+			if (update.modelId) selectedModel = update.modelId;
+			if (update.modeId) selectedMode = update.modeId;
+			if (update.configId === 'reasoning' && update.configValue)
+				selectedReasoning = update.configValue;
 			return route.fulfill({
 				json: {
 					runtime: {
@@ -2549,7 +2560,27 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 								{ modelId: 'openai:gpt-5.6-mini', name: 'GPT 5.6 Mini' },
 								{ modelId: 'anthropic:claude', name: 'Claude' }
 							]
-						}
+						},
+						modes: {
+							currentModeId: selectedMode,
+							availableModes: [
+								{ id: 'default', name: 'Default' },
+								{ id: 'accept-edits', name: 'Accept edits' }
+							]
+						},
+						configOptions: [
+							{
+								type: 'select',
+								id: 'reasoning',
+								name: 'Reasoning',
+								category: 'thought_level',
+								currentValue: selectedReasoning,
+								options: [
+									{ value: 'balanced', name: 'Balanced' },
+									{ value: 'high', name: 'High' }
+								]
+							}
+						]
 					}
 				}
 			});
@@ -2576,9 +2607,25 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 						]
 					},
 					modes: {
-						currentModeId: 'default',
-						availableModes: [{ id: 'default', name: 'Default' }]
+						currentModeId: selectedMode,
+						availableModes: [
+							{ id: 'default', name: 'Default' },
+							{ id: 'accept-edits', name: 'Accept edits' }
+						]
 					},
+					configOptions: [
+						{
+							type: 'select',
+							id: 'reasoning',
+							name: 'Reasoning',
+							category: 'thought_level',
+							currentValue: selectedReasoning,
+							options: [
+								{ value: 'balanced', name: 'Balanced' },
+								{ value: 'high', name: 'High' }
+							]
+						}
+					],
 					usage: { used: 32_000, size: 128_000 }
 				},
 				commands: [
@@ -2598,18 +2645,31 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 
 	await addProject(page);
 	await sessionButton(page, 'Rich input').click();
-	await expect(
-		page.getByLabel('Hermes session context').getByText('default', { exact: true })
-	).toBeVisible();
-	await expect(page.locator('.desktop-session-context .header-branch')).toHaveText('main');
 	await expect(page.getByText('25%', { exact: true })).toBeVisible();
 	const modelTrigger = page.getByLabel('Hermes model', { exact: true });
 	const modelMenu = page.getByRole('menu', { name: 'Choose Hermes model' });
+	const reasoningTrigger = page.getByRole('button', { name: 'Reasoning' });
+	const reasoningMenu = page.getByRole('menu', { name: 'Choose reasoning' });
+	const approvalsTrigger = page.getByRole('button', { name: 'Edit approvals' });
+	const approvalsMenu = page.getByRole('menu', { name: 'Choose edit approvals' });
 	await expect(modelTrigger).toHaveText(/gpt-5\.6/);
 	await expect(modelTrigger).not.toContainText('OpenAI');
 	await expect(modelTrigger).not.toContainText('subscription');
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
+		const context = page.getByLabel('Hermes session context');
+		await context.evaluate((element) => (element.scrollLeft = 0));
+		expect(await context.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
+			await context.evaluate((element) => element.clientWidth)
+		);
+		const [contextBox, visibleModelBox] = await Promise.all([
+			context.boundingBox(),
+			modelTrigger.boundingBox()
+		]);
+		expect(visibleModelBox!.x).toBeGreaterThanOrEqual(contextBox!.x);
+		expect(visibleModelBox!.x + visibleModelBox!.width).toBeLessThanOrEqual(
+			contextBox!.x + contextBox!.width
+		);
 		const triggerBox = await modelTrigger.boundingBox();
 		expect(triggerBox!.width).toBeLessThanOrEqual(150);
 		expect(await modelTrigger.evaluate((element) => element.scrollHeight)).toBeLessThanOrEqual(
@@ -2625,9 +2685,19 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 		if (viewport.width <= 390) await expectMinimumTouchTargets(modelMenu.locator('button'));
 		await page.keyboard.press('Escape');
 		await expect(modelMenu).toBeHidden();
+		await reasoningTrigger.click();
+		await expect(reasoningMenu).toBeVisible();
+		await expect(reasoningMenu.getByRole('menuitemradio', { name: /Balanced/ })).toBeVisible();
+		await expect(reasoningMenu.getByRole('menuitemradio', { name: /High/ })).toBeVisible();
+		await page.keyboard.press('Escape');
+		await approvalsTrigger.click();
+		await expect(approvalsMenu).toBeVisible();
+		await expect(approvalsMenu.getByRole('menuitemradio', { name: /Default/ })).toBeVisible();
+		await expect(approvalsMenu.getByRole('menuitemradio', { name: /Accept edits/ })).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(approvalsMenu).toBeHidden();
 		if (viewport.width <= 390) {
 			const composer = page.locator('.composer');
-			const context = composer.locator('.composer-context');
 			const attach = page.getByLabel('Attach images and files');
 			const voiceMessage = page.getByRole('button', { name: 'Record voice message' });
 			const voiceCall = page.getByRole('button', { name: 'Start voice call' });
@@ -2636,14 +2706,13 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 			await expect(voiceMessage).toBeVisible();
 			await expect(voiceCall).toBeVisible();
 			await expect(send).toBeVisible();
-			await expect(page.getByLabel('Hermes mode', { exact: true })).toBeAttached();
 			const [composerBox, contextBox, attachBox, sendBox] = await Promise.all([
 				composer.boundingBox(),
 				context.boundingBox(),
 				attach.boundingBox(),
 				send.boundingBox()
 			]);
-			expect(composerBox!.height).toBeLessThanOrEqual(220);
+			expect(composerBox!.height).toBeLessThanOrEqual(300);
 			expect((await page.getByLabel('Message Hermes').boundingBox())!.height).toBeLessThanOrEqual(
 				160
 			);
@@ -2658,6 +2727,19 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 			await context.evaluate((element) => (element.scrollLeft = 0));
 		}
 	}
+	await reasoningTrigger.click();
+	await reasoningMenu.getByRole('menuitemradio', { name: /High/ }).click();
+	await expect.poll(() => selectedReasoning).toBe('high');
+	await expect(reasoningTrigger).toHaveAttribute('title', /High/);
+	await approvalsTrigger.click();
+	await approvalsMenu.getByRole('menuitemradio', { name: /Accept edits/ }).click();
+	await expect.poll(() => selectedMode).toBe('accept-edits');
+	await expect(approvalsTrigger).toHaveAttribute('title', /Accept edits/);
+	await page.getByRole('button', { name: 'Session options for Rich input' }).click();
+	const sessionOptions = page.getByRole('dialog', { name: 'Session options' });
+	await expect(sessionOptions.getByLabel('Hermes profile')).toContainText('default');
+	await expect(sessionOptions.getByRole('button', { name: /Prompt library/ })).toBeVisible();
+	await page.getByRole('button', { name: 'Close session options' }).click();
 	await modelTrigger.click();
 	await expect(modelMenu.getByText('OpenAI', { exact: true })).toBeVisible();
 	await expect(modelMenu.getByText('2 models', { exact: true })).toBeVisible();
@@ -2676,7 +2758,7 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 		await page.setViewportSize(viewport);
 		await expect(page.getByRole('listbox', { name: 'Hermes commands' })).toBeVisible();
 		await expect(modelTrigger).toBeVisible();
-		await page.locator('.session-header button[title="Session options"]').click();
+		await page.getByRole('button', { name: 'Session options for Rich input' }).click();
 		await expect(page.getByRole('dialog', { name: 'Session options' })).toBeVisible();
 		await page.getByRole('button', { name: 'Close session options' }).click();
 		await expect(page.getByText('25%', { exact: true })).toBeVisible();
@@ -3885,7 +3967,7 @@ test('starts a new session without the previous session output', async ({ page }
 	expect(browserErrors).toEqual([]);
 });
 
-test('opens the project prompt library from the composer across required viewports', async ({
+test('opens the project prompt library from Session options across required viewports', async ({
 	page
 }, testInfo) => {
 	const browserErrors: string[] = [];
@@ -3930,11 +4012,15 @@ test('opens the project prompt library from the composer across required viewpor
 		})
 	);
 
+	await addProject(page);
+	await sessionButton(page, 'Prompt origin').click();
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
-		await addProject(page);
-		await sessionButton(page, 'Prompt origin').click();
-		await page.getByRole('button', { name: 'Prompt library' }).click();
+		await page.getByRole('button', { name: 'Session options for Prompt origin' }).click();
+		await page
+			.getByRole('dialog', { name: 'Session options' })
+			.getByRole('button', { name: 'Prompt library' })
+			.click();
 		const dialog = page.getByRole('dialog', { name: 'Prompt library' });
 		await expect(dialog).toBeVisible();
 		await expect(dialog.getByText('Prepare release', { exact: true })).toBeVisible();
@@ -3951,7 +4037,11 @@ test('opens the project prompt library from the composer across required viewpor
 		});
 		await dialog.getByRole('button', { name: 'Close prompt library' }).click();
 	}
-	await page.getByRole('button', { name: 'Prompt library' }).click();
+	await page.getByRole('button', { name: 'Session options for Prompt origin' }).click();
+	await page
+		.getByRole('dialog', { name: 'Session options' })
+		.getByRole('button', { name: 'Prompt library' })
+		.click();
 	const dialog = page.getByRole('dialog', { name: 'Prompt library' });
 	await dialog.getByRole('button', { name: 'Run Prepare release' }).click();
 	await expect(dialog).toBeHidden();
@@ -5236,9 +5326,14 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		})
 		.toBe('http://canvas.test/');
 	await canvas.getByRole('button', { name: 'Add desktop' }).click();
+	await canvas.getByRole('button', { name: 'Add tablet' }).click();
 	await canvas.getByRole('button', { name: 'Add mobile' }).click();
-	await expect(canvas.locator('.browser-embed iframe')).toHaveCount(2);
+	await expect(canvas.locator('.browser-embed iframe')).toHaveCount(3);
 	await expect(canvas.locator('iframe[title*="Desktop"]')).toHaveAttribute('width', '1440');
+	await expect(canvas.locator('iframe[title*="Tablet (768 × 1024)"]')).toHaveAttribute(
+		'width',
+		'768'
+	);
 	await expect(canvas.locator('iframe[title*="Mobile"]')).toHaveAttribute('width', '390');
 	for (const frame of await canvas.locator('iframe').all()) {
 		await expect(frame).toHaveAttribute(
@@ -5259,6 +5354,7 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		})
 		.toEqual([
 			{ width: 1440, height: 900 },
+			{ width: 768, height: 1024 },
 			{ width: 390, height: 844 }
 		]);
 	expect(await page.evaluate((key) => localStorage.getItem(key), savedBrowserTabs.key)).toBe(

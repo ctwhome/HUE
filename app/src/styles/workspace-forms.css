@@ -524,7 +524,7 @@
 	align-items: center;
 	gap: 6px;
 }
-.browser-device-actions button {
+.browser-preset-actions button {
 	flex: 0 0 auto;
 }
 .browser-frame-note {
