@@ -26,6 +26,8 @@ mock.module('$lib/server/route-services', () => ({
 					id: 'p_existing',
 					name: 'Existing',
 					icon: null,
+					color: null,
+					group: 'Core',
 					primaryPath: '/work/existing',
 					folders: [],
 					rootAvailable: true
@@ -34,10 +36,16 @@ mock.module('$lib/server/route-services', () => ({
 			reconciliationIssues: []
 		};
 	},
-	projectView: (project: typeof created) => ({
+	projectView: (
+		project: typeof created,
+		color: string | null = null,
+		group: string | null = null
+	) => ({
 		id: project.id,
 		name: project.name,
 		icon: project.icon,
+		color,
+		group,
 		primaryPath: project.primary_path,
 		folders: project.folders,
 		rootAvailable: true
@@ -99,7 +107,11 @@ test('POST creates exactly one Hermes Project with all validated folders and sel
 		},
 		{ ensureMetadata: 'p_new' }
 	]);
-	expect((await response.json()).project).toMatchObject({ id: 'p_new', primaryPath: '/work/app' });
+	expect((await response.json()).project).toMatchObject({
+		id: 'p_new',
+		group: null,
+		primaryPath: '/work/app'
+	});
 });
 
 test('POST rejects duplicate folders or primary outside selection before Hermes mutation', async () => {

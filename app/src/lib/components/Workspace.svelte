@@ -438,6 +438,7 @@
 		bind:projectName={projectManagement.projectName}
 		bind:projectIcon={projectManagement.projectIcon}
 		bind:projectColor={projectManagement.projectColor}
+		bind:projectGroup={projectManagement.projectGroup}
 		projectEditError={projectManagement.projectEditError}
 		projectSaving={projectManagement.projectSaving}
 		locatingProject={projectManagement.locatingProject}
@@ -451,6 +452,7 @@
 		onicon={projectManagement.openProjectIcon}
 		oniconselect={projectManagement.saveProjectIcon}
 		oncolor={projectManagement.saveProjectColor}
+		ongroup={projectManagement.saveProjectGroup}
 		onhidden={projectManagement.toggleHiddenDirectories}
 		ondirectory={projectManagement.loadDirectory}
 		ontogglefolder={projectManagement.toggleSelectedFolder}
@@ -733,9 +735,7 @@
 		{/key}
 	{/if}
 </div>
-
 <SessionManagerOverlay {navigation} />
-
 <QuickCapture
 	bind:this={quickCapture}
 	projects={projectManagement.projects}

@@ -48,6 +48,7 @@ export class ProjectManagement {
 	projectName = $state('');
 	projectIcon = $state<string | null>(null);
 	projectColor = $state('#007acc');
+	projectGroup = $state('');
 	projectEditError = $state('');
 	projectSaving = $state(false);
 	locatingProject = $state<Project | null>(null);
@@ -170,6 +171,7 @@ export class ProjectManagement {
 		this.projectName = project.name;
 		this.projectIcon = project.icon;
 		this.projectColor = project.color ?? '#007acc';
+		this.projectGroup = project.group ?? '';
 		this.projectEditError = '';
 		this.editProjectDialog?.showPopover();
 		const trigger = event?.currentTarget as HTMLElement | undefined;
@@ -220,6 +222,7 @@ export class ProjectManagement {
 			this.projectName = project.name;
 			this.projectIcon = project.icon;
 			this.projectColor = project.color ?? '#007acc';
+			this.projectGroup = project.group ?? '';
 		}
 		const insideSettings = (event.currentTarget as HTMLElement).closest('.project-manager-popover');
 		(insideSettings ? this.projectSettingsIconPopover : this.projectIconPopover)?.showPopover();
@@ -263,6 +266,30 @@ export class ProjectManagement {
 			const body = await this.options.api<{ project: Project }>(`/api/projects/${project.id}`, {
 				method: 'PATCH',
 				body: JSON.stringify({ action: 'set_color', color })
+			});
+			this.applyProject(body.project);
+		} catch (cause) {
+			this.applyProject(project);
+			this.projectEditError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			this.pendingMutations -= 1;
+			this.projectSaving = this.pendingMutations > 0;
+		}
+	};
+
+	saveProjectGroup = async (value: string) => {
+		if (!this.editingProject) return;
+		const project = this.editingProject;
+		const group = value.trim() || null;
+		this.projectGroup = group ?? '';
+		this.pendingMutations += 1;
+		this.projectSaving = true;
+		this.projectEditError = '';
+		this.applyProject({ ...project, group });
+		try {
+			const body = await this.options.api<{ project: Project }>(`/api/projects/${project.id}`, {
+				method: 'PATCH',
+				body: JSON.stringify({ action: 'set_group', group })
 			});
 			this.applyProject(body.project);
 		} catch (cause) {
@@ -417,6 +444,7 @@ export class ProjectManagement {
 		if (this.editingProject?.id === project.id) {
 			this.editingProject = project;
 			this.projectColor = project.color ?? '#007acc';
+			this.projectGroup = project.group ?? '';
 		}
 	}
 

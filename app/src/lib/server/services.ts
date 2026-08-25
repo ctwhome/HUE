@@ -114,6 +114,7 @@ export type ProjectView = {
 	name: string;
 	icon: string | null;
 	color: string | null;
+	group: string | null;
 	primaryPath: string;
 	folders: Array<{ path: string; label: string | null; isPrimary: boolean; available: boolean }>;
 	rootAvailable: boolean;
@@ -127,12 +128,17 @@ function directoryAvailable(path: string) {
 	}
 }
 
-export function projectView(project: HermesProject, color: string | null = null): ProjectView {
+export function projectView(
+	project: HermesProject,
+	color: string | null = null,
+	group: string | null = null
+): ProjectView {
 	return {
 		id: project.id,
 		name: project.name,
 		icon: project.icon,
 		color,
+		group,
 		primaryPath: project.primary_path,
 		folders: project.folders.map((folder) => ({
 			path: folder.path,
@@ -150,7 +156,13 @@ export async function loadProjectViews() {
 	return {
 		projects: reconciled.projects
 			.filter((project) => !project.archived)
-			.map((project) => projectView(project, state.store.getProjectColor(project.id))),
+			.map((project) =>
+				projectView(
+					project,
+					state.store.getProjectColor(project.id),
+					state.store.getProjectGroup(project.id)
+				)
+			),
 		reconciliationIssues: reconciled.issues
 	};
 }

@@ -259,6 +259,7 @@ export class HUEStore {
 				name TEXT NOT NULL,
 				root_path TEXT NOT NULL UNIQUE,
 				icon TEXT,
+				group_name TEXT,
 				legacy INTEGER NOT NULL DEFAULT 1,
 				created_at TEXT NOT NULL
 			);
@@ -402,6 +403,9 @@ export class HUEStore {
 		}
 		if (!projectColumns.some((column) => column.name === 'color')) {
 			this.database.exec('ALTER TABLE projects ADD COLUMN color TEXT');
+		}
+		if (!projectColumns.some((column) => column.name === 'group_name')) {
+			this.database.exec('ALTER TABLE projects ADD COLUMN group_name TEXT');
 		}
 		let sessionColumns = this.database.query('PRAGMA table_info(project_sessions)').all() as Array<{
 			name: string;
@@ -1215,6 +1219,25 @@ export class HUEStore {
 		if (!result.changes) throw new Error('Project metadata was not found');
 	}
 
+	getProjectGroup(id: string): string | null {
+		const row = this.database.query('SELECT group_name FROM projects WHERE id = ?').get(id) as {
+			group_name: string | null;
+		} | null;
+		if (!row) throw new Error('Project metadata was not found');
+		return row.group_name;
+	}
+
+	updateProjectGroup(id: string, group: string | null): void {
+		const normalized = group?.trim() || null;
+		if ((normalized?.length ?? 0) > 100 || normalized?.includes('\0')) {
+			throw new Error('Project group is invalid');
+		}
+		const result = this.database
+			.query('UPDATE projects SET group_name = ? WHERE id = ?')
+			.run(normalized, id);
+		if (!result.changes) throw new Error('Project metadata was not found');
+	}
+
 	getProjectExcalidraw(projectId: string): ProjectExcalidraw | null {
 		const row = this.database
 			.query(
@@ -1285,9 +1308,12 @@ export class HUEStore {
 			this.ensureProjectMetadata(hermesId);
 			this.database
 				.query(
-					'UPDATE projects SET color = COALESCE(color, (SELECT color FROM projects WHERE id = ?)) WHERE id = ?'
+					`UPDATE projects SET
+						color = COALESCE(color, (SELECT color FROM projects WHERE id = ?)),
+						group_name = COALESCE(group_name, (SELECT group_name FROM projects WHERE id = ?))
+					 WHERE id = ?`
 				)
-				.run(legacyId, hermesId);
+				.run(legacyId, legacyId, hermesId);
 			this.database
 				.query(
 					`INSERT OR IGNORE INTO project_excalidraw (project_id, address, scene, updated_at)

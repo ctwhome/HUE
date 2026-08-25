@@ -9,6 +9,7 @@ const original: Project = {
 	name: 'HUE',
 	icon: null,
 	color: null,
+	group: null,
 	primaryPath: '/work/app',
 	rootAvailable: true,
 	folders: [
@@ -63,6 +64,36 @@ describe('ProjectManagement Hermes authority', () => {
 			color: '#7aa2f7'
 		});
 		expect(state.projects[0].color).toBe('#7aa2f7');
+	});
+
+	it('trims Project groups and applies the authoritative readback', async () => {
+		const requests: Array<{ url: string; options?: RequestInit }> = [];
+		const grouped = { ...original, group: 'Client work' };
+		const state = manager(async <T>(url: string, options?: RequestInit) => {
+			requests.push({ url, options });
+			return { project: grouped } as T;
+		});
+		state.editingProject = original;
+
+		await state.saveProjectGroup('  Client work  ');
+
+		expect(JSON.parse(String(requests[0]?.options?.body))).toEqual({
+			action: 'set_group',
+			group: 'Client work'
+		});
+		expect(state.projects[0].group).toBe('Client work');
+	});
+
+	it('restores the prior Project group when saving fails', async () => {
+		const state = manager(async () => {
+			throw new Error('Group failed');
+		});
+		state.editingProject = original;
+
+		await state.saveProjectGroup('Client work');
+
+		expect(state.projects[0].group).toBeNull();
+		expect(state.projectGroup).toBe('');
 	});
 
 	it('creates one Project with every selected folder and exactly one primary', async () => {

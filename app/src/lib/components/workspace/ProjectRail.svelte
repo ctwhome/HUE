@@ -1,5 +1,17 @@
 <script lang="ts">
-	import { Archive, ArrowUp, Check, Diamond, Ellipsis, Folder, FolderPlus, Plus, X } from 'lucide-svelte';
+	import { onMount } from 'svelte';
+	import {
+		Archive,
+		ArrowUp,
+		Check,
+		ChevronRight,
+		Diamond,
+		Ellipsis,
+		Folder,
+		FolderPlus,
+		Plus,
+		X
+	} from 'lucide-svelte';
 	import IconEditorPopover from '$lib/components/IconEditorPopover.svelte';
 	import ProjectFoldersEditor from './ProjectFoldersEditor.svelte';
 	import type { Directory, Project } from './types';
@@ -29,6 +41,7 @@
 		projectName = $bindable(),
 		projectIcon = $bindable(),
 		projectColor = $bindable(),
+		projectGroup = $bindable(),
 		projectEditError,
 		projectSaving,
 		locatingProject,
@@ -42,6 +55,7 @@
 		onicon,
 		oniconselect,
 		oncolor,
+		ongroup,
 		onhidden,
 		ondirectory,
 		ontogglefolder,
@@ -82,6 +96,7 @@
 		projectName: string;
 		projectIcon: string | null;
 		projectColor: string;
+		projectGroup: string;
 		projectEditError: string;
 		projectSaving: boolean;
 		locatingProject: Project | null;
@@ -95,6 +110,7 @@
 		onicon: (event: MouseEvent, project: Project) => void;
 		oniconselect: (icon: string | null) => void;
 		oncolor: (color: string) => void;
+		ongroup: (group: string) => void;
 		onhidden: (event: Event) => void;
 		ondirectory: (path?: string) => void;
 		ontogglefolder: (path?: string) => void;
@@ -114,7 +130,80 @@
 
 	const currentFolderSelected = $derived(selectedFolders.includes(projectRoot));
 	const addDisabled = $derived(projectsCapability !== 'available');
+	const ungroupedProjects = $derived(projects.filter((project) => !project.group));
+	const groups = $derived.by(() =>
+		[...new Set(projects.flatMap((project) => (project.group ? [project.group] : [])))].map(
+			(name) => ({ name, projects: projects.filter((project) => project.group === name) })
+		)
+	);
+	let collapsedGroups = $state<string[]>([]);
+	onMount(() => {
+		try {
+			const stored = JSON.parse(localStorage.getItem('hue:project-groups:collapsed') ?? '[]');
+			if (Array.isArray(stored)) collapsedGroups = stored.filter((name) => typeof name === 'string');
+		} catch {
+			collapsedGroups = [];
+		}
+	});
+	function toggleGroup(name: string) {
+		collapsedGroups = collapsedGroups.includes(name)
+			? collapsedGroups.filter((group) => group !== name)
+			: [...collapsedGroups, name];
+		localStorage.setItem('hue:project-groups:collapsed', JSON.stringify(collapsedGroups));
+	}
 </script>
+
+{#snippet projectRow(project: Project)}
+	<div class="project-row group relative">
+		<button
+			class="project-icon-trigger absolute top-1/2 left-0 z-1 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md hover:bg-accent"
+			aria-label={`Change ${project.name} icon`}
+			title={`Change ${project.name} icon`}
+			onclick={(event) => onicon(event, project)}
+		>
+			{#if isImage(project.icon)}<img
+					class="project-icon project-icon-image size-(--navigation-icon-size) rounded-md object-cover"
+					src={project.icon ?? ''}
+					alt=""
+				/>{:else if project.icon}<span
+					class="project-icon grid size-(--navigation-icon-size) place-items-center rounded-md"
+					>{project.icon}</span
+				>{:else}<Folder
+					class="project-icon project-icon-default size-(--navigation-icon-size) text-muted-foreground"
+					size={18}
+					aria-hidden="true"
+				/>{/if}
+		</button>
+		<button
+			class="project-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md bg-transparent py-1 pr-8 pl-8 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
+			class:active={selectedProject?.id === project.id}
+			aria-current={selectedProject?.id === project.id ? 'page' : undefined}
+			onclick={() => onchoose(project)}
+		>
+			{#if isImage(project.icon)}<img
+					class="project-icon-inline project-icon-image size-(--navigation-icon-size) rounded-md object-cover"
+					src={project.icon ?? ''}
+					alt=""
+				/>{:else if project.icon}<span
+					class="project-icon-inline size-(--navigation-icon-size) place-items-center rounded-md"
+					>{project.icon}</span
+				>{:else}<Folder
+					class="project-icon-inline project-icon-default size-(--navigation-icon-size) text-muted-foreground"
+					size={18}
+					aria-hidden="true"
+				/>{/if}
+			<span class="min-w-0 truncate">{project.name}</span>
+			{#if !project.rootAvailable}<small class="text-amber-400">Missing</small>{/if}
+		</button>
+		<button
+			class="project-edit absolute top-1/2 right-0 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent focus:opacity-100"
+			aria-label={`Edit ${project.name}`}
+			title={`Edit ${project.name}`}
+			onclick={(event) => onedit(event, project)}
+			><Ellipsis size={16} aria-hidden="true" /></button
+		>
+	</div>
+{/snippet}
 
 <aside
 	bind:this={element}
@@ -190,56 +279,31 @@
 				onclick={onprojectless}><Plus size={18} aria-hidden="true" /></button
 			>
 		</div>
-		{#each projects as project (project.id)}
-			<div class="project-row group relative">
+		{#each ungroupedProjects as project (project.id)}
+			{@render projectRow(project)}
+		{/each}
+		{#each groups as group (group.name)}
+			<h2 class="m-0">
 				<button
-					class="project-icon-trigger absolute top-1/2 left-0 z-1 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md hover:bg-accent"
-					aria-label={`Change ${project.name} icon`}
-					title={`Change ${project.name} icon`}
-					onclick={(event) => onicon(event, project)}
+					class="flex min-h-11 w-full items-center gap-1 rounded-md px-1 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+					aria-expanded={!collapsedGroups.includes(group.name)}
+					title={`Toggle ${group.name} group`}
+					onclick={() => toggleGroup(group.name)}
 				>
-					{#if isImage(project.icon)}<img
-							class="project-icon project-icon-image size-(--navigation-icon-size) rounded-md object-cover"
-							src={project.icon ?? ''}
-							alt=""
-						/>{:else if project.icon}<span
-							class="project-icon grid size-(--navigation-icon-size) place-items-center rounded-md"
-							>{project.icon}</span
-						>{:else}<Folder
-							class="project-icon project-icon-default size-(--navigation-icon-size) text-muted-foreground"
-							size={18}
-							aria-hidden="true"
-						/>{/if}
+					<ChevronRight
+						class={`shrink-0 transition-transform ${collapsedGroups.includes(group.name) ? '' : 'rotate-90'}`}
+						size={15}
+						aria-hidden="true"
+					/>
+					<span class="min-w-0 flex-1 truncate">{group.name}</span>
+					<span aria-label={`${group.projects.length} projects`}>{group.projects.length}</span>
 				</button>
-				<button
-					class="project-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md bg-transparent py-1 pr-8 pl-8 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
-					class:active={selectedProject?.id === project.id}
-					aria-current={selectedProject?.id === project.id ? 'page' : undefined}
-					onclick={() => onchoose(project)}
-				>
-					{#if isImage(project.icon)}<img
-							class="project-icon-inline project-icon-image size-(--navigation-icon-size) rounded-md object-cover"
-							src={project.icon ?? ''}
-							alt=""
-						/>{:else if project.icon}<span
-							class="project-icon-inline size-(--navigation-icon-size) place-items-center rounded-md"
-							>{project.icon}</span
-						>{:else}<Folder
-							class="project-icon-inline project-icon-default size-(--navigation-icon-size) text-muted-foreground"
-							size={18}
-							aria-hidden="true"
-						/>{/if}
-					<span class="min-w-0 truncate">{project.name}</span>
-					{#if !project.rootAvailable}<small class="text-amber-400">Missing</small>{/if}
-				</button>
-				<button
-					class="project-edit absolute top-1/2 right-0 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent focus:opacity-100"
-					aria-label={`Edit ${project.name}`}
-					title={`Edit ${project.name}`}
-					onclick={(event) => onedit(event, project)}
-					><Ellipsis size={16} aria-hidden="true" /></button
-				>
-			</div>
+			</h2>
+			{#if !collapsedGroups.includes(group.name)}
+				{#each group.projects as project (project.id)}
+					{@render projectRow(project)}
+				{/each}
+			{/if}
 		{/each}
 	</nav>
 
@@ -424,6 +488,18 @@
 					onchange={() => oncolor(projectColor)}
 				/>
 			</label>
+			<label class="grid gap-1.5 text-xs font-medium">Group label<input
+					class="min-h-11 rounded-lg border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+					bind:value={projectGroup}
+					list="project-group-labels"
+					maxlength="100"
+					disabled={projectSaving}
+					onchange={() => ongroup(projectGroup)}
+				/></label
+			>
+			<datalist id="project-group-labels">
+				{#each groups as group (group.name)}<option value={group.name}></option>{/each}
+			</datalist>
 
 			<ProjectFoldersEditor
 				project={editingProject}
