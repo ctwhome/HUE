@@ -24,6 +24,13 @@ function optionalLabel(value: unknown): string | null | undefined {
 	return value.trim() || null;
 }
 
+function projectGroup(value: unknown): string | null {
+	if (value !== null && typeof value !== 'string') throw new Error('Project group is invalid');
+	const group = value?.trim() || null;
+	if ((group?.length ?? 0) > 100 || group?.includes('\0')) throw new Error('Project group is invalid');
+	return group;
+}
+
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	let attempted = false;
 	let closeTerminals = false;
@@ -35,7 +42,19 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			const current = await state.projects.get(params.projectId);
 			state.store.ensureProjectMetadata(current.id);
 			state.store.updateProjectColor(current.id, color);
-			return json({ project: projectView(current, color) });
+			return json({
+				project: projectView(current, color, state.store.getProjectGroup(current.id))
+			});
+		}
+		if (body.action === 'set_group') {
+			const group = projectGroup(body.group);
+			const state = services();
+			const current = await state.projects.get(params.projectId);
+			state.store.ensureProjectMetadata(current.id);
+			state.store.updateProjectGroup(current.id, group);
+			return json({
+				project: projectView(current, state.store.getProjectColor(current.id), group)
+			});
 		}
 		let project;
 		if (body.action === 'auto_icon') {
@@ -90,16 +109,30 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			throw new Error('Unknown Project update');
 		}
 		if (closeTerminals) services().terminals.closeProject(project.id);
-		return json({ project: projectView(project, services().store.getProjectColor(project.id)) });
+		return json({
+			project: projectView(
+				project,
+				services().store.getProjectColor(project.id),
+				services().store.getProjectGroup(project.id)
+			)
+		});
 	} catch (cause) {
 		let project =
 			cause instanceof HermesProjectMutationError
-				? projectView(cause.project, services().store.getProjectColor(cause.project.id))
+				? projectView(
+						cause.project,
+						services().store.getProjectColor(cause.project.id),
+						services().store.getProjectGroup(cause.project.id)
+					)
 				: null;
 		if (attempted && !project) {
 			try {
 				const current = await services().projects.get(params.projectId);
-				project = projectView(current, services().store.getProjectColor(current.id));
+				project = projectView(
+					current,
+					services().store.getProjectColor(current.id),
+					services().store.getProjectGroup(current.id)
+				);
 			} catch {
 				// Original mutation failure remains authoritative.
 			}
