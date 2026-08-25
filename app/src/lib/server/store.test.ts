@@ -1161,6 +1161,27 @@ describe('HUEStore acknowledged message transport', () => {
 });
 
 describe('HUEStore Hermes Project identity migration', () => {
+	it('persists, trims, removes, and validates HUE-owned Project groups', () => {
+		const store = makeStore();
+		store.ensureProjectMetadata('p_grouped');
+
+		store.updateProjectGroup('p_grouped', '  Client work  ');
+		expect(store.getProjectGroup('p_grouped')).toBe('Client work');
+		store.updateProjectGroup('p_grouped', '   ');
+		expect(store.getProjectGroup('p_grouped')).toBeNull();
+		expect(() => store.updateProjectGroup('missing', 'Client work')).toThrow(
+			'Project metadata was not found'
+		);
+		expect(() => store.getProjectGroup('missing')).toThrow('Project metadata was not found');
+		expect(() => store.updateProjectGroup('p_grouped', 'x'.repeat(101))).toThrow(
+			'Project group is invalid'
+		);
+		expect(() => store.updateProjectGroup('p_grouped', 'bad\0group')).toThrow(
+			'Project group is invalid'
+		);
+		store.close();
+	});
+
 	it('marks pre-Hermes Project rows as legacy reconciliation inputs', () => {
 		const filename = join(tmpdir(), `hue-store-${crypto.randomUUID()}.db`);
 		temporaryDatabases.push(filename);
@@ -1194,6 +1215,7 @@ describe('HUEStore Hermes Project identity migration', () => {
 	it('remaps every HUE-owned foreign key to Hermes id without losing unknown delivery state', () => {
 		const store = makeStore();
 		store.createProject({ id: 'legacy-hue', name: 'HUE', rootPath: '/work/hue' });
+		store.updateProjectGroup('legacy-hue', 'Core');
 		store.createWorkflow({
 			id: 'workflow-1',
 			projectId: 'legacy-hue',
@@ -1223,6 +1245,7 @@ describe('HUEStore Hermes Project identity migration', () => {
 		expect(store.listLegacyProjects()).toEqual([]);
 		expect(store.hasProjectMetadata('legacy-hue')).toBe(false);
 		expect(store.hasProjectMetadata('p_hermes')).toBe(true);
+		expect(store.getProjectGroup('p_hermes')).toBe('Core');
 		expect(store.listWorkflows('p_hermes').map(({ id }) => id)).toEqual(['workflow-1']);
 		expect(store.getSession('p_hermes', 'session-1')?.cwd).toBe('/work/hue/packages/app');
 		expect(store.getMessage('message-1')).toMatchObject({

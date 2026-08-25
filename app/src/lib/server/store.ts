@@ -259,6 +259,7 @@ export class HUEStore {
 				name TEXT NOT NULL,
 				root_path TEXT NOT NULL UNIQUE,
 				icon TEXT,
+				group_name TEXT,
 				legacy INTEGER NOT NULL DEFAULT 1,
 				created_at TEXT NOT NULL
 			);
