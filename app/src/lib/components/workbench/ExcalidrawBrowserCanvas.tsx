@@ -4,6 +4,7 @@ import type {
 	ExcalidrawEmbeddableElement
 } from '@excalidraw/excalidraw/element/types';
 import {
+	browserDeviceLabel,
 	createBrowserEmbedSpec,
 	createExcalidrawEmbedElement,
 	normalizeBrowserEmbedUrl,
@@ -34,7 +35,7 @@ const safeEmbedUrl = (link: string | null | undefined) => {
 };
 
 const embedTitle = (element: ExcalidrawEmbeddableElement, url: string) => {
-	const device = element.width === 390 && element.height === 844 ? 'Mobile' : 'Desktop';
+	const device = browserDeviceLabel(element.width, element.height);
 	return `${new URL(url).host} — ${device} (${element.width} × ${element.height})`;
 };
 

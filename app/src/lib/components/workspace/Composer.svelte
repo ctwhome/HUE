@@ -1,11 +1,6 @@
 <script lang="ts">
 	import {
 		ArrowDown,
-		Check,
-		ChevronDown,
-		ChevronRight,
-		Circle,
-		CircleDot,
 		CircleHelp,
 		BookOpenText,
 		GripVertical,
@@ -15,7 +10,6 @@
 		PhoneCall,
 		PhoneOff,
 		Send,
-		Sparkles,
 		Square,
 		X
 	} from 'lucide-svelte';
@@ -25,7 +19,8 @@
 		type WorkspaceTimelineItem
 	} from '$lib';
 	import type { ImageAttachment, InputAttachment } from '$lib/message-content';
-	import { compactModelLabel } from './mobile-navigation';
+	import ModelPicker from '../ModelPicker.svelte';
+	import SessionOptionPicker from '../SessionOptionPicker.svelte';
 	import CurrentTask from './CurrentTask.svelte';
 	import PromptLibraryDialog from './PromptLibraryDialog.svelte';
 	import ThinkingDialog from './ThinkingDialog.svelte';
@@ -36,8 +31,6 @@
 		Workflow
 	} from './types';
 	import type { WorkMode } from '$lib/work-mode';
-
-	type Model = NonNullable<Runtime['models']>['availableModels'][number];
 
 	let {
 		composer,
@@ -67,11 +60,10 @@
 		workModeChanging,
 		runtimeChanging,
 		promptLibraryAvailable,
+		showPromptLibrary = true,
 		workflows,
 		workflowName = $bindable(),
 		workflowPrompt = $bindable(),
-		modelMenuOpen = $bindable(),
-		modelPopover = $bindable(),
 		stopping,
 		showScrollToLatest,
 		onsubmit,
@@ -91,14 +83,13 @@
 		oncommand,
 		onmodel,
 		onruntime,
+		onconfig,
 		onworkmode,
 		onloadworkflows,
 		onworkflow,
 		onrunworkflow,
 		onscrolllatest,
 		matchingCommands,
-		currentModel,
-		modelCategories,
 		contextPercent,
 		busy
 	}: {
@@ -129,11 +120,10 @@
 		workModeChanging: boolean;
 		runtimeChanging: boolean;
 		promptLibraryAvailable: boolean;
+		showPromptLibrary?: boolean;
 		workflows: Workflow[];
 		workflowName: string;
 		workflowPrompt: string;
-		modelMenuOpen: boolean;
-		modelPopover?: HTMLElement;
 		stopping: boolean;
 		showScrollToLatest: boolean;
 		busy: boolean;
@@ -154,22 +144,32 @@
 		oncommand: (command: Command) => void;
 		onmodel: (id: string) => void;
 		onruntime: (kind: 'modelId' | 'modeId', value: string) => void;
+		onconfig: (configId: string, value: string | boolean) => void;
 		onworkmode: (value: WorkMode) => void;
 		onloadworkflows: () => Promise<void>;
 		onworkflow: (event: SubmitEvent) => void;
 		onrunworkflow: (workflow: Workflow) => void;
 		onscrolllatest: (behavior: ScrollBehavior) => void;
 		matchingCommands: () => Command[];
-		currentModel: () => Model | undefined;
-		modelCategories: () => Array<{ name: string; models: Model[] }>;
 		contextPercent: () => number | null;
 	} = $props();
 	const instanceId = $props.id();
-	const modelMenuId = `${instanceId}-model-menu`;
+	const workModeOptions = [
+		{ value: 'autonomous', name: 'Autonomous', description: 'Hermes works independently.' },
+		{ value: 'live', name: 'Live', description: 'Collaborate turn by turn.' }
+	];
+	type SelectConfig = Extract<NonNullable<Runtime['configOptions']>[number], { type: 'select' }>;
+	let reasoning = $derived(
+		runtime.configOptions?.find(
+			(option): option is SelectConfig => option.type === 'select' && option.category === 'thought_level'
+		)
+	);
 	let thinkingTimeline = $derived(selectThinkingTimeline(timeline));
 	let promptLibraryDialog = $state<HTMLDialogElement>();
 	let promptLibraryLoading = $state(false);
-	let modelSearch = $state('');
+	function flattenOptions(options: SelectConfig['options']) {
+		return options.flatMap((option) => ('value' in option ? [option] : option.options));
+	}
 	function resizeComposer() {
 		if (!composerElement) return;
 		composerElement.style.height = 'auto';
@@ -179,18 +179,6 @@
 	function handleComposerInput(event: Event) {
 		oninput(event);
 		resizeComposer();
-	}
-	function filteredModelCategories() {
-		const query = modelSearch.trim().toLowerCase();
-		if (!query) return modelCategories();
-		return modelCategories()
-			.map((category) => ({
-				...category,
-				models: category.models.filter((model) =>
-					`${model.name} ${model.modelId} ${model.description ?? ''}`.toLowerCase().includes(query)
-				)
-			}))
-			.filter((category) => category.models.length);
 	}
 	$effect(() => {
 		composer;
@@ -386,14 +374,14 @@
 			: 'Message Hermes… / for commands'}
 		aria-label="Message Hermes"></textarea>
 	<div class="composer-toolbar flex min-w-0 items-center gap-2 pt-1">
-		{#if promptLibraryAvailable}<button
+		{#if promptLibraryAvailable && showPromptLibrary}<button
 				type="button"
 				class="attach-button flex h-(--control-height-icon) shrink-0 items-center gap-2 rounded-md border border-border px-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
 				aria-label="Prompt library"
 				title="Open prompt library"
 				onclick={openPromptLibrary}
 			>
-				<BookOpenText size={20} aria-hidden="true" /><span class="hidden lg:inline">Prompts</span
+				<BookOpenText size={20} aria-hidden="true" /><span class="composer-prompt-label hidden lg:inline">Prompts</span
 				></button
 			>{/if}
 		<label
@@ -425,142 +413,46 @@
 				title="Start voice call"
 				onclick={onvoiceCall}><PhoneCall size={20} aria-hidden="true" /></button
 			>{/if}
+		{#if runtime.modes}<SessionOptionPicker
+				options={runtime.modes.availableModes.map((mode) => ({
+					value: mode.id,
+					name: mode.name,
+					description: `${mode.description ?? 'Choose how Hermes handles file edits.'} Other permission requests still ask.`
+				}))}
+				value={runtime.modes.currentModeId}
+				ariaLabel="Edit approvals"
+				kind="mode"
+				disabled={runtimeChanging || busy}
+				onselect={(value) => onruntime('modeId', value)}
+			/>{/if}
 		<div
-			class="composer-context ml-auto flex min-w-0 items-center gap-1 overflow-x-auto"
+			class="composer-context ml-auto flex min-w-0 items-center gap-1"
 			aria-label="Hermes session context"
 		>
-			<span
-				class="context-chip context-profile hidden min-h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground sm:inline-flex"
-				title="Active Hermes profile"
-			>
-				<Sparkles size={14} aria-hidden="true" /><span>{runtime.profile}</span>
-			</span>
-			<label
-				class="context-chip context-select inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground hover:bg-accent sm:min-h-8"
-				title="Choose HUE work mode"
-			>
-				<span class="hidden xl:inline">Work mode</span>
-				<select
-					class="min-h-11 min-w-24 sm:min-h-8"
-					aria-label="Work mode"
-					value={workMode}
-					disabled={workModeChanging}
-					onchange={(event) =>
-						onworkmode((event.currentTarget as HTMLSelectElement).value as WorkMode)}
-				>
-					<option value="autonomous">Autonomous</option>
-					<option value="live">Live</option>
-				</select>
-			</label>
-			{#if runtime.models}{@const selectedModel = currentModel()}<button
-					type="button"
-					class="context-chip context-select context-model inline-flex min-h-8 max-w-40 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs hover:bg-accent"
-					aria-label="Hermes model"
-					aria-haspopup="menu"
-					aria-expanded={modelMenuOpen}
-					popovertarget={modelMenuId}
-					title={`${selectedModel?.name ?? runtime.models.currentModelId} · ${runtime.models.currentModelId}`}
+			{#if reasoning}<SessionOptionPicker
+					options={flattenOptions(reasoning.options)}
+					value={reasoning.currentValue}
+					ariaLabel="Reasoning"
+					kind="reasoning"
+					showLabel={true}
 					disabled={runtimeChanging || busy}
-				>
-					<CircleDot size={14} aria-hidden="true" />
-					<span
-						>{compactModelLabel(
-							runtime.models.currentModelId,
-							selectedModel?.name ?? runtime.models.currentModelId
-						)}</span
-					>
-					<ChevronDown size={13} aria-hidden="true" />
-				</button>
-				<div
-					bind:this={modelPopover}
-					id={modelMenuId}
-					class="model-menu max-h-[min(520px,calc(100dvh-24px))] w-[min(360px,calc(100vw-24px))] overflow-y-auto rounded-2xl border border-border bg-card p-2 text-foreground shadow-2xl"
-					popover="auto"
-					role="menu"
-					aria-label="Choose Hermes model"
-					ontoggle={(event) =>
-						(modelMenuOpen = (event.currentTarget as HTMLElement).matches(':popover-open'))}
-				>
-					<header>
-						<div>
-							<strong>Choose model</strong><small class="block text-muted-foreground"
-								>Current: {selectedModel?.name ?? runtime.models.currentModelId}</small
-							>
-						</div>
-						<button
-							type="button"
-							class="model-menu-close"
-							aria-label="Close model picker"
-							title="Close model picker"
-							onclick={() => modelPopover?.hidePopover()}><X size={18} aria-hidden="true" /></button
-						>
-					</header>
-					<label class="model-search"
-						><span class="sr-only">Search models</span><input
-							bind:value={modelSearch}
-							type="search"
-							aria-label="Search models"
-							placeholder="Search models"
-						/></label
-					>
-					{#each filteredModelCategories() as category}
-						<details
-							open={Boolean(modelSearch) ||
-								category.models.some((model) => model.modelId === runtime.models?.currentModelId)}
-						>
-							<summary>
-								<span>{category.name}</span>
-								<small
-									>{category.models.length}
-									{category.models.length === 1 ? 'model' : 'models'}</small
-								>
-								<ChevronRight size={14} aria-hidden="true" />
-							</summary>
-							<div class="model-options pb-1.5">
-								{#each category.models as model}<button
-										type="button"
-										role="menuitemradio"
-										aria-checked={model.modelId === runtime.models?.currentModelId}
-										title={`Use ${model.name} · ${model.modelId}`}
-										onclick={() => onmodel(model.modelId)}
-									>
-										<span class="model-check pt-0.5 text-primary"
-											>{#if model.modelId === runtime.models?.currentModelId}<Check
-													size={15}
-													aria-hidden="true"
-												/>{/if}</span
-										>
-										<span
-											><strong>{model.name}</strong><small
-												>{model.modelId}{model.description ? ` · ${model.description}` : ''}</small
-											></span
-										>
-									</button>{/each}
-							</div>
-						</details>
-					{/each}
-					{#if filteredModelCategories().length === 0}<p class="p-3 text-sm text-muted-foreground">
-							No matching models.
-						</p>{/if}
-				</div>{/if}
-			{#if runtime.modes}<label
-					class="context-chip context-select context-mode inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs text-emerald-300 hover:bg-accent"
-					title={`${runtime.modes.availableModes.find((mode) => mode.id === runtime.modes?.currentModeId)?.description ?? 'Choose how Hermes handles file edits.'} Other permission requests still ask.`}
-				>
-					<Circle size={14} aria-hidden="true" />
-					<span class="hidden xl:inline">Edit approvals</span>
-					<select
-						aria-label="Hermes mode"
-						value={runtime.modes.currentModeId}
-						disabled={runtimeChanging || busy}
-						onchange={(event) =>
-							onruntime('modeId', (event.currentTarget as HTMLSelectElement).value)}
-					>
-						{#each runtime.modes.availableModes as mode}<option value={mode.id}>{mode.name}</option
-							>{/each}
-					</select>
-					{#if runtime.modes.currentModeId !== 'default'}<small>Edits only</small>{/if}
-				</label>{/if}
+					onselect={(value) => onconfig(reasoning!.id, value)}
+				/>{/if}
+			{#if runtime.models}<ModelPicker
+					models={runtime.models.availableModels}
+					value={runtime.models.currentModelId}
+					disabled={runtimeChanging || busy}
+					onselect={onmodel}
+				/>{/if}
+			<SessionOptionPicker
+				options={workModeOptions}
+				value={workMode}
+				ariaLabel="Work mode"
+				kind="work"
+				showLabel={true}
+				disabled={workModeChanging}
+				onselect={(value) => onworkmode(value as WorkMode)}
+			/>
 			{#if contextPercent() !== null}<span
 					class="context-chip context-usage inline-flex min-h-8 shrink-0 items-center rounded-lg border border-emerald-900 bg-emerald-950 px-2 text-xs font-bold text-emerald-300"
 					class:warning={contextPercent()! >= 80}
@@ -604,13 +496,13 @@
 			>{/if}
 	</div>
 </form>
-<PromptLibraryDialog
-	id={`${instanceId}-prompts`}
-	bind:dialog={promptLibraryDialog}
-	loading={promptLibraryLoading}
-	{workflows}
-	bind:name={workflowName}
-	bind:prompt={workflowPrompt}
-	onsubmit={onworkflow}
-	onrun={onrunworkflow}
-/>
+{#if showPromptLibrary}<PromptLibraryDialog
+		id={`${instanceId}-prompts`}
+		bind:dialog={promptLibraryDialog}
+		loading={promptLibraryLoading}
+		{workflows}
+		bind:name={workflowName}
+		bind:prompt={workflowPrompt}
+		onsubmit={onworkflow}
+		onrun={onrunworkflow}
+	/>{/if}

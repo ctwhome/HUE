@@ -48,6 +48,7 @@ export type HermesSessionState = {
 	clarify?: HermesClarifyCapability;
 	models?: HermesModelState | null;
 	modes?: acp.SessionModeState | null;
+	configOptions?: acp.SessionConfigOption[] | null;
 	usage?: { used: number; size: number };
 };
 
@@ -68,6 +69,7 @@ type HermesSessionResponse = {
 	sessionId?: string;
 	models?: HermesModelState | null;
 	modes?: acp.SessionModeState | null;
+	configOptions?: acp.SessionConfigOption[] | null;
 };
 
 export const redactToolPayload = redactPersistedValue;
@@ -804,6 +806,12 @@ export class HermesACP implements PromptRuntime {
 				});
 			}
 		}
+		if (update.sessionUpdate === 'config_option_update') {
+			this.sessionStates.set(sessionId, {
+				...this.getSessionState(sessionId),
+				configOptions: update.configOptions
+			});
+		}
 		for (const handler of this.updateHandlers.get(sessionId) ?? []) handler(update);
 	}
 
@@ -815,7 +823,8 @@ export class HermesACP implements PromptRuntime {
 		this.sessionStates.set(sessionId, {
 			...this.getSessionState(sessionId),
 			...(response.models !== undefined ? { models: response.models } : {}),
-			...(response.modes !== undefined ? { modes: response.modes } : {})
+			...(response.modes !== undefined ? { modes: response.modes } : {}),
+			...(response.configOptions !== undefined ? { configOptions: response.configOptions } : {})
 		});
 	}
 
@@ -850,6 +859,25 @@ export class HermesACP implements PromptRuntime {
 				modes: { ...current.modes, currentModeId: modeId }
 			});
 		}
+		return this.getSessionState(sessionId);
+	}
+
+	async setConfigOption(
+		sessionId: string,
+		configId: string,
+		value: string | boolean
+	): Promise<HermesSessionState> {
+		const context = await this.context();
+		const response = (await context.request(acp.methods.agent.session.setConfigOption, {
+			sessionId,
+			configId,
+			value,
+			...(typeof value === 'boolean' ? { type: 'boolean' as const } : {})
+		})) as acp.SetSessionConfigOptionResponse;
+		this.sessionStates.set(sessionId, {
+			...this.getSessionState(sessionId),
+			configOptions: response.configOptions
+		});
 		return this.getSessionState(sessionId);
 	}
 

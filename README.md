@@ -1,4 +1,9 @@
-# HUE
+<p align="center">
+  <img src="favicon.png" alt="HUE logo" width="180" style="border-radius: 24px;">
+  <img src="hermes logo.png" alt="Hermes logo" width="180" style="border-radius: 24px;">
+</p>
+
+# HUE - Hermes Unified Environment
 
 > **One flexible interface for AI-assisted work across Projects, Workflows, and Sessions.**
 
@@ -21,7 +26,7 @@ HUE owns its local workspace metadata and delivery state. Hermes owns agent exec
 
 Install these prerequisites first:
 
-- [Bun 1.3.14](https://bun.sh/)
+- [Bun](https://bun.sh/)
 - Hermes Agent with ACP v1 support, installed and configured for the current user
 - Git
 - [GitHub CLI](https://cli.github.com/) authenticated with `gh auth login` for GitHub issue and pull-request panels

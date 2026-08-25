@@ -704,7 +704,7 @@ describe('HermesACP update subscriptions', () => {
 		expect(runtime.getAvailableCommands('session-1')).toEqual([]);
 	});
 
-	it('retains model, mode, profile, and context state for a session', () => {
+	it('retains model, mode, reasoning, profile, and context state for a session', () => {
 		const runtime = new HermesACP({ profile: 'work' });
 		const internals = runtime as unknown as {
 			captureSessionResponse: (sessionId: string, response: unknown) => void;
@@ -718,7 +718,30 @@ describe('HermesACP update subscriptions', () => {
 			modes: {
 				currentModeId: 'default',
 				availableModes: [{ id: 'default', name: 'Default' }]
-			}
+			},
+			configOptions: [
+				{
+					type: 'select',
+					id: 'reasoning',
+					name: 'Reasoning',
+					category: 'thought_level',
+					currentValue: 'balanced',
+					options: [{ value: 'balanced', name: 'Balanced' }, { value: 'high', name: 'High' }]
+				}
+			]
+		});
+		internals.dispatchUpdate('session-1', {
+			sessionUpdate: 'config_option_update',
+			configOptions: [
+				{
+					type: 'select',
+					id: 'reasoning',
+					name: 'Reasoning',
+					category: 'thought_level',
+					currentValue: 'high',
+					options: [{ value: 'balanced', name: 'Balanced' }, { value: 'high', name: 'High' }]
+				}
+			]
 		});
 		internals.dispatchUpdate('session-1', {
 			sessionUpdate: 'usage_update',
@@ -736,6 +759,16 @@ describe('HermesACP update subscriptions', () => {
 				currentModeId: 'default',
 				availableModes: [{ id: 'default', name: 'Default' }]
 			},
+			configOptions: [
+				{
+					type: 'select',
+					id: 'reasoning',
+					name: 'Reasoning',
+					category: 'thought_level',
+					currentValue: 'high',
+					options: [{ value: 'balanced', name: 'Balanced' }, { value: 'high', name: 'High' }]
+				}
+			],
 			usage: { used: 32_000, size: 128_000 }
 		});
 	});

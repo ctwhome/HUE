@@ -3,7 +3,6 @@
 	import {
 		ChevronDown,
 		ChevronRight,
-		Ellipsis,
 		Minus,
 		Plus,
 		RefreshCw,
@@ -11,6 +10,7 @@
 	} from 'lucide-svelte';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
+	import ModelPicker from '../ModelPicker.svelte';
 	import { api } from './api';
 	import GitHubPanels from './GitHubPanels.svelte';
 
@@ -63,9 +63,8 @@
 	let gitOpen = $state(true);
 	let worktreesOpen = $state(true);
 	let commitModel = $state('openai-codex:gpt-5.6-luna');
-	let commitModelDialog = $state<HTMLDialogElement>();
 	let commitModels = $state([
-		{ value: 'openai-codex:gpt-5.6-luna', label: 'Codex · GPT-5.6 Luna' }
+		{ modelId: 'openai-codex:gpt-5.6-luna', name: 'Codex · GPT-5.6 Luna' }
 	]);
 	let mounted = false;
 	let repositoryRequestGeneration = 0;
@@ -194,8 +193,8 @@
 			const available = (result.options?.providers ?? []).flatMap((provider) =>
 				provider.authenticated
 					? provider.models.map((model) => ({
-							value: `${provider.slug}:${model}`,
-							label: `${provider.name} · ${model}`
+							modelId: `${provider.slug}:${model}`,
+							name: `${provider.name} · ${model}`
 						}))
 					: []
 			);
@@ -209,6 +208,10 @@
 		localStorage.setItem(`hue:project-tools:${projectId}:worktrees-open`, String(worktreesOpen));
 	}
 	function toggleGit() { gitOpen = !gitOpen; }
+	function selectCommitModel(modelId: string) {
+		commitModel = modelId;
+		localStorage.setItem('hue:commit-message-model', modelId);
+	}
 	function togglePanelFromHeader(event: MouseEvent | KeyboardEvent, toggle: () => void) {
 		if ((event.target as HTMLElement).closest('button, select, a')) return;
 		if (event instanceof KeyboardEvent && !['Enter', ' '].includes(event.key)) return;
@@ -385,16 +388,12 @@
 					? `${stagedChanges().length} staged`
 					: 'Stage files to commit'}</span
 			>
-			<Button
-				variant="ghost"
-				size="icon"
-				class="size-8"
-				type="button"
-				aria-label="Choose commit message model"
-				title="Choose commit message model"
-				onclick={() => commitModelDialog?.showModal()}
-				><Ellipsis size={17} aria-hidden="true" /></Button
-			>
+			<ModelPicker
+				models={commitModels}
+				value={commitModel}
+				ariaLabel="Commit message model"
+				onselect={selectCommitModel}
+			/>
 		</div>
 		<div class="commit-message-field relative">
 			<Input
@@ -437,25 +436,6 @@
 			>
 		</div>
 	</form>
-	<dialog
-		bind:this={commitModelDialog}
-		class="fixed m-auto w-[min(360px,calc(100vw-24px))] rounded-xl border border-border bg-card p-4 text-foreground shadow-2xl backdrop:bg-black/60"
-		aria-labelledby="commit-model-title"
-		onclick={(event) => event.target === event.currentTarget && commitModelDialog?.close()}
-	>
-		<form method="dialog" class="grid gap-3">
-			<h2 id="commit-model-title" class="text-sm font-semibold">Commit message model</h2>
-			<select
-				class="h-9 min-w-0 rounded-md border border-input bg-background px-2 text-xs max-[700px]:h-11"
-				aria-label="Commit message model"
-				bind:value={commitModel}
-				onchange={() => localStorage.setItem('hue:commit-message-model', commitModel)}
-			>
-				{#each commitModels as option}<option value={option.value}>{option.label}</option>{/each}
-			</select>
-			<Button variant="outline" size="sm" class="justify-self-end" type="submit">Done</Button>
-		</form>
-	</dialog>
 	{/if}
 </article>
 

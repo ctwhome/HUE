@@ -12,8 +12,6 @@ type RuntimeStateOptions = {
 
 export class RuntimeState {
 	changing = $state(false);
-	modelMenuOpen = $state(false);
-	modelPopover = $state<HTMLElement>();
 
 	constructor(private options: RuntimeStateOptions) {}
 
@@ -21,23 +19,6 @@ export class RuntimeState {
 		const usage = this.options.session.runtime.usage;
 		if (!usage?.size) return null;
 		return Math.max(0, Math.min(100, Math.round((usage.used / usage.size) * 100)));
-	};
-
-	modelCategories = () => {
-		const labels: Record<string, string> = {
-			anthropic: 'Anthropic',
-			google: 'Google',
-			openai: 'OpenAI',
-			openrouter: 'OpenRouter'
-		};
-		const categories = new Map<string, NonNullable<HermesRuntime['models']>['availableModels']>();
-		for (const model of this.options.session.runtime.models?.availableModels ?? []) {
-			const provider = model.modelId.includes(':') ? model.modelId.split(':', 1)[0] : 'other';
-			const label =
-				labels[provider] ?? provider.replace(/(^|[-_])\w/g, (part) => part.toUpperCase());
-			categories.set(label, [...(categories.get(label) ?? []), model]);
-		}
-		return [...categories].map(([name, models]) => ({ name, models }));
 	};
 
 	currentModel = () =>
@@ -63,8 +44,24 @@ export class RuntimeState {
 		}
 	};
 
+	changeConfig = async (configId: string, configValue: string | boolean) => {
+		const selectedSession = this.options.getSession();
+		if (!selectedSession) return;
+		this.changing = true;
+		try {
+			const body = await this.options.api<{ runtime: HermesRuntime }>(
+				this.options.sessionPath(selectedSession.sessionId),
+				{ method: 'PATCH', body: JSON.stringify({ configId, configValue }) }
+			);
+			this.options.session.runtime = { ...this.options.session.runtime, ...body.runtime };
+		} catch (cause) {
+			this.options.setError(cause instanceof Error ? cause.message : String(cause));
+		} finally {
+			this.changing = false;
+		}
+	};
+
 	selectModel = (modelId: string) => {
-		this.modelPopover?.hidePopover();
 		void this.change('modelId', modelId);
 	};
 }

@@ -52,8 +52,7 @@
 	}: WorkspaceProps = $props();
 	let loading = $state(false),
 		error = $state('');
-	let globalView = $state<GlobalView | null>(null);
-	let unreadNotifications = $state(0);
+	let globalView = $state<GlobalView | null>(null), unreadNotifications = $state(0);
 	let now = $state(Date.now());
 	let dirtyGuardOpen = $state(false),
 		dirtyGuardDirty = $state(false);
@@ -617,11 +616,10 @@
 						{workModeChanging}
 						runtimeChanging={runtimeState.changing}
 						promptLibraryAvailable={Boolean(selectedProject?.rootAvailable)}
+						showPromptLibrary={false}
 						{workflows}
 						bind:workflowName={navigation.workflowName}
 						bind:workflowPrompt={navigation.workflowPrompt}
-						bind:modelMenuOpen={runtimeState.modelMenuOpen}
-						bind:modelPopover={runtimeState.modelPopover}
 						stopping={messageState.stopping}
 						showScrollToLatest={timeline.length > 0 && transcriptFollow.showScrollToLatest}
 						busy={isTurnBusy(delivery)}
@@ -642,14 +640,13 @@
 						oncommand={messageState.chooseCommand}
 						onmodel={runtimeState.selectModel}
 						onruntime={runtimeState.change}
+						onconfig={runtimeState.changeConfig}
 						onworkmode={changeWorkMode}
 						onloadworkflows={navigation.loadWorkflows}
 						onworkflow={navigation.addWorkflow}
 						onrunworkflow={navigation.runWorkflow}
 						onscrolllatest={transcriptFollow.scrollToLatest}
 						matchingCommands={messageState.matchingCommands}
-						currentModel={runtimeState.currentModel}
-						modelCategories={runtimeState.modelCategories}
 						contextPercent={runtimeState.contextPercent}
 					/>
 				{:else if selectedProject && !selectedProject.rootAvailable}
@@ -735,13 +732,16 @@
 		{/key}
 	{/if}
 </div>
-<SessionManagerOverlay {navigation} />
+<SessionManagerOverlay
+	{navigation}
+	profile={runtime.profile}
+	promptLibraryAvailable={Boolean(selectedProject?.rootAvailable)}
+/>
 <QuickCapture
 	bind:this={quickCapture}
 	projects={projectManagement.projects}
 	oncreate={createCapturedSession}
 />
-
 <DirtyGuardDialog
 	open={dirtyGuardOpen}
 	onkeep={() => dirtyGuard.keepEditing()}
