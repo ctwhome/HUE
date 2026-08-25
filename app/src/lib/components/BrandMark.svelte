@@ -2,7 +2,9 @@
 	let { class: className = '' }: { class?: string } = $props();
 </script>
 
-<span
-	class={`grid size-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-violet-300 to-violet-700 font-black text-violet-950 shadow-[0_8px_28px_rgb(109_40_217_/_0.35)] ${className}`}
-	aria-hidden="true">H</span
->
+<img
+	class={`size-9 shrink-0 rounded-xl border border-border bg-background object-contain drop-shadow-[0_6px_16px_rgb(0_0_0_/_0.45)] ${className}`}
+	src="/favicon.png"
+	alt=""
+	aria-hidden="true"
+/>

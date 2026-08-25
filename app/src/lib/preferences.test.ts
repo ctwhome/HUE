@@ -61,10 +61,10 @@ describe('HUE preferences', () => {
 	});
 
 	it('maps appearance preferences to coordinated browser chrome colors', () => {
-		expect(themeChromeColor('dark', false)).toBe('#181818');
+		expect(themeChromeColor('dark', false)).toBe('#050505');
 		expect(themeChromeColor('oled', false)).toBe('#000000');
 		expect(themeChromeColor('light', true)).toBe('#f3f3f3');
-		expect(themeChromeColor('system', true)).toBe('#181818');
+		expect(themeChromeColor('system', true)).toBe('#050505');
 		expect(themeChromeColor('system', false)).toBe('#f3f3f3');
 	});
 

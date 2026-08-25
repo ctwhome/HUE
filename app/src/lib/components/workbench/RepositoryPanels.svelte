@@ -7,6 +7,8 @@
 
 	type Repository = {
 		isRepository: boolean;
+		repositoryPath?: string;
+		repositories?: Array<{ path: string }>;
 		branch: string | null;
 		changes: Array<{ path: string; index: string; worktree: string; fileUrl: string | null }>;
 		worktrees: Array<{ path: string; branch: string | null; head: string }>;
@@ -42,6 +44,7 @@
 	let repositoryBusy = $state(false);
 	let commitMessageGenerating = $state(false);
 	let repositoryMessage = $state('');
+	let selectedRepository = $state('');
 	let githubItems = $state<GitHubItems | null>(null);
 	let githubError = $state('');
 	let commitMessage = $state('');
@@ -60,9 +63,14 @@
 		repositoryLoading = true;
 		repositoryError = '';
 		try {
-			const result = await api<Repository>(`/api/projects/${projectId}/repository`);
+			const query = selectedRepository
+				? `?repository=${encodeURIComponent(selectedRepository)}`
+				: '';
+			const result = await api<Repository>(`/api/projects/${projectId}/repository${query}`);
 			if (!mounted || request !== repositoryRequestGeneration) return;
 			repository = result;
+			selectedRepository = result.repositoryPath ?? selectedRepository;
+			githubItems = null;
 			onbranch(result.branch);
 			onchanges(result.changes.length);
 			if (isGitHubRepository(result)) void loadGitHubItems();
@@ -84,7 +92,9 @@
 	async function loadGitHubItems() {
 		githubError = '';
 		try {
-			githubItems = await api<GitHubItems>(`/api/projects/${projectId}/repository?view=github`);
+			const params = new URLSearchParams({ view: 'github' });
+			if (selectedRepository) params.set('repository', selectedRepository);
+			githubItems = await api<GitHubItems>(`/api/projects/${projectId}/repository?${params}`);
 		} catch (cause) {
 			githubError = cause instanceof Error ? cause.message : String(cause);
 		}
@@ -119,7 +129,7 @@
 		try {
 			repository = await api<Repository>(`/api/projects/${projectId}/repository`, {
 				method: 'POST',
-				body: JSON.stringify(operation)
+				body: JSON.stringify({ ...operation, repository: selectedRepository })
 			});
 			onchanges(repository.changes.length);
 			repositoryMessage =
@@ -151,6 +161,7 @@
 				method: 'POST',
 				body: JSON.stringify({
 					action: 'generateCommitMessage',
+					repository: selectedRepository,
 					provider: commitModel.slice(0, separator),
 					model: commitModel.slice(separator + 1)
 				})
@@ -208,6 +219,17 @@
 				>{repository?.branch ?? 'Repository'}</span
 			>
 		</div>
+		{#if (repository?.repositories?.length ?? 0) > 1}<select
+				class="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs max-[700px]:h-11"
+				aria-label="Repository"
+				bind:value={selectedRepository}
+				disabled={repositoryBusy || repositoryLoading}
+				onchange={() => void loadRepository()}
+			>
+				{#each repository?.repositories ?? [] as item}<option value={item.path}
+						>{item.path === '.' ? 'Project root' : item.path}</option
+					>{/each}
+			</select>{/if}
 		<div class="git-header-actions flex gap-1.5">
 			<Button
 				variant="outline"
@@ -255,13 +277,16 @@
 					<section class="min-w-0" aria-label="GitHub issues">
 						<strong class="px-1 text-xs">Issues</strong>
 						<ul class="mt-1 grid list-none gap-0.5 p-0">
-							{#each githubItems?.issues ?? [] as item}<li><a
-									class="block overflow-hidden rounded-md px-1.5 py-1 text-xs text-ellipsis whitespace-nowrap hover:bg-muted hover:underline"
-									href={item.url}
-									target="_blank"
-									rel="noopener noreferrer"
-									title={`Open issue #${item.number}: ${item.title}`}>#{item.number} {item.title}</a
-								></li>{/each}
+							{#each githubItems?.issues ?? [] as item}<li>
+									<a
+										class="block overflow-hidden rounded-md px-1.5 py-1 text-xs text-ellipsis whitespace-nowrap hover:bg-muted hover:underline"
+										href={item.url}
+										target="_blank"
+										rel="noopener noreferrer"
+										title={`Open issue #${item.number}: ${item.title}`}
+										>#{item.number} {item.title}</a
+									>
+								</li>{/each}
 						</ul>
 						{#if githubItems && !githubItems.issues.length}<small class="px-1 text-muted-foreground"
 								>No open issues</small
@@ -270,20 +295,25 @@
 					<section class="min-w-0" aria-label="GitHub pull requests">
 						<strong class="px-1 text-xs">Pull requests</strong>
 						<ul class="mt-1 grid list-none gap-0.5 p-0">
-							{#each githubItems?.pullRequests ?? [] as item}<li><a
-									class="block overflow-hidden rounded-md px-1.5 py-1 text-xs text-ellipsis whitespace-nowrap hover:bg-muted hover:underline"
-									href={item.url}
-									target="_blank"
-									rel="noopener noreferrer"
-									title={`Open pull request #${item.number}: ${item.title}`}>#{item.number} {item.title}</a
-								></li>{/each}
+							{#each githubItems?.pullRequests ?? [] as item}<li>
+									<a
+										class="block overflow-hidden rounded-md px-1.5 py-1 text-xs text-ellipsis whitespace-nowrap hover:bg-muted hover:underline"
+										href={item.url}
+										target="_blank"
+										rel="noopener noreferrer"
+										title={`Open pull request #${item.number}: ${item.title}`}
+										>#{item.number} {item.title}</a
+									>
+								</li>{/each}
 						</ul>
 						{#if githubItems && !githubItems.pullRequests.length}<small
 								class="px-1 text-muted-foreground">No open pull requests</small
 							>{/if}
 					</section>
 				</div>
-				{#if githubError}<p class="px-1 pt-2 text-xs text-destructive" role="alert">{githubError}</p>{/if}
+				{#if githubError}<p class="px-1 pt-2 text-xs text-destructive" role="alert">
+						{githubError}
+					</p>{/if}
 			{/if}
 			<section class="git-section mt-2" aria-label="Staged changes">
 				<header class="flex min-h-8 items-center gap-2 px-1">
@@ -458,7 +488,7 @@
 							>{worktree.path}</code
 						>
 					</div>
-					<small class="font-mono text-violet-300">{worktree.head.slice(0, 7)}</small>
+					<small class="font-mono text-primary">{worktree.head.slice(0, 7)}</small>
 				</article>{/each}{#if !repositoryLoading && repository?.isRepository && !repository.worktrees.length}<p
 					class="muted text-xs text-muted-foreground"
 				>

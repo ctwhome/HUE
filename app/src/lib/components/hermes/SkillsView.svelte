@@ -102,7 +102,7 @@
 				bind:this={highlightElement}
 				aria-hidden="true"><code>{@html highlightMarkdown(skillContent)}</code></pre>
 			<Textarea
-				class="absolute inset-0 h-full resize-none overflow-auto border-border bg-transparent font-mono leading-relaxed text-transparent caret-foreground selection:bg-violet-500/50"
+				class="absolute inset-0 h-full resize-none overflow-auto border-border bg-transparent font-mono leading-relaxed text-transparent caret-foreground selection:bg-primary/40"
 				bind:value={skillContent}
 				aria-label="Skill content"
 				spellcheck="false"

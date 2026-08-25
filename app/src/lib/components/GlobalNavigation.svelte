@@ -44,7 +44,7 @@
 	class="global-rail flex min-h-0 flex-col items-center gap-2 border-r border-border bg-[var(--surface-raised)] px-2 py-3"
 	aria-label="Global navigation"
 >
-	<BrandMark class="global-mark mb-1 size-9" />
+	<BrandMark class="global-mark mb-1 size-10" />
 	<Button
 		variant="outline"
 		size="icon"

@@ -2,6 +2,8 @@ import { json } from '@sveltejs/kit';
 import {
 	projectRepository,
 	projectRepositoryAction,
+	projectRepositories,
+	resolveProjectRepository,
 	projectGitHubItems,
 	projectStagedDiff,
 	authoritativeProject,
@@ -9,6 +11,26 @@ import {
 } from '$lib/server/services';
 import { generateHermesCommitMessage } from '$lib/server/hermes-cli';
 import type { RequestHandler } from './$types';
+
+function repositoryResponse(
+	repositoryRoot: string,
+	repositoryPath: string,
+	repositories: Array<{ path: string }>
+) {
+	const status = projectRepository(repositoryRoot);
+	return {
+		...status,
+		changes: status.changes.map((change) => ({
+			...change,
+			fileUrl:
+				change.fileUrl && repositoryPath !== '.'
+					? `${repositoryPath}/${change.fileUrl}`
+					: change.fileUrl
+		})),
+		repositoryPath,
+		repositories
+	};
+}
 
 export function _repositoryMutationAllowed(request: Request, clientAddress: string) {
 	const address = clientAddress.replace(/^::ffff:/, '');
@@ -27,10 +49,14 @@ export function _repositoryMutationAllowed(request: Request, clientAddress: stri
 export const GET: RequestHandler = async ({ params, url }) => {
 	try {
 		const project = await authoritativeProject(params.projectId);
+		const repositories = projectRepositories(project.primary_path);
+		const selected = url.searchParams.get('repository') ?? undefined;
+		const repositoryPath = selected ?? repositories[0]?.path ?? '.';
+		const repositoryRoot = resolveProjectRepository(project.primary_path, selected, repositories);
 		if (url.searchParams.get('view') === 'github') {
-			return json(projectGitHubItems(project.primary_path));
+			return json(projectGitHubItems(repositoryRoot));
 		}
-		return json(projectRepository(project.primary_path));
+		return json(repositoryResponse(repositoryRoot, repositoryPath, repositories));
 	} catch (error) {
 		return json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
 	}
@@ -43,21 +69,29 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 	try {
 		const project = await authoritativeProject(params.projectId);
 		const operation = (await request.json()) as
-			| ProjectRepositoryAction
-			| { action: 'generateCommitMessage'; provider?: string; model?: string };
+			| (ProjectRepositoryAction & { repository?: string })
+			| { action: 'generateCommitMessage'; provider?: string; model?: string; repository?: string };
+		const repositories = projectRepositories(project.primary_path);
+		const repositoryRoot = resolveProjectRepository(
+			project.primary_path,
+			operation.repository,
+			repositories
+		);
+		const repositoryPath = operation.repository ?? repositories[0]?.path ?? '.';
 		if (operation.action === 'generateCommitMessage') {
 			const selection =
 				operation.provider && operation.model
 					? { provider: operation.provider, model: operation.model }
 					: undefined;
 			const message = await generateHermesCommitMessage(
-				project.primary_path,
-				projectStagedDiff(project.primary_path),
+				repositoryRoot,
+				projectStagedDiff(repositoryRoot),
 				selection
 			);
 			return json({ message });
 		}
-		return json(projectRepositoryAction(project.primary_path, operation));
+		projectRepositoryAction(repositoryRoot, operation);
+		return json(repositoryResponse(repositoryRoot, repositoryPath, repositories));
 	} catch (error) {
 		return json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
 	}

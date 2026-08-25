@@ -20,6 +20,7 @@ test('pending persistence strips generic bytes and restores explicit reattach st
 			name: 'HUE',
 			icon: null,
 			color: null,
+			group: null,
 			primaryPath: '/work',
 			folders: [{ path: '/work', label: null, isPrimary: true, available: true }],
 			rootAvailable: true

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Copy, Download, ExternalLink, FolderOpen, GitFork, Pencil } from 'lucide-svelte';
 	import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+	import BrandMark from '$lib/components/BrandMark.svelte';
 	import {
 		selectTranscriptTimeline,
 		type WorkspaceActivity,
@@ -123,7 +124,7 @@
 				>
 					<div class="message-identity flex items-center gap-2 text-xs text-muted-foreground">
 						<span
-							class="avatar grid size-6 shrink-0 place-items-center rounded-md bg-muted font-bold text-violet-300"
+							class="avatar grid size-6 shrink-0 place-items-center rounded-md bg-muted font-bold text-primary"
 							>{message.role === 'assistant' ? 'H' : 'You'}</span
 						><strong>{message.role === 'assistant' ? agentLabel : 'You'}</strong>
 					</div>
@@ -210,12 +211,12 @@
 								{@html renderMarkdown(
 									message.text
 								)}{#if index === transcriptTimeline.length - 1 && busy}<span
-										class="cursor animate-pulse text-violet-400">▋</span
+										class="cursor animate-pulse text-primary">▋</span
 									>{/if}
 							</div>
 						{:else}
 							<div
-								class="message user-message rounded-2xl rounded-tr-md border border-violet-900 bg-violet-950/50 px-4 py-3 leading-relaxed"
+								class="message user-message rounded-2xl rounded-tr-md border border-border bg-accent/60 px-4 py-3 leading-relaxed"
 							>
 								{#if message.images?.length}<div
 										class="message-images mb-2 grid grid-cols-2 gap-1.5"
@@ -336,7 +337,7 @@
 		{#if timeline.length === 0}<div
 				class="welcome mx-auto max-w-2xl text-center text-muted-foreground"
 			>
-				<span>H</span>
+				<BrandMark class="welcome-mark mx-auto mb-[18px] size-14" />
 				<h2>Start this Hermes Session</h2>
 				<p>Your complete message is saved before HUE sends it.</p>
 			</div>{/if}

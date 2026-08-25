@@ -542,9 +542,9 @@
 	min-height: 0;
 }
 .browser-canvas .excalidraw {
-	--color-primary: #7c5cff;
-	--color-primary-darker: #6345db;
-	--color-primary-darkest: #4c32b2;
+	--color-primary: var(--primary);
+	--color-primary-darker: color-mix(in srgb, var(--primary) 80%, var(--background));
+	--color-primary-darkest: color-mix(in srgb, var(--primary) 65%, var(--background));
 }
 .browser-embed {
 	position: relative;

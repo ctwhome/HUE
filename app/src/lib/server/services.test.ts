@@ -6,8 +6,10 @@ import {
 	projectBranch,
 	projectGitHubItems,
 	mergeProjectSessionViews,
+	projectRepositories,
 	projectRepository,
 	projectRepositoryAction,
+	resolveProjectRepository,
 	projectStagedDiff,
 	projectRuntimeHealth,
 	services,
@@ -185,7 +187,11 @@ test('lists open GitHub issues and pull requests for origin', () => {
 		return {
 			status: 0,
 			stdout: JSON.stringify([
-				{ number: 42, title: 'Keep issue list focused', url: 'https://github.com/curi/hue/issues/42' }
+				{
+					number: 42,
+					title: 'Keep issue list focused',
+					url: 'https://github.com/curi/hue/issues/42'
+				}
 			])
 		};
 	};
@@ -200,8 +206,30 @@ test('lists open GitHub issues and pull requests for origin', () => {
 	});
 	expect(calls).toEqual([
 		['-C', '/project', 'remote', 'get-url', 'origin'],
-		['issue', 'list', '--repo', 'https://github.com/curi/hue', '--state', 'open', '--limit', '20', '--json', 'number,title,url'],
-		['pr', 'list', '--repo', 'https://github.com/curi/hue', '--state', 'open', '--limit', '20', '--json', 'number,title,url']
+		[
+			'issue',
+			'list',
+			'--repo',
+			'https://github.com/curi/hue',
+			'--state',
+			'open',
+			'--limit',
+			'20',
+			'--json',
+			'number,title,url'
+		],
+		[
+			'pr',
+			'list',
+			'--repo',
+			'https://github.com/curi/hue',
+			'--state',
+			'open',
+			'--limit',
+			'20',
+			'--json',
+			'number,title,url'
+		]
 	]);
 });
 
@@ -216,6 +244,39 @@ test('reports a project without Git without treating it as an error', () => {
 		worktrees: [],
 		remotes: []
 	});
+});
+
+test('discovers Git repositories inside a project', () => {
+	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-repositories-'));
+	temporaryDirectories.push(projectRoot);
+	const appRoot = join(projectRoot, 'app');
+	const docsRoot = join(projectRoot, 'packages', 'docs');
+	mkdirSync(appRoot, { recursive: true });
+	mkdirSync(docsRoot, { recursive: true });
+	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: appRoot });
+	Bun.spawnSync(['git', 'init', '-b', 'docs'], { cwd: docsRoot });
+
+	expect(projectRepositories(projectRoot)).toEqual([{ path: 'app' }, { path: 'packages/docs' }]);
+	expect(resolveProjectRepository(projectRoot)).toBe(realpathSync(appRoot));
+	expect(resolveProjectRepository(projectRoot, 'packages/docs')).toBe(realpathSync(docsRoot));
+});
+
+test('prefers a project-root repository and rejects undiscovered paths', () => {
+	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-repository-root-'));
+	temporaryDirectories.push(projectRoot);
+	const nestedRoot = join(projectRoot, 'nested');
+	mkdirSync(nestedRoot);
+	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'init', '-b', 'nested'], { cwd: nestedRoot });
+
+	expect(projectRepositories(projectRoot)).toEqual([{ path: '.' }, { path: 'nested' }]);
+	expect(resolveProjectRepository(projectRoot)).toBe(realpathSync(projectRoot));
+	expect(() => resolveProjectRepository(projectRoot, '../outside')).toThrow(
+		'Repository is not part of this project'
+	);
+	expect(() => resolveProjectRepository(projectRoot, 'missing')).toThrow(
+		'Repository is not part of this project'
+	);
 });
 
 test('stages, unstages, and commits project files without shell interpolation', () => {

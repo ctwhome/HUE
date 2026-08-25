@@ -403,6 +403,9 @@ export class HUEStore {
 		if (!projectColumns.some((column) => column.name === 'color')) {
 			this.database.exec('ALTER TABLE projects ADD COLUMN color TEXT');
 		}
+		if (!projectColumns.some((column) => column.name === 'group_name')) {
+			this.database.exec('ALTER TABLE projects ADD COLUMN group_name TEXT');
+		}
 		let sessionColumns = this.database.query('PRAGMA table_info(project_sessions)').all() as Array<{
 			name: string;
 			notnull: number;
@@ -1202,9 +1205,11 @@ export class HUEStore {
 
 	getProjectColor(id: string): string | null {
 		return (
-			(this.database.query('SELECT color FROM projects WHERE id = ?').get(id) as {
-				color: string | null;
-			} | null)?.color ?? null
+			(
+				this.database.query('SELECT color FROM projects WHERE id = ?').get(id) as {
+					color: string | null;
+				} | null
+			)?.color ?? null
 		);
 	}
 
@@ -1212,6 +1217,27 @@ export class HUEStore {
 		const result = this.database
 			.query('UPDATE projects SET color = ? WHERE id = ?')
 			.run(validateProjectColor(color), id);
+		if (!result.changes) throw new Error('Project metadata was not found');
+	}
+
+	getProjectGroup(id: string): string | null {
+		return (
+			(
+				this.database.query('SELECT group_name FROM projects WHERE id = ?').get(id) as {
+					group_name: string | null;
+				} | null
+			)?.group_name ?? null
+		);
+	}
+
+	updateProjectGroup(id: string, group: string | null): void {
+		const normalized = group?.trim() || null;
+		if (normalized && (normalized.length > 100 || normalized.includes('\0'))) {
+			throw new Error('Project group must be 100 characters or fewer');
+		}
+		const result = this.database
+			.query('UPDATE projects SET group_name = ? WHERE id = ?')
+			.run(normalized, id);
 		if (!result.changes) throw new Error('Project metadata was not found');
 	}
 
@@ -1285,9 +1311,12 @@ export class HUEStore {
 			this.ensureProjectMetadata(hermesId);
 			this.database
 				.query(
-					'UPDATE projects SET color = COALESCE(color, (SELECT color FROM projects WHERE id = ?)) WHERE id = ?'
+					`UPDATE projects SET
+					 color = COALESCE(color, (SELECT color FROM projects WHERE id = ?)),
+					 group_name = COALESCE(group_name, (SELECT group_name FROM projects WHERE id = ?))
+					 WHERE id = ?`
 				)
-				.run(legacyId, hermesId);
+				.run(legacyId, legacyId, hermesId);
 			this.database
 				.query(
 					`INSERT OR IGNORE INTO project_excalidraw (project_id, address, scene, updated_at)

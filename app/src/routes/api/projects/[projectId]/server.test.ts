@@ -23,6 +23,7 @@ let activeDelivery = false;
 let removeFailure: Error | null = null;
 const activeChecks: string[] = [];
 const colorUpdates: Array<{ id: string; color: string }> = [];
+const groupUpdates: Array<{ id: string; group: string | null }> = [];
 let projectRoot = '/work/old';
 
 mock.module('$lib/server/route-services', () => ({
@@ -75,6 +76,8 @@ mock.module('$lib/server/route-services', () => ({
 				ensureProjectMetadata: () => undefined,
 				getProjectColor: () => colorUpdates.at(-1)?.color ?? null,
 				updateProjectColor: (id: string, color: string) => colorUpdates.push({ id, color }),
+				getProjectGroup: () => groupUpdates.at(-1)?.group ?? null,
+				updateProjectGroup: (id: string, group: string | null) => groupUpdates.push({ id, group }),
 				hasActiveProjectDeliveries: () => activeDelivery,
 				deleteProject: () => {
 					throw new Error('HUE Project metadata must not be deleted');
@@ -100,6 +103,7 @@ beforeEach(() => {
 	removeFailure = null;
 	activeChecks.length = 0;
 	colorUpdates.length = 0;
+	groupUpdates.length = 0;
 	projectRoot = '/work/old';
 });
 
@@ -135,6 +139,21 @@ test('rejects malformed Project status colors', async () => {
 
 	expect(response.status).toBe(400);
 	expect(colorUpdates).toEqual([]);
+});
+
+test('updates HUE group label without mutating Hermes Project identity', async () => {
+	const response = await patch({ action: 'set_group', group: 'Client work' });
+
+	expect(response.status).toBe(200);
+	expect(groupUpdates).toEqual([{ id: 'p_1', group: 'Client work' }]);
+	expect(calls).toEqual([{ method: 'get', args: ['p_1'] }]);
+});
+
+test('rejects malformed Project group labels', async () => {
+	const response = await patch({ action: 'set_group', group: 'x'.repeat(101) });
+
+	expect(response.status).toBe(400);
+	expect(groupUpdates).toEqual([]);
 });
 
 test('automatic icon discovers a favicon within the Project', async () => {

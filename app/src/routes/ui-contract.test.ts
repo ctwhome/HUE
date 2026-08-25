@@ -53,6 +53,7 @@ const styleFiles = [
 ].map(read);
 const styles = [appStyles, ...styleFiles].join('\n');
 const navigation = read('../lib/components/GlobalNavigation.svelte');
+const brandMark = read('../lib/components/BrandMark.svelte');
 const panel = read('../lib/components/HermesPanel.svelte');
 const voiceCall = read('../lib/voice/voice-call.svelte.ts');
 const hermesViews = [
@@ -122,13 +123,15 @@ test('uses Tailwind tokens and local shadcn-style primitives', () => {
 	for (const source of styleFiles) expect(source.split('\n').length).toBeLessThan(601);
 });
 
-test('uses the VS Code palette and Mira design tokens', () => {
+test('uses a high-contrast near-OLED palette and Mira design tokens', () => {
 	expect(packageJson).toContain('@fontsource-variable/inter');
 	expect(appStyles).toContain("@import '@fontsource-variable/inter'");
-	expect(styles).toContain('--background: #1e1e1e');
-	expect(styles).toContain('--card: #252526');
-	expect(styles).toContain('--primary: #007acc');
+	expect(styles).toContain('--background: #050505');
+	expect(styles).toContain('--card: #0b0b0b');
+	expect(styles).toContain('--primary: #f5f5f5');
+	expect(styles).toContain('--primary-foreground: #090909');
 	expect(styles).toContain('--background: #ffffff');
+	expect(styles).toContain('--primary: #111111');
 	expect(styles).toContain('--font-sans: var(--font-ui)');
 	expect(styles).toContain('--text-sm: var(--font-size-ui)');
 	expect(styles).toContain('--radius-md: var(--radius-control)');
@@ -136,7 +139,16 @@ test('uses the VS Code palette and Mira design tokens', () => {
 	expect(styles).toContain(":root[data-density='compact']");
 	expect(button).toContain('h-(--control-height)');
 	expect(input).toContain('h-(--control-height)');
-	expect(layout).toContain('name="theme-color" content="#181818"');
+	expect(layout).toContain('name="theme-color" content="#050505"');
+});
+
+test('uses the monochrome HUE robot product mark', () => {
+	expect(brandMark).toContain('<img');
+	expect(brandMark).toContain('src="/favicon.png"');
+	expect(brandMark).toContain('rounded-xl border border-border');
+	expect(navigation).toContain('global-mark mb-1 size-10');
+	expect(page).toContain('welcome-mark mx-auto mb-[18px] size-14');
+	expect(layout).toContain('<link rel="icon" href="/favicon.png" />');
 });
 
 test('offers coordinated additional light and dark themes', () => {
@@ -149,7 +161,7 @@ test('offers coordinated additional light and dark themes', () => {
 });
 
 test('applies theme and density tokens across the visible workbench', () => {
-	expect(styles).toContain('--terminal-background: #1e1e1e');
+	expect(styles).toContain('--terminal-background: #050505');
 	expect(styles).toContain('background: var(--surface-raised)');
 	expect(styles).toContain('background: var(--selection)');
 	expect(styles).toContain('color: var(--link)');
@@ -587,6 +599,9 @@ test('composer exposes HUE work mode selector and timeline status item hooks', (
 	expect(composer).toContain('Work mode');
 	expect(composer).toContain('Autonomous');
 	expect(composer).toContain('Live');
+	expect(composer).toContain('Edit approvals');
+	expect(composer).toContain('Other permission requests still ask.');
+	expect(composer).toContain('Edits only');
 	expect(dialog).toContain("item.kind === 'status'");
 	expect(dialog).toContain('{item.label}');
 });
@@ -647,6 +662,13 @@ test('Project options match the compact auto-saving Session options treatment', 
 	expect(projectRail).toContain('Saved automatically');
 	expect(projectRail).toContain('onchange={onsavemetadata}');
 	expect(projectRail).not.toContain('Save name and icon');
+});
+
+test('Projects can be assigned to accessible collapsible groups', () => {
+	expect(projectRail).toContain('Group label');
+	expect(projectRail).toContain('aria-expanded={!collapsedGroups.has(group.label)}');
+	expect(projectRail).toContain('title={group.label}');
+	expect(projectRail).toContain('localStorage.setItem');
 });
 
 test('stale Projects and first run expose direct recovery instead of a broken workbench', () => {

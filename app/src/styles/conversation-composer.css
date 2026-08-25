@@ -314,17 +314,6 @@
 	padding: 2px 12px 10px;
 	font-size: var(--font-size-ui);
 }
-.welcome > span {
-	display: grid;
-	width: 48px;
-	height: 48px;
-	place-items: center;
-	margin: 0 auto 18px;
-	border-radius: var(--radius-panel);
-	background: linear-gradient(145deg, #c4b5fd, #6d28d9);
-	color: #130d25;
-	font-weight: 900;
-}
 .welcome h2,
 .hero h2 {
 	color: var(--foreground);

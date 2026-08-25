@@ -524,7 +524,7 @@
 										title={`Use ${model.name} · ${model.modelId}`}
 										onclick={() => onmodel(model.modelId)}
 									>
-										<span class="model-check pt-0.5 text-violet-300"
+										<span class="model-check pt-0.5 text-primary"
 											>{#if model.modelId === runtime.models?.currentModelId}<Check
 													size={15}
 													aria-hidden="true"
@@ -545,9 +545,10 @@
 				</div>{/if}
 			{#if runtime.modes}<label
 					class="context-chip context-select context-mode inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs text-emerald-300 hover:bg-accent"
-					title="Hermes edit mode"
+					title={`${runtime.modes.availableModes.find((mode) => mode.id === runtime.modes?.currentModeId)?.description ?? 'Choose how Hermes handles file edits.'} Other permission requests still ask.`}
 				>
 					<Circle size={14} aria-hidden="true" />
+					<span class="hidden xl:inline">Edit approvals</span>
 					<select
 						aria-label="Hermes mode"
 						value={runtime.modes.currentModeId}
@@ -558,6 +559,7 @@
 						{#each runtime.modes.availableModes as mode}<option value={mode.id}>{mode.name}</option
 							>{/each}
 					</select>
+					{#if runtime.modes.currentModeId !== 'default'}<small>Edits only</small>{/if}
 				</label>{/if}
 			{#if contextPercent() !== null}<span
 					class="context-chip context-usage inline-flex min-h-8 shrink-0 items-center rounded-lg border border-emerald-900 bg-emerald-950 px-2 text-xs font-bold text-emerald-300"
