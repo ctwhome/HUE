@@ -35,6 +35,20 @@ describe('HUEStore project and workflow boundaries', () => {
 		store.close();
 	});
 
+	it('persists an optional local group label without changing Project identity', () => {
+		const store = makeStore();
+		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+
+		expect(store.getProjectGroup('hue')).toBeNull();
+		store.updateProjectGroup('hue', 'Client work');
+		expect(store.getProjectGroup('hue')).toBe('Client work');
+		store.updateProjectGroup('hue', null);
+
+		expect(store.getProjectGroup('hue')).toBeNull();
+		expect(store.getProject('hue')).toMatchObject({ id: 'hue', name: 'HUE' });
+		store.close();
+	});
+
 	it('stores one independently updateable Excalidraw scene per Project', () => {
 		const store = makeStore();
 		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });

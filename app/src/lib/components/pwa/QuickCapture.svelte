@@ -108,7 +108,7 @@
 	}}
 >
 	<header class="flex items-start gap-3 border-b border-border p-4 pr-3">
-		<div class="grid size-11 shrink-0 place-items-center rounded-xl bg-violet-950 text-violet-200">
+		<div class="grid size-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
 			<Lightbulb aria-hidden="true" />
 		</div>
 		<div class="min-w-0 flex-1">

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import BrandMark from '$lib/components/BrandMark.svelte';
+
 	let {
 		projectCount,
 		projectsCapability,
@@ -15,11 +17,7 @@
 </script>
 
 <section class="hero mx-auto mt-[12vh] max-w-2xl p-8 text-center text-muted-foreground">
-	<div
-		class="hero-mark mx-auto mb-5 grid size-12 place-items-center rounded-xl bg-gradient-to-br from-violet-300 to-violet-700 font-black text-violet-950 shadow-lg"
-	>
-		H
-	</div>
+	<BrandMark class="hero-mark mx-auto mb-5 size-14" />
 	<h2>{projectCount ? 'Projects · Workflows · Sessions' : 'Start your first HUE workspace'}</h2>
 	<p>
 		{projectCount

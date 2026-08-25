@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync, statSync } from 'node:fs';
+import { mkdirSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -114,6 +114,7 @@ export type ProjectView = {
 	name: string;
 	icon: string | null;
 	color: string | null;
+	group: string | null;
 	primaryPath: string;
 	folders: Array<{ path: string; label: string | null; isPrimary: boolean; available: boolean }>;
 	rootAvailable: boolean;
@@ -127,12 +128,17 @@ function directoryAvailable(path: string) {
 	}
 }
 
-export function projectView(project: HermesProject, color: string | null = null): ProjectView {
+export function projectView(
+	project: HermesProject,
+	color: string | null = null,
+	group: string | null = null
+): ProjectView {
 	return {
 		id: project.id,
 		name: project.name,
 		icon: project.icon,
 		color,
+		group,
 		primaryPath: project.primary_path,
 		folders: project.folders.map((folder) => ({
 			path: folder.path,
@@ -150,7 +156,13 @@ export async function loadProjectViews() {
 	return {
 		projects: reconciled.projects
 			.filter((project) => !project.archived)
-			.map((project) => projectView(project, state.store.getProjectColor(project.id))),
+			.map((project) =>
+				projectView(
+					project,
+					state.store.getProjectColor(project.id),
+					state.store.getProjectGroup(project.id)
+				)
+			),
 		reconciliationIssues: reconciled.issues
 	};
 }
@@ -334,6 +346,50 @@ export type ProjectRepositoryAction =
 	| { action: 'stageAll' | 'unstageAll' | 'push' }
 	| { action: 'commit'; message: string };
 
+export function projectRepositories(projectRoot: string): Array<{ path: string }> {
+	const root = realpathSync(projectRoot);
+	const repositories: Array<{ path: string }> = [];
+	const visit = (directory: string) => {
+		try {
+			if (
+				statSync(join(directory, '.git')).isDirectory() ||
+				statSync(join(directory, '.git')).isFile()
+			) {
+				const path = relative(root, directory);
+				repositories.push({ path: path ? path.split(sep).join('/') : '.' });
+			}
+		} catch {
+			// Not a Git working tree.
+		}
+		try {
+			for (const entry of readdirSync(directory, { withFileTypes: true })) {
+				if (entry.isDirectory() && entry.name !== '.git' && entry.name !== 'node_modules') {
+					visit(join(directory, entry.name));
+				}
+			}
+		} catch {
+			// Unreadable folders cannot contain a usable project repository.
+		}
+	};
+	visit(root);
+	return repositories.sort(({ path: left }, { path: right }) =>
+		left === '.' ? -1 : right === '.' ? 1 : left.localeCompare(right)
+	);
+}
+
+export function resolveProjectRepository(
+	projectRoot: string,
+	selected?: string,
+	repositories = projectRepositories(projectRoot)
+): string {
+	const path = selected ?? repositories[0]?.path;
+	if (!path) return realpathSync(projectRoot);
+	if (!repositories.some((repository) => repository.path === path)) {
+		throw new Error('Repository is not part of this project');
+	}
+	return realpathSync(path === '.' ? projectRoot : join(projectRoot, path));
+}
+
 export type ProjectGitHubItem = { number: number; title: string; url: string };
 type CommandRunner = (
 	command: string,
@@ -357,10 +413,22 @@ export function projectGitHubItems(
 	const list = (kind: 'issue' | 'pr') => {
 		const result = run(
 			'gh',
-			[kind, 'list', '--repo', webUrl, '--state', 'open', '--limit', '20', '--json', 'number,title,url'],
+			[
+				kind,
+				'list',
+				'--repo',
+				webUrl,
+				'--state',
+				'open',
+				'--limit',
+				'20',
+				'--json',
+				'number,title,url'
+			],
 			{ cwd: projectRoot, encoding: 'utf8', timeout: 10_000 }
 		);
-		if (result.status !== 0) throw new Error(`GitHub CLI could not list ${kind === 'issue' ? 'issues' : 'pull requests'}`);
+		if (result.status !== 0)
+			throw new Error(`GitHub CLI could not list ${kind === 'issue' ? 'issues' : 'pull requests'}`);
 		return JSON.parse(result.stdout.toString()) as ProjectGitHubItem[];
 	};
 	return { issues: list('issue'), pullRequests: list('pr') };

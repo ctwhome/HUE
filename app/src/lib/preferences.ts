@@ -71,7 +71,7 @@ export function themeChromeColor(theme: HUETheme, prefersDark: boolean) {
 	if (theme === 'github-light') return '#f6f8fa';
 	if (theme === 'solarized-light') return '#eee8d5';
 	if (theme === 'light' || (theme === 'system' && !prefersDark)) return '#f3f3f3';
-	return '#181818';
+	return '#050505';
 }
 
 export function applyPreferences(root: HTMLElement, preferences: HUEPreferences) {

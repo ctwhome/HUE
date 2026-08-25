@@ -5033,6 +5033,63 @@ test('defers health and keeps Git usable when health fails', async ({ page }) =>
 	}
 });
 
+test('switches between Git repositories discovered inside a project', async ({ page }) => {
+	const requests: string[] = [];
+	await page.route(/\/api\/projects\/[^/]+\/repository(?:\?.*)?$/, async (route) => {
+		const repositoryPath = new URL(route.request().url()).searchParams.get('repository') ?? 'app';
+		requests.push(repositoryPath);
+		await route.fulfill({
+			json: {
+				isRepository: true,
+				branch: repositoryPath === 'app' ? 'feature/app' : 'docs',
+				changes: [
+					{
+						path: repositoryPath === 'app' ? 'src/app.ts' : 'guide.md',
+						index: ' ',
+						worktree: 'M',
+						fileUrl: null
+					}
+				],
+				worktrees: [],
+				remotes: [],
+				repositoryPath,
+				repositories: [{ path: 'app' }, { path: 'docs' }]
+			}
+		});
+	});
+	await addProject(page);
+	await page.keyboard.press('Escape');
+	await page.getByRole('button', { name: /^Git/ }).click();
+
+	const gitPanel = page.getByRole('article', { name: 'Git status' });
+	const selector = gitPanel.getByRole('combobox', { name: 'Repository' });
+	await expect(selector).toHaveValue('app');
+	await expect(gitPanel).toContainText('src/app.ts');
+	await selector.selectOption('docs');
+	await expect(gitPanel).toContainText('guide.md');
+	expect(requests).toContain('docs');
+	for (const viewport of [
+		{ width: 1440, height: 900 },
+		{ width: 1024, height: 768 },
+		{ width: 390, height: 844 },
+		{ width: 320, height: 700 }
+	]) {
+		await page.setViewportSize(viewport);
+		if (viewport.width <= 390) {
+			const toolsButton = page.getByRole('button', { name: 'Open Project tools' });
+			if (await toolsButton.isVisible()) await toolsButton.click();
+			const gitButton = page.getByRole('button', { name: 'Git', exact: true });
+			if (await gitButton.isVisible()) await gitButton.click();
+		}
+		await expect(selector).toBeVisible();
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		if (viewport.width <= 390)
+			expect((await selector.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+	}
+});
+
 test('opens project-scoped browser, terminal, Git status, and worktree panels', async ({
 	page
 }) => {
