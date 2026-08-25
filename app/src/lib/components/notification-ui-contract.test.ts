@@ -9,6 +9,8 @@ test('global attention entry has accessible unread badge and center states', () 
 	const center = component('notifications/AttentionCenter.svelte');
 	expect(navigation).toContain('aria-label={`Notifications');
 	expect(navigation).toContain('notification-badge');
+	expect(navigation).toContain('bg-[var(--notification)]');
+	expect(navigation).toContain('text-white');
 	for (const state of [
 		'Loading notifications',
 		'Unable to load notifications',

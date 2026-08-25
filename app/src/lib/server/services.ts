@@ -391,6 +391,7 @@ export function resolveProjectRepository(
 }
 
 export type ProjectGitHubItem = { number: number; title: string; url: string };
+export type ProjectGitHubIssueGroup = { milestone: string | null; issues: ProjectGitHubItem[] };
 type CommandRunner = (
 	command: string,
 	args: string[],
@@ -400,7 +401,7 @@ type CommandRunner = (
 export function projectGitHubItems(
 	projectRoot: string,
 	run: CommandRunner = (command, args, options) => spawnSync(command, args, options)
-): { issues: ProjectGitHubItem[]; pullRequests: ProjectGitHubItem[] } {
+): { issueGroups: ProjectGitHubIssueGroup[]; pullRequests: ProjectGitHubItem[] } {
 	const origin = run('git', ['-C', projectRoot, 'remote', 'get-url', 'origin'], {
 		encoding: 'utf8',
 		timeout: 2_000
@@ -410,28 +411,27 @@ export function projectGitHubItems(
 	if (!webUrl || new URL(webUrl).hostname !== 'github.com') {
 		throw new Error('Git origin is not hosted on GitHub');
 	}
-	const list = (kind: 'issue' | 'pr') => {
+	const list = (kind: 'issue' | 'pr', fields: string) => {
 		const result = run(
 			'gh',
-			[
-				kind,
-				'list',
-				'--repo',
-				webUrl,
-				'--state',
-				'open',
-				'--limit',
-				'20',
-				'--json',
-				'number,title,url'
-			],
+			[kind, 'list', '--repo', webUrl, '--state', 'open', '--limit', '20', '--json', fields],
 			{ cwd: projectRoot, encoding: 'utf8', timeout: 10_000 }
 		);
 		if (result.status !== 0)
 			throw new Error(`GitHub CLI could not list ${kind === 'issue' ? 'issues' : 'pull requests'}`);
-		return JSON.parse(result.stdout.toString()) as ProjectGitHubItem[];
+		return JSON.parse(result.stdout.toString()) as unknown[];
 	};
-	return { issues: list('issue'), pullRequests: list('pr') };
+	const issueGroups = new Map<string | null, ProjectGitHubItem[]>();
+	for (const { milestone, ...issue } of list('issue', 'number,title,url,milestone') as Array<
+		ProjectGitHubItem & { milestone: { title: string } | null }
+	>) {
+		const title = milestone?.title ?? null;
+		issueGroups.set(title, [...(issueGroups.get(title) ?? []), issue]);
+	}
+	return {
+		issueGroups: [...issueGroups].map(([milestone, issues]) => ({ milestone, issues })),
+		pullRequests: list('pr', 'number,title,url') as ProjectGitHubItem[]
+	};
 }
 
 function git(projectRoot: string, args: string[], allowFailure = false): string | null {

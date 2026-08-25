@@ -99,7 +99,7 @@
 <aside
 	bind:this={element}
 	id="session-drawer"
-	class="context-panel flex min-h-dvh flex-col border-r border-border bg-card/95"
+	class="context-panel flex min-h-0 flex-col border-r border-border bg-card/95"
 	class:open
 	inert={mobile && !open}
 	aria-hidden={mobile ? !open : undefined}

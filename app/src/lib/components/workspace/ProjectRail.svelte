@@ -165,7 +165,7 @@
 <aside
 	bind:this={element}
 	id="project-drawer"
-	class="project-rail flex min-h-dvh flex-col gap-3 border-r border-border bg-card/95 px-2 py-3"
+	class="project-rail flex min-h-0 flex-col gap-3 border-r border-border bg-card/95 px-2 py-3"
 	class:open
 	inert={mobile && !open}
 	aria-hidden={mobile ? !open : undefined}

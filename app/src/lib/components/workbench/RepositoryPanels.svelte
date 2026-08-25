@@ -1,9 +1,18 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { ChevronDown, ChevronRight, Minus, Plus, RefreshCw, Sparkles } from 'lucide-svelte';
+	import {
+		ChevronDown,
+		ChevronRight,
+		Ellipsis,
+		Minus,
+		Plus,
+		RefreshCw,
+		Sparkles
+	} from 'lucide-svelte';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
 	import { api } from './api';
+	import GitHubPanels from './GitHubPanels.svelte';
 
 	type Repository = {
 		isRepository: boolean;
@@ -15,7 +24,10 @@
 		remotes: Array<{ name: string; webUrl: string | null }>;
 	};
 	type GitHubItem = { number: number; title: string; url: string };
-	type GitHubItems = { issues: GitHubItem[]; pullRequests: GitHubItem[] };
+	type GitHubItems = {
+		issueGroups: Array<{ milestone: string | null; issues: GitHubItem[] }>;
+		pullRequests: GitHubItem[];
+	};
 	type CommitModelsResponse = {
 		options?: {
 			providers?: Array<{
@@ -48,8 +60,10 @@
 	let githubItems = $state<GitHubItems | null>(null);
 	let githubError = $state('');
 	let commitMessage = $state('');
+	let gitOpen = $state(true);
 	let worktreesOpen = $state(true);
 	let commitModel = $state('openai-codex:gpt-5.6-luna');
+	let commitModelDialog = $state<HTMLDialogElement>();
 	let commitModels = $state([
 		{ value: 'openai-codex:gpt-5.6-luna', label: 'Codex · GPT-5.6 Luna' }
 	]);
@@ -194,6 +208,13 @@
 		worktreesOpen = !worktreesOpen;
 		localStorage.setItem(`hue:project-tools:${projectId}:worktrees-open`, String(worktreesOpen));
 	}
+	function toggleGit() { gitOpen = !gitOpen; }
+	function togglePanelFromHeader(event: MouseEvent | KeyboardEvent, toggle: () => void) {
+		if ((event.target as HTMLElement).closest('button, select, a')) return;
+		if (event instanceof KeyboardEvent && !['Enter', ' '].includes(event.key)) return;
+		event.preventDefault();
+		toggle();
+	}
 
 	onMount(() => {
 		mounted = true;
@@ -209,9 +230,14 @@
 	});
 </script>
 
-<article class={`${panel} repository-panel`} aria-label="Git status">
+<article class={`${panel} repository-panel`} style:flex={gitOpen ? undefined : '0 0 auto'} aria-label="Git status">
 	<header
-		class="flex min-h-11 items-center justify-between gap-2 border-b border-border bg-muted/40 px-2.5 py-2"
+		class="flex min-h-11 cursor-pointer items-center justify-between gap-2 border-b border-border bg-muted/40 px-2.5 py-2"
+		role="button"
+		tabindex="0"
+		aria-expanded={gitOpen}
+		onclick={(event) => togglePanelFromHeader(event, toggleGit)}
+		onkeydown={(event) => togglePanelFromHeader(event, toggleGit)}
 	>
 		<div>
 			<strong class="block text-xs">Git</strong><span
@@ -247,7 +273,9 @@
 				onclick={refreshRepository}><RefreshCw size={15} aria-hidden="true" /></Button
 			>
 		</div>
+		{#if gitOpen}<ChevronDown size={16} aria-hidden="true" />{:else}<ChevronRight size={16} aria-hidden="true" />{/if}
 	</header>
+	{#if gitOpen}
 	<div class="repository-content min-h-0 flex-1 overflow-auto p-2">
 		{#if repositoryLoading}<p class="muted text-xs text-muted-foreground" role="status">
 				Reading repository…
@@ -264,7 +292,7 @@
 			</div>
 		{:else if repository?.isRepository}
 			<nav class="repository-links flex flex-wrap gap-1 pb-2" aria-label="Repository options">
-				{#each repositoryLinks() as link}<a
+				{#each repositoryLinks().slice(0, 1) as link}<a
 						class="rounded-md border border-border px-2 py-1.5 text-[0.68rem]"
 						href={link.url}
 						target="_blank"
@@ -272,49 +300,6 @@
 						title={`Open ${link.label}`}>{link.label}</a
 					>{/each}
 			</nav>
-			{#if isGitHubRepository()}
-				<div class="grid grid-cols-2 gap-2 border-y border-border py-2">
-					<section class="min-w-0" aria-label="GitHub issues">
-						<strong class="px-1 text-xs">Issues</strong>
-						<ul class="mt-1 grid list-none gap-0.5 p-0">
-							{#each githubItems?.issues ?? [] as item}<li>
-									<a
-										class="block overflow-hidden rounded-md px-1.5 py-1 text-xs text-ellipsis whitespace-nowrap hover:bg-muted hover:underline"
-										href={item.url}
-										target="_blank"
-										rel="noopener noreferrer"
-										title={`Open issue #${item.number}: ${item.title}`}
-										>#{item.number} {item.title}</a
-									>
-								</li>{/each}
-						</ul>
-						{#if githubItems && !githubItems.issues.length}<small class="px-1 text-muted-foreground"
-								>No open issues</small
-							>{/if}
-					</section>
-					<section class="min-w-0" aria-label="GitHub pull requests">
-						<strong class="px-1 text-xs">Pull requests</strong>
-						<ul class="mt-1 grid list-none gap-0.5 p-0">
-							{#each githubItems?.pullRequests ?? [] as item}<li>
-									<a
-										class="block overflow-hidden rounded-md px-1.5 py-1 text-xs text-ellipsis whitespace-nowrap hover:bg-muted hover:underline"
-										href={item.url}
-										target="_blank"
-										rel="noopener noreferrer"
-										title={`Open pull request #${item.number}: ${item.title}`}
-										>#{item.number} {item.title}</a
-									>
-								</li>{/each}
-						</ul>
-						{#if githubItems && !githubItems.pullRequests.length}<small
-								class="px-1 text-muted-foreground">No open pull requests</small
-							>{/if}
-					</section>
-				</div>
-				{#if githubError}<p class="px-1 pt-2 text-xs text-destructive" role="alert">
-						{githubError}
-					</p>{/if}
-			{/if}
 			<section class="git-section mt-2" aria-label="Staged changes">
 				<header class="flex min-h-8 items-center gap-2 px-1">
 					<strong class="text-xs">Staged changes</strong><span class="text-xs text-muted-foreground"
@@ -395,42 +380,44 @@
 	>
 		<div class="flex items-center gap-2">
 			<strong class="text-xs">Commit</strong><span
-				class="text-[0.68rem] text-muted-foreground"
-				class:ml-auto={!stagedChanges().length}
+				class="min-w-0 flex-1 text-right text-[0.68rem] text-muted-foreground"
 				>{stagedChanges().length
 					? `${stagedChanges().length} staged`
 					: 'Stage files to commit'}</span
 			>
-			{#if stagedChanges().length}<Button
-					variant="outline"
-					size="icon"
-					class="size-8"
-					type="button"
-					aria-label="Generate commit message with Hermes"
-					title="Generate with Hermes using the selected model"
-					disabled={repositoryBusy || commitMessageGenerating}
-					onclick={generateCommitMessage}
-					>{#if commitMessageGenerating}<RefreshCw
-							size={15}
-							class="animate-spin"
-							aria-hidden="true"
-						/>{:else}<Sparkles size={15} aria-hidden="true" />{/if}</Button
-				>{/if}
+			<Button
+				variant="ghost"
+				size="icon"
+				class="size-8"
+				type="button"
+				aria-label="Choose commit message model"
+				title="Choose commit message model"
+				onclick={() => commitModelDialog?.showModal()}
+				><Ellipsis size={17} aria-hidden="true" /></Button
+			>
 		</div>
-		<select
-			class="h-8 min-w-0 rounded-md border border-input bg-background px-2 text-xs"
-			aria-label="Commit message model"
-			bind:value={commitModel}
-			onchange={() => localStorage.setItem('hue:commit-message-model', commitModel)}
-		>
-			{#each commitModels as option}<option value={option.value}>{option.label}</option>{/each}
-		</select>
-		<Input
-			class="h-8 text-xs"
-			bind:value={commitMessage}
-			aria-label="Commit message"
-			placeholder="Commit message"
-		/>
+		<div class="commit-message-field relative">
+			<Input
+				class="h-8 pr-10 text-xs max-[700px]:h-11 max-[700px]:pr-12"
+				bind:value={commitMessage}
+				aria-label="Commit message"
+				placeholder="Commit message"
+			/>
+			<button
+				type="button"
+				class="absolute top-1/2 right-0.5 grid size-7 -translate-y-1/2 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-[700px]:size-11"
+				aria-label="Generate commit message with Hermes"
+				title={stagedChanges().length ? 'Generate commit message with Hermes' : 'Stage files first'}
+				disabled={repositoryBusy || commitMessageGenerating || !stagedChanges().length}
+				onclick={generateCommitMessage}
+			>
+				{#if commitMessageGenerating}<RefreshCw
+						size={15}
+						class="animate-spin"
+						aria-hidden="true"
+					/>{:else}<Sparkles size={15} aria-hidden="true" />{/if}
+			</button>
+		</div>
 		<div class="flex items-center justify-end gap-2">
 			{#if repositoryMessage}<small class="mr-auto text-muted-foreground" role="status"
 					>{repositoryMessage}</small
@@ -450,6 +437,26 @@
 			>
 		</div>
 	</form>
+	<dialog
+		bind:this={commitModelDialog}
+		class="fixed m-auto w-[min(360px,calc(100vw-24px))] rounded-xl border border-border bg-card p-4 text-foreground shadow-2xl backdrop:bg-black/60"
+		aria-labelledby="commit-model-title"
+		onclick={(event) => event.target === event.currentTarget && commitModelDialog?.close()}
+	>
+		<form method="dialog" class="grid gap-3">
+			<h2 id="commit-model-title" class="text-sm font-semibold">Commit message model</h2>
+			<select
+				class="h-9 min-w-0 rounded-md border border-input bg-background px-2 text-xs max-[700px]:h-11"
+				aria-label="Commit message model"
+				bind:value={commitModel}
+				onchange={() => localStorage.setItem('hue:commit-message-model', commitModel)}
+			>
+				{#each commitModels as option}<option value={option.value}>{option.label}</option>{/each}
+			</select>
+			<Button variant="outline" size="sm" class="justify-self-end" type="submit">Done</Button>
+		</form>
+	</dialog>
+	{/if}
 </article>
 
 <article
@@ -458,24 +465,17 @@
 	aria-label="Git worktrees"
 >
 	<header
-		class="flex min-h-11 items-center justify-between border-b border-border bg-muted/40 px-2.5 py-2"
+		class="flex min-h-11 cursor-pointer items-center justify-between border-b border-border bg-muted/40 px-2.5 py-2"
+		role="button"
+		tabindex="0"
+		aria-expanded={worktreesOpen}
+		onclick={(event) => togglePanelFromHeader(event, toggleWorktrees)}
+		onkeydown={(event) => togglePanelFromHeader(event, toggleWorktrees)}
 	>
 		<strong class="text-xs">Worktrees</strong>
 		<div class="flex items-center gap-1">
 			<span class="text-[0.68rem] text-muted-foreground">{repository?.worktrees.length ?? 0}</span>
-			<button
-				type="button"
-				class="grid size-8 place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring max-[700px]:size-11"
-				aria-label={worktreesOpen ? 'Collapse worktrees' : 'Expand worktrees'}
-				aria-expanded={worktreesOpen}
-				title={worktreesOpen ? 'Collapse worktrees' : 'Expand worktrees'}
-				onclick={toggleWorktrees}
-			>
-				{#if worktreesOpen}<ChevronDown size={16} aria-hidden="true" />{:else}<ChevronRight
-						size={16}
-						aria-hidden="true"
-					/>{/if}
-			</button>
+			{#if worktreesOpen}<ChevronDown size={16} aria-hidden="true" />{:else}<ChevronRight size={16} aria-hidden="true" />{/if}
 		</div>
 	</header>
 	{#if worktreesOpen}<div class="worktree-list grid min-h-0 content-start gap-1 overflow-auto p-2">
@@ -500,3 +500,9 @@
 				</p>{/if}
 		</div>{/if}
 </article>
+
+{#if isGitHubRepository()}<GitHubPanels
+		items={githubItems}
+		error={githubError}
+		links={repositoryLinks()}
+	/>{/if}

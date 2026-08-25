@@ -67,7 +67,7 @@
 </script>
 
 <section
-	class="project-status-bar absolute inset-x-0 bottom-0 z-50 flex min-w-0 items-center overflow-x-auto border-t text-[11px] whitespace-nowrap"
+	class="project-status-bar flex min-w-0 items-center overflow-x-auto border-t text-[11px] whitespace-nowrap"
 	style={color
 		? `--project-status-color: ${color}; --project-status-foreground: ${projectColorForeground(color)}`
 		: undefined}
@@ -99,9 +99,10 @@
 <style>
 	:global(.workspace:has(.project-status-bar)) {
 		--project-status-height: 28px;
-		padding-bottom: calc(var(--project-status-height) + env(safe-area-inset-bottom, 0px));
 	}
 	.project-status-bar {
+		grid-column: 1 / -1;
+		grid-row: 2;
 		height: calc(var(--project-status-height) + env(safe-area-inset-bottom, 0px));
 		padding-bottom: env(safe-area-inset-bottom, 0px);
 		border-color: color-mix(in srgb, currentColor 25%, transparent);
@@ -114,5 +115,20 @@
 	}
 	.project-status-bar::-webkit-scrollbar {
 		display: none;
+	}
+	@media (min-width: 701px) {
+		:global(.workspace:has(.project-status-bar)) {
+			grid-template-rows: minmax(0, 1fr) auto;
+		}
+	}
+	@media (max-width: 700px) {
+		:global(.workspace:has(.project-status-bar)) {
+			padding-bottom: calc(var(--project-status-height) + env(safe-area-inset-bottom, 0px));
+		}
+		.project-status-bar {
+			position: absolute;
+			z-index: 50;
+			inset: auto 0 0;
+		}
 	}
 </style>
