@@ -79,6 +79,7 @@ const workbenchFiles = [
 	'../lib/components/workbench/file-upload.ts',
 	'../lib/components/workbench/TerminalPanel.svelte',
 	'../lib/components/workbench/RepositoryPanels.svelte',
+	'../lib/components/workbench/GitHubPanels.svelte',
 	'../lib/components/workbench/api.ts'
 ].map(read);
 const workbench = workbenchFiles.join('\n');
@@ -391,12 +392,24 @@ test('project workbench owns browser, terminal, and Git behavior', () => {
 	expect(workbench).toContain('aria-label="GitHub issues"');
 	expect(workbench).toContain('aria-label="GitHub pull requests"');
 	expect(workbench).toContain('target="_blank"');
-	expect(workbench).toContain("worktreesOpen ? 'Collapse worktrees' : 'Expand worktrees'");
+	expect(workbench).toContain('togglePanelFromHeader(event, toggleWorktrees)');
 	expect(workbench).toContain('aria-expanded={worktreesOpen}');
+	expect(workbench).toContain('aria-label="GitHub work"');
+	expect(workbench).toContain('aria-label="GitHub issues"');
+	expect(workbench).toContain('aria-label="GitHub pull requests"');
+	expect(workbench).toContain('{#each items?.issueGroups');
+	expect(workbench).toContain("group.milestone ?? 'No milestone'");
+	expect(workbench).toContain('>Milestone</span');
+	expect(workbench).toContain('<GitHubMark');
+	expect(workbench).toContain('aria-label={`Open ${repositoryLabel} on GitHub`}');
+	expect(workbench).toContain('<details open');
+	expect(workbench).not.toContain('class="grid grid-cols-2');
 	expect(workbench).toContain('max-[700px]:size-11');
 	expect(workbench).toContain("action: 'push'");
 	expect(workbench).toContain('onDestroy(() =>');
-	expect(styles).toContain("grid-template-areas: 'browser repository' 'terminal worktrees'");
+	expect(styles).toContain(
+		"grid-template-areas: 'browser repository github' 'terminal worktrees github'"
+	);
 });
 
 test('Project tools stay embedded with Sessions and collapse to an accessible dock', () => {

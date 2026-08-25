@@ -4,7 +4,9 @@
 		Bell,
 		Code2,
 		FileText,
+		FolderKanban,
 		Grid2X2,
+		List,
 		MessageSquare,
 		Plug,
 		Settings,
@@ -29,10 +31,16 @@
 	let {
 		view,
 		unreadCount = 0,
+		projectsOpen,
+		sessionsOpen,
+		ontoggle,
 		onview
 	}: {
 		view: GlobalView | null;
 		unreadCount?: number;
+		projectsOpen: boolean;
+		sessionsOpen: boolean;
+		ontoggle: (panel: 'projects' | 'sessions') => void;
 		onview: (view: GlobalView | null) => void;
 	} = $props();
 
@@ -59,6 +67,28 @@
 	<Button
 		variant="outline"
 		size="icon"
+		class={`${action} ${projectsOpen ? 'active' : ''}`}
+		aria-label={`${projectsOpen ? 'Hide' : 'Show'} Projects panel`}
+		aria-pressed={projectsOpen}
+		title={`${projectsOpen ? 'Hide' : 'Show'} Projects panel`}
+		onclick={() => ontoggle('projects')}
+	>
+		<FolderKanban aria-hidden="true" />
+	</Button>
+	<Button
+		variant="outline"
+		size="icon"
+		class={`${action} ${sessionsOpen ? 'active' : ''}`}
+		aria-label={`${sessionsOpen ? 'Hide' : 'Show'} Sessions panel`}
+		aria-pressed={sessionsOpen}
+		title={`${sessionsOpen ? 'Hide' : 'Show'} Sessions panel`}
+		onclick={() => ontoggle('sessions')}
+	>
+		<List aria-hidden="true" />
+	</Button>
+	<Button
+		variant="outline"
+		size="icon"
 		class={`${action} relative ${view === 'notifications' ? 'active' : ''}`}
 		aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
 		title="Notifications"
@@ -66,7 +96,7 @@
 	>
 		<Bell aria-hidden="true" />
 		{#if unreadCount > 0}<span
-				class="notification-badge text-destructive-foreground absolute -top-1 -right-1 min-w-5 rounded-full bg-destructive px-1 text-[10px] leading-5 font-bold"
+				class="notification-badge absolute -top-1 -right-1 min-w-5 rounded-full bg-[var(--notification)] px-1 text-[10px] leading-5 font-bold text-white"
 				>{unreadCount > 99 ? '99+' : unreadCount}</span
 			>{/if}
 	</Button>

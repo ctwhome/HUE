@@ -334,6 +334,18 @@
 								>{/if}
 						</article>
 						<article
+							class={`${panel} github-panel`}
+							aria-label="GitHub work"
+							aria-busy={!repositoryError}
+						>
+							<header class="min-h-11 border-b border-border bg-muted/40 px-2.5 py-2">
+								<strong class="text-xs">GitHub</strong>
+							</header>
+							<div class="grid flex-1 place-content-center p-4 text-xs text-muted-foreground">
+								{repositoryError ? 'GitHub unavailable' : 'Loading GitHub work'}
+							</div>
+						</article>
+						<article
 							class={`${panel} worktrees-panel`}
 							aria-label="Git worktrees"
 							aria-busy={!repositoryError}

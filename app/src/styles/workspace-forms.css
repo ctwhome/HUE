@@ -501,9 +501,9 @@
 }
 
 .project-workbench {
-	grid-template-columns: minmax(0, 1fr) minmax(240px, 30%);
+	grid-template-columns: minmax(0, 1fr) repeat(2, minmax(220px, 24%));
 	grid-template-rows: minmax(250px, 0.82fr) minmax(250px, 1fr);
-	grid-template-areas: 'browser repository' 'terminal worktrees';
+	grid-template-areas: 'browser repository github' 'terminal worktrees github';
 }
 
 .browser-panel {

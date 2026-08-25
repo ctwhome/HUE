@@ -177,31 +177,64 @@ test('reports read-only repository status, remotes, and worktrees', () => {
 	});
 });
 
-test('lists open GitHub issues and pull requests for origin', () => {
+test('groups open GitHub issues by milestone and lists pull requests for origin', () => {
 	const calls: string[][] = [];
 	const run = (_command: string, args: string[]) => {
 		calls.push(args);
 		if (args.includes('get-url')) {
 			return { status: 0, stdout: 'https://github.com/curi/hue.git\n' };
 		}
-		return {
-			status: 0,
-			stdout: JSON.stringify([
-				{
-					number: 42,
-					title: 'Keep issue list focused',
-					url: 'https://github.com/curi/hue/issues/42'
+		return args[0] === 'issue'
+			? {
+					status: 0,
+					stdout: JSON.stringify([
+						{
+							number: 42,
+							title: 'Keep issue list focused',
+							url: 'https://github.com/curi/hue/issues/42',
+							milestone: { title: '1.0' }
+						},
+						{
+							number: 43,
+							title: 'Triage later',
+							url: 'https://github.com/curi/hue/issues/43',
+							milestone: null
+						}
+					])
 				}
-			])
-		};
+			: {
+					status: 0,
+					stdout: JSON.stringify([
+						{
+							number: 44,
+							title: 'Review grouping',
+							url: 'https://github.com/curi/hue/pull/44'
+						}
+					])
+				};
 	};
 
 	expect(projectGitHubItems('/project', run)).toEqual({
-		issues: [
-			{ number: 42, title: 'Keep issue list focused', url: 'https://github.com/curi/hue/issues/42' }
+		issueGroups: [
+			{
+				milestone: '1.0',
+				issues: [
+					{
+						number: 42,
+						title: 'Keep issue list focused',
+						url: 'https://github.com/curi/hue/issues/42'
+					}
+				]
+			},
+			{
+				milestone: null,
+				issues: [
+					{ number: 43, title: 'Triage later', url: 'https://github.com/curi/hue/issues/43' }
+				]
+			}
 		],
 		pullRequests: [
-			{ number: 42, title: 'Keep issue list focused', url: 'https://github.com/curi/hue/issues/42' }
+			{ number: 44, title: 'Review grouping', url: 'https://github.com/curi/hue/pull/44' }
 		]
 	});
 	expect(calls).toEqual([
@@ -216,7 +249,7 @@ test('lists open GitHub issues and pull requests for origin', () => {
 			'--limit',
 			'20',
 			'--json',
-			'number,title,url'
+			'number,title,url,milestone'
 		],
 		[
 			'pr',

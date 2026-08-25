@@ -57,8 +57,7 @@
 	let now = $state(Date.now());
 	let dirtyGuardOpen = $state(false),
 		dirtyGuardDirty = $state(false);
-	let mobile = $state(false),
-		projectTools = $state(false);
+	let mobile = $state(false), projectTools = $state(false), projectsPanelOpen = $state(true), sessionsPanelOpen = $state(true);
 	let embedded = $derived(page.url.searchParams.get('embed') === 'chat');
 	type ShellPane = 'projects' | 'sessions';
 	let projectPaneWidth = $state(220),
@@ -377,10 +376,11 @@
 	class:ready={navigation.ready}
 	class:drawer-gesture-active={gestureActive}
 	class:gesture-reveal-projects={gestureAction === 'show-projects'}
+	class:projects-panel-closed={!projectsPanelOpen} class:sessions-panel-closed={!sessionsPanelOpen}
 	class:embedded
 	style={`--project-pane-width: ${projectPaneWidth}px; --session-pane-width: ${sessionPaneWidth}px`}
 >
-	<GlobalNavigation view={globalView} unreadCount={unreadNotifications} onview={setGlobalView} />
+	<GlobalNavigation view={globalView} unreadCount={unreadNotifications} projectsOpen={projectsPanelOpen} sessionsOpen={sessionsPanelOpen} ontoggle={(panel) => panel === 'projects' ? (projectsPanelOpen = !projectsPanelOpen) : (sessionsPanelOpen = !sessionsPanelOpen)} onview={setGlobalView} />
 	<MobileNavigation
 		drawer={navigation.mobileDrawer}
 		ready={navigation.ready}

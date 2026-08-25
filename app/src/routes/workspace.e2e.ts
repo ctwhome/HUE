@@ -5108,6 +5108,27 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 	);
 	const gitActions: string[] = [];
 	let changes = [{ path: 'app/src/routes/+page.svelte', index: ' ', worktree: 'M' }];
+	await page.route(/\/api\/projects\/[^/]+\/repository\?view=github/, (route) =>
+		route.fulfill({
+			json: {
+				issueGroups: [
+					{
+						milestone: 'M1',
+						issues: [
+							{
+								number: 42,
+								title: 'Group project work',
+								url: 'https://github.com/curi/hue/issues/42'
+							}
+						]
+					}
+				],
+				pullRequests: [
+					{ number: 44, title: 'Review project work', url: 'https://github.com/curi/hue/pull/44' }
+				]
+			}
+		})
+	);
 	await page.route(/\/api\/projects\/[^/]+\/repository$/, async (route) => {
 		if (route.request().method() === 'POST') {
 			const body = (await route.request().postDataJSON()) as { action: string };
@@ -5151,6 +5172,16 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		'app/src/routes/+page.svelte'
 	);
 	await expect(workbench.getByRole('article', { name: 'Git worktrees' })).toContainText('review');
+	const github = workbench.getByRole('article', { name: 'GitHub work' });
+	await expect(github).toContainText('M1');
+	await expect(github).toContainText('#42 Group project work');
+	await github.getByText('M1', { exact: true }).click();
+	await expect(github.getByText('#42 Group project work')).toBeHidden();
+	await github
+		.getByLabel('GitHub pull requests')
+		.getByText('Pull requests', { exact: true })
+		.click();
+	await expect(github.getByText('#44 Review project work')).toBeHidden();
 	await expect(workbench.getByRole('link', { name: 'Pull requests' })).toHaveAttribute(
 		'href',
 		'https://github.com/curi/hue/pulls'
@@ -5292,6 +5323,63 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 			await browser.screenshot({ path: `/tmp/hue-browser-canvas-${viewport.width}.png` });
 	}
 	expect(browserErrors).toEqual([]);
+});
+
+test('groups GitHub issues by collapsible milestone lists', async ({ page }) => {
+	await page.route(/\/api\/projects\/[^/]+\/repository\?view=github/, (route) =>
+		route.fulfill({
+			json: {
+				issueGroups: [
+					{
+						milestone: 'M1',
+						issues: [
+							{
+								number: 42,
+								title: 'Group project work',
+								url: 'https://github.com/curi/hue/issues/42'
+							}
+						]
+					}
+				],
+				pullRequests: [
+					{ number: 44, title: 'Review project work', url: 'https://github.com/curi/hue/pull/44' }
+				]
+			}
+		})
+	);
+	await page.route(/\/api\/projects\/[^/]+\/repository$/, (route) =>
+		route.fulfill({
+			json: {
+				isRepository: true,
+				branch: 'main',
+				changes: [],
+				worktrees: [],
+				remotes: [{ name: 'origin', webUrl: 'https://github.com/curi/hue' }]
+			}
+		})
+	);
+	await addProject(page);
+	await page.keyboard.press('Escape');
+	await page.getByRole('button', { name: 'Git', exact: true }).click();
+
+	const github = page.getByRole('article', { name: 'GitHub work' });
+	await expect(github.getByRole('link', { name: 'Open curi/hue on GitHub' })).toHaveAttribute(
+		'href',
+		'https://github.com/curi/hue'
+	);
+	await expect(github).toContainText('Milestone');
+	await expect(github).toContainText('M1');
+	await expect(github.getByText('#42 Group project work')).toBeVisible();
+	await github.getByText('M1', { exact: true }).click();
+	await expect(github.getByText('#42 Group project work')).toBeHidden();
+	await github
+		.getByLabel('GitHub pull requests')
+		.getByText('Pull requests', { exact: true })
+		.click();
+	await expect(github.getByText('#44 Review project work')).toBeHidden();
+	await page.setViewportSize({ width: 390, height: 844 });
+	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+	await expectMinimumTouchTargets(github.locator('summary'));
 });
 
 test('remounts project-scoped tools when switching projects', async ({ page }) => {
