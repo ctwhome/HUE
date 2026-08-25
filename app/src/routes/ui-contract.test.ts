@@ -557,8 +557,8 @@ test('Project groups expose editable, persistent, accessible collapsible heading
 	const projectRail = read('../lib/components/workspace/ProjectRail.svelte');
 	expect(projectRail).toContain('Group label');
 	expect(projectRail).toContain('<datalist');
-	expect(projectRail).toContain("aria-expanded={!collapsedGroups.includes(group.name)}");
-	expect(projectRail).toContain('title={`Toggle ${group.name} group`}');
+	expect(projectRail).toContain('aria-expanded={!collapsedGroups.has(group.label)}');
+	expect(projectRail).toContain('title={group.label}');
 	expect(projectRail).toContain("localStorage.getItem('hue:project-groups:collapsed')");
 	expect(projectRail).toContain("localStorage.setItem('hue:project-groups:collapsed'");
 	expect(projectRail).toContain('<ChevronRight');

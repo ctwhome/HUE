@@ -162,58 +162,6 @@
 	}
 </script>
 
-{#snippet projectRow(project: Project)}
-	<div class="project-row group relative">
-		<button
-			class="project-icon-trigger absolute top-1/2 left-0 z-1 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md hover:bg-accent"
-			aria-label={`Change ${project.name} icon`}
-			title={`Change ${project.name} icon`}
-			onclick={(event) => onicon(event, project)}
-		>
-			{#if isImage(project.icon)}<img
-					class="project-icon project-icon-image size-(--navigation-icon-size) rounded-md object-cover"
-					src={project.icon ?? ''}
-					alt=""
-				/>{:else if project.icon}<span
-					class="project-icon grid size-(--navigation-icon-size) place-items-center rounded-md"
-					>{project.icon}</span
-				>{:else}<Folder
-					class="project-icon project-icon-default size-(--navigation-icon-size) text-muted-foreground"
-					size={18}
-					aria-hidden="true"
-				/>{/if}
-		</button>
-		<button
-			class="project-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md bg-transparent py-1 pr-8 pl-8 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
-			class:active={selectedProject?.id === project.id}
-			aria-current={selectedProject?.id === project.id ? 'page' : undefined}
-			onclick={() => onchoose(project)}
-		>
-			{#if isImage(project.icon)}<img
-					class="project-icon-inline project-icon-image size-(--navigation-icon-size) rounded-md object-cover"
-					src={project.icon ?? ''}
-					alt=""
-				/>{:else if project.icon}<span
-					class="project-icon-inline size-(--navigation-icon-size) place-items-center rounded-md"
-					>{project.icon}</span
-				>{:else}<Folder
-					class="project-icon-inline project-icon-default size-(--navigation-icon-size) text-muted-foreground"
-					size={18}
-					aria-hidden="true"
-				/>{/if}
-			<span class="min-w-0 truncate">{project.name}</span>
-			{#if !project.rootAvailable}<small class="text-amber-400">Missing</small>{/if}
-		</button>
-		<button
-			class="project-edit absolute top-1/2 right-0 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent focus:opacity-100"
-			aria-label={`Edit ${project.name}`}
-			title={`Edit ${project.name}`}
-			onclick={(event) => onedit(event, project)}
-			><Ellipsis size={16} aria-hidden="true" /></button
-		>
-	</div>
-{/snippet}
-
 <aside
 	bind:this={element}
 	id="project-drawer"
