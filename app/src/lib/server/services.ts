@@ -540,6 +540,121 @@ export function projectStagedDiff(projectRoot: string) {
 	return diff.slice(0, 100_000);
 }
 
+export type ProjectRepositoryDiffScope = 'staged' | 'unstaged' | 'branch';
+export type ProjectRepositoryDiff = {
+	scope: ProjectRepositoryDiffScope;
+	base: string | null;
+	diff: string;
+	truncated: boolean;
+	maxBytes: number;
+	untrackedPaths: string[];
+	untrackedPathsTruncated: boolean;
+};
+
+function validBaseRef(base: string) {
+	return /^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$/.test(base);
+}
+
+function branchDiffBase(projectRoot: string, supplied?: string) {
+	if (supplied && !validBaseRef(supplied)) throw new Error('Invalid base ref');
+	const current = projectBranch(projectRoot);
+	const upstream = git(projectRoot, ['rev-parse', '--abbrev-ref', '@{upstream}'], true)?.trim();
+	const candidates = supplied ? [supplied] : [upstream, 'main', 'master'].filter(Boolean);
+	for (const candidate of candidates) {
+		if (!supplied && candidate === current) continue;
+		if (
+			git(
+				projectRoot,
+				['rev-parse', '--verify', '--quiet', '--end-of-options', `${candidate}^{commit}`],
+				true
+			)
+		) {
+			return candidate!;
+		}
+	}
+	if (supplied) throw new Error('Base ref was not found');
+	throw new Error('Could not resolve a base ref');
+}
+
+export function projectRepositoryDiff(
+	projectRoot: string,
+	options: {
+		scope: ProjectRepositoryDiffScope;
+		base?: string;
+		file?: string;
+		maxBytes?: number;
+	}
+): ProjectRepositoryDiff {
+	if (git(projectRoot, ['rev-parse', '--is-inside-work-tree'], true)?.trim() !== 'true') {
+		throw new Error('Selected folder is not a Git repository');
+	}
+	if (!['staged', 'unstaged', 'branch'].includes(options.scope))
+		throw new Error('Invalid diff scope');
+	if (
+		options.file &&
+		(isAbsolute(options.file) ||
+			options.file.split(/[\\/]/).includes('..') ||
+			options.file.includes('\0'))
+	) {
+		throw new Error('Invalid diff file');
+	}
+
+	const base = options.scope === 'branch' ? branchDiffBase(projectRoot, options.base) : null;
+	const args = ['diff'];
+	if (options.scope === 'staged') args.push('--cached');
+	if (base) args.push(`${base}...HEAD`);
+	args.push('--no-ext-diff', '--no-color', '--unified=3');
+	if (options.file) args.push('--', options.file);
+	const maxBytes = Math.max(1, Math.min(options.maxBytes ?? 100_000, 100_000));
+	let untrackedPaths: string[] = [];
+	let untrackedPathsTruncated = false;
+	if (options.scope === 'unstaged') {
+		const untrackedArgs = ['ls-files', '--others', '--exclude-standard', '-z'];
+		if (options.file) untrackedArgs.push('--', options.file);
+		const untrackedResult = spawnSync('git', ['-C', projectRoot, ...untrackedArgs], {
+			timeout: 10_000,
+			maxBuffer: maxBytes + 1
+		});
+		const untrackedOutput = Buffer.isBuffer(untrackedResult.stdout)
+			? untrackedResult.stdout
+			: Buffer.from(untrackedResult.stdout);
+		const untrackedOverflowed =
+			(untrackedResult.error as NodeJS.ErrnoException | undefined)?.code === 'ENOBUFS' &&
+			untrackedOutput.byteLength > maxBytes;
+		if (!untrackedOverflowed && (untrackedResult.error || untrackedResult.status !== 0)) {
+			throw new Error('Git untracked file listing failed');
+		}
+		untrackedPathsTruncated = untrackedOverflowed || untrackedOutput.byteLength > maxBytes;
+		const boundedUntrackedOutput = untrackedOutput.subarray(0, maxBytes);
+		untrackedPaths = boundedUntrackedOutput.toString('utf8').split('\0');
+		if (untrackedPathsTruncated && boundedUntrackedOutput.at(-1) !== 0) {
+			untrackedPaths.pop();
+		}
+		if (untrackedPaths.at(-1) === '') untrackedPaths.pop();
+	}
+	const result = spawnSync('git', ['-C', projectRoot, ...args], {
+		timeout: 10_000,
+		maxBuffer: maxBytes + 1
+	});
+	const output = Buffer.isBuffer(result.stdout) ? result.stdout : Buffer.from(result.stdout);
+	const overflowed =
+		(result.error as NodeJS.ErrnoException | undefined)?.code === 'ENOBUFS' &&
+		output.byteLength > maxBytes;
+	if (!overflowed && (result.error || result.status !== 0)) throw new Error('Git diff failed');
+	const truncated = overflowed || output.byteLength > maxBytes;
+	let diff = output.subarray(0, maxBytes).toString('utf8');
+	while (Buffer.byteLength(diff) > maxBytes) diff = diff.slice(0, -1);
+	return {
+		scope: options.scope,
+		base,
+		diff,
+		truncated,
+		maxBytes,
+		untrackedPaths,
+		untrackedPathsTruncated
+	};
+}
+
 export function projectRepositoryAction(
 	projectRoot: string,
 	operation: ProjectRepositoryAction

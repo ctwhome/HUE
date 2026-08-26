@@ -1,6 +1,13 @@
 import { tick } from 'svelte';
 import { applySessionEvents, isTurnBusy, runSingleFlight } from '$lib';
-import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+import {
+	reviewContextLimits,
+	validateReviewContexts,
+	type ImageAttachment,
+	type InputAttachment,
+	type ReviewContext,
+	type ReviewContextSeed
+} from '$lib/message-content';
 import { formatWorkModeAnnouncement, type WorkMode } from '$lib/work-mode';
 import { shouldSendMessage } from '$lib/preferences';
 import type { WorkspaceNavigation } from './navigation.svelte';
@@ -39,6 +46,7 @@ export class MessageState {
 	composerElement = $state<HTMLTextAreaElement>();
 	images = $state<ImageAttachment[]>([]);
 	attachments = $state<InputAttachment[]>([]);
+	reviewContexts = $state<ReviewContext[]>([]);
 	draggingImages = $state(false);
 	pendingEnvelope = $state<PendingEnvelope | null>(null);
 	editingQueuedMessageId = $state('');
@@ -59,11 +67,18 @@ export class MessageState {
 		this.editingQueuedMessageId = '';
 		this.images = [];
 		this.attachments = [];
+		this.reviewContexts = [];
 	};
 	submit = async (event: SubmitEvent) => {
 		event.preventDefault();
 		const text = this.composer;
-		if (!text.trim() && !this.images.length && !this.attachments.length) return;
+		if (
+			!text.trim() &&
+			!this.images.length &&
+			!this.attachments.length &&
+			!this.reviewContexts.length
+		)
+			return;
 		const sent = this.editingQueuedMessageId
 			? await this.updateQueuedMessage(text)
 			: isTurnBusy(this.options.session.delivery)
@@ -73,6 +88,7 @@ export class MessageState {
 			this.composer = '';
 			this.images = [];
 			this.attachments = [];
+			this.reviewContexts = [];
 			this.editingQueuedMessageId = '';
 			this.clearCurrentDraft();
 		}
@@ -94,7 +110,8 @@ export class MessageState {
 					messageId,
 					text,
 					images: this.images,
-					attachments: this.attachments
+					attachments: this.attachments,
+					reviewContexts: this.reviewContexts
 				})
 			});
 			this.options
@@ -112,6 +129,7 @@ export class MessageState {
 						text,
 						images: [...this.images],
 						attachments: this.attachments.map(unavailableAttachmentMetadata),
+						reviewContexts: [...this.reviewContexts],
 						status: 'queued'
 					}
 				];
@@ -139,7 +157,8 @@ export class MessageState {
 						text,
 						images: this.images,
 						attachments: preserveAttachments ? undefined : this.attachments,
-						preserveAttachments
+						preserveAttachments,
+						reviewContexts: this.reviewContexts
 					})
 				}
 			);
@@ -158,6 +177,7 @@ export class MessageState {
 		this.composer = message.text;
 		this.images = [...message.images];
 		this.attachments = [...(message.attachments ?? [])];
+		this.reviewContexts = [...(message.reviewContexts ?? [])];
 		await tick();
 		this.composerElement?.focus();
 	};
@@ -204,6 +224,7 @@ export class MessageState {
 		this.composer = message.text;
 		this.images = [...(message.images ?? [])];
 		this.attachments = (message.attachments ?? []).filter((attachment) => attachment.data);
+		this.reviewContexts = [...(message.reviewContexts ?? [])];
 		if ((message.attachments ?? []).some((attachment) => !attachment.data)) {
 			this.options.setError('Attachment bytes are unavailable; reattach files before sending.');
 		}
@@ -235,7 +256,12 @@ export class MessageState {
 			this.options.setError('Attachment bytes are unavailable; reattach files before retrying.');
 			return;
 		}
-		await this.sendText(user.text, user.images ?? [], user.attachments ?? []);
+		await this.sendText(
+			user.text,
+			user.images ?? [],
+			user.attachments ?? [],
+			user.reviewContexts ?? []
+		);
 	};
 
 	stopTurn = async () => {
@@ -257,23 +283,37 @@ export class MessageState {
 	sendText = async (
 		text: string,
 		imageAttachments: ImageAttachment[] = this.images,
-		fileAttachments: InputAttachment[] = this.attachments
+		fileAttachments: InputAttachment[] = this.attachments,
+		reviewContexts: ReviewContext[] = this.reviewContexts
 	): Promise<boolean> => {
+		const navigation = this.options.getNavigation();
+		const selection = navigation.captureSessionSelection();
+		const selectedProject = this.options.getProject();
 		const selectedSession = this.options.getSession();
 		const sessionState = this.options.session;
-		if (!selectedSession || isTurnBusy(sessionState.delivery)) return false;
+		if (!selection || !selectedSession || isTurnBusy(sessionState.delivery)) return false;
+		const originPersistence = new MessagePersistence(
+			() => selectedProject,
+			() => selectedSession
+		);
 		if (fileAttachments.some((attachment) => !attachment.data)) {
 			this.options.setError('Attachment bytes are unavailable; reattach files before sending.');
 			return false;
 		}
+		const sendsCurrentDraft =
+			this.composer === text &&
+			JSON.stringify(this.images) === JSON.stringify(imageAttachments) &&
+			JSON.stringify(this.attachments) === JSON.stringify(fileAttachments) &&
+			JSON.stringify(this.reviewContexts) === JSON.stringify(reviewContexts);
 		this.options.prepareVoice();
-		const projectId = this.options.getProject()?.id ?? null;
+		const projectId = selection.projectId;
 		const envelope =
 			this.pendingEnvelope?.projectId === projectId &&
 			this.pendingEnvelope.sessionId === selectedSession.sessionId &&
 			this.pendingEnvelope.text === text &&
 			JSON.stringify(this.pendingEnvelope.images) === JSON.stringify(imageAttachments) &&
-			JSON.stringify(this.pendingEnvelope.attachments) === JSON.stringify(fileAttachments)
+			JSON.stringify(this.pendingEnvelope.attachments) === JSON.stringify(fileAttachments) &&
+			JSON.stringify(this.pendingEnvelope.reviewContexts ?? []) === JSON.stringify(reviewContexts)
 				? this.pendingEnvelope
 				: {
 						id: crypto.randomUUID(),
@@ -281,16 +321,19 @@ export class MessageState {
 						sessionId: selectedSession.sessionId,
 						text,
 						images: imageAttachments,
-						attachments: fileAttachments
+						attachments: fileAttachments,
+						reviewContexts
 					};
 		sessionState.activeMessageId = envelope.id;
 		sessionState.pendingAssistant = '';
 		sessionState.pendingImages = [];
 		sessionState.pendingThought = '';
 		sessionState.delivery = 'saving';
-		this.options
-			.getNavigation()
-			.setSessionBusySince(selectedSession.sessionId, new Date().toISOString());
+		navigation.setSessionBusySince(
+			selectedSession.sessionId,
+			new Date().toISOString(),
+			selection.projectId
+		);
 		try {
 			const accepted = await this.options.api<{
 				duplicate: boolean;
@@ -305,12 +348,34 @@ export class MessageState {
 					messageId: envelope.id,
 					text: envelope.text,
 					images: envelope.images,
-					attachments: envelope.attachments
+					attachments: envelope.attachments,
+					reviewContexts: envelope.reviewContexts
 				})
 			});
-			this.options
-				.getNavigation()
-				.replaceSession({ ...selectedSession, workMode: accepted.workMode });
+			originPersistence.pending(null);
+			if (sendsCurrentDraft) {
+				originPersistence.draft('');
+				originPersistence.contexts([]);
+			}
+			const acceptedDelivery = accepted.consumed
+				? ''
+				: accepted.duplicate
+					? accepted.status === 'queued'
+						? 'accepted'
+						: accepted.status === 'unknown'
+							? 'delivery unknown'
+							: accepted.status
+					: 'accepted';
+			sessionState.updateCachedDelivery(
+				selection.projectId,
+				selection.sessionId,
+				accepted.consumed ? '' : envelope.id,
+				acceptedDelivery
+			);
+			if (accepted.consumed)
+				navigation.setSessionBusySince(selectedSession.sessionId, null, selection.projectId);
+			if (!navigation.isCurrentSessionSelection(selection)) return false;
+			navigation.replaceSession({ ...selectedSession, workMode: accepted.workMode });
 			if (accepted.workModeChanged || accepted.consumed) {
 				this.messageNotice = formatWorkModeAnnouncement(accepted.workMode);
 			}
@@ -320,12 +385,18 @@ export class MessageState {
 			if (accepted.consumed) {
 				sessionState.activeMessageId = '';
 				sessionState.delivery = '';
-				this.options.getNavigation().setSessionBusySince(selectedSession.sessionId, null);
 				return true;
 			}
 			if (accepted.duplicate) {
 				if (['completed', 'failed', 'unknown'].includes(accepted.status)) {
-					await this.options.getNavigation().openSession(selectedSession);
+					if (!(await navigation.openSession(selectedSession))) return false;
+					const refreshedSelection = navigation.captureSessionSelection();
+					if (
+						!refreshedSelection ||
+						refreshedSelection.projectId !== selection.projectId ||
+						refreshedSelection.sessionId !== selection.sessionId
+					)
+						return false;
 					sessionState.delivery =
 						accepted.status === 'unknown' ? 'delivery unknown' : accepted.status;
 					return true;
@@ -337,7 +408,13 @@ export class MessageState {
 			const attachmentMetadata = envelope.attachments.map(unavailableAttachmentMetadata);
 			sessionState.transcript = [
 				...sessionState.transcript,
-				{ role: 'user', text, images: envelope.images, attachments: attachmentMetadata }
+				{
+					role: 'user',
+					text,
+					images: envelope.images,
+					attachments: attachmentMetadata,
+					reviewContexts: envelope.reviewContexts
+				}
 			];
 			sessionState.timeline = [
 				...sessionState.timeline,
@@ -348,21 +425,30 @@ export class MessageState {
 					messageId: envelope.id,
 					text,
 					images: envelope.images,
-					attachments: attachmentMetadata
+					attachments: attachmentMetadata,
+					reviewContexts: envelope.reviewContexts
 				}
 			];
 			await this.options.transcriptFollow.scrollToLatest();
+			if (!navigation.isCurrentSessionSelection(selection)) return false;
 			sessionState.delivery = 'accepted';
 			this.startPolling();
 			return true;
 		} catch (cause) {
 			const uncertain = !(cause instanceof ApiError);
+			if (uncertain) originPersistence.pending(envelope);
+			else originPersistence.pending(null);
+			sessionState.updateCachedDelivery(
+				selection.projectId,
+				selection.sessionId,
+				uncertain ? envelope.id : '',
+				uncertain ? 'delivery unknown' : 'not accepted'
+			);
+			navigation.setSessionBusySince(selectedSession.sessionId, null, selection.projectId);
+			if (!navigation.isCurrentSessionSelection(selection)) return false;
 			this.pendingEnvelope = uncertain ? envelope : null;
-			if (uncertain) this.savePendingEnvelope(envelope);
-			else this.clearPendingEnvelope();
 			sessionState.activeMessageId = uncertain ? envelope.id : '';
 			sessionState.delivery = uncertain ? 'delivery unknown' : 'not accepted';
-			this.options.getNavigation().setSessionBusySince(selectedSession.sessionId, null);
 			this.report(cause);
 			return false;
 		}
@@ -373,12 +459,14 @@ export class MessageState {
 			await this.sendText(
 				this.pendingEnvelope.text,
 				this.pendingEnvelope.images,
-				this.pendingEnvelope.attachments
+				this.pendingEnvelope.attachments,
+				this.pendingEnvelope.reviewContexts ?? []
 			)
 		) {
 			this.composer = '';
 			this.images = [];
 			this.attachments = [];
+			this.reviewContexts = [];
 			this.clearCurrentDraft();
 		}
 	};
@@ -387,17 +475,50 @@ export class MessageState {
 	};
 	restoreDraft = () => {
 		this.composer = this.persistence.draft();
+		this.reviewContexts = this.persistence.contexts();
 		this.pendingEnvelope = this.persistence.pending();
 	};
-	private savePendingEnvelope(envelope: PendingEnvelope) {
-		this.persistence.pending(envelope);
-	}
 	private clearPendingEnvelope() {
 		this.persistence.pending(null);
 	}
 	private clearCurrentDraft() {
 		this.persistence.draft('');
+		this.persistence.contexts([]);
 	}
+	addReviewContext = (seed: ReviewContextSeed) => {
+		try {
+			this.reviewContexts = validateReviewContexts([
+				...this.reviewContexts,
+				{
+					...seed,
+					id: crypto.randomUUID(),
+					content: seed.content.slice(0, reviewContextLimits.maxContentChars),
+					comment: ''
+				}
+			]);
+			this.persistence.contexts(this.reviewContexts);
+			this.messageNotice = 'Review context added';
+			this.options.focusComposer();
+		} catch (cause) {
+			this.report(cause);
+		}
+	};
+	updateReviewComment = (id: string, comment: string) => {
+		try {
+			this.reviewContexts = validateReviewContexts(
+				this.reviewContexts.map((context) =>
+					context.id === id ? { ...context, comment } : context
+				)
+			);
+			this.persistence.contexts(this.reviewContexts);
+		} catch (cause) {
+			this.report(cause);
+		}
+	};
+	removeReviewContext = (id: string) => {
+		this.reviewContexts = this.reviewContexts.filter((context) => context.id !== id);
+		this.persistence.contexts(this.reviewContexts);
+	};
 	updateDraft = (event: Event) => {
 		this.composer = (event.currentTarget as HTMLTextAreaElement).value;
 		this.commandIndex = 0;

@@ -19,7 +19,12 @@
 		type WorkspacePlanEntry,
 		type WorkspaceTimelineItem
 	} from '$lib';
-	import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+	import {
+		reviewContextLimits,
+		type ImageAttachment,
+		type InputAttachment,
+		type ReviewContext
+	} from '$lib/message-content';
 	import ModelPicker from '../ModelPicker.svelte';
 	import SessionOptionPicker from '../SessionOptionPicker.svelte';
 	import CurrentTask from './CurrentTask.svelte';
@@ -42,6 +47,7 @@
 		draggingImages = $bindable(),
 		images = $bindable(),
 		attachments = $bindable(),
+		reviewContexts,
 		delivery,
 		pendingEnvelope,
 		queuedMessages,
@@ -75,6 +81,8 @@
 		oninput,
 		onkeydown,
 		onimages,
+		oncontextcomment,
+		onremovecontext,
 		onvoiceMessage,
 		onvoiceCall,
 		onmute,
@@ -108,6 +116,7 @@
 		draggingImages: boolean;
 		images: ImageAttachment[];
 		attachments: InputAttachment[];
+		reviewContexts: ReviewContext[];
 		delivery: string;
 		pendingEnvelope: object | null;
 		queuedMessages: QueuedMessage[];
@@ -142,6 +151,8 @@
 		oninput: (event: Event) => void;
 		onkeydown: (event: KeyboardEvent) => void;
 		onimages: (event: Event) => void;
+		oncontextcomment: (id: string, comment: string) => void;
+		onremovecontext: (id: string) => void;
 		onvoiceMessage: () => void;
 		onvoiceCall: () => void;
 		onmute: () => void;
@@ -314,6 +325,36 @@
 					>
 				</article>{/each}
 		</div>{/if}
+	{#if reviewContexts.length}<section
+			class="grid max-h-56 gap-1.5 overflow-y-auto px-1 pb-2"
+			aria-label="Pending review context"
+		>
+			{#each reviewContexts as context}<article
+					class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-1 rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2 text-sm"
+				>
+					<div class="min-w-0">
+						<strong class="block truncate text-xs">{context.label}</strong>
+						<p class="line-clamp-2 text-xs break-words text-muted-foreground">{context.content}</p>
+					</div>
+					<button
+						type="button"
+						class="grid min-h-11 min-w-11 place-items-center"
+						aria-label={`Remove review context ${context.label}`}
+						title={`Remove review context ${context.label}`}
+						onclick={() => onremovecontext(context.id)}><X size={14} aria-hidden="true" /></button
+					>
+					<label class="col-span-2 grid gap-1 text-xs text-muted-foreground">
+						Review comment
+						<input
+							class="min-h-11 min-w-0 rounded-md border border-input bg-background px-2 text-foreground"
+							value={context.comment}
+							maxlength={reviewContextLimits.maxCommentChars}
+							placeholder="What should Hermes address?"
+							oninput={(event) => oncontextcomment(context.id, event.currentTarget.value)}
+						/>
+					</label>
+				</article>{/each}
+		</section>{/if}
 	{#if callActive}<section
 			class="voice-call mb-1.5 flex min-w-0 items-center gap-2.5 rounded-lg border border-border bg-muted/50 p-2"
 			aria-label={voiceMessageOnly ? 'Voice message controls' : 'Voice call controls'}
@@ -513,7 +554,10 @@
 				class="composer-send grid size-9 place-items-center rounded-lg hover:bg-accent disabled:opacity-40"
 				aria-label="Send"
 				title="Send message"
-				disabled={!composer.trim() && !images.length && !attachments.length}
+				disabled={!composer.trim() &&
+					!images.length &&
+					!attachments.length &&
+					!reviewContexts.length}
 			>
 				<Send size={20} aria-hidden="true" /></button
 			>{/if}

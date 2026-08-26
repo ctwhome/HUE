@@ -1,4 +1,4 @@
-import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+import type { ImageAttachment, InputAttachment, ReviewContext } from '$lib/message-content';
 import type { WorkMode } from '$lib/work-mode';
 import type {
 	WorkspaceActivity,
@@ -45,6 +45,12 @@ export type Session = {
 	folder?: string | null;
 	tags?: string[];
 	workMode?: WorkMode;
+};
+
+export type SessionFinderResult = Omit<Session, 'status'> & {
+	projectId: string | null;
+	projectName: string | null;
+	status: 'running' | 'waiting' | 'unknown' | 'failed' | 'archived' | null;
 };
 
 export type Workflow = {
@@ -102,6 +108,7 @@ export type TranscriptMessage = {
 	text: string;
 	images?: ImageAttachment[];
 	attachments?: InputAttachment[];
+	reviewContexts?: ReviewContext[];
 	createdAt?: string;
 };
 export type SessionEvent = {
@@ -117,12 +124,14 @@ export type PendingEnvelope = {
 	text: string;
 	images: ImageAttachment[];
 	attachments: InputAttachment[];
+	reviewContexts?: ReviewContext[];
 };
 export type QueuedMessage = {
 	id: string;
 	text: string;
 	images: ImageAttachment[];
 	attachments: InputAttachment[];
+	reviewContexts: ReviewContext[];
 	status: 'queued';
 };
 export type ActiveTurn = {
@@ -162,6 +171,7 @@ export type SessionLoad = {
 		text: string;
 		images: ImageAttachment[];
 		attachments: InputAttachment[];
+		reviewContexts: ReviewContext[];
 		status: string;
 		createdAt?: string;
 	}>;

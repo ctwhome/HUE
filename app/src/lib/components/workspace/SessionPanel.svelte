@@ -177,6 +177,7 @@
 		</div>{/if}
 	<Conversation
 		{timeline}
+		sessionLabel={panelSession?.title || panelSession?.sessionId || 'Hermes Session'}
 		messageNotice={messageState.messageNotice}
 		agentLabel={compactModelLabel(
 			runtime.models?.currentModelId ?? '',
@@ -191,6 +192,7 @@
 		oninteraction={messageState.respondToInteraction}
 		onmedia={messageState.openMedia}
 		onretrylast={messageState.retryLastResponse}
+		onquote={messageState.addReviewContext}
 		bind:element={transcriptFollow.element}
 		follow={transcriptFollow.follow}
 	/>
@@ -203,6 +205,7 @@
 		bind:draggingImages={messageState.draggingImages}
 		bind:images={messageState.images}
 		bind:attachments={messageState.attachments}
+		reviewContexts={messageState.reviewContexts}
 		delivery={sessionState.delivery}
 		pendingEnvelope={messageState.pendingEnvelope}
 		queuedMessages={sessionState.queuedMessages}
@@ -237,6 +240,8 @@
 		oninput={messageState.updateDraft}
 		onkeydown={messageState.handleComposerKeydown}
 		onimages={messageState.handleImageInput}
+		oncontextcomment={messageState.updateReviewComment}
+		onremovecontext={messageState.removeReviewContext}
 		onvoiceMessage={voice.startMessage}
 		onvoiceCall={voice.startCall}
 		onmute={voice.toggleMute}

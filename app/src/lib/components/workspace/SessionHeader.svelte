@@ -2,18 +2,25 @@
 	import { ArrowLeft, Ellipsis } from 'lucide-svelte';
 	import { automaticSessionIcon } from '$lib/icon';
 	import { isImageIcon } from './project-management.svelte';
-	import type { HermesRuntime, Session } from './types';
+	import SessionInspector from './SessionInspector.svelte';
+	import type { HermesRuntime, Project, Session } from './types';
 
 	let {
 		session,
+		project,
 		runtime,
+		delivery,
+		pendingInteraction,
 		contextPercent,
 		onsessions,
 		onicon,
 		onmanage
 	}: {
 		session: Session | null;
+		project: Project | null;
 		runtime: HermesRuntime;
+		delivery: string;
+		pendingInteraction?: string;
 		contextPercent: () => number | null;
 		onsessions: () => void;
 		onicon: (event: MouseEvent) => void;
@@ -53,6 +60,7 @@
 				title={`${runtime.usage!.used.toLocaleString()} of ${runtime.usage!.size.toLocaleString()} context tokens used`}
 				>{contextPercent()}%</span
 			>{/if}
+		<SessionInspector {project} {session} {runtime} {delivery} {pendingInteraction} />
 		<button
 			class="grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md hover:bg-accent"
 			aria-label={`Session options for ${session.title || 'Untitled session'}`}

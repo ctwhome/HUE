@@ -13,6 +13,7 @@ class RecordingRuntime implements PromptRuntime {
 		text: string;
 		images?: unknown[];
 		attachments?: unknown[];
+		reviewContexts?: unknown[];
 		workMode?: string;
 	}> = [];
 	resumes: Array<{ cwd: string; sessionId: string }> = [];
@@ -30,7 +31,8 @@ class RecordingRuntime implements PromptRuntime {
 			text: input.text,
 			images: input.images,
 			workMode: input.workMode,
-			...(input.attachments?.length ? { attachments: input.attachments } : {})
+			...(input.attachments?.length ? { attachments: input.attachments } : {}),
+			...(input.reviewContexts?.length ? { reviewContexts: input.reviewContexts } : {})
 		});
 		this.active += 1;
 		this.maxActive = Math.max(this.maxActive, this.active);
@@ -74,6 +76,33 @@ function makeStore() {
 }
 
 describe('MessageDispatcher', () => {
+	it('delivers stored review contexts separately from user text', async () => {
+		const store = makeStore();
+		const runtime = new RecordingRuntime();
+		const dispatcher = new MessageDispatcher(store, runtime);
+		const reviewContexts = [
+			{
+				id: 'review-1',
+				source: 'assistant' as const,
+				label: 'Hermes response',
+				content: 'Bounded quote',
+				comment: 'Address this.'
+			}
+		];
+
+		dispatcher.submit({
+			id: 'review-message',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Please revise.',
+			reviewContexts
+		});
+		await dispatcher.whenIdle('session-1');
+
+		expect(runtime.calls[0]).toMatchObject({ text: 'Please revise.', reviewContexts });
+		store.close();
+	});
+
 	it('triggers attention delivery after projecting a new terminal event', async () => {
 		const store = makeStore();
 		let deliveries = 0;

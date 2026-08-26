@@ -256,6 +256,206 @@ describe('HUEStore project and workflow boundaries', () => {
 		store.close();
 	});
 
+	it('finds HUE-indexed Sessions globally with ownership metadata and authoritative status', () => {
+		const store = makeStore();
+		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.createProject({ id: 'docs', name: 'Documentation', rootPath: '/work/docs' });
+		store.upsertSession('hue', {
+			sessionId: 'running',
+			cwd: '/work/hue',
+			title: 'Release control'
+		});
+		store.updateSessionMetadata('hue', 'running', {
+			folder: 'Delivery',
+			tags: ['p1-review']
+		});
+		store.acceptMessage({
+			id: 'running-message',
+			projectId: 'hue',
+			sessionId: 'running',
+			text: 'Ship command palette'
+		});
+		store.updateMessageStatus('running-message', 'running');
+		store.upsertSession('docs', {
+			sessionId: 'archived',
+			cwd: '/work/docs',
+			title: 'Historical finder'
+		});
+		store.updateSessionMetadata('docs', 'archived', { archived: true });
+		store.upsertSession(null, {
+			sessionId: 'loose',
+			cwd: '/work/loose',
+			title: 'Loose notes'
+		});
+		store.appendEvent(null, 'loose', 'agent.chunk', { text: 'Projectless evidence' });
+		store.appendEvent(null, 'loose', 'agent.chunk', {
+			messageId: 'internal-event-token',
+			text: 'Ordinary output'
+		});
+		store.appendEvent(null, 'loose', 'runtime.secret', { text: 'must-not-match' });
+
+		expect(store.findSessions('p1-review')).toEqual([
+			expect.objectContaining({
+				projectId: 'hue',
+				projectName: 'HUE',
+				sessionId: 'running',
+				status: 'running'
+			})
+		]);
+		expect(store.findSessions('projectless')).toEqual([
+			expect.objectContaining({ projectId: null, projectName: null, sessionId: 'loose' })
+		]);
+		expect(store.findSessions('documentation', 'archived')).toEqual([
+			expect.objectContaining({ sessionId: 'archived', status: 'archived' })
+		]);
+		expect(store.findSessions('must-not-match')).toEqual([]);
+		expect(store.findSessions('internal-event-token')).toEqual([]);
+		expect(() => store.findSessions('x'.repeat(201))).toThrow('Search query is too long');
+		store.close();
+	});
+
+	it('reports a running turn after an older turn was cancelled', () => {
+		const store = makeDeliveryStore();
+		store.acceptMessage({
+			id: 'cancelled-message',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Cancel this'
+		});
+		store.transitionMessage('cancelled-message', 'running', { messageId: 'cancelled-message' });
+		store.transitionCancelledMessage('cancelled-message');
+		store.acceptMessage({
+			id: 'running-message',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Run this instead'
+		});
+		store.transitionMessage('running-message', 'running', { messageId: 'running-message' });
+
+		expect(store.findSessions('', 'running').map(({ sessionId }) => sessionId)).toEqual([
+			'session-1'
+		]);
+		expect(store.findSessions('').at(0)?.status).toBe('running');
+		store.close();
+	});
+
+	it('reports cancellation when it belongs to the latest turn', () => {
+		const store = makeDeliveryStore();
+		store.acceptMessage({
+			id: 'running-message',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'First turn'
+		});
+		store.transitionMessage('running-message', 'running', { messageId: 'running-message' });
+		store.acceptMessage({
+			id: 'cancelled-message',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Second turn'
+		});
+		store.transitionMessage('cancelled-message', 'running', { messageId: 'cancelled-message' });
+		store.transitionCancelledMessage('cancelled-message');
+
+		expect(store.findSessions('').at(0)?.status).toBeNull();
+		expect(store.findSessions('', 'running')).toEqual([]);
+		store.close();
+	});
+
+	it('ignores waiting state from an older turn', () => {
+		const store = makeDeliveryStore();
+		store.acceptMessage({
+			id: 'waiting-message',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'First turn'
+		});
+		store.transitionMessage('waiting-message', 'running', { messageId: 'waiting-message' });
+		store.appendEvent('hue', 'session-1', 'agent.permission', {
+			id: 'permission-1',
+			messageId: 'waiting-message',
+			status: 'pending'
+		});
+		store.acceptMessage({
+			id: 'running-message',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Second turn'
+		});
+		store.transitionMessage('running-message', 'running', { messageId: 'running-message' });
+
+		expect(store.findSessions('').at(0)?.status).toBe('running');
+		expect(store.findSessions('', 'waiting')).toEqual([]);
+		store.close();
+	});
+
+	it('preserves terminal and waiting status for the latest turn', () => {
+		const store = makeStore();
+		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		for (const status of ['completed', 'failed', 'unknown'] as const) {
+			store.upsertSession('hue', { sessionId: status, cwd: '/work/hue' });
+			store.acceptMessage({
+				id: `${status}-message`,
+				projectId: 'hue',
+				sessionId: status,
+				text: status
+			});
+			store.transitionMessage(`${status}-message`, 'running', { messageId: `${status}-message` });
+			store.transitionMessage(`${status}-message`, status, { messageId: `${status}-message` });
+		}
+		store.upsertSession('hue', { sessionId: 'waiting', cwd: '/work/hue' });
+		store.acceptMessage({
+			id: 'waiting-message',
+			projectId: 'hue',
+			sessionId: 'waiting',
+			text: 'Wait'
+		});
+		store.transitionMessage('waiting-message', 'running', { messageId: 'waiting-message' });
+		store.appendEvent('hue', 'waiting', 'agent.clarify', {
+			id: 'clarify-1',
+			messageId: 'waiting-message',
+			status: 'pending'
+		});
+
+		const statuses = Object.fromEntries(
+			store.findSessions('').map(({ sessionId, status }) => [sessionId, status])
+		);
+		expect(statuses).toEqual({
+			completed: null,
+			failed: 'failed',
+			unknown: 'unknown',
+			waiting: 'waiting'
+		});
+		store.close();
+	});
+
+	it('reports a terminal lifecycle after an earlier pending interaction', () => {
+		const store = makeStore();
+		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		for (const status of ['completed', 'failed', 'unknown'] as const) {
+			store.upsertSession('hue', { sessionId: status, cwd: '/work/hue' });
+			store.acceptMessage({
+				id: `${status}-message`,
+				projectId: 'hue',
+				sessionId: status,
+				text: status
+			});
+			store.transitionMessage(`${status}-message`, 'running', { messageId: `${status}-message` });
+			store.appendEvent('hue', status, 'agent.permission', {
+				id: `${status}-permission`,
+				messageId: `${status}-message`,
+				status: 'pending'
+			});
+			store.transitionMessage(`${status}-message`, status, { messageId: `${status}-message` });
+		}
+
+		const statuses = Object.fromEntries(
+			store.findSessions('').map(({ sessionId, status }) => [sessionId, status])
+		);
+		expect(statuses).toEqual({ completed: null, failed: 'failed', unknown: 'unknown' });
+		store.close();
+	});
+
 	it('paginates beyond 500 Sessions and beyond 50 search matches in SQLite', () => {
 		const store = makeStore();
 		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
@@ -456,6 +656,37 @@ describe('HUEStore project and workflow boundaries', () => {
 		expect(store.getSessionSnapshot(null, 'session-1').messages).toEqual([
 			expect.objectContaining({ id: 'msg-1', projectId: null })
 		]);
+		store.close();
+	});
+
+	it('persists review contexts as part of the idempotent message envelope', () => {
+		const store = makeDeliveryStore();
+		const reviewContexts = [
+			{
+				id: 'review-1',
+				source: 'assistant' as const,
+				label: 'Hermes response',
+				content: 'Use the shared validator.',
+				comment: 'Keep this in the final change.'
+			}
+		];
+		const envelope = {
+			id: 'msg-review',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Apply the review.',
+			reviewContexts
+		};
+
+		store.acceptMessage(envelope);
+		expect(store.getMessage(envelope.id)?.reviewContexts).toEqual(reviewContexts);
+		expect(store.acceptMessage(envelope)).toEqual({ duplicate: true, status: 'queued' });
+		expect(() =>
+			store.acceptMessage({
+				...envelope,
+				reviewContexts: [{ ...reviewContexts[0], comment: 'Different envelope' }]
+			})
+		).toThrow(MessageConflictError);
 		store.close();
 	});
 
