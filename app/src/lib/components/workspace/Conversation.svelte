@@ -334,7 +334,7 @@
 				</form>
 			{/if}
 		{/each}
-		{#if timeline.length === 0}<div
+		{#if transcriptTimeline.length === 0}<div
 				class="welcome mx-auto max-w-2xl text-center text-muted-foreground"
 			>
 				<BrandMark class="welcome-mark mx-auto mb-[18px] size-14" />

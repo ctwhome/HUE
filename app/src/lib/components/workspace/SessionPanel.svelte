@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
-	import { isTurnBusy, selectLatestPlan } from '$lib';
+	import { isTurnBusy, selectLatestPlan, selectTranscriptTimeline } from '$lib';
 	import { renderMessageMarkdown } from '$lib/message-markdown';
 	import { rememberLastSessionSelection } from '$lib/session-selections';
 	import { formatWorkModeAnnouncement, type WorkMode } from '$lib/work-mode';
@@ -109,6 +109,7 @@
 	voiceRef.current = voice;
 	let panelSession = $derived(navigation.selectedSession);
 	let timeline = $derived(sessionState.timeline);
+	let hasTranscript = $derived(selectTranscriptTimeline(timeline).length > 0);
 	let runtime = $derived(sessionState.runtime);
 	let lastPublishedSession = fixedSession;
 
@@ -162,7 +163,7 @@
 
 <main
 	class="session-view flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-	class:empty-session={timeline.length === 0}
+	class:empty-session={!hasTranscript}
 	aria-busy={loading}
 >
 	{#if error}<div

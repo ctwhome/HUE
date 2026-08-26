@@ -13,6 +13,7 @@ test('persists project panel state with defaults', () => {
 	expect(readPanelState(storage, 'project-1', 'browser', true)).toBe(false);
 	expect(readProjectPanels(storage, 'project-1')).toEqual({
 		browserOpen: false,
+		filesOpen: false,
 		terminalOpen: false
 	});
 });

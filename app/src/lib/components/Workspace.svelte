@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { formatElapsed, isTurnBusy, selectLatestPlan } from '$lib';
+	import { Diamond, Folder, FolderKanban, List } from 'lucide-svelte';
+	import { formatElapsed, isTurnBusy, selectLatestPlan, selectTranscriptTimeline } from '$lib';
 	import { automaticSessionIcon } from '$lib/icon';
 	import { applyPreferences, readPreferences } from '$lib/preferences';
 	import type { CaptureInput } from '$lib/pwa/quick-capture';
@@ -16,6 +17,7 @@
 	import AttentionCenter from './notifications/AttentionCenter.svelte';
 	import HermesPanel from './HermesPanel.svelte';
 	import ProjectBrowserDock from './ProjectBrowserDock.svelte';
+	import ProjectFilesDock from './ProjectFilesDock.svelte';
 	import ProjectWorkbench from './ProjectWorkbench.svelte';
 	import HealthStrip from './workbench/HealthStrip.svelte';
 	import ProjectTerminalDock from './workbench/ProjectTerminalDock.svelte';
@@ -259,6 +261,7 @@
 	let workflows = $derived(navigation.workflows);
 	let selectedSession = $derived(navigation.selectedSession);
 	let timeline = $derived(sessionState.timeline);
+	let hasTranscript = $derived(selectTranscriptTimeline(timeline).length > 0);
 	let selectedPlan = $derived(selectLatestPlan(timeline));
 	let commands = $derived(sessionState.commands);
 	let runtime = $derived(sessionState.runtime);
@@ -268,7 +271,8 @@
 	let composer = $derived(messageState.composer);
 	let editingQueuedMessageId = $derived(messageState.editingQueuedMessageId);
 	let workModeChanging = $state(false);
-	let browserOpen = $state(true);
+	let browserOpen = $state(true), filesOpen = $state(false);
+	let fileRequest = $state<{ path: string; id: string } | null>(null);
 	let previewUrl = $state('');
 	let terminalOpen = $state(false);
 	let terminalHeight = $state(300),
@@ -278,7 +282,8 @@
 	$effect(() => {
 		projectTools = false;
 		previewUrl = '';
-		({ browserOpen, terminalOpen } = readProjectPanels(localStorage, panelProjectId));
+		fileRequest = null;
+		({ browserOpen, filesOpen, terminalOpen } = readProjectPanels(localStorage, panelProjectId));
 		if (sessionPaneCount > 1 && innerWidth < 1600) browserOpen = false;
 		terminalHeight = 300;
 	});
@@ -377,9 +382,9 @@
 	class:gesture-reveal-projects={gestureAction === 'show-projects'}
 	class:projects-panel-closed={!projectsPanelOpen} class:sessions-panel-closed={!sessionsPanelOpen}
 	class:embedded
-	style={`--project-pane-width: ${projectPaneWidth}px; --session-pane-width: ${sessionPaneWidth}px`}
+	style={`--project-pane-width: ${projectPaneWidth}px; --session-pane-width: ${sessionPaneWidth}px; --project-shell-color: ${selectedProject?.color ?? 'var(--background)'}`}
 >
-	<GlobalNavigation view={globalView} unreadCount={unreadNotifications} projectsOpen={projectsPanelOpen} sessionsOpen={sessionsPanelOpen} ontoggle={(panel) => panel === 'projects' ? (projectsPanelOpen = !projectsPanelOpen) : (sessionsPanelOpen = !sessionsPanelOpen)} onview={setGlobalView} />
+	<GlobalNavigation view={globalView} unreadCount={unreadNotifications} onview={setGlobalView} />
 	<MobileNavigation
 		drawer={navigation.mobileDrawer}
 		ready={navigation.ready}
@@ -465,6 +470,7 @@
 		onlabel={projectManagement.setFolderLabel}
 		onarchiveRequest={projectManagement.requestRemoveProject}
 		onarchive={projectManagement.removeProject}
+		oncollapse={() => (projectsPanelOpen = false)}
 		onclose={() => mobileShell?.close()}
 		isImage={isImageIcon}
 	/>
@@ -486,6 +492,7 @@
 		onicon={navigation.openSessionIconEditor}
 		onarchive={navigation.archiveSession}
 		onsearch={navigation.searchSessionList}
+		oncollapse={() => (sessionsPanelOpen = false)}
 		onclose={() => mobileShell?.close()}
 		isImage={isImageIcon}
 		automaticIcon={automaticSessionIcon}
@@ -501,6 +508,37 @@
 		onfinish={finishShellResize}
 		onkeydown={resizeShellPaneWithKeyboard}
 	/>
+	{#if !mobile && !projectsPanelOpen}<nav class="collapsed-project-rail" aria-label="Collapsed Projects">
+			<button
+				aria-label="Show Projects panel"
+				title="Show Projects panel"
+				onclick={() => (projectsPanelOpen = true)}><FolderKanban size={17} aria-hidden="true" /></button
+			>
+			<button
+				class:active={!selectedProject}
+				aria-label="No project"
+				aria-current={!selectedProject ? 'page' : undefined}
+				title="No project"
+				onclick={() => navigation.chooseProject(null)}><Diamond size={18} aria-hidden="true" /></button
+			>
+			{#each projectManagement.projects as project (project.id)}<button
+					class:active={selectedProject?.id === project.id}
+					aria-label={project.name}
+					aria-current={selectedProject?.id === project.id ? 'page' : undefined}
+					title={project.name}
+					onclick={() => navigation.chooseProject(project)}
+				>
+					{#if isImageIcon(project.icon)}<img src={project.icon ?? ''} alt="" />{:else if project.icon}<span
+							>{project.icon}</span
+						>{:else}<Folder size={18} aria-hidden="true" />{/if}
+				</button>{/each}
+		</nav>{/if}
+	{#if !mobile && !sessionsPanelOpen}<button
+			class="panel-reopen-tab sessions"
+			aria-label="Show Sessions panel"
+			title="Show Sessions panel"
+			onclick={() => (sessionsPanelOpen = true)}><List size={17} aria-hidden="true" /></button
+		>{/if}
 	<ShellResizer
 		pane="sessions"
 		aria-label="Resize Sessions"
@@ -533,10 +571,12 @@
 		>
 			<main
 				class="session-view flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-				class:empty-session={timeline.length === 0}
+				class:empty-session={!hasTranscript}
 			>
 				<SessionHeader
 					session={selectedSession}
+					{runtime}
+					contextPercent={runtimeState.contextPercent}
 					onsessions={() => mobileShell?.open('sessions')}
 					onicon={(event) =>
 						selectedSession && navigation.openSessionIconEditor(event, selectedSession)}
@@ -616,7 +656,6 @@
 						{workModeChanging}
 						runtimeChanging={runtimeState.changing}
 						promptLibraryAvailable={Boolean(selectedProject?.rootAvailable)}
-						showPromptLibrary={false}
 						{workflows}
 						bind:workflowName={navigation.workflowName}
 						bind:workflowPrompt={navigation.workflowPrompt}
@@ -648,6 +687,7 @@
 						onscrolllatest={transcriptFollow.scrollToLatest}
 						matchingCommands={messageState.matchingCommands}
 						contextPercent={runtimeState.contextPercent}
+						showContextUsage={false}
 					/>
 				{:else if selectedProject && !selectedProject.rootAvailable}
 					<section
@@ -693,23 +733,21 @@
 		</SessionPaneGrid>
 		{#if selectedProject?.rootAvailable && navigation.ready && !mobile}
 			{#key selectedProject.id}
-				<ProjectBrowserDock
-					projectId={selectedProject.id}
-					open={browserOpen}
-					onpreviewchange={(url) => (previewUrl = url)}
-				/>
+				<ProjectBrowserDock projectId={selectedProject.id} open={browserOpen}
+					onpreviewchange={(url) => (previewUrl = url)} />
+				<ProjectFilesDock projectId={selectedProject.id} open={filesOpen} {fileRequest}
+					{dirtyGuard} />
 				<ProjectWorkbench
-					projectId={selectedProject.id}
-					projectName={selectedProject.name}
-					compact={false}
-					docked={true}
-					{browserOpen}
-					{terminalOpen}
+					projectId={selectedProject.id} projectName={selectedProject.name} compact={false} docked={true}
+					{browserOpen} {filesOpen} {terminalOpen}
 					onpreviewchange={(url) => (previewUrl = url)}
-					onbrowser={() =>
-						(browserOpen = togglePanel(localStorage, panelProjectId, 'browser', browserOpen))}
-					onterminal={() =>
-						(terminalOpen = togglePanel(localStorage, panelProjectId, 'terminal', terminalOpen))}
+					onbrowser={() => (browserOpen = togglePanel(localStorage, panelProjectId, 'browser', browserOpen))}
+					onfiles={() => (filesOpen = togglePanel(localStorage, panelProjectId, 'files', filesOpen))}
+					onopenfile={(path) => {
+						fileRequest = { path, id: crypto.randomUUID() };
+						if (!filesOpen) filesOpen = togglePanel(localStorage, panelProjectId, 'files', filesOpen);
+					}}
+					onterminal={() => (terminalOpen = togglePanel(localStorage, panelProjectId, 'terminal', terminalOpen))}
 					onbranch={(value) => (branch = value)}
 					{dirtyGuard}
 				/>
@@ -732,11 +770,7 @@
 		{/key}
 	{/if}
 </div>
-<SessionManagerOverlay
-	{navigation}
-	profile={runtime.profile}
-	promptLibraryAvailable={Boolean(selectedProject?.rootAvailable)}
-/>
+<SessionManagerOverlay {navigation} />
 <QuickCapture
 	bind:this={quickCapture}
 	projects={projectManagement.projects}

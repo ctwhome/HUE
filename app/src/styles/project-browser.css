@@ -1,7 +1,98 @@
+.workspace {
+	background: var(--project-shell-color, var(--background));
+}
+.panel-reopen-tab {
+	z-index: 12;
+	display: grid;
+	width: 32px;
+	height: 32px;
+	place-self: start center;
+	margin-top: 10px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-control);
+	background: var(--card);
+	color: var(--muted-foreground);
+}
+.panel-reopen-tab:hover,
+.panel-reopen-tab:focus-visible {
+	background: var(--accent);
+	color: var(--foreground);
+}
+.panel-reopen-tab.sessions {
+	grid-column: 3;
+	grid-row: 1;
+}
+.collapsed-project-rail {
+	z-index: 12;
+	grid-column: 2;
+	grid-row: 1;
+	display: flex;
+	min-height: 0;
+	flex-direction: column;
+	align-items: center;
+	gap: 4px;
+	margin: 10px 4px;
+	overflow-y: auto;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-panel);
+	background: var(--card);
+	padding: 4px;
+}
+.collapsed-project-rail button {
+	display: grid;
+	width: 32px;
+	height: 32px;
+	flex: 0 0 32px;
+	place-items: center;
+	overflow: hidden;
+	border-radius: var(--radius-control);
+	color: var(--muted-foreground);
+}
+.collapsed-project-rail button:hover,
+.collapsed-project-rail button:focus-visible,
+.collapsed-project-rail button.active {
+	background: var(--accent);
+	color: var(--foreground);
+}
+.collapsed-project-rail img {
+	width: 24px;
+	height: 24px;
+	border-radius: var(--radius-control);
+	object-fit: cover;
+}
+@media (max-width: 1200px) and (min-width: 701px) {
+	.project-panel-actions {
+		flex-direction: column;
+	}
+}
+@media (min-width: 701px) {
+	.workspace > .global-rail {
+		margin: 10px 0 10px 10px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-panel) 0 0 var(--radius-panel);
+		box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+	}
+	.workspace > .project-rail {
+		margin-block: 10px;
+		border-block: 1px solid var(--border);
+	}
+	.workspace > .context-panel {
+		margin-block: 10px;
+		border-block: 1px solid var(--border);
+		border-radius: 0 var(--radius-panel) var(--radius-panel) 0;
+		box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+	}
+	.workspace.sessions-panel-closed > .project-rail,
+	.workspace.projects-panel-closed > .context-panel,
+	.workspace.projects-panel-closed.sessions-panel-closed > .global-rail {
+		border-right: 1px solid var(--border);
+		border-radius: 0 var(--radius-panel) var(--radius-panel) 0;
+	}
+}
 .project-browser-dock {
 	position: relative;
-	flex: 0 0 var(--project-browser-width, 440px);
-	border-left: 1px solid var(--border);
+	flex: 0 1 var(--project-browser-width, 440px);
+	background: var(--project-shell-color, var(--background));
 }
 .project-browser-dock:not(.open) {
 	flex-basis: 0;
@@ -13,6 +104,19 @@
 }
 .project-browser-dock .browser-panel {
 	height: 100%;
+}
+.project-browser-content > div {
+	padding-inline: 5px;
+	padding-right: 10px;
+}
+.session-workspace:has(
+		> .project-files-dock.open,
+		> .project-tool-dock.open
+	)
+	> .project-browser-dock.open
+	.project-browser-content
+	> div {
+	padding-right: 5px;
 }
 .project-browser-resizer {
 	position: absolute;
@@ -37,10 +141,91 @@
 	content: '';
 }
 .project-browser-resizer:hover::after,
-.project-browser-resizer:focus-visible::after {
+.project-browser-resizer:focus-visible::after,
+.project-browser-resizer:active::after {
 	width: 2px;
 	background: var(--primary);
 }
 .session-workspace.terminal-open > .project-browser-dock {
+	height: calc(100% - var(--terminal-panel-height, 300px));
+}
+.project-files-dock {
+	position: relative;
+	flex: 0 1 var(--project-files-width, 440px);
+	background: var(--project-shell-color, var(--background));
+}
+.project-files-dock:not(.open) {
+	flex-basis: 0;
+	overflow: hidden;
+	border-left: 0;
+}
+.project-files-dock:not(.open) > section {
+	display: none;
+}
+.project-files-dock .files-panel {
+	height: 100%;
+	grid-template-columns: minmax(120px, 40%) minmax(0, 1fr);
+}
+.project-files-dock > section {
+	padding-inline: 5px;
+	padding-right: 10px;
+}
+.session-workspace:has(> .project-tool-dock.open) > .project-files-dock.open > section {
+	padding-right: 5px;
+}
+.project-files-dock .file-preview-title {
+	flex-wrap: wrap;
+}
+.project-files-dock .file-preview-title h2 {
+	flex-basis: 100%;
+}
+.project-files-dock .file-preview,
+.project-files-dock .file-sidebar {
+	overflow: hidden;
+}
+.project-tool-dock.docked > section {
+	background: var(--project-shell-color, var(--background));
+}
+.project-tool-dock.docked {
+	padding-right: 62px;
+}
+.project-tool-dock.docked .project-workbench {
+	padding-right: 10px;
+	padding-left: 5px;
+}
+.session-workspace:has(
+		> .project-browser-dock.open,
+		> .project-files-dock.open,
+		> .project-tool-dock.open
+	)
+	> .session-pane-grid {
+	padding-right: 5px;
+}
+.project-files-resizer {
+	position: absolute;
+	z-index: 4;
+	top: 0;
+	bottom: 0;
+	left: -5px;
+	width: 9px;
+	cursor: col-resize;
+	touch-action: none;
+}
+.project-files-resizer::after {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 4px;
+	width: 1px;
+	background: transparent;
+	content: '';
+}
+.project-files-resizer:hover::after,
+.project-files-resizer:focus-visible::after,
+.project-files-resizer:active::after {
+	width: 2px;
+	background: var(--primary);
+}
+.session-workspace.terminal-open > .project-files-dock {
 	height: calc(100% - var(--terminal-panel-height, 300px));
 }

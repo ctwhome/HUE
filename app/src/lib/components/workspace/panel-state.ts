@@ -14,6 +14,7 @@ export function readPanelState(
 
 export const readProjectPanels = (storage: PanelStorage, projectId: string) => ({
 	browserOpen: projectId ? readPanelState(storage, projectId, 'browser', true) : true,
+	filesOpen: projectId ? readPanelState(storage, projectId, 'files', false) : false,
 	terminalOpen: projectId ? readPanelState(storage, projectId, 'terminal', false) : false
 });
 

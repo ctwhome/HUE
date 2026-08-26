@@ -9,6 +9,7 @@
 		Ellipsis,
 		Folder,
 		FolderPlus,
+		PanelLeftClose,
 		Plus,
 		X
 	} from 'lucide-svelte';
@@ -69,6 +70,7 @@
 		onlabel,
 		onarchiveRequest,
 		onarchive,
+		oncollapse,
 		onclose,
 		isImage
 	}: {
@@ -124,6 +126,7 @@
 		onlabel: (project: Project, path: string, label: string) => void;
 		onarchiveRequest: () => void;
 		onarchive: () => void;
+		oncollapse: () => void;
 		onclose: () => void;
 		isImage: (icon: string | null) => boolean;
 	} = $props();
@@ -182,13 +185,21 @@
 			class="section-label px-2 text-xs font-medium tracking-wider text-muted-foreground uppercase"
 			>Projects</span
 		>
-		<button
-			class="icon-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border bg-secondary hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-			aria-label="Add Hermes Project"
-			title={addDisabled ? projectsError : 'Add Hermes Project'}
-			disabled={addDisabled}
-			onclick={onaddopen}><Plus size={18} aria-hidden="true" /></button
-		>
+		<div class="project-panel-actions flex gap-1">
+			<button
+				class="icon-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border bg-secondary hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+				aria-label="Add Hermes Project"
+				title={addDisabled ? projectsError : 'Add Hermes Project'}
+				disabled={addDisabled}
+				onclick={onaddopen}><Plus size={18} aria-hidden="true" /></button
+			>
+			{#if !mobile}<button
+					class="icon-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border bg-secondary hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+					aria-label="Hide Projects panel"
+					title="Hide Projects panel"
+					onclick={oncollapse}><PanelLeftClose size={17} aria-hidden="true" /></button
+				>{/if}
+		</div>
 	</div>
 
 	{#if projectsCapability !== 'available'}
@@ -254,6 +265,11 @@
 			{#if !group.label || !collapsedGroups.has(group.label)}
 				{#each group.projects as project (project.id)}
 					<div class="project-row group relative">
+						{#if project.color}<span
+								class="project-color-indicator pointer-events-none absolute inset-y-1 -left-1 w-1 rounded-full"
+								style={`background-color: ${project.color}`}
+								aria-hidden="true"
+							></span>{/if}
 						<button
 							class="project-icon-trigger absolute top-1/2 left-0 z-1 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md hover:bg-accent"
 							aria-label={`Change ${project.name} icon`}

@@ -4,11 +4,12 @@
 		Brain,
 		Check,
 		ChevronDown,
-		CircleHelp,
 		FileCheck2,
 		Gauge,
+		MessageCircleQuestion,
 		Radio,
 		ShieldAlert,
+		ShieldCheck,
 		Zap
 	} from 'lucide-svelte';
 
@@ -47,7 +48,8 @@
 		}
 		if (label.includes('accept') || label.includes('edit')) return FileCheck2;
 		if (label.includes('bypass') || label.includes('unrestricted')) return ShieldAlert;
-		return CircleHelp;
+		if (label.includes("don't ask") || label.includes('dont ask')) return ShieldCheck;
+		return MessageCircleQuestion;
 	}
 
 	function select(next: string) {

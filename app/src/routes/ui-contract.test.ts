@@ -85,6 +85,7 @@ const workbenchFiles = [
 const workbench = workbenchFiles.join('\n');
 const projectWorkbench = workbenchFiles[0];
 const projectBrowserDock = read('../lib/components/ProjectBrowserDock.svelte');
+const projectFilesDock = read('../lib/components/ProjectFilesDock.svelte');
 const healthStrip = read('../lib/components/workbench/HealthStrip.svelte');
 const panelState = read('../lib/components/workspace/panel-state.ts');
 const button = read('../lib/components/ui/Button.svelte');
@@ -225,6 +226,9 @@ test('session rows expose archive on hover without redundant open tooltips', () 
 	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
 	expect(contextPanel).toContain("aria-label={`Archive ${session.title || 'Untitled session'}`}");
 	expect(contextPanel).toContain('onarchive(event, session)');
+	expect(contextPanel).toContain('{#if !session.archived}<button');
+	expect(contextPanel).not.toContain('{#if session.available !== false && !session.archived}');
+	expect(contextPanel).not.toContain('{#if session.available !== false}<button');
 	expect(contextPanel).not.toContain("`Open ${session.title || 'Untitled session'}`");
 	expect(styles).toMatch(
 		/@media \(max-width: 700px\)[\s\S]*\.session-archive[\s\S]*width: 44px;[\s\S]*height: 44px;/
@@ -416,12 +420,19 @@ test('project workbench owns browser, terminal, and Git behavior', () => {
 
 test('Project tools stay embedded with Sessions and collapse to an accessible dock', () => {
 	expect(workspace).toContain('class="session-workspace');
+	expect(workspace).toContain('--project-shell-color: ${selectedProject?.color ??');
+	expect(workspace.indexOf('--project-shell-color')).toBeLessThan(
+		workspace.indexOf('class="session-workspace')
+	);
+	expect(styles).toContain('margin: 10px 0 10px 10px');
 	expect(workspace).toContain('docked={true}');
 	for (const tool of ['Browser', 'Terminal', 'Git', 'Files'])
 		expect(projectWorkbench).toContain(tool);
 	expect(projectWorkbench).toContain("aria-label={tool.id === 'git'");
 	expect(projectWorkbench).toContain('aria-expanded={open && activeTool === tool.id}');
 	expect(projectWorkbench).toContain('aria-label="Resize project tools"');
+	expect(styles).toMatch(/\.project-tool-rail\s*\{[^}]*position: fixed;/s);
+	expect(styles).toContain('padding-inline: 5px');
 	expect(projectWorkbench).toContain('onpointerdown={startResize}');
 	expect(projectWorkbench).not.toContain('Math.min(720');
 	expect(projectWorkbench).toContain('localStorage.setItem(`hue:project-tools:${projectId}:width`');
@@ -430,9 +441,13 @@ test('Project tools stay embedded with Sessions and collapse to an accessible do
 	expect(workspace).toContain('togglePanel(localStorage');
 	expect(panelState).toContain('`hue:project-tools:${projectId}:${panel}-open`');
 	expect(workspace).toContain('<ProjectBrowserDock');
+	expect(workspace).toContain('<ProjectFilesDock');
 	expect(projectBrowserDock).toContain('requestAnimationFrame');
+	expect(projectFilesDock).toContain('aria-label="Project files"');
 	expect(projectBrowserDock).toContain('aria-valuemin="240"');
 	expect(projectWorkbench).toContain("browserOpen ? 'Hide Browser' : 'Show Browser'");
+	expect(projectWorkbench).toContain("filesOpen ? 'Hide Files' : 'Show Files'");
+	expect(projectWorkbench).toContain('aria-expanded={filesOpen}');
 	expect(projectWorkbench).toContain("!docked && (!compact || developView === 'browser')");
 	expect(projectBrowserDock).not.toContain('project-browser-header');
 	expect(styles).toContain('.project-browser-dock');
@@ -449,6 +464,30 @@ test('Project tools stay embedded with Sessions and collapse to an accessible do
 	);
 	expect(workspace).toContain('oninput={createSessionFromDraft}');
 	expect(workspace).toContain('pendingSessionDraft');
+});
+
+test('Projects and Sessions own their panel visibility controls', () => {
+	expect(navigation).not.toContain('Hide Projects panel');
+	expect(navigation).not.toContain('Hide Sessions panel');
+	expect(projectRail).toContain('aria-label="Hide Projects panel"');
+	expect(contextPanel).toContain('aria-label="Hide Sessions panel"');
+	expect(workspace).toContain('aria-label="Show Projects panel"');
+	expect(workspace).toContain('aria-label="Show Sessions panel"');
+	expect(workspace).toContain('aria-label="Collapsed Projects"');
+	expect(workspace).toContain('{#each projectManagement.projects as project');
+	expect(styles).toContain('grid-template-columns: 56px 48px');
+});
+
+test('global navigation keeps settings sections inside Settings', () => {
+	expect(navigation).not.toContain('<MessageSquare');
+	for (const label of ['Inspect Hermes runtime', 'Schedules', 'Skills', 'Commands', 'Profiles', 'MCP'])
+		expect(navigation).not.toContain(`aria-label="${label}"`);
+	expect(navigation).toContain('aria-label="Workspace"');
+	expect(navigation.indexOf('aria-label="Workspace"')).toBeLessThan(
+		navigation.indexOf('aria-label={`Notifications')
+	);
+	expect(navigation).toContain('aria-label="Settings"');
+	expect(panel).toContain('{#each sections as section}');
 });
 
 test('browser workbench keeps Browser and Excalidraw as separate tabs', () => {
@@ -469,6 +508,13 @@ test('Excalidraw tab lazy-loads a real canvas with safe live embeds', () => {
 	expect(excalidrawPanel).toContain('Add tablet');
 	expect(excalidrawPanel).toContain('Add mobile');
 	expect(excalidrawPanel).toContain('aria-label="Add preview preset"');
+	expect(excalidrawPanel).toContain('class="browser-preset-actions"');
+	expect(excalidrawPanel).toContain('class="browser-responsive-actions"');
+	expect(excalidrawPanel.indexOf('class="browser-responsive-actions"')).toBeLessThan(
+		excalidrawPanel.indexOf('class="browser-address"')
+	);
+	expect(excalidrawPanel).toContain('size="icon"');
+	expect(excalidrawPanel).not.toContain('@max-[380px]:sr-only');
 	expect(excalidrawPanel).toContain("import('./ExcalidrawBrowserCanvas')");
 	expect(excalidrawPanel).toContain('afterInitialPaint');
 	expect(excalidrawPanel).not.toContain('migrateLegacyBrowserTabs');
@@ -494,7 +540,11 @@ test('Excalidraw tab lazy-loads a real canvas with safe live embeds', () => {
 	expect(canvasAdapter).not.toContain('allow-downloads');
 	expect(canvasAdapter).not.toContain('allow-clipboard');
 	expect(styles).toMatch(/\.browser-embed-external\s*\{[^}]*width: 44px;[^}]*height: 44px;/s);
-	expect(styles).toMatch(/\.browser-frame-note\s*\{[^}]*white-space: normal;/s);
+	expect(excalidrawPanel).toContain('<Info size={15}');
+	expect(excalidrawPanel).toContain('aria-label="Sites that block framing');
+	expect(excalidrawPanel).not.toMatch(/>Sites that block framing/);
+	expect(styles).toContain('grid-template-columns: auto minmax(88px, 1fr)');
+	expect(styles).toContain('.browser-frame-note,\n\t.browser-preset-actions button');
 	expect(styles).not.toMatch(/\.browser-frame-note\s*\{[^}]*display: none;/s);
 });
 
@@ -648,8 +698,12 @@ test('composer exposes HUE work mode selector and timeline status item hooks', (
 	expect(composer).not.toContain('<Sparkles');
 	expect(composer).not.toContain('aria-label="Composer options"');
 	expect(composer).not.toContain('<span class="hidden xl:inline">Work mode</span>');
-	expect(sessionManager).toContain('aria-label="Hermes profile"');
-	expect(sessionManager).toContain('<UserRound');
+	expect(composer).toContain('aria-label={`Hermes profile: ${runtime.profile}`}');
+	expect(composer).toContain('<UserRound');
+	expect(composer).toContain('aria-label="Prompt library"');
+	expect(workspace).not.toContain('showPromptLibrary={false}');
+	expect(sessionManager).not.toContain('aria-label="Hermes profile"');
+	expect(sessionManager).not.toContain('Prompt library');
 	expect(dialog).toContain("item.kind === 'status'");
 	expect(dialog).toContain('{item.label}');
 });
@@ -750,6 +804,11 @@ test('current Project health stays in one shell-level bottom status bar', () => 
 	expect(healthStrip).toContain('projectColorForeground');
 	expect(healthStrip).toContain('--project-status-color');
 	expect(projectRail).toContain('aria-label="Project status bar color"');
+});
+
+test('Project list rows show their Project color as a restrained marker', () => {
+	expect(projectRail).toContain('class="project-color-indicator');
+	expect(projectRail).toContain('style={`background-color: ${project.color}`}');
 });
 
 test('composer preserves complete-envelope and unknown-delivery controls', () => {

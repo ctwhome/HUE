@@ -5,8 +5,6 @@
 		Files,
 		GitBranch,
 		Globe,
-		PanelRightClose,
-		PanelRightOpen,
 		TerminalSquare
 	} from 'lucide-svelte';
 	import BrowserPanel from './workbench/BrowserPanel.svelte';
@@ -29,8 +27,11 @@
 		compact,
 		docked = false,
 		browserOpen = false,
+		filesOpen = false,
 		terminalOpen = false,
 		onbrowser = () => {},
+		onfiles = () => {},
+		onopenfile = () => {},
 		onterminal = () => {},
 		onpreviewchange = () => {},
 		onbranch,
@@ -41,8 +42,11 @@
 		compact: boolean;
 		docked?: boolean;
 		browserOpen?: boolean;
+		filesOpen?: boolean;
 		terminalOpen?: boolean;
 		onbrowser?: () => void;
+		onfiles?: () => void;
+		onopenfile?: (path: string) => void;
 		onterminal?: () => void;
 		onpreviewchange?: (url: string) => void;
 		onbranch: (branch: string | null) => void;
@@ -105,6 +109,7 @@
 		}
 	}
 	function openFile(path: string) {
+		if (docked) return onopenfile(path);
 		filesMounted = true;
 		fileRequest = { path, id: crypto.randomUUID() };
 		view = 'files';
@@ -186,10 +191,7 @@
 				savedWidth > 0 ? savedWidth : (dockElement.parentElement?.clientWidth ?? 960) * 0.46
 			);
 			const savedDock = localStorage.getItem(`hue:project-tools:${projectId}:dock`);
-			if (savedDock === 'files') {
-				open = true;
-				openFiles();
-			} else if (savedDock === 'git') {
+			if (savedDock === 'git') {
 				open = true;
 				chooseDevelopView('git');
 			}
@@ -366,17 +368,14 @@
 			<button
 				type="button"
 				class:active={browserOpen}
-				aria-label={browserOpen ? 'Hide Browser' : 'Show Browser'}
+				aria-label="Browser"
 				aria-expanded={browserOpen}
 				title={browserOpen ? 'Hide Browser' : 'Show Browser'}
 				onclick={onbrowser}
 			>
-				{#if browserOpen}<PanelRightClose size={19} aria-hidden="true" />{:else}<PanelRightOpen
-						size={19}
-						aria-hidden="true"
-					/>{/if}
+				<Globe size={19} aria-hidden="true" />
 			</button>
-			{#each tools as tool}
+			{#each tools.filter((tool) => tool.id === 'git') as tool}
 				{@const Icon = tool.icon}
 				<button
 					type="button"
@@ -393,6 +392,16 @@
 						>{/if}
 				</button>
 			{/each}
+			<button
+				type="button"
+				class:active={filesOpen}
+				aria-label="Files"
+				aria-expanded={filesOpen}
+				title={filesOpen ? 'Hide Files' : 'Show Files'}
+				onclick={onfiles}
+			>
+				<Files size={19} aria-hidden="true" />
+			</button>
 			<button
 				type="button"
 				class="terminal-tool"

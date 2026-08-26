@@ -44,6 +44,7 @@ test('failed unavailable or deleted Session restoration leaves Session list reco
 			persistedSessionId = this.selectedSession?.sessionId ?? null;
 		},
 		async loadActiveTab(sessionId?: string | null) {
+			if (sessionId === null) expect(this.selectedSession).toBeNull();
 			loads.push(sessionId);
 			this.sessions = [session];
 		},

@@ -11,6 +11,7 @@
 		PhoneOff,
 		Send,
 		Square,
+		UserRound,
 		X
 	} from 'lucide-svelte';
 	import {
@@ -60,7 +61,6 @@
 		workModeChanging,
 		runtimeChanging,
 		promptLibraryAvailable,
-		showPromptLibrary = true,
 		workflows,
 		workflowName = $bindable(),
 		workflowPrompt = $bindable(),
@@ -91,6 +91,7 @@
 		onscrolllatest,
 		matchingCommands,
 		contextPercent,
+		showContextUsage = true,
 		busy
 	}: {
 		composer: string;
@@ -120,7 +121,6 @@
 		workModeChanging: boolean;
 		runtimeChanging: boolean;
 		promptLibraryAvailable: boolean;
-		showPromptLibrary?: boolean;
 		workflows: Workflow[];
 		workflowName: string;
 		workflowPrompt: string;
@@ -152,6 +152,7 @@
 		onscrolllatest: (behavior: ScrollBehavior) => void;
 		matchingCommands: () => Command[];
 		contextPercent: () => number | null;
+		showContextUsage?: boolean;
 	} = $props();
 	const instanceId = $props.id();
 	const workModeOptions = [
@@ -374,15 +375,14 @@
 			: 'Message Hermes… / for commands'}
 		aria-label="Message Hermes"></textarea>
 	<div class="composer-toolbar flex min-w-0 items-center gap-2 pt-1">
-		{#if promptLibraryAvailable && showPromptLibrary}<button
+		{#if promptLibraryAvailable}<button
 				type="button"
-				class="attach-button flex h-(--control-height-icon) shrink-0 items-center gap-2 rounded-md border border-border px-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+				class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
 				aria-label="Prompt library"
 				title="Open prompt library"
 				onclick={openPromptLibrary}
 			>
-				<BookOpenText size={20} aria-hidden="true" /><span class="composer-prompt-label hidden lg:inline">Prompts</span
-				></button
+				<BookOpenText size={20} aria-hidden="true" /></button
 			>{/if}
 		<label
 			class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -425,6 +425,13 @@
 				disabled={runtimeChanging || busy}
 				onselect={(value) => onruntime('modeId', value)}
 			/>{/if}
+		<span
+			class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border text-muted-foreground"
+			aria-label={`Hermes profile: ${runtime.profile}`}
+			title={`Hermes profile: ${runtime.profile}`}
+		>
+			<UserRound size={20} aria-hidden="true" />
+		</span>
 		<div
 			class="composer-context ml-auto flex min-w-0 items-center gap-1"
 			aria-label="Hermes session context"
@@ -453,7 +460,7 @@
 				disabled={workModeChanging}
 				onselect={(value) => onworkmode(value as WorkMode)}
 			/>
-			{#if contextPercent() !== null}<span
+			{#if showContextUsage && contextPercent() !== null}<span
 					class="context-chip context-usage inline-flex min-h-8 shrink-0 items-center rounded-lg border border-emerald-900 bg-emerald-950 px-2 text-xs font-bold text-emerald-300"
 					class:warning={contextPercent()! >= 80}
 					title={`${runtime.usage!.used.toLocaleString()} of ${runtime.usage!.size.toLocaleString()} context tokens used`}
@@ -496,7 +503,7 @@
 			>{/if}
 	</div>
 </form>
-{#if showPromptLibrary}<PromptLibraryDialog
+<PromptLibraryDialog
 		id={`${instanceId}-prompts`}
 		bind:dialog={promptLibraryDialog}
 		loading={promptLibraryLoading}
@@ -505,4 +512,4 @@
 		bind:prompt={workflowPrompt}
 		onsubmit={onworkflow}
 		onrun={onrunworkflow}
-	/>{/if}
+	/>

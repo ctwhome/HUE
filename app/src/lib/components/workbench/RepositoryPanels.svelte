@@ -3,6 +3,8 @@
 	import {
 		ChevronDown,
 		ChevronRight,
+		GitBranch,
+		GitFork,
 		Minus,
 		Plus,
 		RefreshCw,
@@ -242,11 +244,14 @@
 		onclick={(event) => togglePanelFromHeader(event, toggleGit)}
 		onkeydown={(event) => togglePanelFromHeader(event, toggleGit)}
 	>
-		<div>
+		<div class="flex items-center gap-2">
+			<GitBranch size={17} aria-hidden="true" />
+			<div>
 			<strong class="block text-xs">Git</strong><span
 				class="block text-[0.68rem] text-muted-foreground"
 				>{repository?.branch ?? 'Repository'}</span
 			>
+			</div>
 		</div>
 		{#if (repository?.repositories?.length ?? 0) > 1}<select
 				class="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs max-[700px]:h-11"
@@ -392,6 +397,7 @@
 				models={commitModels}
 				value={commitModel}
 				ariaLabel="Commit message model"
+				ellipsis={true}
 				onselect={selectCommitModel}
 			/>
 		</div>
@@ -452,7 +458,7 @@
 		onclick={(event) => togglePanelFromHeader(event, toggleWorktrees)}
 		onkeydown={(event) => togglePanelFromHeader(event, toggleWorktrees)}
 	>
-		<strong class="text-xs">Worktrees</strong>
+		<strong class="flex items-center gap-2 text-xs"><GitFork size={17} aria-hidden="true" />Worktrees</strong>
 		<div class="flex items-center gap-1">
 			<span class="text-[0.68rem] text-muted-foreground">{repository?.worktrees.length ?? 0}</span>
 			{#if worktreesOpen}<ChevronDown size={16} aria-hidden="true" />{:else}<ChevronRight size={16} aria-hidden="true" />{/if}
