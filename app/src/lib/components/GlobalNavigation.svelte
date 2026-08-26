@@ -5,6 +5,7 @@
 
 	export type GlobalView =
 		| 'notifications'
+		| 'app-settings'
 		| 'settings'
 		| 'runtime'
 		| 'memory'
@@ -38,8 +39,8 @@
 		aria-label="Workspace"
 		aria-current={view === null ? 'page' : undefined}
 		title="Workspace"
-		onclick={() => onview(null)}
-	><BrandMark class="global-mark size-10" /></button>
+		onclick={() => onview(null)}><BrandMark class="global-mark size-10" /></button
+	>
 	<Button
 		variant="outline"
 		size="icon"
@@ -59,9 +60,23 @@
 			variant="outline"
 			size="icon"
 			class={`${action} ${view === 'settings' ? 'active' : ''}`}
-			aria-label="Settings"
-			title="Settings"
-			onclick={() => onview('settings')}><Settings aria-hidden="true" /></Button
+			aria-label="Hermes settings"
+			title="Hermes settings"
+			onclick={() => onview('settings')}
+			><img
+				class="size-5 rounded-sm object-cover"
+				src="/hermes-logo.png"
+				alt=""
+				aria-hidden="true"
+			/></Button
+		>
+		<Button
+			variant="outline"
+			size="icon"
+			class={`${action} ${view === 'app-settings' ? 'active' : ''}`}
+			aria-label="App settings"
+			title="App settings"
+			onclick={() => onview('app-settings')}><Settings aria-hidden="true" /></Button
 		>
 	</div>
 	<a

@@ -16,16 +16,19 @@
 .workspace > .session-workspace {
 	grid-column: 4;
 }
+.workspace.sessions-panel-closed > .session-workspace {
+	grid-column: 3;
+}
 
 @media (min-width: 701px) {
 	.workspace.projects-panel-closed {
 		grid-template-columns: 56px 48px var(--session-pane-width, 320px) minmax(0, 1fr);
 	}
 	.workspace.sessions-panel-closed {
-		grid-template-columns: 56px var(--project-pane-width, 220px) 40px minmax(0, 1fr);
+		grid-template-columns: 56px var(--project-pane-width, 220px) minmax(0, 1fr);
 	}
 	.workspace.projects-panel-closed.sessions-panel-closed {
-		grid-template-columns: 56px 48px 40px minmax(0, 1fr);
+		grid-template-columns: 56px 48px minmax(0, 1fr);
 	}
 	.workspace.projects-panel-closed > .project-rail,
 	.workspace.projects-panel-closed > .project-pane-resizer,
@@ -65,10 +68,10 @@
 		grid-template-columns: 56px 48px 280px minmax(0, 1fr);
 	}
 	.workspace.sessions-panel-closed {
-		grid-template-columns: 56px 74px 40px minmax(0, 1fr);
+		grid-template-columns: 56px 74px minmax(0, 1fr);
 	}
 	.workspace.projects-panel-closed.sessions-panel-closed {
-		grid-template-columns: 56px 48px 40px minmax(0, 1fr);
+		grid-template-columns: 56px 48px minmax(0, 1fr);
 	}
 	.project-rail {
 		padding-inline: 10px;
@@ -167,9 +170,6 @@
 	}
 	.global-rail {
 		display: none;
-	}
-	.global-panel {
-		top: calc(56px + env(safe-area-inset-top, 0px));
 	}
 	.mobile-navigation {
 		position: fixed;

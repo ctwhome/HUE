@@ -239,9 +239,24 @@ test('Project rows do not show redundant open tooltips', () => {
 	const projectRail = read('../lib/components/workspace/ProjectRail.svelte');
 	expect(projectRail).not.toContain('title="Open sessions with no project"');
 	expect(projectRail).not.toContain('title={`Open ${project.name} · ${project.primaryPath}`}');
-	expect(projectRail).toContain('title="New session without a project"');
+	expect(projectRail).toContain('title="New General session"');
 	expect(projectRail).toContain('title={`Change ${project.name} icon`}');
 	expect(projectRail).toContain('title={`Edit ${project.name}`}');
+});
+
+test('standalone Sessions use General instead of No project language', () => {
+	const workspace = read('../lib/components/Workspace.svelte');
+	const projectRail = read('../lib/components/workspace/ProjectRail.svelte');
+	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
+	const mobileNavigation = read('../lib/components/workspace/MobileNavigation.svelte');
+	const welcome = read('../lib/components/workspace/WorkspaceWelcome.svelte');
+	for (const component of [workspace, projectRail, contextPanel, mobileNavigation, welcome]) {
+		expect(component).not.toContain('No project');
+	}
+	expect(projectRail).toContain('<span>General</span>');
+	expect(contextPanel).toContain("selectedProject?.name ?? 'General'");
+	expect(mobileNavigation).toContain("project?.name ?? 'General'");
+	expect(welcome).toContain('Start General Session');
 });
 
 test('session filters use one search field and a compact archive toggle', () => {
@@ -287,18 +302,10 @@ test('global navigation exposes workspace and Hermes administration', () => {
 	expect(navigation).toContain('aria-label="Global navigation"');
 	expect(navigation).toContain('href="/docs/"');
 	expect(navigation).toContain('aria-label="Open documentation in a new tab"');
-	for (const label of [
-		'Workspace',
-		'Settings',
-		'Schedules',
-		'Skills',
-		'Commands',
-		'Profiles',
-		'MCP'
-	]) {
+	for (const label of ['Workspace', 'Hermes settings', 'App settings']) {
 		expect(navigation).toContain(`aria-label="${label}"`);
 	}
-	expect(navigation).toContain('aria-label="Inspect Hermes runtime"');
+	expect(navigation).toContain('src="/hermes-logo.png"');
 	expect(navigation).toContain('class="global-admin mt-auto');
 });
 
@@ -468,7 +475,7 @@ test('Project tools stay embedded with Sessions and collapse to an accessible do
 
 test('workspace windows use restrained global gutters', () => {
 	expect(styles).toContain('--panel-gap: 0.5rem');
-	expect(styles).toContain('margin-block: var(--panel-gap)');
+	expect(styles).toContain('width: min(60rem, calc(100vw - 2rem))');
 	expect(styles).toContain('padding-right: calc(var(--panel-gap) / 2)');
 });
 
@@ -485,7 +492,9 @@ test('Projects and Sessions own their panel visibility controls', () => {
 	expect(styles).toContain('grid-template-columns: 56px 48px');
 });
 
-test('global navigation keeps settings sections inside Settings', () => {
+test('global navigation separates app and Hermes settings into modal surfaces', () => {
+	const settingsView = read('../lib/components/hermes/SettingsView.svelte');
+	const attentionCenter = read('../lib/components/notifications/AttentionCenter.svelte');
 	expect(navigation).not.toContain('<MessageSquare');
 	for (const label of ['Inspect Hermes runtime', 'Schedules', 'Skills', 'Commands', 'Profiles', 'MCP'])
 		expect(navigation).not.toContain(`aria-label="${label}"`);
@@ -493,7 +502,16 @@ test('global navigation keeps settings sections inside Settings', () => {
 	expect(navigation.indexOf('aria-label="Workspace"')).toBeLessThan(
 		navigation.indexOf('aria-label={`Notifications')
 	);
-	expect(navigation).toContain('aria-label="Settings"');
+	expect(navigation).toContain('aria-label="App settings"');
+	expect(navigation).toContain('aria-label="Hermes settings"');
+	expect(panel).toContain("view === 'app-settings'");
+	expect(panel).toContain('showModal()');
+	expect(panel).toContain('aria-label="Close settings"');
+	expect(panel).toContain('event.target === modal && navigate(null)');
+	expect(attentionCenter).toContain('showModal()');
+	expect(attentionCenter).toContain('aria-label="Close notifications"');
+	expect(attentionCenter).toContain('event.target === modal && onclose()');
+	expect(settingsView).not.toContain('<PreferencesView');
 	expect(panel).toContain('{#each sections as section}');
 });
 
@@ -643,8 +661,14 @@ test('Project groups expose editable, persistent, accessible collapsible heading
 	expect(projectRail).toContain('aria-labelledby="add-project-section-title"');
 	expect(projectRail).toContain('Create section');
 	expect(projectRail).toContain('draggable="true"');
-	expect(projectRail).toContain('ondrop={(event) => dropProject(event, group.label!)}');
+	expect(projectRail).toContain('ondrop={(event) => dropOnGroup(event, group.label!)}');
 	expect(projectRail).toContain('Move to ungrouped');
+	expect(projectRail).toContain('<GripVertical');
+	expect(projectRail).toContain('<EllipsisVertical');
+	expect(contextPanel).toContain('hue:session-order:');
+	expect(contextPanel).toContain('ondrop={(event) => dropSession(event, session)}');
+	expect(contextPanel).toContain('<GripVertical');
+	expect(contextPanel).toContain('<EllipsisVertical');
 	expect(projectRail).toContain('Group label');
 	expect(projectRail).toContain('<datalist');
 	expect(projectRail).toContain('aria-expanded={!collapsedGroups.has(group.label)}');
@@ -759,10 +783,10 @@ test('liquid orb adaptation carries upstream MIT notice', () => {
 
 test('project and session controls preserve accessible editing', () => {
 	expect(page).toContain('aria-label="Add Hermes Project"');
-	expect(page).toContain('aria-label="New session without a project"');
+	expect(page).toContain('aria-label="New General session"');
 	expect(projectRail).not.toContain('<header class="brand');
 	expect(projectRail).toMatch(
-		/class="project-row projectless-row[\s\S]*aria-label="New session without a project"/
+		/class="project-row projectless-row[\s\S]*aria-label="New General session"/
 	);
 	expect(page).toContain('aria-label={`${label} icon image`}');
 	expect(page).toContain('aria-label="Change project icon"');

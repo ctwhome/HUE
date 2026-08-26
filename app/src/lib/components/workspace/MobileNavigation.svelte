@@ -36,12 +36,11 @@
 		aria-controls="project-drawer"
 		aria-expanded={drawer === 'projects'}
 		aria-current={drawer === 'projects' ? 'page' : undefined}
-		aria-label={`Projects, current ${project?.name ?? 'No project'}`}
+		aria-label={`Projects, current ${project?.name ?? 'General'}`}
 		title="Switch Project"
 		disabled={!ready}
 		onclick={(event) => ontoggle('projects', event.currentTarget)}
-		><FolderKanban size={19} aria-hidden="true" /><span>{project?.name ?? 'No project'}</span
-		></button
+		><FolderKanban size={19} aria-hidden="true" /><span>{project?.name ?? 'General'}</span></button
 	>
 	<button
 		aria-controls="session-drawer"
@@ -65,11 +64,11 @@
 	>
 	<button
 		class="mobile-icon-action"
-		aria-label="Settings"
-		aria-current={view && view !== 'notifications' ? 'page' : undefined}
-		title="More and Settings"
+		aria-label="App settings"
+		aria-current={view === 'app-settings' ? 'page' : undefined}
+		title="App settings"
 		onclick={onsettings}
-		><Menu size={20} aria-hidden="true" /><span class="sr-only">Settings</span></button
+		><Menu size={20} aria-hidden="true" /><span class="sr-only">App settings</span></button
 	>
 </nav>
 {#if backdrop}<button

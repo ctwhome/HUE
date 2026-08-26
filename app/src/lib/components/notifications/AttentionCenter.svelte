@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { ArrowLeft, Bell, Check, Settings, Trash2, X } from 'lucide-svelte';
+	import { Bell, Check, Settings, Trash2, X } from 'lucide-svelte';
 	import {
 		acknowledgeThenNavigate,
 		attentionState,
@@ -61,6 +61,7 @@
 	let soundEnabled = $state(false);
 	let foregroundEnabled = $state(false);
 	let audioUnlocked = $state(false);
+	let modal = $state<HTMLDialogElement>();
 	let initialized = false;
 	let known = new Set<string>();
 	let audioContext: AudioContext | null = null;
@@ -72,6 +73,10 @@
 	const deviceKey = 'hue:notification:device-id';
 	const soundKey = 'hue:notification:sound';
 	const foregroundKey = 'hue:notification:foreground';
+
+	$effect(() => {
+		if (open && modal && !modal.open) modal.showModal();
+	});
 
 	async function api<T>(url: string, options?: RequestInit): Promise<T> {
 		const response = await fetch(url, {
@@ -167,7 +172,7 @@
 			});
 			notice.onclick = () => {
 				notice.close();
-			void acknowledgeThenNavigate(
+				void acknowledgeThenNavigate(
 					() => markActed(item),
 					() => window.focus(),
 					() => window.location.assign(item.path)
@@ -378,228 +383,237 @@
 </script>
 
 {#if open}
-	<section
-		class="global-panel fixed inset-y-0 right-0 left-14 z-20 flex min-w-0 flex-col bg-background max-[700px]:left-0"
-		aria-label="Notifications"
+	<dialog
+		bind:this={modal}
+		class="global-panel min-w-0 bg-background p-0 text-foreground"
+		aria-label="Notifications dialog"
+		oncancel={(event) => {
+			event.preventDefault();
+			onclose();
+		}}
+		onclick={(event) => event.target === modal && onclose()}
 	>
-		<header class="flex min-h-16 items-center gap-3 border-b border-border px-5 max-[700px]:px-3">
-			<button
-				class="grid size-11 place-items-center rounded-md border border-border"
-				aria-label="Back to workspace"
-				title="Back to workspace"
-				onclick={onclose}><ArrowLeft class="size-5" aria-hidden="true" /></button
-			>
-			<div class="min-w-0 flex-1">
-				<p class="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-					Attention
-				</p>
-				<h1 class="text-xl font-semibold">Notifications</h1>
-			</div>
-			<button
-				class="grid size-11 place-items-center rounded-md border border-border"
-				class:bg-accent={settings}
-				aria-label="Notification settings"
-				title="Notification settings"
-				onclick={() => {
-					settings = !settings;
-					if (settings) void loadSettings();
-				}}><Settings class="size-5" aria-hidden="true" /></button
-			>
-		</header>
-
-		{#if settings}
-			<div class="flex-1 overflow-auto p-[clamp(16px,4vw,48px)]">
-				<div class="mx-auto grid max-w-3xl gap-6">
-					<section class="grid gap-3 rounded-xl border border-border p-5">
-						<h2 class="text-lg font-semibold">Notification settings</h2>
-						<p class="text-sm text-muted-foreground">
-							HUE keeps canonical notifications in-app. System notifications contain generic text
-							and open HUE for current context.
-						</p>
-						<p class="text-sm" role="status">{capabilityCopy()}</p>
-						<label class="grid gap-1 text-sm"
-							><span>Device name</span><input
-								class="min-h-11 rounded-md border border-border bg-background px-3"
-								maxlength="80"
-								bind:value={deviceName}
-							/></label
-						>
-						<button
-							class="min-h-11 justify-self-start rounded-md bg-primary px-4 text-primary-foreground disabled:opacity-50"
-							disabled={!status.available ||
-								capability() === 'denied' ||
-								capability() === 'insecure' ||
-								capability() === 'unavailable' ||
-								capability() === 'push-unavailable'}
-							onclick={enableSystemNotifications}>Enable system notifications</button
-						>
-						{#if settingsNotice}<p class="text-sm" role="status">{settingsNotice}</p>{/if}
-					</section>
-
-					<section class="grid gap-3 rounded-xl border border-border p-5">
-						<h2 class="font-semibold">Foreground behavior</h2>
-						<label class="flex min-h-11 items-center gap-3"
-							><input
-								type="checkbox"
-								bind:checked={foregroundEnabled}
-								onchange={() => localStorage.setItem(foregroundKey, String(foregroundEnabled))}
-							/><span>Show browser notifications while HUE is open</span></label
-						>
-						<label class="flex min-h-11 items-center gap-3"
-							><input
-								type="checkbox"
-								checked={soundEnabled}
-								onchange={(event) => void toggleSound(event.currentTarget.checked)}
-							/><span>Foreground sound</span></label
-						>
-						<p class="text-sm text-muted-foreground">
-							Sound starts only after this explicit opt-in user gesture. Background PWA sound
-							follows browser and operating-system settings; HUE cannot choose or bypass it.
-						</p>
-						<p class="text-sm text-muted-foreground">
-							Wear OS mirroring is best effort and controlled by phone, browser, and watch
-							notification settings.
-						</p>
-					</section>
-
-					<section class="grid gap-3 rounded-xl border border-border p-5">
-						<h2 class="font-semibold">Devices</h2>
-						{#if endpoints.length === 0}<p class="text-sm text-muted-foreground">
-								No subscribed devices.
-							</p>{/if}
-						{#each endpoints as endpoint (endpoint.id)}
-							<div class="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3">
-								<div class="min-w-40 flex-1">
-									<strong>{endpoint.name}</strong>
-									<p class="text-xs text-muted-foreground">
-										{endpoint.revokedAt ? 'Revoked' : endpoint.enabled ? 'Enabled' : 'Disabled'}
-									</p>
-								</div>
-								<button
-									class="min-h-11 rounded-md border border-border px-3"
-									onclick={() => {
-										const name = window.prompt('Device name', endpoint.name);
-										if (name) void updateEndpoint(endpoint, { name });
-									}}>Rename</button
-								>
-								<button
-									class="min-h-11 rounded-md border border-border px-3"
-									onclick={() => void updateEndpoint(endpoint, { enabled: !endpoint.enabled })}
-									>{endpoint.enabled ? 'Disable' : 'Enable'}</button
-								>
-								<button
-									class="min-h-11 rounded-md border border-border px-3"
-									onclick={() => void updateEndpoint(endpoint, { revoke: true })}>Revoke</button
-								>
-								<button
-									class="grid size-11 place-items-center rounded-md border border-destructive/50 text-destructive"
-									aria-label={`Delete ${endpoint.name}`}
-									title={`Delete ${endpoint.name}`}
-									onclick={() => void deleteEndpoint(endpoint)}
-									><Trash2 class="size-4" aria-hidden="true" /></button
-								>
-							</div>
-						{/each}
-					</section>
-				</div>
-			</div>
-		{:else}
-			<div class="flex min-h-14 items-center gap-2 border-b border-border px-5 max-[700px]:px-3">
+		<section class="flex h-full min-h-0 flex-col" aria-label="Notifications">
+			<header class="flex min-h-16 items-center gap-3 border-b border-border px-5 max-[700px]:px-3">
 				<button
-					class="min-h-11 rounded-md px-3"
-					class:bg-accent={view === 'unread'}
-					aria-pressed={view === 'unread'}
-					onclick={() => {
-						view = 'unread';
-						void refresh();
-					}}
-					>Unread <span
-						class="ml-1 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground"
-						>{unread}</span
-					></button
+					class="grid size-11 place-items-center rounded-md border border-border"
+					aria-label="Close notifications"
+					title="Close notifications"
+					onclick={onclose}><X class="size-5" aria-hidden="true" /></button
 				>
-				<button
-					class="min-h-11 rounded-md px-3"
-					class:bg-accent={view === 'all'}
-					aria-pressed={view === 'all'}
-					onclick={() => {
-						view = 'all';
-						void refresh();
-					}}>All</button
-				>
-				{#if unread > 0}<button
-						class="ml-auto min-h-11 rounded-md border border-border px-3 disabled:opacity-50"
-						disabled={markingAllRead}
-						onclick={() => void markAllRead()}>Mark all read</button
-					>{/if}
-			</div>
-			<div class="flex-1 overflow-auto p-[clamp(12px,3vw,36px)]" aria-live="polite">
-				{#if centerState.view === 'loading'}
-					<p class="mx-auto mt-16 max-w-xl text-center text-muted-foreground">
-						Loading notifications…
+				<div class="min-w-0 flex-1">
+					<p class="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+						Attention
 					</p>
-				{:else if centerState.view === 'error'}
-					<div class="mx-auto mt-16 grid max-w-xl justify-items-center gap-3 text-center">
-						<Bell class="size-8" aria-hidden="true" />
-						<p>Unable to load notifications</p>
-						<button
-							class="min-h-11 rounded-md border border-border px-4"
-							onclick={() => void refresh()}>Try again</button
-						>
-					</div>
-				{:else if centerState.view === 'empty'}
-					<div
-						class="mx-auto mt-16 grid max-w-xl justify-items-center gap-3 text-center text-muted-foreground"
-					>
-						<Check class="size-8" aria-hidden="true" />
-						<p>No notifications</p>
-						<p class="text-sm">New outcomes and requests will appear here.</p>
-					</div>
-				{:else}
-					<ul class="mx-auto grid max-w-3xl gap-3">
-						{#each items as item (item.id)}
-							<li
-								class="rounded-xl border border-border bg-card p-4"
-								class:opacity-65={Boolean(item.readAt || item.dismissedAt)}
+					<h1 class="text-xl font-semibold">Notifications</h1>
+				</div>
+				<button
+					class="grid size-11 place-items-center rounded-md border border-border"
+					class:bg-accent={settings}
+					aria-label="Notification settings"
+					title="Notification settings"
+					onclick={() => {
+						settings = !settings;
+						if (settings) void loadSettings();
+					}}><Settings class="size-5" aria-hidden="true" /></button
+				>
+			</header>
+
+			{#if settings}
+				<div class="flex-1 overflow-auto p-[clamp(16px,4vw,48px)]">
+					<div class="mx-auto grid max-w-3xl gap-6">
+						<section class="grid gap-3 rounded-xl border border-border p-5">
+							<h2 class="text-lg font-semibold">Notification settings</h2>
+							<p class="text-sm text-muted-foreground">
+								HUE keeps canonical notifications in-app. System notifications contain generic text
+								and open HUE for current context.
+							</p>
+							<p class="text-sm" role="status">{capabilityCopy()}</p>
+							<label class="grid gap-1 text-sm"
+								><span>Device name</span><input
+									class="min-h-11 rounded-md border border-border bg-background px-3"
+									maxlength="80"
+									bind:value={deviceName}
+								/></label
 							>
-								<div class="flex items-start gap-3">
-									<span
-										class="mt-1 size-2.5 shrink-0 rounded-full"
-										class:bg-destructive={item.priority === 'high'}
-										class:bg-primary={item.priority === 'normal'}
-										aria-hidden="true"
-									></span>
-									<div class="min-w-0 flex-1">
-										<a
-											class="font-semibold hover:underline"
-											href={item.path}
-											onclick={(event) => void openNotification(event, item)}>{item.title}</a
-										>
-										<p class="mt-1 text-sm text-muted-foreground">{item.body}</p>
-										<time class="mt-2 block text-xs text-muted-foreground" datetime={item.createdAt}
-											>{new Date(item.createdAt).toLocaleString()}</time
-										>
+							<button
+								class="min-h-11 justify-self-start rounded-md bg-primary px-4 text-primary-foreground disabled:opacity-50"
+								disabled={!status.available ||
+									capability() === 'denied' ||
+									capability() === 'insecure' ||
+									capability() === 'unavailable' ||
+									capability() === 'push-unavailable'}
+								onclick={enableSystemNotifications}>Enable system notifications</button
+							>
+							{#if settingsNotice}<p class="text-sm" role="status">{settingsNotice}</p>{/if}
+						</section>
+
+						<section class="grid gap-3 rounded-xl border border-border p-5">
+							<h2 class="font-semibold">Foreground behavior</h2>
+							<label class="flex min-h-11 items-center gap-3"
+								><input
+									type="checkbox"
+									bind:checked={foregroundEnabled}
+									onchange={() => localStorage.setItem(foregroundKey, String(foregroundEnabled))}
+								/><span>Show browser notifications while HUE is open</span></label
+							>
+							<label class="flex min-h-11 items-center gap-3"
+								><input
+									type="checkbox"
+									checked={soundEnabled}
+									onchange={(event) => void toggleSound(event.currentTarget.checked)}
+								/><span>Foreground sound</span></label
+							>
+							<p class="text-sm text-muted-foreground">
+								Sound starts only after this explicit opt-in user gesture. Background PWA sound
+								follows browser and operating-system settings; HUE cannot choose or bypass it.
+							</p>
+							<p class="text-sm text-muted-foreground">
+								Wear OS mirroring is best effort and controlled by phone, browser, and watch
+								notification settings.
+							</p>
+						</section>
+
+						<section class="grid gap-3 rounded-xl border border-border p-5">
+							<h2 class="font-semibold">Devices</h2>
+							{#if endpoints.length === 0}<p class="text-sm text-muted-foreground">
+									No subscribed devices.
+								</p>{/if}
+							{#each endpoints as endpoint (endpoint.id)}
+								<div class="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3">
+									<div class="min-w-40 flex-1">
+										<strong>{endpoint.name}</strong>
+										<p class="text-xs text-muted-foreground">
+											{endpoint.revokedAt ? 'Revoked' : endpoint.enabled ? 'Enabled' : 'Disabled'}
+										</p>
 									</div>
-								</div>
-								<div class="mt-3 flex flex-wrap justify-end gap-2">
-									{#if !item.readAt}<button
-											class="min-h-11 rounded-md border border-border px-3"
-											onclick={() => void mutate(item.id, 'read')}>Mark read</button
-										>{/if}<button
+									<button
 										class="min-h-11 rounded-md border border-border px-3"
-										onclick={() => void mutate(item.id, 'dismissed')}
-										><X class="mr-1 inline size-4" aria-hidden="true" />Dismiss</button
+										onclick={() => {
+											const name = window.prompt('Device name', endpoint.name);
+											if (name) void updateEndpoint(endpoint, { name });
+										}}>Rename</button
+									>
+									<button
+										class="min-h-11 rounded-md border border-border px-3"
+										onclick={() => void updateEndpoint(endpoint, { enabled: !endpoint.enabled })}
+										>{endpoint.enabled ? 'Disable' : 'Enable'}</button
+									>
+									<button
+										class="min-h-11 rounded-md border border-border px-3"
+										onclick={() => void updateEndpoint(endpoint, { revoke: true })}>Revoke</button
+									>
+									<button
+										class="grid size-11 place-items-center rounded-md border border-destructive/50 text-destructive"
+										aria-label={`Delete ${endpoint.name}`}
+										title={`Delete ${endpoint.name}`}
+										onclick={() => void deleteEndpoint(endpoint)}
+										><Trash2 class="size-4" aria-hidden="true" /></button
 									>
 								</div>
-							</li>
-						{/each}
-					</ul>
-					{#if nextCursor}<button
-							class="mx-auto mt-5 block min-h-11 rounded-md border border-border px-4"
-							onclick={() => void refresh(false)}>Load more</button
+							{/each}
+						</section>
+					</div>
+				</div>
+			{:else}
+				<div class="flex min-h-14 items-center gap-2 border-b border-border px-5 max-[700px]:px-3">
+					<button
+						class="min-h-11 rounded-md px-3"
+						class:bg-accent={view === 'unread'}
+						aria-pressed={view === 'unread'}
+						onclick={() => {
+							view = 'unread';
+							void refresh();
+						}}
+						>Unread <span
+							class="ml-1 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground"
+							>{unread}</span
+						></button
+					>
+					<button
+						class="min-h-11 rounded-md px-3"
+						class:bg-accent={view === 'all'}
+						aria-pressed={view === 'all'}
+						onclick={() => {
+							view = 'all';
+							void refresh();
+						}}>All</button
+					>
+					{#if unread > 0}<button
+							class="ml-auto min-h-11 rounded-md border border-border px-3 disabled:opacity-50"
+							disabled={markingAllRead}
+							onclick={() => void markAllRead()}>Mark all read</button
 						>{/if}
-				{/if}
-			</div>
-		{/if}
-	</section>
+				</div>
+				<div class="flex-1 overflow-auto p-[clamp(12px,3vw,36px)]" aria-live="polite">
+					{#if centerState.view === 'loading'}
+						<p class="mx-auto mt-16 max-w-xl text-center text-muted-foreground">
+							Loading notifications…
+						</p>
+					{:else if centerState.view === 'error'}
+						<div class="mx-auto mt-16 grid max-w-xl justify-items-center gap-3 text-center">
+							<Bell class="size-8" aria-hidden="true" />
+							<p>Unable to load notifications</p>
+							<button
+								class="min-h-11 rounded-md border border-border px-4"
+								onclick={() => void refresh()}>Try again</button
+							>
+						</div>
+					{:else if centerState.view === 'empty'}
+						<div
+							class="mx-auto mt-16 grid max-w-xl justify-items-center gap-3 text-center text-muted-foreground"
+						>
+							<Check class="size-8" aria-hidden="true" />
+							<p>No notifications</p>
+							<p class="text-sm">New outcomes and requests will appear here.</p>
+						</div>
+					{:else}
+						<ul class="mx-auto grid max-w-3xl gap-3">
+							{#each items as item (item.id)}
+								<li
+									class="rounded-xl border border-border bg-card p-4"
+									class:opacity-65={Boolean(item.readAt || item.dismissedAt)}
+								>
+									<div class="flex items-start gap-3">
+										<span
+											class="mt-1 size-2.5 shrink-0 rounded-full"
+											class:bg-destructive={item.priority === 'high'}
+											class:bg-primary={item.priority === 'normal'}
+											aria-hidden="true"
+										></span>
+										<div class="min-w-0 flex-1">
+											<a
+												class="font-semibold hover:underline"
+												href={item.path}
+												onclick={(event) => void openNotification(event, item)}>{item.title}</a
+											>
+											<p class="mt-1 text-sm text-muted-foreground">{item.body}</p>
+											<time
+												class="mt-2 block text-xs text-muted-foreground"
+												datetime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time
+											>
+										</div>
+									</div>
+									<div class="mt-3 flex flex-wrap justify-end gap-2">
+										{#if !item.readAt}<button
+												class="min-h-11 rounded-md border border-border px-3"
+												onclick={() => void mutate(item.id, 'read')}>Mark read</button
+											>{/if}<button
+											class="min-h-11 rounded-md border border-border px-3"
+											onclick={() => void mutate(item.id, 'dismissed')}
+											><X class="mr-1 inline size-4" aria-hidden="true" />Dismiss</button
+										>
+									</div>
+								</li>
+							{/each}
+						</ul>
+						{#if nextCursor}<button
+								class="mx-auto mt-5 block min-h-11 rounded-md border border-border px-4"
+								onclick={() => void refresh(false)}>Load more</button
+							>{/if}
+					{/if}
+				</div>
+			{/if}
+		</section>
+	</dialog>
 {/if}
