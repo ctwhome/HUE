@@ -103,6 +103,13 @@ export class DeliveryUncertainError extends Error {
 	}
 }
 
+export class TurnCancelledError extends Error {
+	constructor() {
+		super('Turn cancelled by user');
+		this.name = 'TurnCancelledError';
+	}
+}
+
 export class MessageDispatcher {
 	private readonly queues = new Map<string, Promise<void>>();
 	private readonly recovering = new Set<string>();
@@ -352,6 +359,10 @@ export class MessageDispatcher {
 			this.deliverAttention();
 		} catch (error) {
 			this.cancelInteractions(envelope.id);
+			if (error instanceof TurnCancelledError) {
+				this.store.transitionCancelledMessage(envelope.id);
+				return;
+			}
 			const message = error instanceof Error ? error.message : String(error);
 			const uncertain =
 				this.store.getMessage(envelope.id)?.status === 'running' &&

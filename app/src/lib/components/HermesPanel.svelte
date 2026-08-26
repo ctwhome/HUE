@@ -150,6 +150,9 @@
 						? '/api/hermes/mcp'
 						: `/api/hermes?view=${next}`
 			);
+			if (next === 'runtime') {
+				result.diagnostics = await api<Record<string, any>>('/api/runtime');
+			}
 			if (request !== requestGeneration) return;
 			normalize(next, result);
 		} catch (cause) {
@@ -157,6 +160,20 @@
 				error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
 			if (request === requestGeneration) loading = false;
+		}
+	}
+
+	async function backup() {
+		loading = true;
+		error = '';
+		try {
+			const result = await api<{ backup: Record<string, any> }>('/api/runtime', { method: 'POST' });
+			data = { ...data, backup: result.backup };
+			notice = `Validated HUE backup created at ${result.backup.path}`;
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			loading = false;
 		}
 	}
 
@@ -422,7 +439,7 @@
 			{:else if view === 'commands'}
 				<InventoryView {view} {commands} profiles={[]} servers={[]} {oncommand} />
 			{:else}
-				<AdminResourceView {view} {data} onaction={action} />
+				<AdminResourceView {view} {data} onaction={action} onbackup={backup} />
 			{/if}
 		</div>
 	</section>

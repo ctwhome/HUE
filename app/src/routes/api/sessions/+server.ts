@@ -30,7 +30,9 @@ export const GET: RequestHandler = async ({ url }) => {
 							: `Restore the Session folder at ${stored.cwd} to resume it.`,
 						busySince: busyStarts[stored.sessionId] ?? null,
 						attention: indicators[stored.sessionId]?.attention ?? false,
-						error: indicators[stored.sessionId]?.error ?? false
+						error: indicators[stored.sessionId]?.error ?? false,
+						status: indicators[stored.sessionId]?.status ?? null,
+						unreadAttention: indicators[stored.sessionId]?.unreadAttention ?? false
 					}
 				],
 				hasMore: false
@@ -65,7 +67,9 @@ export const GET: RequestHandler = async ({ url }) => {
 					recovery: runtime ? null : `Restore the Session folder at ${stored.cwd} to resume it.`,
 					busySince: busyStarts[stored.sessionId] ?? null,
 					attention: indicators[stored.sessionId]?.attention ?? false,
-					error: indicators[stored.sessionId]?.error ?? false
+					error: indicators[stored.sessionId]?.error ?? false,
+					status: indicators[stored.sessionId]?.status ?? null,
+					unreadAttention: indicators[stored.sessionId]?.unreadAttention ?? false
 				};
 			}),
 			hasMore: page.hasMore

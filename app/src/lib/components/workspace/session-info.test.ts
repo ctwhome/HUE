@@ -79,3 +79,170 @@ test('saving other session metadata only includes a title when it changed', asyn
 
 	expect(JSON.parse(String(request?.body))).not.toContainKey('title');
 });
+
+test('workflow mutations remain scoped to the selected project', async () => {
+	const requests: Array<{ path: string; method: string; body: Record<string, unknown> }> = [];
+	const state = new WorkspaceNavigation(
+		{ id: 'hue', rootAvailable: true } as never,
+		{
+			api: async (path: string, options?: RequestInit) => {
+				requests.push({
+					path,
+					method: options?.method ?? 'GET',
+					body: options?.body ? JSON.parse(String(options.body)) : {}
+				});
+				if (options?.method === 'DELETE') return { deleted: true };
+				return {
+					workflow: {
+						id: options?.method === 'POST' ? 'release-copy' : 'release',
+						name: 'Ship release',
+						prompt: 'Run checks.',
+						profile: 'default',
+						workMode: 'live',
+						archived: false
+					}
+				};
+			},
+			setError() {}
+		} as never
+	);
+	state.workflows = [
+		{
+			id: 'release',
+			name: 'Prepare release',
+			prompt: 'Old prompt',
+			profile: 'default',
+			workMode: 'autonomous',
+			archived: false
+		}
+	];
+
+	await state.updateWorkflow(state.workflows[0], {
+		name: 'Ship release',
+		prompt: 'Run checks.',
+		profile: 'default',
+		workMode: 'live'
+	});
+	await state.duplicateWorkflow(state.workflows[0]);
+	await state.deleteWorkflow(state.workflows[0]);
+
+	expect(requests).toEqual([
+		{
+			path: '/api/projects/hue/workflows/release',
+			method: 'PATCH',
+			body: {
+				name: 'Ship release',
+				prompt: 'Run checks.',
+				profile: 'default',
+				workMode: 'live'
+			}
+		},
+		{
+			path: '/api/projects/hue/workflows',
+			method: 'POST',
+			body: {
+				name: 'Ship release copy',
+				prompt: 'Run checks.',
+				profile: 'default',
+				workMode: 'live'
+			}
+		},
+		{ path: '/api/projects/hue/workflows/release', method: 'DELETE', body: {} }
+	]);
+	expect(state.workflows).toEqual([expect.objectContaining({ id: 'release-copy' })]);
+});
+
+test('workflow launch applies its work mode before sending the saved prompt', async () => {
+	const calls: string[] = [];
+	let createBody = {};
+	let launchError = '';
+	const state = new WorkspaceNavigation(
+		{ id: 'hue', rootAvailable: true } as never,
+		{
+			api: async (path: string, options?: RequestInit) => {
+				calls.push(`${options?.method ?? 'GET'} ${path}`);
+				if (options?.method === 'POST') createBody = JSON.parse(String(options.body));
+				return options?.method === 'POST'
+					? { session: { sessionId: 'new', cwd: '/work', workMode: 'autonomous' } }
+					: { workMode: 'live' };
+			},
+			getRuntimeProfile: () => 'default',
+			guard: () => false,
+			endVoice() {},
+			saveDraft() {},
+			cacheSession() {},
+			setLoading() {},
+			persistSelection() {},
+			applyCreatedSession() {},
+			setError: (message: string) => (launchError = message),
+			restoreDraft() {},
+			focusComposer() {},
+			sendText: async (text: string) => {
+				calls.push(`SEND ${text}`);
+				return true;
+			}
+		} as never
+	);
+	state.persistSelection = () => {};
+
+	await state.runWorkflow({
+		id: 'release',
+		name: 'Release',
+		prompt: 'Run checks.',
+		profile: 'default',
+		workMode: 'live',
+		archived: false
+	});
+
+	expect(launchError).toBe('');
+	expect(calls).toEqual(['POST /api/projects/hue/sessions', 'SEND Run checks.']);
+	expect(createBody).toEqual({ workMode: 'live' });
+});
+
+test('workflow launch does not create a session under the wrong Hermes profile', async () => {
+	let error = '';
+	const state = new WorkspaceNavigation(
+		{ id: 'hue', rootAvailable: true } as never,
+		{
+			guard: () => false,
+			getRuntimeProfile: () => 'default',
+			setError: (message: string) => (error = message)
+		} as never
+	);
+
+	await state.runWorkflow({
+		id: 'release',
+		name: 'Release',
+		prompt: 'Run checks.',
+		profile: 'work',
+		workMode: 'autonomous',
+		archived: false
+	});
+
+	expect(error).toContain('HUE_HERMES_PROFILE=work');
+});
+
+test('workflow mutation response cannot overwrite a newly selected project', async () => {
+	let resolve!: (value: unknown) => void;
+	const response = new Promise((done) => (resolve = done));
+	const state = new WorkspaceNavigation(
+		{ id: 'one', rootAvailable: true } as never,
+		{ api: async () => response, setError() {} } as never
+	);
+	const workflow = {
+		id: 'same-id',
+		name: 'Project one',
+		prompt: 'One',
+		profile: 'default',
+		workMode: 'autonomous',
+		archived: false
+	} as const;
+	state.workflows = [workflow];
+	const updating = state.updateWorkflow(workflow, { name: 'Updated one' });
+	state.selectedProject = { id: 'two', rootAvailable: true } as never;
+	state.workflows = [{ ...workflow, name: 'Project two' }];
+	resolve({ workflow: { ...workflow, name: 'Updated one' } });
+
+	await updating;
+	expect(state.workflows[0].name).toBe('Project two');
+});

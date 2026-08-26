@@ -62,7 +62,10 @@ Use a container only when Hermes, HUE, every required repository, and the suppor
 - `HUE_DATABASE_PATH` changes the HUE database location.
 - `HUE_HERMES_PROFILE` selects the Hermes profile; the default is `default`.
 - `HUE_HERMES_COMMAND` selects a non-standard Hermes executable path.
+- `HUE_ACCESS_SECRET` enables authenticated non-loopback browser access; without it, only loopback clients can access HUE data.
 - Project folders and Hermes data remain local unless the user configures external services.
+
+Remote access requires HTTPS through a trusted LAN/tailnet proxy and an exact public `ORIGIN`. See [`app/README.md`](app/README.md#authenticated-lan-or-tailnet-access) for setup and security warnings. Never expose HUE directly to the public internet.
 
 ## Development
 

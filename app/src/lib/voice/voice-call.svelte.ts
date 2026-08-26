@@ -332,7 +332,11 @@ export function createVoiceCall(options: VoiceCallOptions) {
 				responseText += String(event.payload.text ?? '');
 				queueSpeech(false);
 			}
-			if (['message.completed', 'message.failed', 'message.unknown'].includes(event.type)) {
+			if (
+				['message.completed', 'message.failed', 'message.unknown', 'message.cancelled'].includes(
+					event.type
+				)
+			) {
 				queueSpeech(true);
 				finished = true;
 			}

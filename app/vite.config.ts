@@ -41,7 +41,8 @@ export default defineConfig({
 	server: {
 		host: '127.0.0.1',
 		port: 4010,
-		strictPort: true
+		strictPort: true,
+		allowedHosts: ['m3-max.tail33436f.ts.net']
 	},
 	optimizeDeps: {
 		rolldownOptions: { plugins: [disableSanitizeHtmlPostcss] }

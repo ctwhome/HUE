@@ -1,0 +1,48 @@
+import { json } from '@sveltejs/kit';
+import { parseWorkMode } from '$lib/work-mode';
+import { authoritativeProject, services } from '$lib/server/services';
+import type { Workflow } from '$lib/server/store';
+import type { RequestHandler } from './$types';
+
+export const PATCH: RequestHandler = async ({ params, request }) => {
+	try {
+		const project = await authoritativeProject(params.projectId);
+		const body = (await request.json()) as Record<string, unknown>;
+		const patch: Partial<Pick<Workflow, 'name' | 'prompt' | 'profile' | 'workMode' | 'archived'>> =
+			{};
+		for (const field of ['name', 'prompt', 'profile'] as const) {
+			if (field in body) {
+				if (typeof body[field] !== 'string' || !body[field].trim())
+					return json({ error: `${field} is required` }, { status: 400 });
+				patch[field] = body[field].trim();
+			}
+		}
+		if ('workMode' in body) {
+			const workMode = parseWorkMode(body.workMode);
+			if (!workMode) return json({ error: 'Invalid work mode' }, { status: 400 });
+			patch.workMode = workMode;
+		}
+		if ('archived' in body) {
+			if (typeof body.archived !== 'boolean')
+				return json({ error: 'archived must be a boolean' }, { status: 400 });
+			patch.archived = body.archived;
+		}
+		if (!Object.keys(patch).length)
+			return json({ error: 'No workflow changes supplied' }, { status: 400 });
+		const workflow = services().store.updateWorkflow(project.id, params.workflowId, patch);
+		return workflow ? json({ workflow }) : json({ error: 'Workflow not found' }, { status: 404 });
+	} catch (cause) {
+		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 400 });
+	}
+};
+
+export const DELETE: RequestHandler = async ({ params }) => {
+	try {
+		const project = await authoritativeProject(params.projectId);
+		return services().store.deleteWorkflow(project.id, params.workflowId)
+			? json({ deleted: true })
+			: json({ error: 'Workflow not found' }, { status: 404 });
+	} catch (cause) {
+		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 400 });
+	}
+};
