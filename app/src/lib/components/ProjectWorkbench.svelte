@@ -258,7 +258,7 @@
 		</nav>
 		<div class="relative min-h-0 flex-1">
 			{#if filesMounted}<div
-					class="absolute inset-0 p-2.5"
+					class="absolute inset-0 px-2.5 pt-2.5"
 					class:invisible={view !== 'files'}
 					class:pointer-events-none={view !== 'files'}
 					aria-hidden={view !== 'files'}
@@ -266,7 +266,7 @@
 					<FilesPanel {projectId} {fileRequest} {dirtyGuard} />
 				</div>{/if}
 			<div
-				class="project-workbench absolute inset-0 grid min-h-0 min-w-0 gap-2.5 p-2.5"
+				class="project-workbench absolute inset-0 grid min-h-0 min-w-0 gap-2.5 px-2.5 pt-2.5"
 				class:compact={compact || docked}
 				class:invisible={view !== 'develop'}
 				class:pointer-events-none={view !== 'develop'}

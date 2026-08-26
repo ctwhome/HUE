@@ -98,7 +98,7 @@
 		onpointercancel={finishResize}
 		onkeydown={resizeWithKeyboard}
 	></div>{/if}
-	<section aria-hidden={!open} inert={!open ? true : undefined} class="min-h-0 flex-1 p-2.5">
+	<section aria-hidden={!open} inert={!open ? true : undefined} class="min-h-0 flex-1 px-2.5 pt-2.5">
 		{#if mounted}<FilesPanel {projectId} {fileRequest} {dirtyGuard} />{/if}
 	</section>
 </aside>

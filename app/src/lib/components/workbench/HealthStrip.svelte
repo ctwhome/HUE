@@ -67,7 +67,7 @@
 </script>
 
 <section
-	class="project-status-bar flex min-w-0 items-center overflow-x-auto border-t text-[11px] whitespace-nowrap"
+	class="project-status-bar flex min-w-0 items-center overflow-x-auto text-[11px] whitespace-nowrap"
 	style={color
 		? `--project-status-color: ${color}; --project-status-foreground: ${projectColorForeground(color)}`
 		: undefined}

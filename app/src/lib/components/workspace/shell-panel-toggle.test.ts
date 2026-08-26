@@ -3,16 +3,16 @@ import { readFileSync } from 'node:fs';
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
-test('desktop navigation toggles the Projects and Sessions panels independently', () => {
+test('the active Project toggles Sessions without a collapsed Sessions column', () => {
 	const workspace = read('../Workspace.svelte');
-	const navigation = read('../GlobalNavigation.svelte');
+	const projectRail = read('./ProjectRail.svelte');
 	const styles = `${read('../../../styles/workspace-forms.css')}\n${read('../../../styles/responsive.css')}`;
 
-	expect(navigation).toContain("panel: 'projects' | 'sessions'");
-	expect(navigation).toContain("label={`${projectsOpen ? 'Hide' : 'Show'} Projects panel`}");
-	expect(navigation).toContain("label={`${sessionsOpen ? 'Hide' : 'Show'} Sessions panel`}");
-	expect(workspace).toContain('class:projects-panel-closed={!projectsPanelOpen}');
-	expect(workspace).toContain('class:sessions-panel-closed={!sessionsPanelOpen}');
-	expect(styles).toContain('.workspace.projects-panel-closed');
-	expect(styles).toContain('.workspace.sessions-panel-closed');
+	expect(workspace).toContain('function chooseProjectFromRail(project: Project | null)');
+	expect(workspace).toContain('onchoose={chooseProjectFromRail}');
+	expect(workspace).not.toContain('class="panel-reopen-tab sessions"');
+	expect(projectRail).toContain("aria-controls={selectedProject?.id === project.id ? 'session-drawer' : undefined}");
+	expect(projectRail).toContain('aria-expanded={selectedProject?.id === project.id ? sessionsOpen : undefined}');
+	expect(styles).toContain('.workspace.sessions-panel-closed > .session-workspace');
+	expect(styles).not.toContain('40px minmax(0, 1fr)');
 });

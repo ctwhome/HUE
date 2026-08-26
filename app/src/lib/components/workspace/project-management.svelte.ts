@@ -302,6 +302,46 @@ export class ProjectManagement {
 		}
 	};
 
+	createProjectSection = async (name: string, projectIds: string[]) => {
+		const group = name.trim();
+		if (!group || !projectIds.length) return false;
+		this.projectSaving = true;
+		this.projectEditError = '';
+		try {
+			for (const id of projectIds) {
+				const body = await this.options.api<{ project: Project }>(`/api/projects/${id}`, {
+					method: 'PATCH',
+					body: JSON.stringify({ action: 'set_group', group })
+				});
+				this.applyProject(body.project);
+			}
+			return true;
+		} catch (cause) {
+			this.projectEditError = cause instanceof Error ? cause.message : String(cause);
+			return false;
+		} finally {
+			this.projectSaving = false;
+		}
+	};
+
+	moveProjectToSection = async (projectId: string, group: string | null) => {
+		this.projectSaving = true;
+		this.projectEditError = '';
+		try {
+			const body = await this.options.api<{ project: Project }>(`/api/projects/${projectId}`, {
+				method: 'PATCH',
+				body: JSON.stringify({ action: 'set_group', group })
+			});
+			this.applyProject(body.project);
+			return true;
+		} catch (cause) {
+			this.projectEditError = cause instanceof Error ? cause.message : String(cause);
+			return false;
+		} finally {
+			this.projectSaving = false;
+		}
+	};
+
 	saveProject = async () => {
 		if (!this.editingProject || !this.projectName.trim()) return;
 		this.projectSaving = true;

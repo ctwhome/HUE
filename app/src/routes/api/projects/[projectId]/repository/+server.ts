@@ -10,12 +10,14 @@ import {
 	type ProjectRepositoryAction
 } from '$lib/server/services';
 import { generateHermesCommitMessage } from '$lib/server/hermes-cli';
+import { realpathSync } from 'node:fs';
+import { basename, relative, sep } from 'node:path';
 import type { RequestHandler } from './$types';
 
 function repositoryResponse(
 	repositoryRoot: string,
 	repositoryPath: string,
-	repositories: Array<{ path: string }>
+	repositories: Array<{ path: string; label: string }>
 ) {
 	const status = projectRepository(repositoryRoot);
 	return {
@@ -53,10 +55,31 @@ export function _selectedRepositoryPath(
 	return repositories.some(({ path }) => path === selected) ? selected : repositories[0]?.path;
 }
 
+export function _projectFolderRepositories(
+	primaryPath: string,
+	folders: string[]
+): Array<{ path: string; label: string }> {
+	const seen = new Set<string>();
+	const primary = realpathSync(primaryPath);
+	return folders.flatMap((folder) => {
+		const repositories = projectRepositories(folder);
+		return repositories.flatMap((repository) => {
+			const root = resolveProjectRepository(folder, repository.path, repositories);
+			if (seen.has(root)) return [];
+			seen.add(root);
+			const path = relative(primary, root);
+			return [{ path: path ? path.split(sep).join('/') : '.', label: basename(root) }];
+		});
+	});
+}
+
 export const GET: RequestHandler = async ({ params, url }) => {
 	try {
 		const project = await authoritativeProject(params.projectId);
-		const repositories = projectRepositories(project.primary_path);
+		const repositories = _projectFolderRepositories(
+			project.primary_path,
+			project.folders.map(({ path }) => path)
+		);
 		const selected = _selectedRepositoryPath(
 			repositories,
 			url.searchParams.get('repository') ?? undefined
@@ -81,7 +104,10 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 		const operation = (await request.json()) as
 			| (ProjectRepositoryAction & { repository?: string })
 			| { action: 'generateCommitMessage'; provider?: string; model?: string; repository?: string };
-		const repositories = projectRepositories(project.primary_path);
+		const repositories = _projectFolderRepositories(
+			project.primary_path,
+			project.folders.map(({ path }) => path)
+		);
 		const repositoryRoot = resolveProjectRepository(
 			project.primary_path,
 			operation.repository,

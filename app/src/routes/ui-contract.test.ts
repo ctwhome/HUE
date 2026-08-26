@@ -424,7 +424,7 @@ test('Project tools stay embedded with Sessions and collapse to an accessible do
 	expect(workspace.indexOf('--project-shell-color')).toBeLessThan(
 		workspace.indexOf('class="session-workspace')
 	);
-	expect(styles).toContain('margin: 10px 0 10px 10px');
+	expect(styles).toContain('margin: var(--panel-gap) 0 var(--panel-gap) var(--panel-gap)');
 	expect(workspace).toContain('docked={true}');
 	for (const tool of ['Browser', 'Terminal', 'Git', 'Files'])
 		expect(projectWorkbench).toContain(tool);
@@ -432,7 +432,7 @@ test('Project tools stay embedded with Sessions and collapse to an accessible do
 	expect(projectWorkbench).toContain('aria-expanded={open && activeTool === tool.id}');
 	expect(projectWorkbench).toContain('aria-label="Resize project tools"');
 	expect(styles).toMatch(/\.project-tool-rail\s*\{[^}]*position: fixed;/s);
-	expect(styles).toContain('padding-inline: 5px');
+	expect(styles).toContain('padding-inline: calc(var(--panel-gap) / 2)');
 	expect(projectWorkbench).toContain('onpointerdown={startResize}');
 	expect(projectWorkbench).not.toContain('Math.min(720');
 	expect(projectWorkbench).toContain('localStorage.setItem(`hue:project-tools:${projectId}:width`');
@@ -466,13 +466,20 @@ test('Project tools stay embedded with Sessions and collapse to an accessible do
 	expect(workspace).toContain('pendingSessionDraft');
 });
 
+test('workspace windows use restrained global gutters', () => {
+	expect(styles).toContain('--panel-gap: 0.5rem');
+	expect(styles).toContain('margin-block: var(--panel-gap)');
+	expect(styles).toContain('padding-right: calc(var(--panel-gap) / 2)');
+});
+
 test('Projects and Sessions own their panel visibility controls', () => {
 	expect(navigation).not.toContain('Hide Projects panel');
 	expect(navigation).not.toContain('Hide Sessions panel');
 	expect(projectRail).toContain('aria-label="Hide Projects panel"');
 	expect(contextPanel).toContain('aria-label="Hide Sessions panel"');
 	expect(workspace).toContain('aria-label="Show Projects panel"');
-	expect(workspace).toContain('aria-label="Show Sessions panel"');
+	expect(workspace).not.toContain('aria-label="Show Sessions panel"');
+	expect(projectRail).toContain("aria-controls={selectedProject?.id === project.id ? 'session-drawer' : undefined}");
 	expect(workspace).toContain('aria-label="Collapsed Projects"');
 	expect(workspace).toContain('{#each projectManagement.projects as project');
 	expect(styles).toContain('grid-template-columns: 56px 48px');
@@ -632,6 +639,12 @@ test('sessions and Projects share one floating icon editor from settings and vis
 
 test('Project groups expose editable, persistent, accessible collapsible headings', () => {
 	const projectRail = read('../lib/components/workspace/ProjectRail.svelte');
+	expect(projectRail).toContain('aria-label="Add Project section"');
+	expect(projectRail).toContain('aria-labelledby="add-project-section-title"');
+	expect(projectRail).toContain('Create section');
+	expect(projectRail).toContain('draggable="true"');
+	expect(projectRail).toContain('ondrop={(event) => dropProject(event, group.label!)}');
+	expect(projectRail).toContain('Move to ungrouped');
 	expect(projectRail).toContain('Group label');
 	expect(projectRail).toContain('<datalist');
 	expect(projectRail).toContain('aria-expanded={!collapsedGroups.has(group.label)}');
@@ -803,6 +816,12 @@ test('current Project health stays in one shell-level bottom status bar', () => 
 	expect(workspace).toContain('color={selectedProject.color}');
 	expect(healthStrip).toContain('projectColorForeground');
 	expect(healthStrip).toContain('--project-status-color');
+	expect(healthStrip).not.toContain('overflow-x-auto border-t');
+	expect(projectBrowserDock).toContain('class="min-h-0 flex-1 px-2.5 pt-2.5"');
+	expect(projectFilesDock).toContain('class="min-h-0 flex-1 px-2.5 pt-2.5"');
+	expect(read('../styles/session-panes.css')).toMatch(
+		/\.session-pane-grid\[data-pane-count='1'\]\s*\{[^}]*padding: var\(--panel-gap\) var\(--panel-gap\) 0;/s
+	);
 	expect(projectRail).toContain('aria-label="Project status bar color"');
 });
 
