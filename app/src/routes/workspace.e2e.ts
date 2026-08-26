@@ -157,7 +157,8 @@ async function addProject(page: import('@playwright/test').Page) {
 	await openMobileProjects(page);
 	const existing = page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' });
 	if (await existing.count()) {
-		await existing.click({ position: { x: 80, y: 22 } });
+		if ((await existing.getAttribute('aria-current')) !== 'page')
+			await existing.click({ position: { x: 80, y: 22 } });
 		return;
 	}
 	const response = await page.request.post('/api/projects', {
@@ -170,10 +171,9 @@ async function addProject(page: import('@playwright/test').Page) {
 	if (!response.ok()) throw new Error(`${response.status()}: ${await response.text()}`);
 	await page.goto('/');
 	await openMobileProjects(page);
-	await page
-		.locator('.project-rail nav .project-select')
-		.filter({ hasText: 'HUE' })
-		.click({ position: { x: 80, y: 22 } });
+	const created = page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' });
+	if ((await created.getAttribute('aria-current')) !== 'page')
+		await created.click({ position: { x: 80, y: 22 } });
 }
 
 async function removeProjects(page: import('@playwright/test').Page) {
@@ -199,6 +199,47 @@ async function chooseHermesSection(
 test.beforeEach(async ({ page }) => {
 	await mockTerminalRequests(page);
 	await mockDefaultSessionRequests(page);
+});
+
+test('the active Project toggles Sessions without reserving a collapsed column', async (
+	{ page },
+	testInfo
+) => {
+	await page.setViewportSize(viewports[0]);
+	await addProject(page);
+	const project = page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' });
+	const sessions = page.getByRole('complementary', { name: 'Project contents' });
+
+	for (const viewport of viewports.slice(0, 2)) {
+		await page.setViewportSize(viewport);
+		await expect(project).toHaveAttribute('aria-expanded', 'true');
+		await project.click({ position: { x: viewport.width <= 1200 ? 5 : 80, y: 22 } });
+		await expect(project).toHaveAttribute('aria-expanded', 'false');
+		await expect(sessions).toBeHidden();
+		await expect(page.getByRole('button', { name: 'Show Sessions panel' })).toHaveCount(0);
+		expect(
+			await page.locator('.workspace').evaluate((element) =>
+				getComputedStyle(element).gridTemplateColumns.split(' ').filter(Boolean).length
+			)
+		).toBe(3);
+		await testInfo.attach(`project-session-toggle-${viewport.width}x${viewport.height}`, {
+			body: await page.screenshot(),
+			contentType: 'image/png'
+		});
+		await project.click({ position: { x: viewport.width <= 1200 ? 5 : 80, y: 22 } });
+		await expect(project).toHaveAttribute('aria-expanded', 'true');
+		await expect(sessions).toBeVisible();
+	}
+
+	for (const viewport of viewports.slice(2)) {
+		await page.setViewportSize(viewport);
+		await openMobileProjects(page);
+		await project.click({ position: { x: 80, y: 22 } });
+		await expect(sessions).toBeVisible();
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+	}
 });
 
 test('drags Sessions into independently interactive resizable chat panes', async ({ page }) => {
@@ -4134,12 +4175,10 @@ test('starts and revisits a session without a project', async ({ page }) => {
 			.getByRole('button', { name: 'Projects' });
 		if (await projectsMenu.isVisible()) await projectsMenu.click();
 		const expectedCreations = creations + 1;
-		await page.getByRole('button', { name: 'New session without a project' }).click();
+		await page.getByRole('button', { name: 'New General session' }).click();
 		await expect.poll(() => creations).toBe(expectedCreations);
 		await expect(page.getByRole('heading', { name: 'Start this Hermes Session' })).toBeVisible();
-		await expect(
-			page.locator(viewport.width <= 700 ? '.mobile-session-context' : '.desktop-session-context')
-		).toHaveText(/No project/);
+		await expect(page.locator('.projectless-row .project-select')).toHaveText('General');
 		await expect(page.getByLabel('Message Hermes')).toBeFocused();
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width

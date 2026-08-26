@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { Diamond, Folder, FolderKanban, List } from 'lucide-svelte';
+	import { Diamond, Folder, FolderKanban } from 'lucide-svelte';
 	import { formatElapsed, isTurnBusy, selectLatestPlan, selectTranscriptTimeline } from '$lib';
 	import { automaticSessionIcon } from '$lib/icon';
 	import { applyPreferences, readPreferences } from '$lib/preferences';
@@ -256,6 +256,18 @@
 	});
 	voiceRef.current = voice;
 	let selectedProject = $derived(navigation.selectedProject);
+	function chooseProjectFromRail(project: Project | null) {
+		if (mobile) {
+			void navigation.chooseProject(project);
+			return;
+		}
+		if ((selectedProject?.id ?? null) === (project?.id ?? null)) {
+			sessionsPanelOpen = !sessionsPanelOpen;
+			return;
+		}
+		sessionsPanelOpen = true;
+		void navigation.chooseProject(project);
+	}
 	let panelProjectId = $derived(selectedProject?.id ?? '');
 	let sessions = $derived(navigation.sessions);
 	let workflows = $derived(navigation.workflows);
@@ -396,7 +408,7 @@
 		ontoggle={(pane, trigger) => mobileShell?.toggle(pane, trigger)}
 		onclose={() => mobileShell?.close()}
 		onnotifications={() => setGlobalView('notifications')}
-		onsettings={() => setGlobalView('settings')}
+		onsettings={() => setGlobalView('app-settings')}
 	/>
 	<AttentionCenter
 		open={globalView === 'notifications'}
@@ -405,7 +417,7 @@
 		onclose={() => setGlobalView(null)}
 		oncounts={(count) => (unreadNotifications = count)}
 	/>
-	{#if globalView && globalView !== 'notifications'}<HermesPanel
+	{#if globalView && globalView !== 'notifications'}{#key globalView}<HermesPanel
 			view={globalView}
 			{commands}
 			{dirtyGuard}
@@ -416,13 +428,14 @@
 					void messageState.sendText(`/${command.name}`, [], []);
 				});
 			}}
-		/>{/if}
+		/>{/key}{/if}
 	<ProjectRail
 		bind:element={projectDrawerElement}
 		open={navigation.mobileDrawer === 'projects'}
 		{mobile}
 		projects={projectManagement.projects}
 		{selectedProject}
+		sessionsOpen={sessionsPanelOpen}
 		{projectsCapability}
 		{projectsError}
 		{reconciliationIssues}
@@ -450,7 +463,7 @@
 		primaryFolder={projectManagement.primaryFolder}
 		onprojectless={navigation.createProjectlessSession}
 		onaddopen={projectManagement.openAddProject}
-		onchoose={navigation.chooseProject}
+		onchoose={chooseProjectFromRail}
 		onlocate={projectManagement.openLocateProject}
 		onedit={projectManagement.openEditProject}
 		onicon={projectManagement.openProjectIcon}
@@ -518,29 +531,23 @@
 			>
 			<button
 				class:active={!selectedProject}
-				aria-label="No project"
+				aria-label="General"
 				aria-current={!selectedProject ? 'page' : undefined}
-				title="No project"
-				onclick={() => navigation.chooseProject(null)}><Diamond size={18} aria-hidden="true" /></button
+				title="General"
+				onclick={() => chooseProjectFromRail(null)}><Diamond size={18} aria-hidden="true" /></button
 			>
 			{#each projectManagement.projects as project (project.id)}<button
 					class:active={selectedProject?.id === project.id}
 					aria-label={project.name}
 					aria-current={selectedProject?.id === project.id ? 'page' : undefined}
 					title={project.name}
-					onclick={() => navigation.chooseProject(project)}
+					onclick={() => chooseProjectFromRail(project)}
 				>
 					{#if isImageIcon(project.icon)}<img src={project.icon ?? ''} alt="" />{:else if project.icon}<span
 							>{project.icon}</span
 						>{:else}<Folder size={18} aria-hidden="true" />{/if}
 				</button>{/each}
 		</nav>{/if}
-	{#if !mobile && !sessionsPanelOpen}<button
-			class="panel-reopen-tab sessions"
-			aria-label="Show Sessions panel"
-			title="Show Sessions panel"
-			onclick={() => (sessionsPanelOpen = true)}><List size={17} aria-hidden="true" /></button
-		>{/if}
 	<ShellResizer
 		pane="sessions"
 		aria-label="Resize Sessions"

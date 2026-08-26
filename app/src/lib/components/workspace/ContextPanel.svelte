@@ -3,8 +3,9 @@
 		Archive,
 		ArchiveRestore,
 		ArrowLeft,
-		Ellipsis,
+		EllipsisVertical,
 		Folder,
+		GripVertical,
 		LoaderCircle,
 		PanelLeftClose,
 		Pin,
@@ -12,6 +13,7 @@
 		Search,
 		X
 	} from 'lucide-svelte';
+	import { moveBefore, sortByOrder } from '$lib/drag-order';
 	type Project = {
 		id: string;
 		name: string;
@@ -84,6 +86,29 @@
 		automaticIcon: (title?: string | null) => string;
 		elapsed: (startedAt: string, now: number) => string;
 	} = $props();
+	let sessionOrder = $state<string[]>([]);
+	let draggedSessionId = $state<string | null>(null);
+	let sessionDropTarget = $state<string | null>(null);
+	const orderedSessions = $derived.by(() => {
+		const groups = new Map<string, Session[]>();
+		for (const session of sessions) {
+			const label = group(session);
+			groups.set(label, [...(groups.get(label) ?? []), session]);
+		}
+		return [...groups.values()].flatMap((items) =>
+			sortByOrder(items, sessionOrder, ({ sessionId }) => sessionId)
+		);
+	});
+
+	$effect(() => {
+		try {
+			sessionOrder = JSON.parse(
+				localStorage.getItem(`hue:session-order:${selectedProject?.id ?? 'general'}`) ?? '[]'
+			);
+		} catch {
+			sessionOrder = [];
+		}
+	});
 
 	function group(session: Session): string {
 		if (session.pinned) return 'Pinned';
@@ -94,8 +119,41 @@
 	}
 	function dragSession(event: DragEvent, session: Session) {
 		if (!event.dataTransfer) return;
-		event.dataTransfer.effectAllowed = 'copy';
+		draggedSessionId = session.sessionId;
+		event.dataTransfer.effectAllowed = 'copyMove';
 		event.dataTransfer.setData('application/x-hue-session-id', session.sessionId);
+	}
+
+	function allowSessionDrop(event: DragEvent, session: Session) {
+		const dragged = sessions.find(({ sessionId }) => sessionId === draggedSessionId);
+		if (!dragged || group(dragged) !== group(session)) return;
+		event.preventDefault();
+		sessionDropTarget = session.sessionId;
+		if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+	}
+
+	function dropSession(event: DragEvent, session: Session) {
+		event.preventDefault();
+		const sessionId =
+			event.dataTransfer?.getData('application/x-hue-session-id') || draggedSessionId;
+		if (sessionId) {
+			sessionOrder = moveBefore(
+				sessionOrder.length ? sessionOrder : sessions.map((item) => item.sessionId),
+				sessionId,
+				session.sessionId
+			);
+			localStorage.setItem(
+				`hue:session-order:${selectedProject?.id ?? 'general'}`,
+				JSON.stringify(sessionOrder)
+			);
+		}
+		draggedSessionId = null;
+		sessionDropTarget = null;
+	}
+
+	function finishSessionDrag() {
+		draggedSessionId = null;
+		sessionDropTarget = null;
 	}
 </script>
 
@@ -129,7 +187,7 @@
 						class="title-icon project-icon-default size-(--navigation-icon-size) shrink-0 text-muted-foreground"
 						size={18}
 						aria-hidden="true"
-					/>{/if}{/if}<span class="truncate">{selectedProject?.name ?? 'No project'}</span>
+					/>{/if}{/if}<span class="truncate">{selectedProject?.name ?? 'General'}</span>
 		</h1>
 		{#if mobile}<button
 				class="drawer-close grid size-11 shrink-0 place-items-center rounded-md"
@@ -186,13 +244,19 @@
 			disabled={selectedProject?.rootAvailable === false}
 			><Plus size={18} aria-hidden="true" /> Add new session</button
 		>
-		{#each sessions as session, index (session.sessionId)}
-			{#if index === 0 || group(sessions[index - 1]) !== group(session)}<h2
+		{#each orderedSessions as session, index (session.sessionId)}
+			{#if index === 0 || group(orderedSessions[index - 1]) !== group(session)}<h2
 					class="px-2 pt-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
 				>
 					{group(session)}
 				</h2>{/if}
-			<div class="session-row relative w-full min-w-0">
+			<div
+				class={`session-row relative w-full min-w-0 ${sessionDropTarget === session.sessionId ? 'rounded-md ring-2 ring-ring' : ''}`}
+				role="group"
+				aria-label={`Session ${session.title || 'Untitled session'}`}
+				ondragover={(event) => allowSessionDrop(event, session)}
+				ondrop={(event) => dropSession(event, session)}
+			>
 				<button
 					class="session-row-icon absolute top-1/2 left-0 z-1 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md hover:bg-accent"
 					aria-label={`Change ${session.title || 'Untitled session'} icon`}
@@ -210,13 +274,11 @@
 						>{/if}
 				</button>
 				<button
-					class="session-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md border border-transparent bg-transparent px-2 py-1 pr-16 pl-8 text-left hover:border-border hover:bg-accent [&.active]:border-border [&.active]:bg-accent"
-					draggable={session.available !== false}
+					class="session-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md border border-transparent bg-transparent px-2 py-1 pr-24 pl-8 text-left hover:border-border hover:bg-accent [&.active]:border-border [&.active]:bg-accent"
 					class:active={selectedSession?.sessionId === session.sessionId}
 					aria-current={selectedSession?.sessionId === session.sessionId ? 'page' : undefined}
 					title={session.available === false ? session.recovery : undefined}
 					disabled={session.available === false}
-					ondragstart={(event) => dragSession(event, session)}
 					onclick={() => onopen(session)}
 				>
 					<div class="session-row-copy min-w-0 flex-1">
@@ -250,6 +312,17 @@
 							aria-label="Session needs attention">•</span
 						>{/if}
 				</button>
+				<button
+					class="session-drag absolute top-1/2 right-15 hidden size-7 -translate-y-1/2 cursor-grab place-items-center rounded-md opacity-0 hover:bg-accent focus:opacity-100 active:cursor-grabbing sm:grid [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
+					class:opacity-100={selectedSession?.sessionId === session.sessionId}
+					draggable={session.available !== false}
+					disabled={session.available === false}
+					aria-label={`Reorder ${session.title || 'Untitled session'}`}
+					title={`Drag ${session.title || 'Untitled session'} to reorder`}
+					ondragstart={(event) => dragSession(event, session)}
+					ondragend={finishSessionDrag}
+					onclick={(event) => event.preventDefault()}><GripVertical size={14} aria-hidden="true" /></button
+				>
 				{#if !session.archived}<button
 						class="session-archive absolute top-1/2 right-8 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
 						aria-label={`Archive ${session.title || 'Untitled session'}`}
@@ -262,7 +335,7 @@
 					aria-label={`Edit ${session.title || 'Untitled session'}`}
 					title={`Edit ${session.title || 'Untitled session'}`}
 					onclick={(event) => onedit(event, session)}
-					><Ellipsis size={16} aria-hidden="true" /></button
+					><EllipsisVertical size={16} aria-hidden="true" /></button
 				>
 			</div>
 		{/each}

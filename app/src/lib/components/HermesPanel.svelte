@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
-	import { ArrowLeft } from 'lucide-svelte';
+	import { X } from 'lucide-svelte';
 	import type { GlobalView } from './GlobalNavigation.svelte';
 	import AdminResourceView from './hermes/AdminResourceView.svelte';
 	import InventoryView from './hermes/InventoryView.svelte';
 	import SchedulesView from './hermes/SchedulesView.svelte';
+	import PreferencesView from './hermes/PreferencesView.svelte';
 	import SettingsView from './hermes/SettingsView.svelte';
 	import SkillsView from './hermes/SkillsView.svelte';
 	import type { Command, HermesSection, Job, Skill } from './hermes/types';
@@ -37,12 +38,14 @@
 	let originalSkillContent = $state('');
 	let skillSaving = $state(false);
 	let skillSaved = $state(false);
+	let modal = $state<HTMLDialogElement>();
 	let requestGeneration = 0;
 	const capabilityNames = ['memoryEditor', 'memoryHistory', 'skillDelete', 'skillLinkedFiles'];
 	const runtimeActions = ['runtime.restart-admin', 'runtime.reconnect-acp'];
 
 	const labels: Record<GlobalView, string> = {
 		notifications: 'Notifications',
+		'app-settings': 'App Settings',
 		settings: 'Settings',
 		runtime: 'Runtime',
 		memory: 'Memory',
@@ -137,7 +140,7 @@
 		const request = ++requestGeneration;
 		error = '';
 		notice = '';
-		if (next === 'settings' || next === 'commands') return;
+		if (next === 'app-settings' || next === 'settings' || next === 'commands') return;
 		loading = true;
 		try {
 			const result = await api<Record<string, any>>(
@@ -158,6 +161,9 @@
 	}
 
 	$effect(() => void load(view));
+	$effect(() => {
+		if (modal && !modal.open) modal.showModal();
+	});
 
 	function hasUnsavedSkill() {
 		return Boolean(selectedSkill && skillContent !== originalSkillContent);
@@ -306,91 +312,118 @@
 	}
 </script>
 
-<section
-	class="global-panel fixed inset-y-0 right-0 left-14 z-20 flex min-w-0 flex-col bg-background max-[700px]:top-14 max-[700px]:left-0"
-	aria-label={view === 'settings' ? 'Settings' : 'Hermes management'}
+<dialog
+	bind:this={modal}
+	class="global-panel min-w-0 bg-background p-0 text-foreground"
+	aria-label={view === 'app-settings'
+		? 'App settings dialog'
+		: view === 'settings'
+			? 'Hermes settings dialog'
+			: 'Hermes management dialog'}
+	oncancel={(event) => {
+		event.preventDefault();
+		navigate(null);
+	}}
+	onclick={(event) => event.target === modal && navigate(null)}
 	data-capabilities={capabilityNames.join(',')}
 	data-runtime-actions={runtimeActions.join(',')}
 >
-	<header
-		class="flex min-h-14 items-center justify-between border-b border-border px-4 py-2 max-[700px]:min-h-[62px] max-[700px]:px-3.5"
+	<section
+		class="flex h-full min-h-0 flex-col"
+		aria-label={view === 'app-settings'
+			? 'App Settings'
+			: view === 'settings'
+				? 'Settings'
+				: 'Hermes management'}
 	>
-		<div>
-			<small class="text-muted-foreground">{view === 'settings' ? 'HUE' : 'Hermes'}</small>
-			<h1 class="mt-1 font-semibold">{labels[view]}</h1>
-		</div>
-		<Button
-			variant="outline"
-			size="icon"
-			aria-label="Back to workspace"
-			title="Back to workspace"
-			onclick={() => navigate(null)}><ArrowLeft size={18} aria-hidden="true" /></Button
+		<header
+			class="flex min-h-14 items-center justify-between border-b border-border px-4 py-2 max-[700px]:min-h-[62px] max-[700px]:px-3.5"
 		>
-	</header>
-	<nav
-		class="global-panel-tabs flex gap-1 overflow-x-auto border-b border-border px-4 py-1.5"
-		aria-label="Hermes sections"
-	>
-		<Button
-			variant={view === 'settings' ? 'secondary' : 'ghost'}
-			title="Settings overview"
-			onclick={() => navigate('settings')}>Overview</Button
-		>
-		{#each sections as section}<Button
-				variant={view === section.view ? 'secondary' : 'ghost'}
-				title={section.label === 'MCP' ? 'MCP servers' : section.label}
-				onclick={() => navigate(section.view)}>{section.label}</Button
-			>{/each}
-	</nav>
-	<label class="mobile-settings-selector border-b border-border p-2.5">
-		<span class="sr-only">Settings section</span>
-		<select
-			class="min-h-11 w-full rounded-md border border-border bg-card px-3"
-			aria-label="Settings section"
-			value={view}
-			onchange={(event) => navigate((event.currentTarget as HTMLSelectElement).value as GlobalView)}
-		>
-			<option value="settings">Overview</option>
-			{#each sections as section}<option value={section.view}>{section.label}</option>{/each}
-		</select>
-	</label>
-	<div
-		class="global-panel-content flex-1 overflow-auto px-[clamp(14px,3vw,40px)] py-4 max-[700px]:p-3"
-	>
-		{#if loading && view !== 'commands'}<p
-				class="muted text-sm text-muted-foreground"
-				role="status"
+			<div>
+				<small class="text-muted-foreground">{view === 'app-settings' ? 'HUE' : 'Hermes'}</small>
+				<h1 class="mt-1 font-semibold">{labels[view]}</h1>
+			</div>
+			<Button
+				variant="outline"
+				size="icon"
+				aria-label="Close settings"
+				title="Close settings"
+				onclick={() => navigate(null)}><X size={18} aria-hidden="true" /></Button
 			>
-				Loading Hermes {view}…
-			</p>{/if}
-		{#if error}<p class="directory-error mb-3 text-sm text-destructive" role="alert">
-				{error}
-			</p>{/if}
-		{#if notice}<p class="mb-3 text-sm text-emerald-300" role="status">{notice}</p>{/if}
-		{#if view === 'settings'}
-			<SettingsView {sections} onview={navigate} />
-		{:else if view === 'skills'}
-			<SkillsView
-				{skills}
-				{selectedSkill}
-				{selectedSkillEditable}
-				{selectedSkillProvenance}
-				bind:skillContent
-				{skillSaving}
-				{skillSaved}
-				onopen={openSkill}
-				onclose={closeSkill}
-				onsave={saveSkill}
-				ondelete={deleteSkill}
-				onaction={action}
-				capabilities={data.capabilities ?? {}}
-			/>
-		{:else if view === 'schedules'}
-			<SchedulesView {jobs} deliveryTargets={data.deliveryTargets ?? []} onaction={action} />
-		{:else if view === 'commands'}
-			<InventoryView {view} {commands} profiles={[]} servers={[]} {oncommand} />
-		{:else}
-			<AdminResourceView {view} {data} onaction={action} />
-		{/if}
-	</div>
-</section>
+		</header>
+		{#if view !== 'app-settings'}<nav
+				class="global-panel-tabs flex gap-1 overflow-x-auto border-b border-border px-4 py-1.5"
+				aria-label="Hermes sections"
+			>
+				<Button
+					variant={view === 'settings' ? 'secondary' : 'ghost'}
+					title="Settings overview"
+					onclick={() => navigate('settings')}>Overview</Button
+				>
+				{#each sections as section}<Button
+						variant={view === section.view ? 'secondary' : 'ghost'}
+						title={section.label === 'MCP' ? 'MCP servers' : section.label}
+						onclick={() => navigate(section.view)}>{section.label}</Button
+					>{/each}
+			</nav>
+			<label class="mobile-settings-selector border-b border-border p-2.5">
+				<span class="sr-only">Settings section</span>
+				<select
+					class="min-h-11 w-full rounded-md border border-border bg-card px-3"
+					aria-label="Settings section"
+					value={view}
+					onchange={(event) =>
+						navigate((event.currentTarget as HTMLSelectElement).value as GlobalView)}
+				>
+					<option value="settings">Overview</option>
+					{#each sections as section}<option value={section.view}>{section.label}</option>{/each}
+				</select>
+			</label>{/if}
+		<div
+			class="global-panel-content flex-1 overflow-auto px-[clamp(14px,3vw,40px)] py-4 max-[700px]:p-3"
+		>
+			{#if loading && view !== 'commands'}<p
+					class="muted text-sm text-muted-foreground"
+					role="status"
+				>
+					Loading Hermes {view}…
+				</p>{/if}
+			{#if error}<p class="directory-error mb-3 text-sm text-destructive" role="alert">
+					{error}
+				</p>{/if}
+			{#if notice}<p class="mb-3 text-sm text-emerald-300" role="status">{notice}</p>{/if}
+			{#if view === 'app-settings'}
+				<div class="grid gap-4">
+					<Button variant="outline" class="justify-self-start" onclick={() => navigate('settings')}
+						>Open Hermes settings</Button
+					>
+					<PreferencesView />
+				</div>
+			{:else if view === 'settings'}
+				<SettingsView {sections} onview={navigate} />
+			{:else if view === 'skills'}
+				<SkillsView
+					{skills}
+					{selectedSkill}
+					{selectedSkillEditable}
+					{selectedSkillProvenance}
+					bind:skillContent
+					{skillSaving}
+					{skillSaved}
+					onopen={openSkill}
+					onclose={closeSkill}
+					onsave={saveSkill}
+					ondelete={deleteSkill}
+					onaction={action}
+					capabilities={data.capabilities ?? {}}
+				/>
+			{:else if view === 'schedules'}
+				<SchedulesView {jobs} deliveryTargets={data.deliveryTargets ?? []} onaction={action} />
+			{:else if view === 'commands'}
+				<InventoryView {view} {commands} profiles={[]} servers={[]} {oncommand} />
+			{:else}
+				<AdminResourceView {view} {data} onaction={action} />
+			{/if}
+		</div>
+	</section>
+</dialog>

@@ -6,13 +6,15 @@
 		Check,
 		ChevronRight,
 		Diamond,
-		Ellipsis,
+		EllipsisVertical,
 		Folder,
 		FolderPlus,
+		GripVertical,
 		PanelLeftClose,
 		Plus,
 		X
 	} from 'lucide-svelte';
+	import { moveBefore, sortByOrder } from '$lib/drag-order';
 	import IconEditorPopover from '$lib/components/IconEditorPopover.svelte';
 	import ProjectFoldersEditor from './ProjectFoldersEditor.svelte';
 	import type { Directory, Project } from './types';
@@ -23,6 +25,7 @@
 		mobile,
 		projects,
 		selectedProject,
+		sessionsOpen,
 		projectsCapability,
 		projectsError,
 		reconciliationIssues,
@@ -81,6 +84,7 @@
 		mobile: boolean;
 		projects: Project[];
 		selectedProject: Project | null;
+		sessionsOpen: boolean;
 		projectsCapability: 'available' | 'unavailable' | 'outage';
 		projectsError: string;
 		reconciliationIssues: Array<{ legacyProjectId: string; kind: string; message: string }>;
@@ -137,13 +141,19 @@
 
 	const currentFolderSelected = $derived(selectedFolders.includes(projectRoot));
 	const addDisabled = $derived(projectsCapability !== 'available');
+	let projectOrder = $state<string[]>([]);
+	let groupOrder = $state<string[]>([]);
 	const projectGroups = $derived.by(() => {
 		const groups = new Map<string | null, Project[]>();
-		for (const project of projects) {
+		for (const project of sortByOrder(projects, projectOrder, ({ id }) => id)) {
 			const label = project.group;
 			groups.set(label, [...(groups.get(label) ?? []), project]);
 		}
-		return [...groups].map(([label, items]) => ({ label, projects: items }));
+		return sortByOrder(
+			[...groups].map(([label, items]) => ({ label, projects: items })),
+			groupOrder,
+			({ label }) => label ?? ''
+		);
 	});
 	const groupLabels = $derived(
 		projectGroups.flatMap((group) => (group.label ? [group.label] : []))
@@ -154,6 +164,7 @@
 	let sectionProjectIds = $state<string[]>([]);
 	let sectionSubmitted = $state(false);
 	let draggedProjectId = $state<string | null>(null);
+	let draggedGroup = $state<string | null>(null);
 	let dropGroup = $state<string | null>(null);
 
 	onMount(() => {
@@ -161,8 +172,12 @@
 			collapsedGroups = new Set(
 				JSON.parse(localStorage.getItem('hue:project-groups:collapsed') ?? '[]')
 			);
+			projectOrder = JSON.parse(localStorage.getItem('hue:project-order') ?? '[]');
+			groupOrder = JSON.parse(localStorage.getItem('hue:project-group-order') ?? '[]');
 		} catch {
 			collapsedGroups = new Set();
+			projectOrder = [];
+			groupOrder = [];
 		}
 	});
 
@@ -195,7 +210,13 @@
 
 	function startProjectDrag(event: DragEvent, projectId: string) {
 		draggedProjectId = projectId;
-		event.dataTransfer?.setData('text/plain', projectId);
+		event.dataTransfer?.setData('application/x-hue-project-id', projectId);
+		if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+	}
+
+	function startGroupDrag(event: DragEvent, group: string) {
+		draggedGroup = group;
+		event.dataTransfer?.setData('application/x-hue-project-group', group);
 		if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
 	}
 
@@ -205,18 +226,37 @@
 		if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
 	}
 
-	function dropProject(event: DragEvent, group: string | null) {
+	function dropProject(event: DragEvent, group: string | null, before: string | null = null) {
 		event.preventDefault();
-		const projectId = event.dataTransfer?.getData('text/plain') || draggedProjectId;
+		const projectId =
+			event.dataTransfer?.getData('application/x-hue-project-id') || draggedProjectId;
 		draggedProjectId = null;
 		dropGroup = null;
-		if (projectId && projects.find(({ id }) => id === projectId)?.group !== group) {
-			void onmove(projectId, group);
+		if (projectId) {
+			projectOrder = moveBefore(
+				projectOrder.length ? projectOrder : projects.map(({ id }) => id),
+				projectId,
+				before
+			);
+			localStorage.setItem('hue:project-order', JSON.stringify(projectOrder));
+			if (projects.find(({ id }) => id === projectId)?.group !== group) void onmove(projectId, group);
 		}
+	}
+
+	function dropOnGroup(event: DragEvent, group: string) {
+		const movedGroup =
+			event.dataTransfer?.getData('application/x-hue-project-group') || draggedGroup;
+		if (!movedGroup) return dropProject(event, group);
+		event.preventDefault();
+		groupOrder = moveBefore(groupLabels, movedGroup, group);
+		localStorage.setItem('hue:project-group-order', JSON.stringify(groupOrder));
+		draggedGroup = null;
+		dropGroup = null;
 	}
 
 	function finishProjectDrag() {
 		draggedProjectId = null;
+		draggedGroup = null;
 		dropGroup = null;
 	}
 </script>
@@ -287,6 +327,8 @@
 				class="project-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md bg-transparent px-2 py-1 pr-8 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
 				class:active={!selectedProject}
 				aria-current={!selectedProject ? 'page' : undefined}
+				aria-controls={!selectedProject ? 'session-drawer' : undefined}
+				aria-expanded={!selectedProject ? sessionsOpen : undefined}
 				onclick={() => onchoose(null)}
 			>
 				<Diamond
@@ -294,12 +336,12 @@
 					size={18}
 					aria-hidden="true"
 				/>
-				<span>No project</span>
+				<span>General</span>
 			</button>
 			<button
 				class="icon-button workspace-session-add absolute top-1/2 right-0 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-				aria-label="New session without a project"
-				title="New session without a project"
+				aria-label="New General session"
+				title="New General session"
 				onclick={onprojectless}><Plus size={18} aria-hidden="true" /></button
 			>
 		</div>
@@ -321,10 +363,13 @@
 		{#each projectGroups as group (group.label ?? '')}
 			{#if group.label}<button
 					class={`mt-2 flex min-h-11 w-full items-center gap-1 rounded-md px-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8 ${dropGroup === group.label ? 'bg-accent ring-2 ring-ring' : ''}`}
+					draggable="true"
 					aria-expanded={!collapsedGroups.has(group.label)}
 					title={group.label}
+					ondragstart={(event) => startGroupDrag(event, group.label!)}
+					ondragend={finishProjectDrag}
 					ondragover={(event) => allowProjectDrop(event, group.label!)}
-					ondrop={(event) => dropProject(event, group.label!)}
+					ondrop={(event) => dropOnGroup(event, group.label!)}
 					onclick={() => toggleGroup(group.label!)}
 				>
 					<ChevronRight
@@ -338,13 +383,11 @@
 			{#if !group.label || !collapsedGroups.has(group.label)}
 				{#each group.projects as project (project.id)}
 					<div
-						class="project-row group relative cursor-grab active:cursor-grabbing"
+						class="project-row group relative"
 						role="group"
 						aria-label={`Project ${project.name}`}
-						draggable="true"
-						title={`Drag ${project.name} to a section`}
-						ondragstart={(event) => startProjectDrag(event, project.id)}
-						ondragend={finishProjectDrag}
+						ondragover={(event) => allowProjectDrop(event, project.group)}
+						ondrop={(event) => dropProject(event, project.group, project.id)}
 					>
 						{#if project.color}<span
 								class="project-color-indicator pointer-events-none absolute inset-y-1 -left-1 w-1 rounded-full"
@@ -371,9 +414,11 @@
 								/>{/if}
 						</button>
 						<button
-							class="project-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md bg-transparent py-1 pr-8 pl-8 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
+							class="project-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md bg-transparent py-1 pr-16 pl-8 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
 							class:active={selectedProject?.id === project.id}
 							aria-current={selectedProject?.id === project.id ? 'page' : undefined}
+							aria-controls={selectedProject?.id === project.id ? 'session-drawer' : undefined}
+							aria-expanded={selectedProject?.id === project.id ? sessionsOpen : undefined}
 							onclick={() => onchoose(project)}
 						>
 							{#if isImage(project.icon)}<img
@@ -392,11 +437,21 @@
 							{#if !project.rootAvailable}<small class="text-amber-400">Missing</small>{/if}
 						</button>
 						<button
+							class="project-drag absolute top-1/2 right-8 hidden h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 cursor-grab place-items-center rounded-md opacity-0 hover:bg-accent focus:opacity-100 active:cursor-grabbing group-hover:opacity-100 sm:grid"
+							class:opacity-100={selectedProject?.id === project.id}
+							draggable="true"
+							aria-label={`Reorder ${project.name}`}
+							title={`Drag ${project.name} to reorder`}
+							ondragstart={(event) => startProjectDrag(event, project.id)}
+							ondragend={finishProjectDrag}
+							onclick={(event) => event.preventDefault()}><GripVertical size={15} aria-hidden="true" /></button
+						>
+						<button
 							class="project-edit absolute top-1/2 right-0 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent focus:opacity-100"
 							aria-label={`Edit ${project.name}`}
 							title={`Edit ${project.name}`}
 							onclick={(event) => onedit(event, project)}
-							><Ellipsis size={16} aria-hidden="true" /></button
+							><EllipsisVertical size={16} aria-hidden="true" /></button
 						>
 					</div>
 				{/each}

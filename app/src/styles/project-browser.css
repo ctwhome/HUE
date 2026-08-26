@@ -4,26 +4,22 @@
 .session-workspace {
 	position: relative;
 }
-.panel-reopen-tab {
-	z-index: 12;
-	display: grid;
-	width: 32px;
-	height: 32px;
-	place-self: start center;
-	margin-top: var(--panel-gap);
+dialog.global-panel {
+	position: fixed;
+	inset: 50% auto auto 50%;
+	width: min(60rem, calc(100vw - 2rem));
+	height: min(47.5rem, calc(100dvh - 2rem));
+	max-width: none;
+	max-height: none;
+	margin: 0;
+	overflow: hidden;
 	border: 1px solid var(--border);
-	border-radius: var(--radius-control);
-	background: var(--card);
-	color: var(--muted-foreground);
+	border-radius: var(--radius-panel);
+	box-shadow: 0 24px 80px rgb(0 0 0 / 35%);
+	transform: translate(-50%, -50%);
 }
-.panel-reopen-tab:hover,
-.panel-reopen-tab:focus-visible {
-	background: var(--accent);
-	color: var(--foreground);
-}
-.panel-reopen-tab.sessions {
-	grid-column: 3;
-	grid-row: 1;
+dialog.global-panel::backdrop {
+	background: rgb(0 0 0 / 48%);
 }
 .collapsed-project-rail {
 	z-index: 12;
