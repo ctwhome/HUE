@@ -313,8 +313,8 @@
 .shell-resizer {
 	position: absolute;
 	z-index: 12;
-	top: 10px;
-	bottom: calc(var(--project-status-height, 0px) + 10px);
+	top: var(--panel-gap);
+	bottom: var(--project-status-height, 0px);
 	width: 9px;
 	border: 0;
 	background: transparent;
@@ -388,7 +388,7 @@
 .project-tool-rail {
 	position: fixed;
 	z-index: 10;
-	inset: 10px 10px calc(var(--project-status-height, 0px) + 10px) auto;
+	inset: var(--panel-gap) var(--panel-gap) var(--project-status-height, 0px) auto;
 	display: flex;
 	width: 52px;
 	flex-direction: column;
@@ -443,9 +443,6 @@
 	min-height: 0;
 	flex: 1;
 }
-.session-workspace {
-	position: relative;
-}
 .session-workspace.terminal-open > .session-pane-grid,
 .session-workspace.terminal-open .project-tool-dock.docked > section {
 	height: calc(100% - var(--terminal-panel-height, 300px));
@@ -457,7 +454,7 @@
 	bottom: 0;
 	left: 0;
 	height: var(--terminal-panel-height, 300px);
-	padding: 8px;
+	padding: 8px 8px 0;
 }
 .terminal-resizer {
 	position: absolute;

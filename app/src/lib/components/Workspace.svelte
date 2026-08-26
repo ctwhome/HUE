@@ -457,6 +457,8 @@
 		oniconselect={projectManagement.saveProjectIcon}
 		oncolor={projectManagement.saveProjectColor}
 		ongroup={projectManagement.saveProjectGroup}
+		onsection={projectManagement.createProjectSection}
+		onmove={projectManagement.moveProjectToSection}
 		onhidden={projectManagement.toggleHiddenDirectories}
 		ondirectory={projectManagement.loadDirectory}
 		ontogglefolder={projectManagement.toggleSelectedFolder}

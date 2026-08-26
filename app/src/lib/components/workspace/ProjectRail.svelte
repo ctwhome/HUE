@@ -57,6 +57,8 @@
 		oniconselect,
 		oncolor,
 		ongroup,
+		onsection,
+		onmove,
 		onhidden,
 		ondirectory,
 		ontogglefolder,
@@ -113,6 +115,8 @@
 		oniconselect: (icon: string | null) => void;
 		oncolor: (color: string) => void;
 		ongroup: (group: string) => void;
+		onsection: (name: string, projectIds: string[]) => Promise<boolean>;
+		onmove: (projectId: string, group: string | null) => Promise<boolean>;
 		onhidden: (event: Event) => void;
 		ondirectory: (path?: string) => void;
 		ontogglefolder: (path?: string) => void;
@@ -145,6 +149,12 @@
 		projectGroups.flatMap((group) => (group.label ? [group.label] : []))
 	);
 	let collapsedGroups = $state(new Set<string>());
+	let addSectionDialog = $state<HTMLDialogElement>();
+	let sectionName = $state('');
+	let sectionProjectIds = $state<string[]>([]);
+	let sectionSubmitted = $state(false);
+	let draggedProjectId = $state<string | null>(null);
+	let dropGroup = $state<string | null>(null);
 
 	onMount(() => {
 		try {
@@ -162,6 +172,52 @@
 		else next.add(label);
 		collapsedGroups = next;
 		localStorage.setItem('hue:project-groups:collapsed', JSON.stringify([...next]));
+	}
+
+	function openSectionDialog() {
+		sectionName = '';
+		sectionProjectIds = selectedProject ? [selectedProject.id] : [];
+		sectionSubmitted = false;
+		addSectionDialog?.showModal();
+	}
+
+	function toggleSectionProject(id: string) {
+		sectionProjectIds = sectionProjectIds.includes(id)
+			? sectionProjectIds.filter((projectId) => projectId !== id)
+			: [...sectionProjectIds, id];
+	}
+
+	async function createSection(event: SubmitEvent) {
+		event.preventDefault();
+		sectionSubmitted = true;
+		if (await onsection(sectionName, sectionProjectIds)) addSectionDialog?.close();
+	}
+
+	function startProjectDrag(event: DragEvent, projectId: string) {
+		draggedProjectId = projectId;
+		event.dataTransfer?.setData('text/plain', projectId);
+		if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+	}
+
+	function allowProjectDrop(event: DragEvent, group: string | null) {
+		event.preventDefault();
+		dropGroup = group ?? '';
+		if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+	}
+
+	function dropProject(event: DragEvent, group: string | null) {
+		event.preventDefault();
+		const projectId = event.dataTransfer?.getData('text/plain') || draggedProjectId;
+		draggedProjectId = null;
+		dropGroup = null;
+		if (projectId && projects.find(({ id }) => id === projectId)?.group !== group) {
+			void onmove(projectId, group);
+		}
+	}
+
+	function finishProjectDrag() {
+		draggedProjectId = null;
+		dropGroup = null;
 	}
 </script>
 
@@ -247,11 +303,28 @@
 				onclick={onprojectless}><Plus size={18} aria-hidden="true" /></button
 			>
 		</div>
+		<button
+			class="mt-1 flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+			aria-label="Add Project section"
+			title="Add section"
+			disabled={addDisabled || projects.length === 0}
+			onclick={openSectionDialog}><FolderPlus size={15} aria-hidden="true" /> Add section</button
+		>
+		{#if draggedProjectId}<div
+				class={`mt-1 flex min-h-11 items-center rounded-md border border-dashed px-2 text-xs sm:min-h-8 ${dropGroup === '' ? 'border-ring bg-accent text-foreground' : 'border-border text-muted-foreground'}`}
+				role="group"
+				aria-label="Move Project to ungrouped"
+				ondragover={(event) => allowProjectDrop(event, null)}
+				ondrop={(event) => dropProject(event, null)}
+				>Move to ungrouped</div
+			>{/if}
 		{#each projectGroups as group (group.label ?? '')}
 			{#if group.label}<button
-					class="mt-2 flex min-h-11 w-full items-center gap-1 rounded-md px-2 text-left text-xs font-medium tracking-wide text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+					class={`mt-2 flex min-h-11 w-full items-center gap-1 rounded-md px-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8 ${dropGroup === group.label ? 'bg-accent ring-2 ring-ring' : ''}`}
 					aria-expanded={!collapsedGroups.has(group.label)}
 					title={group.label}
+					ondragover={(event) => allowProjectDrop(event, group.label!)}
+					ondrop={(event) => dropProject(event, group.label!)}
 					onclick={() => toggleGroup(group.label!)}
 				>
 					<ChevronRight
@@ -264,7 +337,15 @@
 				</button>{/if}
 			{#if !group.label || !collapsedGroups.has(group.label)}
 				{#each group.projects as project (project.id)}
-					<div class="project-row group relative">
+					<div
+						class="project-row group relative cursor-grab active:cursor-grabbing"
+						role="group"
+						aria-label={`Project ${project.name}`}
+						draggable="true"
+						title={`Drag ${project.name} to a section`}
+						ondragstart={(event) => startProjectDrag(event, project.id)}
+						ondragend={finishProjectDrag}
+					>
 						{#if project.color}<span
 								class="project-color-indicator pointer-events-none absolute inset-y-1 -left-1 w-1 rounded-full"
 								style={`background-color: ${project.color}`}
@@ -322,6 +403,63 @@
 			{/if}
 		{/each}
 	</nav>
+
+	<dialog
+		bind:this={addSectionDialog}
+		class="add-project-dialog fixed m-0 w-[min(420px,calc(100vw-32px))] rounded-xl border border-border bg-card p-4 text-foreground shadow-2xl backdrop:bg-black/60"
+		aria-labelledby="add-project-section-title"
+		onclick={(event) => event.target === event.currentTarget && addSectionDialog?.close()}
+	>
+		<header>
+			<div>
+				<h2 id="add-project-section-title">Add Project section</h2>
+				<p>Choose a name and the Projects to group together.</p>
+			</div>
+		</header>
+		<form class="grid gap-3 p-3 sm:p-0" onsubmit={createSection}>
+			<label class="grid gap-1 text-sm font-medium"
+				>Section name<input
+					class="min-h-11"
+					bind:value={sectionName}
+					maxlength="100"
+					required
+				/></label
+			>
+			<fieldset class="grid gap-1 rounded-lg border border-border p-2">
+				<legend class="px-1 text-sm font-medium">Projects</legend>
+				{#each projects as project (project.id)}
+					<label class="flex min-h-11 items-center gap-2 rounded-md px-2 hover:bg-accent">
+						<input
+							type="checkbox"
+							checked={sectionProjectIds.includes(project.id)}
+							onchange={() => toggleSectionProject(project.id)}
+						/>
+						<span class="truncate">{project.name}</span>
+					</label>
+				{/each}
+			</fieldset>
+			{#if sectionSubmitted && projectEditError}<p class="text-sm text-destructive" role="alert">
+					{projectEditError}
+				</p>{/if}
+			<div class="flex justify-end gap-2">
+				<button type="button" class="min-h-11" onclick={() => addSectionDialog?.close()}
+					>Cancel</button
+				>
+				<button
+					type="submit"
+					class="min-h-11"
+					disabled={projectSaving || !sectionName.trim() || !sectionProjectIds.length}
+					>Create section</button
+				>
+			</div>
+		</form>
+		<button
+			class="icon-button absolute top-3 right-3 grid size-11 place-items-center rounded-md"
+			aria-label="Close section creator"
+			title="Close"
+			onclick={() => addSectionDialog?.close()}><X size={18} aria-hidden="true" /></button
+		>
+	</dialog>
 
 	<dialog
 		bind:this={addProjectDialog}

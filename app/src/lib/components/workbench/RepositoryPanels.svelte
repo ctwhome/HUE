@@ -19,7 +19,7 @@
 	type Repository = {
 		isRepository: boolean;
 		repositoryPath?: string;
-		repositories?: Array<{ path: string }>;
+		repositories?: Array<{ path: string; label?: string }>;
 		branch: string | null;
 		changes: Array<{ path: string; index: string; worktree: string; fileUrl: string | null }>;
 		worktrees: Array<{ path: string; branch: string | null; head: string }>;
@@ -261,7 +261,7 @@
 				onchange={() => void loadRepository()}
 			>
 				{#each repository?.repositories ?? [] as item}<option value={item.path}
-						>{item.path === '.' ? 'Project root' : item.path}</option
+						>{item.label ?? (item.path === '.' ? 'Project root' : item.path)}</option
 					>{/each}
 			</select>{/if}
 		<div class="git-header-actions flex gap-1.5">

@@ -84,6 +84,41 @@ describe('ProjectManagement Hermes authority', () => {
 		expect(state.projects[0].group).toBe('Client work');
 	});
 
+	it('creates a section by assigning the chosen Projects', async () => {
+		const requests: Array<{ url: string; options?: RequestInit }> = [];
+		const grouped = { ...original, group: 'Topics' };
+		const state = manager(async <T>(url: string, options?: RequestInit) => {
+			requests.push({ url, options });
+			return { project: grouped } as T;
+		});
+
+		await state.createProjectSection('  Topics  ', ['p_1']);
+
+		expect(requests).toHaveLength(1);
+		expect(requests[0]?.url).toBe('/api/projects/p_1');
+		expect(JSON.parse(String(requests[0]?.options?.body))).toEqual({
+			action: 'set_group',
+			group: 'Topics'
+		});
+		expect(state.projects[0].group).toBe('Topics');
+	});
+
+	it('moves a Project out of a section', async () => {
+		const requests: Array<{ url: string; options?: RequestInit }> = [];
+		const state = manager(async <T>(url: string, options?: RequestInit) => {
+			requests.push({ url, options });
+			return { project: original } as T;
+		});
+
+		await state.moveProjectToSection('p_1', null);
+
+		expect(requests[0]?.url).toBe('/api/projects/p_1');
+		expect(JSON.parse(String(requests[0]?.options?.body))).toEqual({
+			action: 'set_group',
+			group: null
+		});
+	});
+
 	it('creates one Project with every selected folder and exactly one primary', async () => {
 		const requests: Array<{ url: string; options?: RequestInit }> = [];
 		const state = manager(async <T>(url: string, options?: RequestInit) => {

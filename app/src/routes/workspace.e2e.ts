@@ -1444,7 +1444,7 @@ test('opens distinct Hermes runtime, skills, schedules, commands, profiles, and 
 			const railBox = (await globalRail.boundingBox())!;
 			const projectsBox = (await page.locator('#project-drawer').boundingBox())!;
 			expect(railBox.width).toBeLessThanOrEqual(64);
-			expect(projectsBox.x).toBe(railBox.width);
+			expect(projectsBox.x).toBe(railBox.x + railBox.width);
 			await globalRail.getByRole('button', { name: 'Settings' }).click();
 			await page
 				.getByRole('region', { name: 'Settings' })
@@ -1557,7 +1557,10 @@ test('guards unsaved skill edits across workspace and Project navigation', async
 			.getByRole('navigation', { name: 'Workspace navigation' })
 			.getByRole('button', { name: 'Projects' });
 		await projectsMenu.click();
-		await page.getByTitle(`Open Dirty skill target · ${targetRoot}`).click();
+		await page
+			.locator('#project-drawer .project-select')
+			.filter({ hasText: 'Dirty skill target' })
+			.click();
 		await expect(page.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
 		await page.getByRole('button', { name: 'Keep editing' }).click();
 		await expect(editor).toHaveValue(edited);

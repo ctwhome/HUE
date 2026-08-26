@@ -48,7 +48,7 @@
 	--control-height-sm: 1.75rem;
 	--control-height-icon: 2rem;
 	--navigation-icon-size: 1.5rem;
-	--panel-gap: 0.75rem;
+	--panel-gap: 0.5rem;
 	--background: #050505;
 	--foreground: #f0f0f0;
 	--card: #0b0b0b;
@@ -323,7 +323,6 @@
 	--control-height-sm: 1.5rem;
 	--control-height-icon: 1.75rem;
 	--navigation-icon-size: 1.25rem;
-	--panel-gap: 0.5rem;
 }
 
 :root[data-show-usage='false'] .context-usage {

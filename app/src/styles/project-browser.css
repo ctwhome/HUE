@@ -1,13 +1,16 @@
 .workspace {
 	background: var(--project-shell-color, var(--background));
 }
+.session-workspace {
+	position: relative;
+}
 .panel-reopen-tab {
 	z-index: 12;
 	display: grid;
 	width: 32px;
 	height: 32px;
 	place-self: start center;
-	margin-top: 10px;
+	margin-top: var(--panel-gap);
 	border: 1px solid var(--border);
 	border-radius: var(--radius-control);
 	background: var(--card);
@@ -31,7 +34,7 @@
 	flex-direction: column;
 	align-items: center;
 	gap: 4px;
-	margin: 10px 4px;
+	margin: var(--panel-gap) calc(var(--panel-gap) / 2) 0;
 	overflow-y: auto;
 	border: 1px solid var(--border);
 	border-radius: var(--radius-panel);
@@ -67,17 +70,17 @@
 }
 @media (min-width: 701px) {
 	.workspace > .global-rail {
-		margin: 10px 0 10px 10px;
+		margin: var(--panel-gap) 0 0 var(--panel-gap);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-panel) 0 0 var(--radius-panel);
 		box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
 	}
 	.workspace > .project-rail {
-		margin-block: 10px;
+		margin-top: var(--panel-gap);
 		border-block: 1px solid var(--border);
 	}
 	.workspace > .context-panel {
-		margin-block: 10px;
+		margin-top: var(--panel-gap);
 		border-block: 1px solid var(--border);
 		border-radius: 0 var(--radius-panel) var(--radius-panel) 0;
 		box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
@@ -106,8 +109,8 @@
 	height: 100%;
 }
 .project-browser-content > div {
-	padding-inline: 5px;
-	padding-right: 10px;
+	padding-inline: calc(var(--panel-gap) / 2);
+	padding-right: var(--panel-gap);
 }
 .session-workspace:has(
 		> .project-files-dock.open,
@@ -116,7 +119,7 @@
 	> .project-browser-dock.open
 	.project-browser-content
 	> div {
-	padding-right: 5px;
+	padding-right: calc(var(--panel-gap) / 2);
 }
 .project-browser-resizer {
 	position: absolute;
@@ -167,11 +170,11 @@
 	grid-template-columns: minmax(120px, 40%) minmax(0, 1fr);
 }
 .project-files-dock > section {
-	padding-inline: 5px;
-	padding-right: 10px;
+	padding-inline: calc(var(--panel-gap) / 2);
+	padding-right: var(--panel-gap);
 }
 .session-workspace:has(> .project-tool-dock.open) > .project-files-dock.open > section {
-	padding-right: 5px;
+	padding-right: calc(var(--panel-gap) / 2);
 }
 .project-files-dock .file-preview-title {
 	flex-wrap: wrap;
@@ -187,11 +190,11 @@
 	background: var(--project-shell-color, var(--background));
 }
 .project-tool-dock.docked {
-	padding-right: 62px;
+	padding-right: calc(52px + var(--panel-gap));
 }
 .project-tool-dock.docked .project-workbench {
-	padding-right: 10px;
-	padding-left: 5px;
+	padding-right: var(--panel-gap);
+	padding-left: calc(var(--panel-gap) / 2);
 }
 .session-workspace:has(
 		> .project-browser-dock.open,
@@ -199,7 +202,7 @@
 		> .project-tool-dock.open
 	)
 	> .session-pane-grid {
-	padding-right: 5px;
+	padding-right: calc(var(--panel-gap) / 2);
 }
 .project-files-resizer {
 	position: absolute;

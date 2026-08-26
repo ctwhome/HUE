@@ -92,7 +92,7 @@
 		aria-hidden={!open}
 		inert={!open ? true : undefined}
 	>
-		<div class="min-h-0 flex-1 p-2.5">
+		<div class="min-h-0 flex-1 px-2.5 pt-2.5">
 			<BrowserPanel {projectId} {onpreviewchange} />
 		</div>
 	</section>
