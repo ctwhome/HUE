@@ -9,6 +9,7 @@ import {
 	projectRepositories,
 	projectRepository,
 	projectRepositoryAction,
+	projectRepositoryDiff,
 	resolveProjectRepository,
 	projectStagedDiff,
 	projectRuntimeHealth,
@@ -365,6 +366,132 @@ test('reads only the bounded staged diff for commit generation', () => {
 	const diff = projectStagedDiff(projectRoot);
 	expect(diff).toContain('staged content');
 	expect(diff).not.toContain('unstaged content');
+});
+
+test('reads staged, unstaged, and branch diffs without mixing scopes', () => {
+	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-review-diff-'));
+	temporaryDirectories.push(projectRoot);
+	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'config', 'user.name', 'HUE Test'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'config', 'user.email', 'hue@example.test'], { cwd: projectRoot });
+	writeFileSync(join(projectRoot, 'tracked.txt'), 'base\n');
+	Bun.spawnSync(['git', 'add', 'tracked.txt'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'commit', '-m', 'Initial'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'switch', '-c', 'feature'], { cwd: projectRoot });
+	writeFileSync(join(projectRoot, 'branch.txt'), 'branch content\n');
+	Bun.spawnSync(['git', 'add', 'branch.txt'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'commit', '-m', 'Branch'], { cwd: projectRoot });
+	writeFileSync(join(projectRoot, 'staged.txt'), 'index only\n');
+	Bun.spawnSync(['git', 'add', 'staged.txt'], { cwd: projectRoot });
+	writeFileSync(join(projectRoot, 'tracked.txt'), 'worktree only\n');
+
+	const staged = projectRepositoryDiff(projectRoot, { scope: 'staged' });
+	const unstaged = projectRepositoryDiff(projectRoot, { scope: 'unstaged' });
+	const branch = projectRepositoryDiff(projectRoot, { scope: 'branch', base: 'main' });
+
+	expect(staged.diff).toContain('index only');
+	expect(staged.diff).not.toContain('worktree only');
+	expect(unstaged.diff).toContain('worktree only');
+	expect(unstaged.diff).not.toContain('index only');
+	expect(branch).toEqual(
+		expect.objectContaining({ scope: 'branch', base: 'main', truncated: false })
+	);
+	expect(branch.diff).toContain('branch content');
+	expect(branch.diff).not.toContain('index only');
+});
+
+test('reports untracked paths that Git diff cannot include', () => {
+	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-review-untracked-'));
+	temporaryDirectories.push(projectRoot);
+	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
+	writeFileSync(join(projectRoot, '--literal.txt'), 'not in Git diff\n');
+	writeFileSync(join(projectRoot, 'other.txt'), 'also untracked\n');
+
+	const result = projectRepositoryDiff(projectRoot, {
+		scope: 'unstaged',
+		file: '--literal.txt'
+	});
+
+	expect(result.diff).toBe('');
+	expect(result.untrackedPaths).toEqual(['--literal.txt']);
+	expect(result.untrackedPathsTruncated).toBe(false);
+});
+
+test('only queries untracked paths for unstaged diffs', () => {
+	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-review-untracked-scope-'));
+	temporaryDirectories.push(projectRoot);
+	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'config', 'user.name', 'HUE Test'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'config', 'user.email', 'hue@example.test'], { cwd: projectRoot });
+	writeFileSync(join(projectRoot, 'tracked.txt'), 'base\n');
+	Bun.spawnSync(['git', 'add', 'tracked.txt'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'commit', '-m', 'Initial'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'switch', '-c', 'feature'], { cwd: projectRoot });
+	writeFileSync(join(projectRoot, 'untracked.txt'), 'not part of staged or branch diffs\n');
+
+	for (const options of [
+		{ scope: 'staged' as const, maxBytes: 1 },
+		{ scope: 'branch' as const, base: 'main', maxBytes: 1 }
+	]) {
+		const result = projectRepositoryDiff(projectRoot, options);
+		expect(result.maxBytes).toBe(1);
+		expect(result.untrackedPaths).toEqual([]);
+		expect(result.untrackedPathsTruncated).toBe(false);
+	}
+});
+
+test('resolves a branch diff base and rejects invalid refs', () => {
+	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-review-base-'));
+	temporaryDirectories.push(projectRoot);
+	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'config', 'user.name', 'HUE Test'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'config', 'user.email', 'hue@example.test'], { cwd: projectRoot });
+	writeFileSync(join(projectRoot, 'tracked.txt'), 'base\n');
+	Bun.spawnSync(['git', 'add', 'tracked.txt'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'commit', '-m', 'Initial'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'switch', '-c', 'feature'], { cwd: projectRoot });
+
+	expect(projectRepositoryDiff(projectRoot, { scope: 'branch' }).base).toBe('main');
+	expect(projectRepositoryDiff(projectRoot, { scope: 'branch', base: 'feature' }).base).toBe(
+		'feature'
+	);
+	expect(() =>
+		projectRepositoryDiff(projectRoot, { scope: 'branch', base: '--output=/tmp/hue' })
+	).toThrow('Invalid base ref');
+	expect(() => projectRepositoryDiff(projectRoot, { scope: 'branch', base: 'missing' })).toThrow(
+		'Base ref was not found'
+	);
+});
+
+test('caps repository diff output and reports truncation', () => {
+	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-review-cap-'));
+	temporaryDirectories.push(projectRoot);
+	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
+	writeFileSync(join(projectRoot, 'large.txt'), `${'old\n'.repeat(80)}`);
+	Bun.spawnSync(['git', 'add', 'large.txt'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'commit', '-m', 'Initial'], { cwd: projectRoot });
+	writeFileSync(join(projectRoot, 'large.txt'), `${'changed content\n'.repeat(80)}`);
+
+	const result = projectRepositoryDiff(projectRoot, { scope: 'unstaged', maxBytes: 180 });
+	expect(Buffer.byteLength(result.diff)).toBeLessThanOrEqual(180);
+	expect(result.truncated).toBe(true);
+	expect(result.maxBytes).toBe(180);
+});
+
+test('returns a truncated diff when Git output exceeds the process buffer default', () => {
+	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-review-large-cap-'));
+	temporaryDirectories.push(projectRoot);
+	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
+	writeFileSync(join(projectRoot, 'large.txt'), 'old content\n'.repeat(75_000));
+	Bun.spawnSync(['git', 'add', 'large.txt'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'commit', '-m', 'Initial'], { cwd: projectRoot });
+	writeFileSync(join(projectRoot, 'large.txt'), 'new content\n'.repeat(75_000));
+
+	const result = projectRepositoryDiff(projectRoot, { scope: 'unstaged' });
+
+	expect(Buffer.byteLength(result.diff)).toBeLessThanOrEqual(100_000);
+	expect(result.truncated).toBe(true);
+	expect(result.maxBytes).toBe(100_000);
 });
 
 test('pushes the current branch and creates its upstream', () => {

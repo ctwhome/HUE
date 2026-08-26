@@ -9,6 +9,7 @@ import {
 } from '$lib/server/services';
 import {
 	_projectFolderRepositories,
+	_repositoryDiffOptions,
 	_repositoryMutationAllowed,
 	_selectedRepositoryPath
 } from './+server';
@@ -51,6 +52,20 @@ test('discovers nested repositories across Project folders and mutates only the 
 
 test('repository reads replace a stale selection with the first discovered repository', () => {
 	expect(_selectedRepositoryPath([{ path: 'app' }, { path: 'docs' }], '.')).toBe('app');
+});
+
+test('diff reads reject an invalid selected repository and parse bounded options', () => {
+	expect(() => _selectedRepositoryPath([{ path: 'app' }], '../outside', true)).toThrow(
+		'Repository is not part of this project'
+	);
+	expect(
+		_repositoryDiffOptions(
+			new URLSearchParams({ scope: 'branch', base: 'origin/main', file: 'src/app.ts' })
+		)
+	).toEqual({ scope: 'branch', base: 'origin/main', file: 'src/app.ts' });
+	expect(() => _repositoryDiffOptions(new URLSearchParams({ scope: 'everything' }))).toThrow(
+		'Invalid diff scope'
+	);
 });
 
 test('repository mutations require a loopback same-origin request', () => {

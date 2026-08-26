@@ -27,7 +27,10 @@ export const GET: RequestHandler = async ({ params, url }) => {
 						...image,
 						size: Buffer.from(image.data, 'base64').byteLength
 					}))
-				])
+				]),
+				reviewContexts: snapshot.messages.flatMap(({ id, reviewContexts }) =>
+					reviewContexts?.length ? [{ messageId: id, contexts: reviewContexts }] : []
+				)
 			});
 			return new Response(exported.body, {
 				headers: {
@@ -157,7 +160,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		}
 		if (
 			hasConfig &&
-			(!configId || !('configValue' in body) || !['string', 'boolean'].includes(typeof body.configValue))
+			(!configId ||
+				!('configValue' in body) ||
+				!['string', 'boolean'].includes(typeof body.configValue))
 		)
 			return json({ error: 'Invalid Session configuration update' }, { status: 400 });
 		if (hasWorkMode) {

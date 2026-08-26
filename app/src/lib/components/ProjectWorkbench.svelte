@@ -1,17 +1,12 @@
 <script lang="ts">
 	import { onMount, type Component } from 'svelte';
-	import {
-		Code2,
-		Files,
-		GitBranch,
-		Globe,
-		TerminalSquare
-	} from 'lucide-svelte';
+	import { Code2, Files, GitBranch, Globe, TerminalSquare } from 'lucide-svelte';
 	import BrowserPanel from './workbench/BrowserPanel.svelte';
 	import FilesPanel from './workbench/FilesPanel.svelte';
 	import { afterInitialPaint } from './workbench/after-initial-paint';
 	import { api } from './workbench/api';
 	import type { DirtyGuard } from './workspace/dirty-guard';
+	import type { ReviewContextSeed } from '$lib/message-content';
 
 	type TerminalProps = { projectId: string };
 	type RepositoryProps = {
@@ -19,6 +14,7 @@
 		onbranch: (branch: string | null) => void;
 		onopenfile: (path: string) => void;
 		onchanges: (count: number) => void;
+		onreviewcontext?: (context: ReviewContextSeed) => void;
 	};
 
 	let {
@@ -35,6 +31,7 @@
 		onterminal = () => {},
 		onpreviewchange = () => {},
 		onbranch,
+		onreviewcontext,
 		dirtyGuard
 	}: {
 		projectId: string;
@@ -50,6 +47,7 @@
 		onterminal?: () => void;
 		onpreviewchange?: (url: string) => void;
 		onbranch: (branch: string | null) => void;
+		onreviewcontext?: (context: ReviewContextSeed) => void;
 		dirtyGuard: DirtyGuard;
 	} = $props();
 	type Tool = 'git' | 'files';
@@ -318,6 +316,7 @@
 							{onbranch}
 							onopenfile={openFile}
 							onchanges={(count) => (gitChanges = count)}
+							{onreviewcontext}
 						/>
 					{:else}
 						<article

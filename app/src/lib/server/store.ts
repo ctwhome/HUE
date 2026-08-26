@@ -3,7 +3,7 @@ import { chmodSync, lstatSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { Database as BunDatabase } from 'bun:sqlite';
 import { validateIcon } from '$lib/icon';
-import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+import type { ImageAttachment, InputAttachment, ReviewContext } from '$lib/message-content';
 import { validateProjectColor } from '$lib/project-color';
 import { DEFAULT_WORK_MODE, parseWorkMode, type WorkMode } from '$lib/work-mode';
 import { redactPersistedValue } from './redaction';
@@ -46,6 +46,7 @@ export type StoredMessage = {
 	text: string;
 	images: ImageAttachment[];
 	attachments: InputAttachment[];
+	reviewContexts: ReviewContext[];
 	status: MessageStatus;
 	createdAt: string;
 	updatedAt: string;
@@ -89,6 +90,14 @@ export type StoredSession = {
 	folder: string | null;
 	tags: string[];
 	updatedAt: string;
+};
+
+export type SessionFinderStatus = 'running' | 'waiting' | 'unknown' | 'failed' | 'archived';
+
+export type SessionFinderResult = StoredSession & {
+	projectId: string | null;
+	projectName: string | null;
+	status: SessionFinderStatus | null;
 };
 
 type SessionRow = {
@@ -311,6 +320,7 @@ export class HUEStore {
 				id TEXT PRIMARY KEY,
 				session_id TEXT NOT NULL,
 				text TEXT NOT NULL,
+				review_contexts TEXT NOT NULL DEFAULT '[]',
 				status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'unknown', 'cancelled')),
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL
@@ -495,6 +505,11 @@ export class HUEStore {
 		if (!messageColumns.some((column) => column.name === 'project_id')) {
 			this.database.exec('ALTER TABLE messages ADD COLUMN project_id TEXT REFERENCES projects(id)');
 		}
+		if (!messageColumns.some((column) => column.name === 'review_contexts')) {
+			this.database.exec(
+				"ALTER TABLE messages ADD COLUMN review_contexts TEXT NOT NULL DEFAULT '[]'"
+			);
+		}
 		const attachmentColumns = this.database
 			.query('PRAGMA table_info(message_attachments)')
 			.all() as Array<{ name: string }>;
@@ -516,11 +531,12 @@ export class HUEStore {
 							project_id TEXT REFERENCES projects(id),
 							session_id TEXT NOT NULL,
 							text TEXT NOT NULL,
+							review_contexts TEXT NOT NULL DEFAULT '[]',
 							status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'unknown', 'cancelled')),
 							created_at TEXT NOT NULL,
 							updated_at TEXT NOT NULL
 						);
-						INSERT INTO messages SELECT id, project_id, session_id, text, status, created_at, updated_at
+						INSERT INTO messages SELECT id, project_id, session_id, text, review_contexts, status, created_at, updated_at
 							FROM messages_before_cancelled;
 						CREATE TABLE message_attachments (
 							message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
@@ -961,18 +977,19 @@ export class HUEStore {
 		this.database.transaction(() => {
 			const messages = this.database
 				.query(
-					'SELECT id, text, status, created_at, updated_at FROM messages WHERE project_id IS ? AND session_id = ? ORDER BY created_at, id'
+					'SELECT id, text, review_contexts, status, created_at, updated_at FROM messages WHERE project_id IS ? AND session_id = ? ORDER BY created_at, id'
 				)
 				.all(projectId, sourceSessionId) as Array<{
 				id: string;
 				text: string;
+				review_contexts: string;
 				status: MessageStatus;
 				created_at: string;
 				updated_at: string;
 			}>;
 			const ids = new Map(messages.map(({ id }) => [id, crypto.randomUUID()]));
 			const insertMessage = this.database.query(
-				'INSERT INTO messages (id, project_id, session_id, text, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+				'INSERT INTO messages (id, project_id, session_id, text, review_contexts, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
 			);
 			const insertAttachment = this.database.query(
 				'INSERT INTO message_attachments (message_id, position, name, mime_type, data, size) VALUES (?, ?, ?, ?, ?, ?)'
@@ -984,6 +1001,7 @@ export class HUEStore {
 					projectId,
 					targetSessionId,
 					message.text,
+					message.review_contexts,
 					message.status,
 					message.created_at,
 					message.updated_at
@@ -1041,6 +1059,83 @@ export class HUEStore {
 			limit,
 			offset: 0
 		}).sessions;
+	}
+
+	findSessions(
+		query: string,
+		status: SessionFinderStatus | '' = '',
+		limit = 50
+	): SessionFinderResult[] {
+		const needle = query.trim().toLowerCase();
+		if (needle.length > 200) throw new Error('Search query is too long');
+		const rows = this.database
+			.query(
+				`WITH input(needle, status_filter) AS (VALUES (?, ?)),
+				message_order AS (
+					SELECT m.session_id, m.id, m.status, m.created_at, MAX(e.sequence) AS lifecycle_sequence
+					FROM messages m
+					LEFT JOIN session_events e
+						ON e.project_id IS m.project_id AND e.session_id = m.session_id
+						AND json_extract(e.payload, '$.messageId') = m.id
+						AND e.type IN ('message.accepted', 'message.running', 'message.completed', 'message.failed', 'message.unknown', 'message.cancelled')
+					GROUP BY m.id
+				), latest_message AS (
+					SELECT session_id, id, status,
+						ROW_NUMBER() OVER (
+							PARTITION BY session_id ORDER BY lifecycle_sequence DESC, created_at DESC, id DESC
+						) AS rank
+					FROM message_order
+				), latest_interaction AS (
+					SELECT session_id, type, json_extract(payload, '$.messageId') AS message_id,
+						json_extract(payload, '$.status') AS status,
+						ROW_NUMBER() OVER (
+							PARTITION BY session_id, type, json_extract(payload, '$.id') ORDER BY sequence DESC
+						) AS rank
+					FROM session_events WHERE type IN ('agent.permission', 'agent.clarify')
+				), finder AS (
+					SELECT ps.session_id, ps.project_id, p.name AS project_name, ps.cwd, ps.icon, ps.title,
+						ps.work_mode, ps.pinned, ps.archived, ps.folder, ps.tags, ps.updated_at,
+						CASE
+							WHEN ps.archived = 1 THEN 'archived'
+							WHEN MAX(CASE WHEN lm.status IN ('queued', 'running') AND li.status = 'pending' THEN 1 ELSE 0 END) = 1 THEN 'waiting'
+							WHEN MAX(CASE WHEN lm.status = 'unknown' THEN 1 ELSE 0 END) = 1 THEN 'unknown'
+							WHEN MAX(CASE WHEN lm.status = 'failed' THEN 1 ELSE 0 END) = 1 THEN 'failed'
+							WHEN MAX(CASE WHEN lm.status IN ('queued', 'running') THEN 1 ELSE 0 END) = 1 THEN 'running'
+							ELSE NULL
+						END AS finder_status
+					FROM project_sessions ps
+					LEFT JOIN projects p ON p.id = ps.project_id
+					LEFT JOIN latest_message lm ON lm.session_id = ps.session_id AND lm.rank = 1
+					LEFT JOIN latest_interaction li
+						ON li.session_id = ps.session_id AND li.message_id = lm.id AND li.rank = 1
+					CROSS JOIN input i
+					WHERE i.needle = ''
+						OR instr(lower(COALESCE(ps.title, '')), i.needle) > 0
+						OR instr(lower(COALESCE(ps.folder, '')), i.needle) > 0
+						OR instr(lower(ps.tags), i.needle) > 0
+						OR instr(lower(COALESCE(p.name, '')), i.needle) > 0
+						OR EXISTS (SELECT 1 FROM messages m WHERE m.session_id = ps.session_id AND instr(lower(m.text), i.needle) > 0)
+						OR EXISTS (SELECT 1 FROM session_events e WHERE e.session_id = ps.session_id AND e.type = 'agent.chunk' AND instr(lower(COALESCE(json_extract(e.payload, '$.text'), '')), i.needle) > 0)
+					GROUP BY ps.session_id
+				)
+				SELECT finder.* FROM finder CROSS JOIN input i
+				WHERE i.status_filter = '' OR finder.finder_status = i.status_filter
+				ORDER BY finder.updated_at DESC, finder.session_id
+				LIMIT ?`
+			)
+			.all(needle, status, Math.max(1, Math.min(Math.trunc(limit) || 50, 100))) as Array<
+			SessionRow & {
+				project_id: string | null;
+				project_name: string | null;
+				finder_status: SessionFinderStatus | null;
+			}
+		>;
+		return rows.map((row) => ({
+			...this.mapSession(row),
+			projectId: row.project_id,
+			projectName: row.project_name,
+			status: row.finder_status
+		}));
 	}
 
 	previewSessionDelete(projectId: string | null, sessionId: string) {
@@ -1203,7 +1298,7 @@ export class HUEStore {
 
 			const queued = this.database
 				.query(
-					`SELECT m.id, m.project_id, m.session_id, m.text, m.status, m.created_at, m.updated_at, ps.cwd
+					`SELECT m.id, m.project_id, m.session_id, m.text, m.review_contexts, m.status, m.created_at, m.updated_at, ps.cwd
 					 FROM messages m
 					 JOIN project_sessions ps ON ps.project_id IS m.project_id AND ps.session_id = m.session_id
 					 WHERE m.status = 'queued'
@@ -1214,6 +1309,7 @@ export class HUEStore {
 				project_id: string | null;
 				session_id: string;
 				text: string;
+				review_contexts: string;
 				status: MessageStatus;
 				created_at: string;
 				updated_at: string;
@@ -1590,6 +1686,7 @@ export class HUEStore {
 		text: string;
 		images?: ImageAttachment[];
 		attachments?: InputAttachment[];
+		reviewContexts?: ReviewContext[];
 	}): {
 		duplicate: boolean;
 		status: MessageStatus;
@@ -1606,6 +1703,7 @@ export class HUEStore {
 				existing.projectId !== input.projectId ||
 				existing.sessionId !== input.sessionId ||
 				existing.text !== input.text ||
+				JSON.stringify(existing.reviewContexts) !== JSON.stringify(input.reviewContexts ?? []) ||
 				JSON.stringify(normalizeStoredAttachments(existing.images, existing.attachments)) !==
 					JSON.stringify(attachments)
 			) {
@@ -1618,9 +1716,18 @@ export class HUEStore {
 		this.database.transaction(() => {
 			this.database
 				.query(
-					'INSERT INTO messages (id, project_id, session_id, text, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+					'INSERT INTO messages (id, project_id, session_id, text, review_contexts, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
 				)
-				.run(input.id, input.projectId, input.sessionId, input.text, 'queued', now, now);
+				.run(
+					input.id,
+					input.projectId,
+					input.sessionId,
+					input.text,
+					JSON.stringify(input.reviewContexts ?? []),
+					'queued',
+					now,
+					now
+				);
 			const insertAttachment = this.database.query(
 				'INSERT INTO message_attachments (message_id, position, name, mime_type, data, size) VALUES (?, ?, ?, ?, ?, ?)'
 			);
@@ -1652,13 +1759,14 @@ export class HUEStore {
 	getMessage(id: string): StoredMessage | null {
 		const row = this.database
 			.query(
-				'SELECT id, project_id, session_id, text, status, created_at, updated_at FROM messages WHERE id = ?'
+				'SELECT id, project_id, session_id, text, review_contexts, status, created_at, updated_at FROM messages WHERE id = ?'
 			)
 			.get(id) as {
 			id: string;
 			project_id: string | null;
 			session_id: string;
 			text: string;
+			review_contexts: string;
 			status: MessageStatus;
 			created_at: string;
 			updated_at: string;
@@ -1669,13 +1777,14 @@ export class HUEStore {
 	listMessages(projectId: string | null, sessionId: string): StoredMessage[] {
 		const rows = this.database
 			.query(
-				'SELECT id, project_id, session_id, text, status, created_at, updated_at FROM messages WHERE project_id IS ? AND session_id = ? ORDER BY created_at, id'
+				'SELECT id, project_id, session_id, text, review_contexts, status, created_at, updated_at FROM messages WHERE project_id IS ? AND session_id = ? ORDER BY created_at, id'
 			)
 			.all(projectId, sessionId) as Array<{
 			id: string;
 			project_id: string | null;
 			session_id: string;
 			text: string;
+			review_contexts: string;
 			status: MessageStatus;
 			created_at: string;
 			updated_at: string;
@@ -1691,6 +1800,7 @@ export class HUEStore {
 			text: string;
 			images: ImageAttachment[];
 			attachments?: InputAttachment[];
+			reviewContexts?: ReviewContext[];
 		}
 	): StoredMessage {
 		const message = this.getMessage(id);
@@ -1705,8 +1815,16 @@ export class HUEStore {
 		const updatedAt = new Date().toISOString();
 		this.database.transaction(() => {
 			this.database
-				.query('UPDATE messages SET text = ?, updated_at = ? WHERE id = ? AND status = ?')
-				.run(input.text, updatedAt, id, 'queued');
+				.query(
+					'UPDATE messages SET text = ?, review_contexts = ?, updated_at = ? WHERE id = ? AND status = ?'
+				)
+				.run(
+					input.text,
+					JSON.stringify(input.reviewContexts ?? message.reviewContexts),
+					updatedAt,
+					id,
+					'queued'
+				);
 			if (input.attachments !== undefined || input.images.length) {
 				this.database.query('DELETE FROM message_attachments WHERE message_id = ?').run(id);
 				const insert = this.database.query(
@@ -1833,6 +1951,7 @@ export class HUEStore {
 		project_id: string | null;
 		session_id: string;
 		text: string;
+		review_contexts: string;
 		status: MessageStatus;
 		created_at: string;
 		updated_at: string;
@@ -1861,6 +1980,7 @@ export class HUEStore {
 			projectId: row.project_id,
 			sessionId: row.session_id,
 			text: row.text,
+			reviewContexts: JSON.parse(row.review_contexts) as ReviewContext[],
 			images: attachments
 				.filter(({ mimeType, data }) => mimeType.startsWith('image/') && data)
 				.map(({ name, mimeType, data }) => ({ name, mimeType, data })),
