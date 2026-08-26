@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url';
 import * as acp from '@agentclientprotocol/sdk';
 import {
 	DeliveryUncertainError,
+	TurnCancelledError,
 	type PromptRuntime,
 	type PlanEntry,
 	type ClarifyField,
@@ -687,11 +688,15 @@ export class HermesACP implements PromptRuntime {
 					_meta: envelope.meta
 				}
 			)) as acp.PromptResponse;
+			if (response.stopReason === 'cancelled') throw new TurnCancelledError();
 			if (response.stopReason !== 'end_turn') {
 				throw new Error(`Hermes ended the turn with ${response.stopReason}`);
 			}
 		} catch (error) {
-			if (error instanceof Error && error.message.startsWith('Hermes ended the turn with ')) {
+			if (
+				error instanceof TurnCancelledError ||
+				(error instanceof Error && error.message.startsWith('Hermes ended the turn with '))
+			) {
 				throw error;
 			}
 			const rawMessage = error instanceof Error ? error.message : String(error);

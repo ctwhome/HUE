@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { statSync } from 'node:fs';
 import { automaticSessionIcon } from '$lib/icon';
+import { parseWorkMode } from '$lib/work-mode';
 import {
 	authoritativeProject,
 	projectBranch,
@@ -43,7 +44,9 @@ export const GET: RequestHandler = async ({ params, url }) => {
 							: `Restore the Session folder at ${stored.cwd} to resume it.`,
 						busySince: busyStarts[stored.sessionId] ?? null,
 						attention: indicators[stored.sessionId]?.attention ?? false,
-						error: indicators[stored.sessionId]?.error ?? false
+						error: indicators[stored.sessionId]?.error ?? false,
+						status: indicators[stored.sessionId]?.status ?? null,
+						unreadAttention: indicators[stored.sessionId]?.unreadAttention ?? false
 					}
 				],
 				hasMore: false
@@ -105,7 +108,9 @@ export const GET: RequestHandler = async ({ params, url }) => {
 					recovery: available ? null : `Restore the Session folder at ${stored.cwd} to resume it.`,
 					busySince: busyStarts[stored.sessionId] ?? null,
 					attention: indicators[stored.sessionId]?.attention ?? false,
-					error: indicators[stored.sessionId]?.error ?? false
+					error: indicators[stored.sessionId]?.error ?? false,
+					status: indicators[stored.sessionId]?.status ?? null,
+					unreadAttention: indicators[stored.sessionId]?.unreadAttention ?? false
 				};
 			}),
 			hasMore: page.hasMore
@@ -115,15 +120,20 @@ export const GET: RequestHandler = async ({ params, url }) => {
 	}
 };
 
-export const POST: RequestHandler = async ({ params }) => {
+export const POST: RequestHandler = async ({ params, request }) => {
 	try {
+		const text = await request.text();
+		const body = text ? (JSON.parse(text) as { workMode?: unknown }) : {};
+		const workMode = body.workMode === undefined ? null : parseWorkMode(body.workMode);
+		if (body.workMode !== undefined && !workMode)
+			return json({ error: 'Invalid work mode' }, { status: 400 });
 		const project = await authoritativeProject(params.projectId);
 		const folders = project.folders.map(({ path }) => path);
 		const session = await services().runtime.createSession(project.primary_path);
 		if (!sessionMatchesProjectFolders(folders, session.cwd)) {
 			throw new Error(`Hermes Session ${session.sessionId} is outside the Project root`);
 		}
-		services().store.upsertSession(project.id, session);
+		services().store.upsertSession(project.id, { ...session, workMode });
 		const stored = services().store.getSession(project.id, session.sessionId)!;
 		services().dispatcher.recover();
 		return json(

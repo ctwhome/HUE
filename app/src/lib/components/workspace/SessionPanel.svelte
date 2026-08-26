@@ -78,6 +78,7 @@
 		scrollToLatest: transcriptFollow.scrollToLatest,
 		focusComposer: () => messageState.composerElement?.focus(),
 		getDelivery: () => sessionState.delivery,
+		getRuntimeProfile: () => sessionState.runtime.profile,
 		sendText: messageState.sendText,
 		setError: (message) => (error = message),
 		setLoading: (value) => (loading = value),
@@ -161,6 +162,8 @@
 	});
 </script>
 
+<svelte:window onpagehide={messageState.saveCurrentDraft} />
+
 <main
 	class="session-view flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
 	class:empty-session={!hasTranscript}
@@ -219,9 +222,12 @@
 		{workModeChanging}
 		runtimeChanging={runtimeState.changing}
 		promptLibraryAvailable={Boolean(fixedProject?.rootAvailable)}
+		projectName={fixedProject?.name ?? ''}
 		workflows={navigation.workflows}
 		bind:workflowName={navigation.workflowName}
 		bind:workflowPrompt={navigation.workflowPrompt}
+		bind:workflowProfile={navigation.workflowProfile}
+		bind:workflowWorkMode={navigation.workflowWorkMode}
 		stopping={messageState.stopping}
 		showScrollToLatest={timeline.length > 0 && transcriptFollow.showScrollToLatest}
 		busy={isTurnBusy(sessionState.delivery)}
@@ -246,6 +252,9 @@
 		onworkmode={changeWorkMode}
 		onloadworkflows={navigation.loadWorkflows}
 		onworkflow={navigation.addWorkflow}
+		onupdateworkflow={navigation.updateWorkflow}
+		ondeleteworkflow={navigation.deleteWorkflow}
+		onduplicateworkflow={navigation.duplicateWorkflow}
 		{onrunworkflow}
 		onscrolllatest={transcriptFollow.scrollToLatest}
 		matchingCommands={messageState.matchingCommands}

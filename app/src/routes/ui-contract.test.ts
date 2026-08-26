@@ -222,6 +222,12 @@ test('long session titles stay inside the row so session actions remain reachabl
 	expect(page).toContain('class="session-row-title flex min-w-0 items-baseline gap-2"');
 });
 
+test('workspace flushes the scoped composer draft on pagehide', () => {
+	const workspace = read('../lib/components/Workspace.svelte');
+	expect(workspace).toContain('onpagehide={messageState.saveCurrentDraft}');
+	expect(workspace).toContain('installDirtyNavigation(dirtyGuard, messageState.saveCurrentDraft)');
+});
+
 test('session rows expose archive on hover without redundant open tooltips', () => {
 	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
 	expect(contextPanel).toContain("aria-label={`Archive ${session.title || 'Untitled session'}`}");
@@ -344,6 +350,13 @@ test('Hermes management remains complete and request-race safe', () => {
 	expect(hermes).toContain('confirmDestructive');
 	expect(hermes).toContain('runtime.restart-admin');
 	expect(hermes).toContain('runtime.reconnect-acp');
+	expect(hermes).toContain("api<Record<string, any>>('/api/runtime')");
+	expect(hermes).toContain(
+		"api<{ backup: Record<string, any> }>('/api/runtime', { method: 'POST' })"
+	);
+	expect(hermes).toContain('Create validated backup');
+	expect(hermes).toContain('HUE database');
+	expect(hermes).toContain('Offline restore');
 	expect(hermes).toContain('oncommand');
 	for (const action of ['Create schedule', 'Run now', 'Run history', 'Pause', 'Resume', 'Delete']) {
 		expect(hermes).toContain(action);
@@ -498,7 +511,9 @@ test('Projects and Sessions own their panel visibility controls', () => {
 	expect(contextPanel).toContain('aria-label="Hide Sessions panel"');
 	expect(workspace).toContain('aria-label="Show Projects panel"');
 	expect(workspace).not.toContain('aria-label="Show Sessions panel"');
-	expect(projectRail).toContain("aria-controls={selectedProject?.id === project.id ? 'session-drawer' : undefined}");
+	expect(projectRail).toContain(
+		"aria-controls={selectedProject?.id === project.id ? 'session-drawer' : undefined}"
+	);
 	expect(workspace).toContain('aria-label="Collapsed Projects"');
 	expect(workspace).toContain('{#each projectManagement.projects as project');
 	expect(styles).toContain('grid-template-columns: 56px 48px');
@@ -508,7 +523,14 @@ test('global navigation separates app and Hermes settings into modal surfaces', 
 	const settingsView = read('../lib/components/hermes/SettingsView.svelte');
 	const attentionCenter = read('../lib/components/notifications/AttentionCenter.svelte');
 	expect(navigation).not.toContain('<MessageSquare');
-	for (const label of ['Inspect Hermes runtime', 'Schedules', 'Skills', 'Commands', 'Profiles', 'MCP'])
+	for (const label of [
+		'Inspect Hermes runtime',
+		'Schedules',
+		'Skills',
+		'Commands',
+		'Profiles',
+		'MCP'
+	])
 		expect(navigation).not.toContain(`aria-label="${label}"`);
 	expect(navigation).toContain('aria-label="Workspace"');
 	expect(navigation.indexOf('aria-label="Workspace"')).toBeLessThan(
@@ -629,15 +651,15 @@ test('mobile chat exposes resilient content, compact context, and auto-growing i
 	expect(page).toContain('Delivery status unknown');
 	expect(modelPicker).toContain('aria-label="Search models"');
 	expect(modelPicker).toContain('class="model-list min-h-0 flex-1 overflow-y-auto"');
-	expect(modelPicker).not.toContain('model-menu max-h-[min(520px,calc(100dvh-24px))] w-[min(360px,calc(100vw-24px))] overflow-y-auto');
+	expect(modelPicker).not.toContain(
+		'model-menu max-h-[min(520px,calc(100dvh-24px))] w-[min(360px,calc(100vw-24px))] overflow-y-auto'
+	);
 	expect(composer).toContain("import ModelPicker from '../ModelPicker.svelte'");
 	expect(composer).not.toContain(
 		'composer-context ml-auto flex min-w-0 items-center gap-1 overflow-x-auto'
 	);
 	expect(styles).toContain('flex-wrap: wrap');
-	expect(composer.indexOf('<ModelPicker')).toBeLessThan(
-		composer.indexOf('ariaLabel="Work mode"')
-	);
+	expect(composer.indexOf('<ModelPicker')).toBeLessThan(composer.indexOf('ariaLabel="Work mode"'));
 	expect(page).toContain("aria-label={`Manage ${session.title || 'Untitled session'}`}");
 	expect(page).toContain('popover="auto"');
 	expect(page).toContain('Saved automatically');

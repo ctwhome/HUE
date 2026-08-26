@@ -643,7 +643,7 @@ describe('workspace async state', () => {
 	});
 
 	it('locks submission throughout accepted, running, and reconnecting delivery', () => {
-		for (const delivery of ['saving', 'accepted', 'running', 'reconnecting']) {
+		for (const delivery of ['saving', 'accepted', 'running', 'reconnecting', 'cancelling']) {
 			expect(workspaceState.isTurnBusy(delivery)).toBe(true);
 		}
 		expect(workspaceState.isTurnBusy('completed')).toBe(false);

@@ -24,7 +24,7 @@ test('uses canonical Hermes id for workflow reads and creates reached by slug', 
 	projectIds.length = 0;
 	const { GET, POST } = await import('./+server');
 	const params = { projectId: 'project-slug' };
-	const getResponse = await GET({ params } as never);
+	const getResponse = await GET({ params, url: new URL('http://hue.test/workflows') } as never);
 	const postResponse = await POST({
 		params,
 		request: new Request('http://hue.test/workflows', {
