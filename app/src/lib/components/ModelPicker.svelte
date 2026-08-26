@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Check, ChevronDown, ChevronRight, CircleDot, X } from 'lucide-svelte';
+	import { Check, ChevronDown, ChevronRight, CircleDot, Ellipsis, X } from 'lucide-svelte';
 	import { compactModelLabel } from './workspace/mobile-navigation';
 
 	export type ModelOption = { modelId: string; name: string; description?: string | null };
@@ -8,12 +8,14 @@
 		models,
 		value,
 		ariaLabel = 'Hermes model',
+		ellipsis = false,
 		disabled = false,
 		onselect
 	}: {
 		models: ModelOption[];
 		value: string;
 		ariaLabel?: string;
+		ellipsis?: boolean;
 		disabled?: boolean;
 		onselect: (modelId: string) => void;
 	} = $props();
@@ -52,19 +54,24 @@
 	}
 </script>
 
-<button
+	<button
 	type="button"
-	class="context-chip context-select context-model inline-flex min-h-8 max-w-40 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs hover:bg-accent"
+	class={`context-chip context-select context-model inline-flex min-h-8 shrink-0 items-center rounded-lg text-xs hover:bg-accent ${ellipsis ? 'size-8 justify-center p-0 max-[700px]:size-11' : 'max-w-40 gap-1.5 px-2'}`}
 	aria-label={ariaLabel}
 	aria-haspopup="menu"
 	aria-expanded={open}
 	popovertarget={id}
-	title={`${selected?.name ?? value} · ${value}`}
+	title={ellipsis
+		? `${ariaLabel}: ${selected?.name ?? value}`
+		: `${selected?.name ?? value} · ${value}`}
 	{disabled}
 >
-	<CircleDot size={14} aria-hidden="true" />
-	<span>{compactModelLabel(value, selected?.name ?? value)}</span>
-	<ChevronDown size={13} aria-hidden="true" />
+	{#if ellipsis}<Ellipsis size={18} aria-hidden="true" />{:else}<CircleDot
+			size={14}
+			aria-hidden="true"
+		/>
+		<span>{compactModelLabel(value, selected?.name ?? value)}</span>
+		<ChevronDown size={13} aria-hidden="true" />{/if}
 </button>
 <div
 	bind:this={popover}

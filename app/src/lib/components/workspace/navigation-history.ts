@@ -120,11 +120,11 @@ export async function restoreNavigationSelection(
 	await navigation.loadActiveTab(destination.sessionId);
 	const session = navigation.sessions.find(({ sessionId }) => sessionId === destination.sessionId);
 	const sessionRestored = session ? await navigation.openSession(session, 'none') : false;
-	if (destination.sessionId) await navigation.loadActiveTab(null);
 	if (destination.sessionId && !sessionRestored) {
 		navigation.selectedSession = null;
 		effects.clearSession();
 	}
+	if (destination.sessionId) await navigation.loadActiveTab(null);
 	navigation.mobileDrawer =
 		effects.isMobile() && (!destination.sessionId || sessionRestored)
 			? destination.pane

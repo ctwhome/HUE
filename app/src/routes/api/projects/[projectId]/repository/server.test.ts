@@ -1,5 +1,9 @@
 import { expect, test } from 'bun:test';
-import { _repositoryMutationAllowed } from './+server';
+import { _repositoryMutationAllowed, _selectedRepositoryPath } from './+server';
+
+test('repository reads replace a stale selection with the first discovered repository', () => {
+	expect(_selectedRepositoryPath([{ path: 'app' }, { path: 'docs' }], '.')).toBe('app');
+});
 
 test('repository mutations require a loopback same-origin request', () => {
 	const localUrl = new URL('http://127.0.0.1/api/projects/project-1/repository');

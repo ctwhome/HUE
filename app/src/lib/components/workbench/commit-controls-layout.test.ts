@@ -10,6 +10,7 @@ test('commit generation lives in the message input and shares the model picker',
 	expect(source).toContain('aria-label="Generate commit message with Hermes"');
 	expect(source).toContain("import ModelPicker from '../ModelPicker.svelte'");
 	expect(source).toContain('ariaLabel="Commit message model"');
+	expect(source).toContain('ellipsis={true}');
 	expect(source).not.toContain('commitModelDialog');
 	expect(source.indexOf('aria-label="Git worktrees"')).toBeLessThan(source.indexOf('<GitHubPanels'));
 });

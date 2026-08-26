@@ -4,7 +4,8 @@
 	overscroll-behavior: contain;
 }
 .transcript.empty {
-	overflow-y: hidden;
+	contain: none;
+	overflow: visible;
 	padding-top: 0;
 }
 .transcript.empty .transcript-content {
@@ -426,6 +427,9 @@
 	flex-wrap: wrap;
 	justify-content: flex-end;
 	overflow-x: visible;
+}
+.composer-send {
+	margin-left: auto;
 }
 
 .context-select select {

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { ExternalLink, Monitor, Smartphone, Tablet } from 'lucide-svelte';
+	import { ExternalLink, Info, Monitor, Smartphone, Tablet } from 'lucide-svelte';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
 	import { afterInitialPaint } from './after-initial-paint';
@@ -113,6 +113,42 @@
 
 <div class="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Project Excalidraw">
 	<header class="browser-canvas-toolbar border-b border-border bg-muted/40 p-1.5">
+		<div class="browser-responsive-actions">
+			<div class="browser-preset-actions" role="group" aria-label="Add preview preset">
+				<Button
+					size="icon"
+					class="w-[27px] px-0"
+					disabled={!canvasReady}
+					onclick={() => addBrowser('desktop')}
+					aria-label="Add desktop"
+					title="Add desktop (1440 × 900)"><Monitor size={15} aria-hidden="true" /></Button
+				>
+				<Button
+					size="icon"
+					class="w-[27px] px-0"
+					disabled={!canvasReady}
+					onclick={() => addBrowser('tablet')}
+					aria-label="Add tablet"
+					title="Add tablet (768 × 1024)"><Tablet size={15} aria-hidden="true" /></Button
+				>
+				<Button
+					size="icon"
+					class="w-[27px] px-0"
+					disabled={!canvasReady}
+					onclick={() => addBrowser('mobile')}
+					aria-label="Add mobile"
+					title="Add mobile (390 × 844)"><Smartphone size={15} aria-hidden="true" /></Button
+				>
+			</div>
+			<Button
+				size="icon"
+				variant="ghost"
+				class="browser-frame-note w-7 cursor-help px-0 text-muted-foreground"
+				aria-label="Sites that block framing through X-Frame-Options, CSP, or mixed-content rules must open externally."
+				title="Sites that block framing through X-Frame-Options, CSP, or mixed-content rules must open externally."
+				><Info size={15} aria-hidden="true" /></Button
+			>
+		</div>
 		<form class="browser-address" onsubmit={applyAddress}>
 			<Input
 				class="h-9 min-w-0 text-xs"
@@ -130,43 +166,9 @@
 					title="Open current address externally"><ExternalLink size={15} aria-hidden="true" /></a
 				>{/if}
 		</form>
-		<div class="browser-device-actions">
-			<div
-				class="browser-preset-actions inline-flex gap-1 max-[700px]:grid max-[700px]:grid-cols-3"
-				role="group"
-				aria-label="Add preview preset"
-			>
-				<Button
-					size="sm"
-					disabled={!canvasReady}
-					onclick={() => addBrowser('desktop')}
-					aria-label="Add desktop"
-					title="Add desktop (1440 × 900)"><Monitor size={15} aria-hidden="true" />Desktop</Button
-				>
-				<Button
-					size="sm"
-					disabled={!canvasReady}
-					onclick={() => addBrowser('tablet')}
-					aria-label="Add tablet"
-					title="Add tablet (768 × 1024)"><Tablet size={15} aria-hidden="true" />Tablet</Button
-				>
-				<Button
-					size="sm"
-					disabled={!canvasReady}
-					onclick={() => addBrowser('mobile')}
-					aria-label="Add mobile"
-					title="Add mobile (390 × 844)"><Smartphone size={15} aria-hidden="true" />Mobile</Button
-				>
-			</div>
-			<span
-				class="browser-frame-note text-muted-foreground"
-				title="Sites that block framing through X-Frame-Options, CSP, or mixed-content rules must open externally."
-				>Sites that block framing through X-Frame-Options, CSP, or mixed-content rules must open
-				externally.</span
-			>
-		</div>
-		{#if error}<small class="panel-error block px-1 pt-1 text-xs text-destructive" role="alert"
-				>{error}</small
+		{#if error}<small
+				class="panel-error col-span-full block px-1 text-xs text-destructive"
+				role="alert">{error}</small
 			>{/if}
 	</header>
 	<div class="browser-canvas relative min-h-0 min-w-0 flex-1" bind:this={canvasHost}>

@@ -3,6 +3,15 @@
 	display: grid;
 	overflow: hidden;
 }
+.session-pane-grid[data-pane-count='1'] {
+	padding: 10px;
+}
+.session-pane-grid[data-pane-count='1'] > .session-pane-primary {
+	border: 1px solid var(--border);
+	border-radius: var(--radius-panel);
+	background: var(--card);
+	box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+}
 .session-pane-grid[data-pane-count='2'] {
 	grid-template-columns: minmax(0, var(--pane-column)) minmax(0, 1fr);
 }
@@ -107,4 +116,15 @@
 	right: 0;
 	left: 0;
 	height: 2px;
+}
+
+@media (max-width: 700px), (pointer: coarse) and (max-height: 500px) {
+	.session-pane-grid[data-pane-count='1'] {
+		padding: 0;
+	}
+	.session-pane-grid[data-pane-count='1'] > .session-pane-primary {
+		border: 0;
+		border-radius: 0;
+		box-shadow: none;
+	}
 }

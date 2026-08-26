@@ -46,12 +46,22 @@ export function _repositoryMutationAllowed(request: Request, clientAddress: stri
 	}
 }
 
+export function _selectedRepositoryPath(
+	repositories: Array<{ path: string }>,
+	selected?: string
+): string | undefined {
+	return repositories.some(({ path }) => path === selected) ? selected : repositories[0]?.path;
+}
+
 export const GET: RequestHandler = async ({ params, url }) => {
 	try {
 		const project = await authoritativeProject(params.projectId);
 		const repositories = projectRepositories(project.primary_path);
-		const selected = url.searchParams.get('repository') ?? undefined;
-		const repositoryPath = selected ?? repositories[0]?.path ?? '.';
+		const selected = _selectedRepositoryPath(
+			repositories,
+			url.searchParams.get('repository') ?? undefined
+		);
+		const repositoryPath = selected ?? '.';
 		const repositoryRoot = resolveProjectRepository(project.primary_path, selected, repositories);
 		if (url.searchParams.get('view') === 'github') {
 			return json(projectGitHubItems(repositoryRoot));

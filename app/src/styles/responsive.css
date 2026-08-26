@@ -19,13 +19,13 @@
 
 @media (min-width: 701px) {
 	.workspace.projects-panel-closed {
-		grid-template-columns: 56px 0 var(--session-pane-width, 320px) minmax(0, 1fr);
+		grid-template-columns: 56px 48px var(--session-pane-width, 320px) minmax(0, 1fr);
 	}
 	.workspace.sessions-panel-closed {
-		grid-template-columns: 56px var(--project-pane-width, 220px) 0 minmax(0, 1fr);
+		grid-template-columns: 56px var(--project-pane-width, 220px) 40px minmax(0, 1fr);
 	}
 	.workspace.projects-panel-closed.sessions-panel-closed {
-		grid-template-columns: 56px 0 0 minmax(0, 1fr);
+		grid-template-columns: 56px 48px 40px minmax(0, 1fr);
 	}
 	.workspace.projects-panel-closed > .project-rail,
 	.workspace.projects-panel-closed > .project-pane-resizer,
@@ -62,13 +62,13 @@
 		grid-template-columns: 56px 74px 280px minmax(0, 1fr);
 	}
 	.workspace.projects-panel-closed {
-		grid-template-columns: 56px 0 280px minmax(0, 1fr);
+		grid-template-columns: 56px 48px 280px minmax(0, 1fr);
 	}
 	.workspace.sessions-panel-closed {
-		grid-template-columns: 56px 74px 0 minmax(0, 1fr);
+		grid-template-columns: 56px 74px 40px minmax(0, 1fr);
 	}
 	.workspace.projects-panel-closed.sessions-panel-closed {
-		grid-template-columns: 56px 0 0 minmax(0, 1fr);
+		grid-template-columns: 56px 48px 40px minmax(0, 1fr);
 	}
 	.project-rail {
 		padding-inline: 10px;
@@ -159,6 +159,7 @@
 	}
 	.workspace {
 		display: block;
+		background: var(--background);
 		padding-top: calc(56px + env(safe-area-inset-top, 0px));
 	}
 	.shell-resizer {
@@ -358,7 +359,6 @@
 	}
 	.composer-toolbar > .attach-button,
 	.composer-toolbar > .session-option-trigger {
-		grid-row: 2;
 		width: 44px;
 	}
 	.composer-delivery {
@@ -398,21 +398,11 @@
 	.browser-address input,
 	.browser-address button,
 	.browser-external,
+	.browser-frame-note,
 	.browser-preset-actions button,
 	.change-list button {
 		min-width: 44px;
 		min-height: 44px;
-	}
-	.browser-frame-note {
-		grid-column: 1 / -1;
-		padding-inline: 2px;
-	}
-	.browser-device-actions {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr);
-	}
-	.browser-preset-actions button {
-		width: 100%;
 	}
 	.change-list li {
 		grid-template-columns: 44px 18px minmax(0, 1fr);
@@ -477,6 +467,9 @@
 	}
 	.session-view {
 		touch-action: pan-y;
+	}
+	.session-workspace {
+		background: var(--background);
 	}
 	.session-pane-grid[data-pane-count]:not([data-pane-count='1']) {
 		grid-template-columns: minmax(0, 1fr);
@@ -587,9 +580,16 @@
 .workspace.embedded > .session-workspace {
 	display: flex;
 	height: 100dvh;
+	background: var(--background);
 }
 .workspace.embedded .session-pane-grid {
 	height: 100%;
+	padding: 0;
+}
+.workspace.embedded .session-pane-primary {
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
 }
 .workspace.embedded .project-browser-dock,
 .workspace.embedded .project-tool-dock,

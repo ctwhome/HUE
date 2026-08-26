@@ -279,7 +279,7 @@ test('reports a project without Git without treating it as an error', () => {
 	});
 });
 
-test('discovers Git repositories inside a project', () => {
+test('discovers nested Git repositories and mutates only the selected repository', () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-repositories-'));
 	temporaryDirectories.push(projectRoot);
 	const appRoot = join(projectRoot, 'app');
@@ -288,10 +288,21 @@ test('discovers Git repositories inside a project', () => {
 	mkdirSync(docsRoot, { recursive: true });
 	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: appRoot });
 	Bun.spawnSync(['git', 'init', '-b', 'docs'], { cwd: docsRoot });
+	writeFileSync(join(appRoot, 'app.txt'), 'app\n');
+	writeFileSync(join(docsRoot, 'docs.txt'), 'docs\n');
 
 	expect(projectRepositories(projectRoot)).toEqual([{ path: 'app' }, { path: 'packages/docs' }]);
 	expect(resolveProjectRepository(projectRoot)).toBe(realpathSync(appRoot));
-	expect(resolveProjectRepository(projectRoot, 'packages/docs')).toBe(realpathSync(docsRoot));
+	const selectedRoot = resolveProjectRepository(projectRoot, 'packages/docs');
+	expect(selectedRoot).toBe(realpathSync(docsRoot));
+
+	projectRepositoryAction(selectedRoot, { action: 'stageAll' });
+	expect(projectRepository(appRoot).changes).toEqual([
+		expect.objectContaining({ path: 'app.txt', index: '?' })
+	]);
+	expect(projectRepository(docsRoot).changes).toEqual([
+		expect.objectContaining({ path: 'docs.txt', index: 'A' })
+	]);
 });
 
 test('prefers a project-root repository and rejects undiscovered paths', () => {

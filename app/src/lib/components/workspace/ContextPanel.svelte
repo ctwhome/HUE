@@ -6,6 +6,7 @@
 		Ellipsis,
 		Folder,
 		LoaderCircle,
+		PanelLeftClose,
 		Pin,
 		Plus,
 		Search,
@@ -54,6 +55,7 @@
 		onicon,
 		onarchive,
 		onsearch,
+		oncollapse,
 		onclose,
 		isImage,
 		automaticIcon,
@@ -76,6 +78,7 @@
 		onicon: (event: MouseEvent, session: Session) => void;
 		onarchive: (event: MouseEvent, session: Session) => void;
 		onsearch: (event?: SubmitEvent) => void;
+		oncollapse: () => void;
 		onclose: () => void;
 		isImage: (icon: string | null) => boolean;
 		automaticIcon: (title?: string | null) => string;
@@ -168,6 +171,13 @@
 					aria-hidden="true"
 				/>{/if}</button
 		>
+		{#if !mobile}<button
+				class="grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+				type="button"
+				aria-label="Hide Sessions panel"
+				title="Hide Sessions panel"
+				onclick={oncollapse}><PanelLeftClose size={17} aria-hidden="true" /></button
+			>{/if}
 	</form>
 	<div class="item-list grid gap-1 overflow-auto p-2">
 		<button
@@ -240,20 +250,20 @@
 							aria-label="Session needs attention">•</span
 						>{/if}
 				</button>
-				{#if session.available !== false && !session.archived}<button
+				{#if !session.archived}<button
 						class="session-archive absolute top-1/2 right-8 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
 						aria-label={`Archive ${session.title || 'Untitled session'}`}
 						title={`Archive ${session.title || 'Untitled session'}`}
 						onclick={(event) => onarchive(event, session)}
 						><Archive size={15} aria-hidden="true" /></button
 					>{/if}
-				{#if session.available !== false}<button
-						class="session-edit absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
-						aria-label={`Edit ${session.title || 'Untitled session'}`}
-						title={`Edit ${session.title || 'Untitled session'}`}
-						onclick={(event) => onedit(event, session)}
-						><Ellipsis size={16} aria-hidden="true" /></button
-					>{/if}
+				<button
+					class="session-edit absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
+					aria-label={`Edit ${session.title || 'Untitled session'}`}
+					title={`Edit ${session.title || 'Untitled session'}`}
+					onclick={(event) => onedit(event, session)}
+					><Ellipsis size={16} aria-hidden="true" /></button
+				>
 			</div>
 		{/each}
 		{#if !loading && sessions.length === 0}<p

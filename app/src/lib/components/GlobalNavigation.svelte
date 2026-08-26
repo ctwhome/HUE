@@ -1,18 +1,5 @@
 <script lang="ts">
-	import {
-		CalendarDays,
-		Bell,
-		Code2,
-		FileText,
-		FolderKanban,
-		Grid2X2,
-		List,
-		MessageSquare,
-		Plug,
-		Settings,
-		SlidersHorizontal,
-		UserRound
-	} from 'lucide-svelte';
+	import { Bell, FileText, Settings } from 'lucide-svelte';
 	import BrandMark from './BrandMark.svelte';
 	import Button from './ui/Button.svelte';
 
@@ -31,16 +18,10 @@
 	let {
 		view,
 		unreadCount = 0,
-		projectsOpen,
-		sessionsOpen,
-		ontoggle,
 		onview
 	}: {
 		view: GlobalView | null;
 		unreadCount?: number;
-		projectsOpen: boolean;
-		sessionsOpen: boolean;
-		ontoggle: (panel: 'projects' | 'sessions') => void;
 		onview: (view: GlobalView | null) => void;
 	} = $props();
 
@@ -52,40 +33,13 @@
 	class="global-rail flex min-h-0 flex-col items-center gap-2 border-r border-border bg-[var(--surface-raised)] px-2 py-3"
 	aria-label="Global navigation"
 >
-	<BrandMark class="global-mark mb-1 size-10" />
-	<Button
-		variant="outline"
-		size="icon"
-		class={`${action} ${view === null ? 'active' : ''}`}
+	<button
+		class={`global-home mb-1 rounded-xl focus-visible:ring-2 focus-visible:ring-ring ${view === null ? 'ring-1 ring-ring' : ''}`}
 		aria-label="Workspace"
 		aria-current={view === null ? 'page' : undefined}
 		title="Workspace"
 		onclick={() => onview(null)}
-	>
-		<MessageSquare aria-hidden="true" />
-	</Button>
-	<Button
-		variant="outline"
-		size="icon"
-		class={`${action} ${projectsOpen ? 'active' : ''}`}
-		aria-label={`${projectsOpen ? 'Hide' : 'Show'} Projects panel`}
-		aria-pressed={projectsOpen}
-		title={`${projectsOpen ? 'Hide' : 'Show'} Projects panel`}
-		onclick={() => ontoggle('projects')}
-	>
-		<FolderKanban aria-hidden="true" />
-	</Button>
-	<Button
-		variant="outline"
-		size="icon"
-		class={`${action} ${sessionsOpen ? 'active' : ''}`}
-		aria-label={`${sessionsOpen ? 'Hide' : 'Show'} Sessions panel`}
-		aria-pressed={sessionsOpen}
-		title={`${sessionsOpen ? 'Hide' : 'Show'} Sessions panel`}
-		onclick={() => ontoggle('sessions')}
-	>
-		<List aria-hidden="true" />
-	</Button>
+	><BrandMark class="global-mark size-10" /></button>
 	<Button
 		variant="outline"
 		size="icon"
@@ -108,54 +62,6 @@
 			aria-label="Settings"
 			title="Settings"
 			onclick={() => onview('settings')}><Settings aria-hidden="true" /></Button
-		>
-		<Button
-			variant="outline"
-			size="icon"
-			class={`${action} runtime-inspector-button ${view === 'runtime' ? 'active' : ''}`}
-			aria-label="Inspect Hermes runtime"
-			title="Hermes runtime"
-			onclick={() => onview('runtime')}><SlidersHorizontal aria-hidden="true" /></Button
-		>
-		<Button
-			variant="outline"
-			size="icon"
-			class={`${action} ${view === 'schedules' ? 'active' : ''}`}
-			aria-label="Schedules"
-			title="Schedules"
-			onclick={() => onview('schedules')}><CalendarDays aria-hidden="true" /></Button
-		>
-		<Button
-			variant="outline"
-			size="icon"
-			class={`${action} ${view === 'skills' ? 'active' : ''}`}
-			aria-label="Skills"
-			title="Skills"
-			onclick={() => onview('skills')}><Grid2X2 aria-hidden="true" /></Button
-		>
-		<Button
-			variant="outline"
-			size="icon"
-			class={`${action} ${view === 'commands' ? 'active' : ''}`}
-			aria-label="Commands"
-			title="Session commands"
-			onclick={() => onview('commands')}><Code2 aria-hidden="true" /></Button
-		>
-		<Button
-			variant="outline"
-			size="icon"
-			class={`${action} ${view === 'profiles' ? 'active' : ''}`}
-			aria-label="Profiles"
-			title="Profiles"
-			onclick={() => onview('profiles')}><UserRound aria-hidden="true" /></Button
-		>
-		<Button
-			variant="outline"
-			size="icon"
-			class={`${action} ${view === 'mcp' ? 'active' : ''}`}
-			aria-label="MCP"
-			title="MCP servers"
-			onclick={() => onview('mcp')}><Plug aria-hidden="true" /></Button
 		>
 	</div>
 	<a
