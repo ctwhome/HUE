@@ -150,7 +150,7 @@ test('uses the monochrome HUE robot product mark', () => {
 	expect(brandMark).toContain('<img');
 	expect(brandMark).toContain('src="/favicon.png"');
 	expect(brandMark).toContain('rounded-xl border border-border');
-	expect(navigation).toContain('global-mark mb-1 size-10');
+	expect(navigation).toContain('global-mark size-10');
 	expect(page).toContain('welcome-mark mx-auto mb-[18px] size-14');
 	expect(layout).toContain('<link rel="icon" href="/favicon.png" />');
 });
@@ -268,6 +268,18 @@ test('session filters use one search field and a compact archive toggle', () => 
 		"showArchived ? 'Hide archived sessions' : 'Show archived sessions'"
 	);
 	expect(contextPanel).toContain('<ArchiveRestore size={17}');
+});
+
+test('Session sections group assigned Sessions and are reusable from Session options', () => {
+	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
+	const sessionManager = read('../lib/components/workspace/SessionManagerDialog.svelte');
+	const sessionOverlay = read('../lib/components/workspace/SessionManagerOverlay.svelte');
+	expect(contextPanel).toContain('if (session.folder) return `section:${session.folder}`;');
+	expect(contextPanel).toContain('{groupLabel(group(session))}');
+	expect(sessionOverlay).toContain('sections={navigation.sessionSections}');
+	expect(sessionManager).toContain('Move to section');
+	expect(sessionManager).toContain('list="session-sections"');
+	expect(sessionManager).toContain('{#each sections as section}');
 });
 
 test('new session is a persistent full-width action at the top of the session list', () => {

@@ -17,6 +17,7 @@
 		pinned = $bindable(),
 		archived = $bindable(),
 		folder = $bindable(),
+		sections,
 		tags = $bindable(),
 		error,
 		saving,
@@ -33,6 +34,7 @@
 		pinned: boolean;
 		archived: boolean;
 		folder: string;
+		sections: string[];
 		tags: string;
 		error: string;
 		saving: boolean;
@@ -88,13 +90,16 @@
 		>
 		<div class="grid grid-cols-2 gap-2">
 			<label class="grid gap-1.5 text-xs font-medium"
-				>Folder <span class="sr-only">optional</span><input
+				>Move to section <span class="sr-only">optional</span><input
 					class="min-h-10 min-w-0 rounded-lg border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
 					bind:value={folder}
+					list="session-sections"
 					maxlength="100"
-					placeholder="Optional"
+					placeholder="No section"
 					onchange={onsave}
-				/></label
+				/><datalist id="session-sections">
+					{#each sections as section}<option value={section}></option>{/each}
+				</datalist></label
 			><label class="grid gap-1.5 text-xs font-medium"
 				>Tags <span class="sr-only">comma separated, optional</span><input
 					class="min-h-10 min-w-0 rounded-lg border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"

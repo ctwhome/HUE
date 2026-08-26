@@ -79,6 +79,11 @@ export class WorkspaceNavigation {
 	private sessionSaveChain = Promise.resolve();
 	private sessionLists = new Map<string, Session[]>();
 	private workflowLists = new Map<string, Workflow[]>();
+	get sessionSections() {
+		return [...new Set(this.sessions.flatMap((session) => (session.folder ? [session.folder] : [])))].sort(
+			(left, right) => left.localeCompare(right)
+		);
+	}
 	constructor(
 		initialProject: Project | null,
 		private effects: NavigationEffects

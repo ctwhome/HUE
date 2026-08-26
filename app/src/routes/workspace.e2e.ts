@@ -3864,7 +3864,8 @@ test('searches and manages rename pin archive duplicate export and delete impact
 		cwd: '/work/hue',
 		title: 'Manage me',
 		pinned: false,
-		archived: false
+		archived: false,
+		folder: 'Delivery'
 	};
 	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) => {
 		searched = new URL(route.request().url()).searchParams.get('q') ?? searched;
@@ -3912,6 +3913,7 @@ test('searches and manages rename pin archive duplicate export and delete impact
 	});
 
 	await addProject(page);
+	await expect(page.getByRole('heading', { name: 'Delivery' })).toBeVisible();
 	await page.getByRole('searchbox', { name: 'Search Sessions' }).fill('Manage');
 	await page.getByRole('searchbox', { name: 'Search Sessions' }).press('Enter');
 	expect(searched).toBe('Manage');
@@ -3927,12 +3929,16 @@ test('searches and manages rename pin archive duplicate export and delete impact
 		'Hermes ACP does not provide a Session import seam'
 	);
 	await page.getByLabel('Title').fill('Managed');
+	await expect(page.getByLabel('Move to section')).toHaveValue('Delivery');
+	await expect(page.locator('#session-sections option')).toHaveAttribute('value', 'Delivery');
+	await page.getByLabel('Move to section').fill('Reviews');
+	await page.getByLabel('Move to section').press('Tab');
 	await page.getByRole('button', { name: 'Pin session' }).click();
 	await page.getByRole('button', { name: 'Archive session' }).click();
 	await expect(page.getByRole('button', { name: 'Save changes' })).toHaveCount(0);
 	await expect
 		.poll(() => metadata)
-		.toMatchObject({ title: 'Managed', pinned: true, archived: true });
+		.toMatchObject({ title: 'Managed', pinned: true, archived: true, folder: 'Reviews' });
 	await expect(sessionButton(page, 'Managed')).toBeVisible();
 
 	await page.getByRole('button', { name: 'Edit Managed' }).click();
@@ -3954,6 +3960,13 @@ test('searches and manages rename pin archive duplicate export and delete impact
 
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
+		await page.getByRole('button', { name: 'Session options for Managed copy' }).click();
+		const sectionField = page.getByLabel('Move to section');
+		await expect(sectionField).toBeVisible();
+		const fieldBox = (await sectionField.boundingBox())!;
+		expect(fieldBox.x).toBeGreaterThanOrEqual(0);
+		expect(fieldBox.x + fieldBox.width).toBeLessThanOrEqual(viewport.width);
+		await page.getByRole('button', { name: 'Close session options' }).click();
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
 		);

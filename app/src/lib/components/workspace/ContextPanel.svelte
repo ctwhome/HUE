@@ -111,12 +111,20 @@
 	});
 
 	function group(session: Session): string {
-		if (session.pinned) return 'Pinned';
-		if (session.archived) return 'Archived';
-		if (!session.updatedAt) return 'Older';
+		if (session.pinned) return 'status:Pinned';
+		if (session.archived) return 'status:Archived';
+		if (session.folder) return `section:${session.folder}`;
+		if (!session.updatedAt) return 'time:Older';
 		const days = Math.floor((Date.now() - new Date(session.updatedAt).getTime()) / 86_400_000);
-		return days <= 0 ? 'Today' : days === 1 ? 'Yesterday' : days < 7 ? 'This week' : 'Older';
+		return days <= 0
+			? 'time:Today'
+			: days === 1
+				? 'time:Yesterday'
+				: days < 7
+					? 'time:This week'
+					: 'time:Older';
 	}
+	const groupLabel = (value: string) => value.slice(value.indexOf(':') + 1);
 	function dragSession(event: DragEvent, session: Session) {
 		if (!event.dataTransfer) return;
 		draggedSessionId = session.sessionId;
@@ -248,7 +256,7 @@
 			{#if index === 0 || group(orderedSessions[index - 1]) !== group(session)}<h2
 					class="px-2 pt-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
 				>
-					{group(session)}
+					{groupLabel(group(session))}
 				</h2>{/if}
 			<div
 				class={`session-row relative w-full min-w-0 ${sessionDropTarget === session.sessionId ? 'rounded-md ring-2 ring-ring' : ''}`}
@@ -298,7 +306,7 @@
 								? new Date(session.updatedAt).toLocaleString()
 								: session.available === false
 									? session.recovery
-									: 'New session'}{session.folder ? ` · ${session.folder}` : ''}{session.tags
+								: 'New session'}{session.tags
 								?.length
 								? ` · ${session.tags.join(', ')}`
 								: ''}</small
