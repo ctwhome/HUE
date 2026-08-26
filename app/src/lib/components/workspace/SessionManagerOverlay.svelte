@@ -12,6 +12,7 @@
 	bind:pinned={navigation.sessionPinned}
 	bind:archived={navigation.sessionArchived}
 	bind:folder={navigation.sessionFolder}
+	sections={navigation.sessionSections}
 	bind:tags={navigation.sessionTags}
 	error={navigation.sessionEditError}
 	saving={navigation.sessionSaving}
