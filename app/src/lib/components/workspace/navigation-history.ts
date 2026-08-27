@@ -26,7 +26,7 @@ type NavigationState = {
 		remember?: boolean
 	) => void;
 	loadActiveTab: (sessionId?: string | null) => Promise<void>;
-	openSession: (session: Session, mode?: HistoryMode) => Promise<boolean>;
+	openSession: (session: Session, mode?: HistoryMode, launchEventId?: string | null) => Promise<boolean>;
 };
 
 type RestoreEffects = {
@@ -80,12 +80,15 @@ export async function restoreNavigationSelection(
 	effects: RestoreEffects,
 	guard?: () => boolean
 ): Promise<LaunchDestination | null> {
+	const url = new URL(window.location.href);
 	const destination = resolveLaunchDestination(
-		new URL(window.location.href),
+		url,
 		localStorage.getItem(NAVIGATION_MEMORY_KEY),
 		effects.getProjects().map(({ id }) => id)
 	);
+	const notificationTarget = url.searchParams.has('event');
 	const sameWorkspace =
+		!notificationTarget &&
 		navigation.ready &&
 		destination.projectId === (navigation.selectedProject?.id ?? null) &&
 		destination.sessionId === (navigation.selectedSession?.sessionId ?? null);
@@ -119,7 +122,9 @@ export async function restoreNavigationSelection(
 	navigation.ready = true;
 	await navigation.loadActiveTab(destination.sessionId);
 	const session = navigation.sessions.find(({ sessionId }) => sessionId === destination.sessionId);
-	const sessionRestored = session ? await navigation.openSession(session, 'none') : false;
+	const sessionRestored = session
+		? await navigation.openSession(session, 'none', url.searchParams.get('event'))
+		: false;
 	if (destination.sessionId && !sessionRestored) {
 		navigation.selectedSession = null;
 		effects.clearSession();
@@ -131,11 +136,12 @@ export async function restoreNavigationSelection(
 			: destination.sessionId && !sessionRestored
 				? 'sessions'
 				: null;
-	navigation.persistSelection(
-		'replace',
-		false,
-		!['capture', 'share'].includes(destination.intent ?? '')
-	);
+	if (!notificationTarget)
+		navigation.persistSelection(
+			'replace',
+			false,
+			!['capture', 'share'].includes(destination.intent ?? '')
+		);
 	navigation.ready = true;
 	return destination;
 }

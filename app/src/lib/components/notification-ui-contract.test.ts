@@ -23,6 +23,15 @@ test('global attention entry has accessible unread badge and center states', () 
 	expect(center).toContain('Dismiss');
 	expect(center).toContain('Notification settings');
 	expect(center).toContain('acknowledgeThenNavigate');
+	expect(center).toContain('groupNotifications(items)');
+	expect(center).toContain(
+		'aria-label={`Mark ${group.items.length > 1 ? `${group.items.length} notifications` : item.title} read`}'
+	);
+	expect(center).toContain(
+		'aria-label={`Dismiss ${group.items.length > 1 ? `${group.items.length} notifications` : item.title}`}'
+	);
+	expect(center).toContain('title="Mark read"');
+	expect(center).toContain('title="Dismiss"');
 });
 
 test('settings explain explicit permission sound and device limitations', () => {

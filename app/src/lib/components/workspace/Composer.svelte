@@ -193,6 +193,7 @@
 		)
 	);
 	let thinkingTimeline = $derived(selectThinkingTimeline(timeline));
+	let imagePrompts = $derived(runtime.capabilities?.promptImage === true);
 	let promptLibraryDialog = $state<HTMLDialogElement>();
 	let promptLibraryLoading = $state(false);
 	function flattenOptions(options: SelectConfig['options']) {
@@ -443,13 +444,15 @@
 			>{/if}
 		<label
 			class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-			aria-label="Attach images and files"
-			title="Attach documents, audio, video, archives, text, code, or images"
+			aria-label={imagePrompts ? 'Attach images and files' : 'Attach files'}
+			title={imagePrompts
+				? 'Attach documents, audio, video, archives, text, code, or images'
+				: 'Attach documents, audio, video, archives, text, or code. Hermes does not support image prompts.'}
 		>
 			<Paperclip size={20} aria-hidden="true" />
 			<input
 				type="file"
-				accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.mp3,.wav,.ogg,.oga,.m4a,.mp4,.m4v,.webm,.mov,.zip,.gz,.tgz,.tar,.7z,.txt,.log,.md,.markdown,.csv,.json,.xml,.css,.ts,.mts,.cts,.tsx,.py,.rs,.go,.java"
+				accept={`${imagePrompts ? '.png,.jpg,.jpeg,.gif,.webp,' : ''}.pdf,.doc,.docx,.mp3,.wav,.ogg,.oga,.m4a,.mp4,.m4v,.webm,.mov,.zip,.gz,.tgz,.tar,.7z,.txt,.log,.md,.markdown,.csv,.json,.xml,.css,.ts,.mts,.cts,.tsx,.py,.rs,.go,.java`}
 				multiple
 				onchange={onimages}
 			/>

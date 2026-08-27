@@ -21,7 +21,16 @@ type Item = {
 	readAt: string | null;
 	dismissedAt: string | null;
 	actedAt: string | null;
+	interactionId?: string | null;
+	currentRelevant?: boolean;
 };
+
+async function expectMinimumTouchTargets(locator: import('@playwright/test').Locator) {
+	for (const target of await locator.all()) {
+		if (await target.isVisible())
+			expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+	}
+}
 
 function item(kind: Item['kind'], index: number): Item {
 	const copy = {
@@ -195,7 +204,7 @@ test('attention center is complete responsive fallback for all five kinds exactl
 	await page
 		.locator('li')
 		.filter({ hasText: 'Task completed' })
-		.getByRole('button', { name: 'Mark read' })
+		.getByRole('button', { name: 'Mark Task completed read' })
 		.click();
 	await expect(page.locator('li')).toHaveCount(4);
 	await page.getByRole('button', { name: 'All', exact: true }).click();
@@ -203,7 +212,7 @@ test('attention center is complete responsive fallback for all five kinds exactl
 	await page
 		.locator('li')
 		.filter({ hasText: 'Task failed' })
-		.getByRole('button', { name: 'Dismiss' })
+		.getByRole('button', { name: 'Dismiss Task failed' })
 		.click();
 	await expect(page.locator('li')).toHaveCount(5);
 	const link = page.getByRole('link', { name: 'HUE needs your input' });
@@ -256,11 +265,13 @@ test('notification click acknowledges before focusing its exact actionable reque
 		/notification-target/
 	);
 	expect(actedBeforeSessionLoad).toBe(true);
-	expect(new URL(page.url()).searchParams.has('event')).toBe(false);
+	await expect.poll(() => new URL(page.url()).searchParams.has('event')).toBe(false);
 	expect(browserErrors).toEqual([]);
 });
 
-test('completed notification focuses the corresponding result message', async ({ page }, testInfo) => {
+test('completed notification focuses the corresponding result message', async ({
+	page
+}, testInfo) => {
 	const items = [item('completed', 9)];
 	const browserErrors: string[] = [];
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
@@ -281,16 +292,16 @@ test('completed notification focuses the corresponding result message', async ({
 			}
 		]
 	});
-	for (const viewport of viewports) {
+	for (const [index, viewport] of viewports.entries()) {
 		items[0]!.readAt = null;
 		items[0]!.actedAt = null;
 		await page.setViewportSize(viewport);
-		await page.goto('/');
+		if (index === 0) await page.goto('/');
+		const result = page.locator('[data-message-id="message-9"]');
 		await page.getByRole('button', { name: /Notifications/ }).click();
 		await page.getByRole('link', { name: 'Task completed' }).click();
 
-		const result = page.locator('[data-message-id="message-9"]');
-		await expect(result).toBeFocused();
+		await expect(result, `${viewport.width}x${viewport.height} result focus`).toBeFocused();
 		await expect(result).toHaveClass(/notification-target/);
 		await expect(result).toContainText('Exact completed result');
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
@@ -319,6 +330,69 @@ test('marks every notification read from the panel', async ({ page }) => {
 	await expect(page.getByRole('button', { name: 'Mark read' })).toHaveCount(0);
 });
 
+test('groups only matching current permission notifications and preserves secondary actions', async ({
+	page
+}) => {
+	let sessionLoads = 0;
+	const first = item('permission', 1);
+	const duplicate = {
+		...item('permission', 2),
+		projectId: 'project-1',
+		interactionId: 'permission-1',
+		currentRelevant: true
+	};
+	Object.assign(first, {
+		projectId: 'project-1',
+		interactionId: 'permission-1',
+		currentRelevant: true
+	});
+	const differentSession = {
+		...item('permission', 3),
+		projectId: 'project-1',
+		sessionId: 'session-2',
+		interactionId: 'permission-1',
+		currentRelevant: true
+	};
+	const stale = {
+		...item('permission', 4),
+		projectId: 'project-1',
+		interactionId: 'permission-1',
+		currentRelevant: false
+	};
+	await mockNotifications(page, [first, duplicate, differentSession, stale]);
+	await mockProjectlessSession(page, {
+		events: [
+			{
+				sequence: 2,
+				type: 'agent.permission',
+				payload: {
+					messageId: 'message-1',
+					id: 'permission-1',
+					status: 'pending',
+					toolCall: { title: 'Run checks', args: { command: 'bun test' } },
+					options: [{ optionId: 'once', name: 'Allow once', kind: 'allow_once' }]
+				}
+			}
+		],
+		onLoad: () => (sessionLoads += 1)
+	});
+	await page.setViewportSize({ width: 320, height: 568 });
+	await page.goto('/');
+	await page.getByRole('button', { name: /Notifications/ }).click();
+
+	await expect(page.getByText('2 pending requests')).toHaveCount(1);
+	await expect(page.locator('li')).toHaveCount(3);
+	const grouped = page.locator('li').filter({ hasText: '2 pending requests' });
+	await expect(grouped.getByRole('link', { name: 'HUE needs permission' })).toHaveCount(1);
+	await expect(grouped.getByRole('button', { name: 'Mark 2 notifications read' })).toBeVisible();
+	await expect(grouped.getByRole('button', { name: 'Dismiss 2 notifications' })).toBeVisible();
+	await expectMinimumTouchTargets(grouped.getByRole('button'));
+	await grouped.getByRole('link', { name: 'HUE needs permission' }).click();
+	await expect.poll(() => [first.actedAt, duplicate.actedAt]).not.toContain(null);
+	await expect(page.getByRole('button', { name: 'Allow once' })).toBeFocused();
+	expect(sessionLoads).toBe(1);
+});
+
 test('background notification polling keeps the current list visible', async ({ page }) => {
 	const items = [item('completed', 1)];
 	await mockNotifications(page, items, { listDelayAfterFirst: 2_000 });
@@ -329,7 +403,8 @@ test('background notification polling keeps the current list visible', async ({ 
 		(window as Window & { __notificationLoadingSeen?: boolean }).__notificationLoadingSeen = false;
 		new MutationObserver(() => {
 			if (document.body.textContent?.includes('Loading notifications…'))
-				(window as Window & { __notificationLoadingSeen?: boolean }).__notificationLoadingSeen = true;
+				(window as Window & { __notificationLoadingSeen?: boolean }).__notificationLoadingSeen =
+					true;
 		}).observe(document.body, { childList: true, subtree: true, characterData: true });
 	});
 

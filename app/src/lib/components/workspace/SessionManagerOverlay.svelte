@@ -3,7 +3,8 @@
 	import IconEditorPopover from '$lib/components/IconEditorPopover.svelte';
 	import type { WorkspaceNavigation } from './navigation.svelte';
 	import SessionManagerDialog from './SessionManagerDialog.svelte';
-	let { navigation }: { navigation: WorkspaceNavigation } = $props();
+	let { navigation, canDuplicate }: { navigation: WorkspaceNavigation; canDuplicate: boolean } =
+		$props();
 </script>
 
 <SessionManagerDialog
@@ -16,6 +17,7 @@
 	bind:tags={navigation.sessionTags}
 	error={navigation.sessionEditError}
 	saving={navigation.sessionSaving}
+	{canDuplicate}
 	onicon={navigation.openSessionIconEditor}
 	onsave={navigation.saveSession}
 	onduplicate={navigation.duplicateSession}

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
 	acknowledgeThenNavigate,
 	attentionState,
+	groupNotifications,
 	notificationCapability,
 	requestSystemPermission,
 	shouldPresentForeground,
@@ -125,5 +126,32 @@ describe('notification client policy', () => {
 			view: 'list',
 			badge: '99+'
 		});
+	});
+
+	it('groups only currently relevant duplicate permission interactions without dropping records', () => {
+		const permission = {
+			id: 'notification:2',
+			kind: 'permission',
+			projectId: 'project-1',
+			sessionId: 'session-1',
+			interactionId: 'permission-1',
+			currentRelevant: true
+		};
+		const groups = groupNotifications([
+			permission,
+			{ ...permission, id: 'notification:1' },
+			{ ...permission, id: 'notification:3', sessionId: 'session-2' },
+			{ ...permission, id: 'notification:4', interactionId: 'permission-2' },
+			{ ...permission, id: 'notification:5', currentRelevant: false },
+			{ ...permission, id: 'notification:6', kind: 'clarify' }
+		]);
+
+		expect(groups.map(({ items }) => items.map(({ id }) => id))).toEqual([
+			['notification:2', 'notification:1'],
+			['notification:3'],
+			['notification:4'],
+			['notification:5'],
+			['notification:6']
+		]);
 	});
 });

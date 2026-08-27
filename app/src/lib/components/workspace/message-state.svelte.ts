@@ -562,14 +562,20 @@ export class MessageState {
 			files,
 			8 - this.images.length - this.attachments.length
 		);
+		const imagePrompts = this.options.session.runtime.capabilities?.promptImage === true;
 		const availableImages = 4 - this.images.length;
-		this.images = [...this.images, ...result.images.slice(0, availableImages)];
+		this.images = [
+			...this.images,
+			...(imagePrompts ? result.images.slice(0, availableImages) : [])
+		];
 		this.attachments = [
 			...this.attachments.filter((attachment) => attachment.data),
 			...result.attachments
 		];
 		this.options.setError(
-			result.images.length > availableImages
+			!imagePrompts && result.images.length
+				? 'Hermes does not support image prompts'
+				: result.images.length > availableImages
 				? 'Attach no more than 4 images'
 				: (result.errors.at(-1) ?? '')
 		);

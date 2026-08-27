@@ -62,6 +62,36 @@ export function attentionState(input: {
 	};
 }
 
+type GroupableNotification = {
+	id: string;
+	kind: string;
+	projectId: string | null;
+	sessionId: string;
+	interactionId?: string | null;
+	currentRelevant?: boolean;
+};
+
+export function groupNotifications<T extends GroupableNotification>(
+	items: T[]
+): Array<{ item: T; items: T[] }> {
+	const groups: Array<{ item: T; items: T[] }> = [];
+	const duplicates = new Map<string, (typeof groups)[number]>();
+	for (const item of items) {
+		const key =
+			item.kind === 'permission' && item.interactionId && item.currentRelevant
+				? `${item.projectId ?? ''}\0${item.sessionId}\0${item.interactionId}`
+				: null;
+		const group = key ? duplicates.get(key) : undefined;
+		if (group) group.items.push(item);
+		else {
+			const created = { item, items: [item] };
+			groups.push(created);
+			if (key) duplicates.set(key, created);
+		}
+	}
+	return groups;
+}
+
 export function decodeApplicationServerKey(value: string): Uint8Array<ArrayBuffer> {
 	const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
 	const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');

@@ -297,15 +297,20 @@ export class WorkspaceNavigation {
 			this.effects.setLoading(false);
 		}
 	};
-	openSession = async (session: Session, historyMode: HistoryMode = 'replace') => {
-		if (this.effects.guard(() => void this.openSession(session, historyMode))) return false;
+	openSession = async (
+		session: Session,
+		historyMode: HistoryMode = 'replace',
+		launchEventId: string | null = null
+	) => {
+		if (this.effects.guard(() => void this.openSession(session, historyMode, launchEventId))) return false;
 		if (session.available === false) {
 			this.effects.setError(session.recovery ?? 'Hermes Session is unavailable.');
 			return false;
 		}
 		if (this.selectedSession?.sessionId !== session.sessionId) this.effects.endVoice();
 		const sourceEventId =
-			historyMode === 'none' ? new URL(window.location.href).searchParams.get('event') : null;
+			launchEventId ??
+			(historyMode === 'none' ? new URL(window.location.href).searchParams.get('event') : null);
 		const request = {
 			generation: ++this.sessionRequestGeneration,
 			projectId: this.selectedProject?.id ?? '',
@@ -344,6 +349,7 @@ export class WorkspaceNavigation {
 			this.effects.cacheSession();
 			this.effects.beginTranscriptEntryStick();
 			await this.effects.scrollToLatest();
+			if (sourceEventId) this.persistSelection('replace');
 			await this.effects.focusNotificationTarget(body.events, sourceEventId);
 			if (body.activeTurn && body.activeTurn.status !== 'unknown') this.effects.startPolling();
 			return true;

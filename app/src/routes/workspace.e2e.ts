@@ -2782,6 +2782,14 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 				branch: 'main',
 				runtime: {
 					profile: 'default',
+					capabilities: {
+						loadSession: true,
+						promptImage: true,
+						sessionList: true,
+						sessionFork: true,
+						sessionResume: false,
+						commands: ['help', 'compress']
+					},
 					models: {
 						currentModelId: 'openai:gpt-5.6',
 						availableModels: [
@@ -4015,7 +4023,24 @@ test('searches and manages rename pin archive duplicate export and delete impact
 			});
 		}
 		return route.fulfill({
-			json: { transcript: [], messages: [], events: [], cursor: 0, activeTurn: null }
+			json: {
+				transcript: [],
+				messages: [],
+				events: [],
+				cursor: 0,
+				activeTurn: null,
+				runtime: {
+					profile: 'default',
+					capabilities: {
+						loadSession: true,
+						promptImage: true,
+						sessionList: true,
+						sessionFork: true,
+						sessionResume: false,
+						commands: []
+					}
+				}
+			}
 		});
 	});
 	await page.route(/\/sessions\/manage-copy(?:\?.*)?$/, async (route) => {
@@ -4092,6 +4117,57 @@ test('searches and manages rename pin archive duplicate export and delete impact
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
 		);
+	}
+});
+
+test('disables image and duplicate controls when Hermes omits optional capabilities', async ({
+	page
+}) => {
+	const session = { sessionId: 'reduced', cwd: '/work/hue', title: 'Reduced Hermes' };
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) =>
+		route.fulfill({ json: { sessions: [session], hasMore: false } })
+	);
+	await page.route(/\/sessions\/reduced(?:\?.*)?$/, (route) =>
+		route.fulfill({
+			json: {
+				transcript: [],
+				messages: [{ id: 'active', status: 'running', text: 'Working', images: [] }],
+				events: [],
+				cursor: 0,
+				activeTurn: {
+					messageId: 'active',
+					status: 'running',
+					thought: '',
+					output: 'Working',
+					error: null
+				},
+				runtime: {
+					profile: 'default',
+					capabilities: {
+						loadSession: true,
+						promptImage: false,
+						sessionList: true,
+						sessionFork: false,
+						sessionResume: false,
+						commands: []
+					}
+				}
+			}
+		})
+	);
+
+	await addProject(page);
+	await sessionButton(page, 'Reduced Hermes').click();
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		const attachmentControl = page.getByLabel('Attach files');
+		await expect(attachmentControl).toBeEnabled();
+		await expect(attachmentControl).not.toHaveAttribute('accept', /\.png/);
+		await page.getByRole('button', { name: 'Session options for Reduced Hermes' }).click();
+		const duplicate = page.getByRole('button', { name: 'Duplicate' });
+		await expect(duplicate).toBeDisabled();
+		await expect(duplicate).toHaveAttribute('title', 'Hermes does not support Session duplication');
+		await page.getByRole('button', { name: 'Close session options' }).click();
 	}
 });
 
@@ -4264,6 +4340,17 @@ test('opens the project prompt library from the composer across required viewpor
 		await expect(dialog).toBeVisible();
 		await expect(dialog.getByText('Prepare release', { exact: true })).toBeVisible();
 		await expect(dialog.getByRole('button', { name: 'Run Prepare release' })).toBeVisible();
+		await expect(dialog.getByText('Run checks and prepare release notes.')).toBeVisible();
+		await expect(dialog.getByText('HUE · default · Autonomous')).toBeVisible();
+		const more = dialog.getByRole('button', { name: 'More actions for Prepare release' });
+		expect((await more.boundingBox())!.width).toBeGreaterThanOrEqual(44);
+		await more.click();
+		await expect(dialog.getByRole('menuitem', { name: 'Edit Workflow' })).toBeVisible();
+		await expect(dialog.getByRole('menuitem', { name: 'Duplicate Workflow' })).toBeVisible();
+		await expect(dialog.getByRole('menuitem', { name: 'Archive Workflow' })).toBeVisible();
+		await expect(dialog.getByRole('menuitem', { name: 'Delete Workflow' })).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(dialog.getByRole('menuitem', { name: 'Edit Workflow' })).toBeHidden();
 		expect((await dialog.boundingBox())!.width).toBeLessThanOrEqual(viewport.width);
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
@@ -4286,6 +4373,95 @@ test('opens the project prompt library from the composer across required viewpor
 	await expect(dialog).toBeHidden();
 	await expect.poll(() => sentPrompt).toBe('Run checks and prepare release notes.');
 	expect(browserErrors).toEqual([]);
+});
+
+test('safe-area and 200% text keep mobile chrome and sheets reachable', async ({
+	browser
+}, testInfo) => {
+	test.setTimeout(60_000);
+	const context = await browser.newContext({
+		baseURL: String(testInfo.project.use.baseURL),
+		viewport: { width: 320, height: 568 },
+		hasTouch: true,
+		isMobile: true
+	});
+	const page = await context.newPage();
+	try {
+		await page.route('**/api/projects/*/sessions', (route) =>
+			route.fulfill({
+				json: { sessions: [{ sessionId: 'zoom', cwd: '/work/hue', title: 'Zoom' }] }
+			})
+		);
+		await page.route(/\/sessions\/zoom$/, (route) =>
+			route.fulfill({
+				json: { transcript: [], messages: [], events: [], cursor: 0, activeTurn: null }
+			})
+		);
+		await page.route('**/api/projects/*/workflows', (route) =>
+			route.fulfill({ json: { workflows: [] } })
+		);
+		await addProject(page);
+		await sessionButton(page, 'Zoom').click();
+		for (const viewport of [
+			{ width: 320, height: 568 },
+			{ width: 390, height: 844 },
+			{ width: 412, height: 915 },
+			{ width: 844, height: 390 }
+		]) {
+			await page.setViewportSize(viewport);
+			await page.evaluate(() => {
+				document.documentElement.style.fontSize = '200%';
+				document.documentElement.style.setProperty('--safe-area-top', '18px');
+				document.documentElement.style.setProperty('--safe-area-bottom', '24px');
+				document.documentElement.style.setProperty('--safe-area-left', '12px');
+				document.documentElement.style.setProperty('--safe-area-right', '12px');
+			});
+			const navigation = page.locator('.mobile-navigation');
+			await expect(navigation).toBeVisible();
+			await expectMinimumTouchTargets(navigation.getByRole('button'));
+			await expect(page.getByLabel('Message Hermes')).toBeVisible();
+			await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
+			await page.getByRole('button', { name: /Notifications/ }).click();
+			const notifications = page.getByRole('region', { name: 'Notifications' });
+			await expect(notifications).toBeVisible();
+			await expectMinimumTouchTargets(notifications.getByRole('button'));
+			expect(
+				await page.evaluate(
+					() => document.documentElement.scrollWidth <= document.documentElement.clientWidth
+				)
+			).toBe(true);
+			for (const selector of ['.mobile-navigation', '.composer', 'dialog.global-panel']) {
+				const locator = page.locator(selector);
+				const box = await locator.boundingBox();
+				const geometry = await locator.evaluate((element) => {
+					const style = getComputedStyle(element);
+					return {
+						innerHeight,
+						height: style.height,
+						maxHeight: style.maxHeight,
+						bottom: style.bottom
+					};
+				});
+				expect(box).not.toBeNull();
+				expect(box!.x).toBeGreaterThanOrEqual(0);
+				expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
+				expect(box!.y).toBeGreaterThanOrEqual(0);
+				expect(box!.y + box!.height, `${selector} ${JSON.stringify(geometry)}`).toBeLessThanOrEqual(
+					viewport.height
+				);
+			}
+			await page.getByRole('button', { name: 'Back to workspace' }).click();
+			await page.getByRole('button', { name: 'Prompt library' }).click();
+			const promptLibrary = page.getByRole('dialog', { name: 'Prompt library' });
+			const promptLibraryBox = await promptLibrary.boundingBox();
+			expect(promptLibraryBox).not.toBeNull();
+			expect(promptLibraryBox!.y).toBeGreaterThanOrEqual(0);
+			expect(promptLibraryBox!.y + promptLibraryBox!.height).toBeLessThanOrEqual(viewport.height);
+			await promptLibrary.getByRole('button', { name: 'Close prompt library' }).click();
+		}
+	} finally {
+		await context.close();
+	}
 });
 
 test('starts and revisits a session without a project', async ({ page }) => {

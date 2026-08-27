@@ -48,6 +48,7 @@ mock.module('$lib/server/route-services', () => ({
 			deleteSession: (id: string) => record('deleteSession', id)
 		},
 		runtime: {
+			getCapabilities: () => ({ sessionFork: true }),
 			loadTranscript: async () => [],
 			forkSession: async () => ({ ...session, sessionId: 'forked' }),
 			getAvailableCommands: () => [],
