@@ -66,6 +66,14 @@ export type Workflow = {
 export type HermesCommand = { name: string; description: string; input?: { hint: string } | null };
 export type HermesRuntime = {
 	profile: string;
+	capabilities?: {
+		loadSession: boolean;
+		promptImage: boolean;
+		sessionList: boolean;
+		sessionFork: boolean;
+		sessionResume: boolean;
+		commands: string[];
+	};
 	clarify?: { status: 'unsupported' | 'available'; reason?: string };
 	models?: {
 		currentModelId: string;
