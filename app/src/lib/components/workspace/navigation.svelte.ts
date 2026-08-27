@@ -62,6 +62,7 @@ export class WorkspaceNavigation {
 	activeTab = $state<'sessions' | 'workflows'>('sessions');
 	mobileDrawer = $state<MobilePane>(null);
 	ready = $state(false);
+	loadedSessionListProjectId = $state<string | null | undefined>();
 	workflowName = $state('');
 	workflowPrompt = $state('');
 	workflowFolder = $state('');
@@ -149,6 +150,7 @@ export class WorkspaceNavigation {
 		this.sessionRequestGeneration += 1;
 		this.effects.stopPolling();
 		this.selectedProject = project;
+		this.loadedSessionListProjectId = undefined;
 		if (!project) this.activeTab = 'sessions';
 		this.selectedSession = null;
 		this.sessions = this.sessionLists.get(project?.id ?? 'none') ?? [];
@@ -222,6 +224,7 @@ export class WorkspaceNavigation {
 				if (!isCurrentTabRequest(request, this.currentTabRequest())) return;
 				this.sessions = sessions;
 				this.sessionLists.set(request.projectId || 'none', sessions);
+				this.loadedSessionListProjectId = request.projectId || null;
 				if (this.selectedSession) {
 					this.selectedSession =
 						this.sessions.find(
@@ -306,10 +309,6 @@ export class WorkspaceNavigation {
 	) => {
 		if (this.effects.guard(() => void this.openSession(session, historyMode, launchEventId)))
 			return false;
-		if (session.available === false) {
-			this.effects.setError(session.recovery ?? 'Hermes Session is unavailable.');
-			return false;
-		}
 		if (this.selectedSession?.sessionId !== session.sessionId) this.effects.endVoice();
 		const sourceEventId =
 			launchEventId ??
@@ -347,6 +346,8 @@ export class WorkspaceNavigation {
 				workMode: body.workMode ?? this.selectedSession.workMode
 			});
 			this.effects.applyLoadedSession(body);
+			if (session.available === false)
+				this.effects.setError(session.recovery ?? 'Hermes Session is unavailable.');
 			this.effects.restoreDraft();
 			this.mobileDrawer = null;
 			this.effects.cacheSession();
@@ -358,7 +359,13 @@ export class WorkspaceNavigation {
 			return true;
 		} catch (cause) {
 			if (request.generation === this.sessionRequestGeneration) {
-				this.effects.setError(cause instanceof Error ? cause.message : String(cause));
+				this.effects.setError(
+					session.available === false
+						? (session.recovery ?? 'Hermes Session is unavailable.')
+						: cause instanceof Error
+							? cause.message
+							: String(cause)
+				);
 			}
 			return false;
 		} finally {

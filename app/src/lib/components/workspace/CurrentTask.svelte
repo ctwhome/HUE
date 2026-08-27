@@ -10,6 +10,7 @@
 	let mobile = $state(false);
 	let dialog = $state<HTMLDialogElement>();
 	let trigger = $state<HTMLButtonElement>();
+	const storageKey = 'hue:current-task:open';
 	let summary = $derived(selectTaskSummary(plan));
 	let status = $derived(
 		summary?.entry.status === 'in_progress'
@@ -24,9 +25,9 @@
 		const update = () => {
 			if (mobile !== media.matches) {
 				dialog?.close();
-				tasksExpanded = false;
 			}
 			mobile = media.matches;
+			tasksExpanded = mobile ? false : localStorage.getItem(storageKey) === 'true';
 		};
 		update();
 		media.addEventListener('change', update);
@@ -36,6 +37,7 @@
 	async function toggle() {
 		if (!mobile) {
 			tasksExpanded = !tasksExpanded;
+			localStorage.setItem(storageKey, String(tasksExpanded));
 			return;
 		}
 		tasksExpanded = true;

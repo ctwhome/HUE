@@ -466,6 +466,16 @@
 		min-height: 58px;
 		padding: 7px 10px;
 	}
+	.session-project-tools {
+		display: grid;
+	}
+	.session-header .session-context-ring {
+		min-width: 44px;
+		height: 44px;
+	}
+	.session-project-tools.active {
+		background: var(--card);
+	}
 	.session-list-back {
 		display: grid;
 	}

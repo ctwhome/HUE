@@ -1,5 +1,4 @@
 <script lang="ts">
-	import Info from '~icons/lucide/info';
 	import X from '~icons/lucide/x';
 	import { sessionInspectorRows } from './session-inspector';
 	import type { HermesRuntime, Project, Session } from './types';
@@ -9,13 +8,15 @@
 		session,
 		runtime,
 		delivery,
-		pendingInteraction
+		pendingInteraction,
+		contextPercent
 	}: {
 		project: Project | null;
 		session: Session;
 		runtime: HermesRuntime;
 		delivery: string;
 		pendingInteraction?: string;
+		contextPercent: number | null;
 	} = $props();
 	let dialog: HTMLDialogElement;
 	let rows = $derived(
@@ -31,10 +32,15 @@
 
 <button
 	type="button"
-	class="session-inspector-trigger grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md hover:bg-accent"
-	aria-label="Inspect Session context"
-	title="Inspect Session context"
-	onclick={() => dialog.showModal()}><Info width={18} height={18} aria-hidden="true" /></button
+	class="session-inspector-trigger session-context-ring context-usage"
+	style={`--context-percent: ${contextPercent ?? 0}`}
+	aria-label={contextPercent === null
+		? 'Inspect Session context'
+		: `Inspect Session context, ${contextPercent}% used`}
+	title={contextPercent === null
+		? 'Inspect Session context'
+		: `${runtime.usage!.used.toLocaleString()} of ${runtime.usage!.size.toLocaleString()} context tokens used`}
+	onclick={() => dialog.showModal()}>{contextPercent === null ? '--' : `${contextPercent}%`}</button
 >
 <dialog
 	bind:this={dialog}

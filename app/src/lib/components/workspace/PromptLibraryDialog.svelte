@@ -61,10 +61,10 @@
 		onduplicate: (workflow: Workflow) => Promise<boolean>;
 		onfavoritecatalog: (prompt: CatalogPrompt) => Promise<boolean>;
 		onload: (includeArchived?: boolean) => Promise<void>;
-		oninsert: (workflow: Workflow) => void;
+		oninsert: (prompt: string) => void;
 	} = $props();
 
-	let source = $state<'prompts' | 'community'>('prompts');
+	let source = $state<'prompts' | 'community'>('community');
 	let query = $state('');
 	let catalog = $state<CatalogPrompt[]>([]);
 	let catalogLoading = $state(false);
@@ -81,6 +81,9 @@
 	let showArchived = $state(false);
 	let actions = $state(false);
 	let mobileDetail = $state(false);
+	$effect(() => {
+		if (!available) source = 'community';
+	});
 
 	let normalizedQuery = $derived(query.trim().toLowerCase());
 	let catalogGroups = $derived(groupPromptCatalog(catalog, query));
@@ -223,8 +226,7 @@
 		<div>
 			<h2 {id} class="text-lg font-semibold">Prompt library</h2>
 			<p class="text-sm text-muted-foreground">
-				Find a proven starting point or organize reusable prompts for {projectName ||
-					'your Project'}.
+				Find a proven starting point or organize reusable prompts.
 			</p>
 		</div>
 		<button
@@ -234,23 +236,19 @@
 			onclick={() => dialog?.close()}><X width={18} height={18} aria-hidden="true" /></button
 		>
 	</header>
-	{#if !available}<p
-			class="m-5 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground"
-		>
-			Select a Project to use its prompt library.
-		</p>{:else}
-		<div class="grid h-[calc(100%-80px)] min-h-0 grid-cols-1 md:grid-cols-[360px_minmax(0,1fr)]">
+	<div class="grid h-[calc(100%-80px)] min-h-0 grid-cols-1 md:grid-cols-[360px_minmax(0,1fr)]">
 			<aside
 				class={`${mobileDetail ? 'hidden md:flex' : 'flex'} min-h-0 flex-col border-b border-border md:border-r md:border-b-0`}
 				aria-label="Prompt list"
 			>
 				<div class="grid gap-3 border-b border-border p-3">
 					<div
-						class="grid grid-cols-2 rounded-lg bg-muted p-1"
+						class="grid rounded-lg bg-muted p-1"
+						class:grid-cols-2={available}
 						role="tablist"
 						aria-label="Prompt sources"
 					>
-						<button
+						{#if available}<button
 							type="button"
 							role="tab"
 							aria-selected={source === 'prompts'}
@@ -263,7 +261,7 @@
 							>Prompts <span class="text-muted-foreground"
 								>{workflows.filter((item) => !item.archived).length}</span
 							></button
-						>
+						>{/if}
 						<button
 							type="button"
 							role="tab"
@@ -511,7 +509,7 @@
 								<h3 class="mt-1 text-xl font-semibold">{selectedCatalog.title}</h3>
 								<p class="mt-1 text-sm text-muted-foreground">{selectedCatalog.description}</p>
 							</div>
-							<button
+							{#if available}<button
 								type="button"
 								class="grid size-11 shrink-0 place-items-center rounded-md bg-secondary"
 								aria-label={selectedCatalogWorkflow?.favorite
@@ -527,7 +525,7 @@
 									fill={selectedCatalogWorkflow?.favorite ? 'currentColor' : 'none'}
 									aria-hidden="true"
 								/></button
-							>
+							>{/if}
 						</div>
 						<div class="rounded-xl border border-border bg-background p-4">
 							<p class="text-sm leading-6 whitespace-pre-wrap">{selectedCatalog.prompt}</p>
@@ -535,9 +533,16 @@
 						<button
 							type="button"
 							class="inline-flex min-h-11 w-fit items-center gap-2"
+							aria-label={`Add ${selectedCatalog.title} to input`}
+							onclick={() => oninsert(selectedCatalog.prompt)}
+							><Plus width={17} height={17} aria-hidden="true" />Add to input</button
+						>
+						{#if available}<button
+							type="button"
+							class="inline-flex min-h-11 w-fit items-center gap-2"
 							onclick={() => startCreate(selectedCatalog)}
 							><Plus width={17} height={17} aria-hidden="true" />Add to custom prompts</button
-						>
+						>{/if}
 					</article>
 				{:else if source === 'prompts' && selectedWorkflow}
 					<article class="mx-auto grid max-w-2xl gap-5">
@@ -636,7 +641,7 @@
 								type="button"
 								class="inline-flex min-h-11 w-fit items-center gap-2"
 								aria-label={`Add ${selectedWorkflow.name} to input`}
-								onclick={() => oninsert(selectedWorkflow)}
+								onclick={() => oninsert(selectedWorkflow.prompt)}
 								><Plus width={16} height={16} aria-hidden="true" />Add to input</button
 							>{/if}
 					</article>
@@ -647,5 +652,4 @@
 					</div>{/if}
 			</section>
 		</div>
-	{/if}
 </dialog>

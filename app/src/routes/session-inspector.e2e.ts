@@ -148,6 +148,21 @@ test('permission consequences and the Session inspector fit the browser matrix',
 			contentType: 'image/png'
 		});
 		await inspector.getByRole('button', { name: 'Close Session inspector' }).click();
+		if (viewport.width <= 390) {
+			const tools = page.getByRole('button', { name: 'Open Project tools' });
+			const settings = page.getByRole('button', { name: 'Session settings for Review control' });
+			for (const control of [tools, settings, page.getByRole('button', { name: /25% used/ })]) {
+				const controlBox = (await control.boundingBox())!;
+				expect(controlBox.width).toBeGreaterThanOrEqual(44);
+				expect(controlBox.height).toBeGreaterThanOrEqual(44);
+			}
+			if (viewport.width === 390) {
+				await tools.click();
+				await expect(page.getByRole('navigation', { name: 'Project tools' })).toBeVisible();
+				await page.getByRole('button', { name: 'Back to chat' }).click();
+				await expect(permission).toBeVisible();
+			}
+		}
 	}
 	expect(errors).toEqual([]);
 });

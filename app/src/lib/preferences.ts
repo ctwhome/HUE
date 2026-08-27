@@ -18,6 +18,7 @@ export type HUEPreferences = {
 	language: string;
 	voice: string;
 	showUsage: boolean;
+	hiddenFilePatterns: string;
 };
 
 export const defaultPreferences: HUEPreferences = {
@@ -26,7 +27,8 @@ export const defaultPreferences: HUEPreferences = {
 	density: 'comfortable',
 	language: 'en',
 	voice: 'hermes',
-	showUsage: true
+	showUsage: true,
+	hiddenFilePatterns: '.DS_Store'
 };
 
 export function normalizePreferences(value: unknown): HUEPreferences {
@@ -42,7 +44,11 @@ export function normalizePreferences(value: unknown): HUEPreferences {
 				? input.language
 				: 'en',
 		voice: typeof input.voice === 'string' && input.voice.trim() ? input.voice.trim() : 'hermes',
-		showUsage: typeof input.showUsage === 'boolean' ? input.showUsage : true
+		showUsage: typeof input.showUsage === 'boolean' ? input.showUsage : true,
+		hiddenFilePatterns:
+			typeof input.hiddenFilePatterns === 'string'
+				? input.hiddenFilePatterns.replaceAll('\r\n', '\n').replaceAll('\r', '\n').slice(0, 10_000)
+				: defaultPreferences.hiddenFilePatterns
 	};
 }
 

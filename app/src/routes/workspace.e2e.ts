@@ -201,6 +201,59 @@ test.beforeEach(async ({ page }) => {
 	await mockDefaultSessionRequests(page);
 });
 
+test('opens an unavailable Session from its recovery tooltip as read-only', async ({ page }) => {
+	const recovery = 'Restore the Session folder at /work/missing to resume it.';
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) =>
+		route.fulfill({
+			json: {
+				sessions: [
+					{
+						sessionId: 'missing-session',
+						cwd: '/work/missing',
+						title: 'Missing Session',
+						available: false,
+						recovery
+					}
+				]
+			}
+		})
+	);
+	await page.route(/\/api\/projects\/[^/]+\/sessions\/missing-session$/, (route) =>
+		route.fulfill({
+			json: {
+				transcript: [{ role: 'assistant', text: 'Persisted recovery message' }],
+				messages: [],
+				events: [],
+				cursor: 0,
+				activeTurn: null,
+				workMode: 'autonomous'
+			}
+		})
+	);
+
+	await page.setViewportSize(viewports[0]);
+	await addProject(page);
+	const workspaceUrl = page.url();
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		await page.goto(workspaceUrl);
+		if (viewport.width <= 700)
+			await page.getByRole('button', { name: 'Sessions', exact: true }).click();
+		const row = sessionButton(page, 'Missing Session');
+		await expect(row).toBeVisible();
+		await expect(row).toBeEnabled();
+		await row.hover();
+		await expect(page.getByRole('tooltip')).toHaveText(recovery);
+		await row.click();
+		await expect(page.getByText('Persisted recovery message')).toBeVisible();
+		await expect(page.getByRole('status').filter({ hasText: recovery })).toBeVisible();
+		await expect(page.getByLabel('Message Hermes')).toHaveCount(0);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+	}
+});
+
 test('global Session finder is keyboard-first, race-safe, and navigates directly', async ({
 	page
 }) => {
@@ -310,13 +363,25 @@ test('the active Project toggles Sessions without reserving a collapsed column',
 	await addProject(page);
 	const project = page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' });
 	const sessions = page.getByRole('complementary', { name: 'Project contents' });
+	await page.getByRole('button', { name: 'Hide Projects panel' }).click();
+	expect(await page.evaluate(() => localStorage.getItem('hue:shell:projects:open'))).toBe('false');
+	await page.reload();
+	await expect(page.getByRole('button', { name: 'Show Projects panel' })).toBeVisible();
+	await page.getByRole('button', { name: 'Show Projects panel' }).click();
 
 	for (const viewport of viewports.slice(0, 2)) {
 		await page.setViewportSize(viewport);
 		await expect(project).toHaveAttribute('aria-expanded', 'true');
-		await project.click({ position: { x: viewport.width <= 1200 ? 5 : 80, y: 22 } });
+		await project.evaluate((button: HTMLButtonElement) => button.click());
 		await expect(project).toHaveAttribute('aria-expanded', 'false');
 		await expect(sessions).toBeHidden();
+		expect(await page.evaluate(() => localStorage.getItem('hue:shell:sessions:open'))).toBe(
+			'false'
+		);
+		if (viewport === viewports[0]) {
+			await page.reload();
+			await expect(sessions).toBeHidden();
+		}
 		await expect(page.getByRole('button', { name: 'Show Sessions panel' })).toHaveCount(0);
 		expect(
 			await page
@@ -330,7 +395,7 @@ test('the active Project toggles Sessions without reserving a collapsed column',
 			body: await page.screenshot(),
 			contentType: 'image/png'
 		});
-		await project.click({ position: { x: viewport.width <= 1200 ? 5 : 80, y: 22 } });
+		await project.evaluate((button: HTMLButtonElement) => button.click());
 		await expect(project).toHaveAttribute('aria-expanded', 'true');
 		await expect(sessions).toBeVisible();
 	}
@@ -426,6 +491,107 @@ test('drags Sessions into independently interactive resizable chat panes', async
 		).toBeGreaterThanOrEqual(44);
 	}
 	await page.setViewportSize(viewports[0]);
+});
+
+test('reorders Session rows live while dragging', async ({ page }) => {
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({
+			json: {
+				sessions: [
+					{ sessionId: 'first-row', cwd: '/work/hue', title: 'First row' },
+					{ sessionId: 'second-row', cwd: '/work/hue', title: 'Second row' }
+				]
+			}
+		})
+	);
+	await page.setViewportSize(viewports[0]);
+	await addProject(page);
+	await page.evaluate(() => {
+		for (const key of Object.keys(localStorage))
+			if (key.startsWith('hue:session-order:')) localStorage.removeItem(key);
+	});
+	await page.reload();
+
+	const first = sessionButton(page, 'First row');
+	const second = sessionButton(page, 'Second row');
+	const secondBox = (await second.boundingBox())!;
+	const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+	await first.dispatchEvent('dragstart', { dataTransfer });
+	await second.dispatchEvent('dragover', {
+		dataTransfer,
+		clientY: secondBox.y + secondBox.height - 1
+	});
+	await expect(page.locator('.session-select').nth(0)).toContainText('Second row');
+	await expect(page.locator('.session-select').nth(1)).toContainText('First row');
+	await first.dispatchEvent('dragend', { dataTransfer });
+	await expect
+		.poll(() =>
+			page.evaluate(() =>
+				Object.entries(localStorage).find(([key]) => key.startsWith('hue:session-order:'))?.[1]
+			)
+		)
+		.toBe('["second-row","first-row"]');
+});
+
+test('discards stale persisted Session panes after loading the Project Sessions', async ({ page }) => {
+	let staleRequests = 0;
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({
+			json: {
+				sessions: [{ sessionId: 'pane-current', cwd: '/work/hue', title: 'Current pane' }]
+			}
+		})
+	);
+	await page.route(/\/sessions\/pane-stale-(?:primary|docked)$/, (route) => {
+		staleRequests += 1;
+		return route.fulfill({ status: 404, json: { error: 'Session not found' } });
+	});
+
+	await page.setViewportSize(viewports[0]);
+	await addProject(page);
+	const projectId = new URL(page.url()).searchParams.get('project')!;
+	await page.evaluate((id) => {
+		localStorage.setItem(
+			`hue:session-panes:${id}`,
+			JSON.stringify({
+				sessions: [{ sessionId: 'pane-stale-docked', cwd: '/work/hue', title: 'Stale docked' }],
+				primary: { sessionId: 'pane-stale-primary', cwd: '/work/hue', title: 'Stale primary' },
+				column: 50,
+				row: 50
+			})
+		);
+	}, projectId);
+	await page.reload();
+
+	await expect(page.getByRole('region', { name: 'Session panes' })).toHaveAttribute(
+		'data-pane-count',
+		'1'
+	);
+	await expect
+		.poll(() =>
+			page.evaluate((id) => JSON.parse(localStorage.getItem(`hue:session-panes:${id}`) ?? '{}'), projectId)
+		)
+		.toMatchObject({ sessions: [], primary: null });
+	expect(staleRequests).toBe(0);
+});
+
+test('creates a Session without sending the button click event as work mode', async ({ page }) => {
+	let createBody: string | null | undefined;
+	await page.route('**/api/projects/*/sessions', async (route) => {
+		if (route.request().method() === 'POST') {
+			createBody = route.request().postData();
+			return route.fulfill({
+				status: 201,
+				json: { session: { sessionId: 'session-new', cwd: '/work/hue' }, commands: [] }
+			});
+		}
+		return route.fulfill({ json: { sessions: [] } });
+	});
+
+	await addProject(page);
+	await page.getByRole('button', { name: 'Add new session', exact: true }).click();
+
+	expect(createBody).toBeNull();
 });
 
 test('Project tools stay docked across Sessions and collapse to their rail', async ({
@@ -625,6 +791,40 @@ test('Project tools stay docked across Sessions and collapse to their rail', asy
 	expect(browserErrors).toEqual([]);
 });
 
+test('restores Git panel sizes and collapsed sections', async ({ page }) => {
+	await page.route('**/api/projects/*/repository', (route) =>
+		route.fulfill({
+			json: {
+				isRepository: true,
+				branch: 'main',
+				changes: [{ path: 'one.ts', index: ' ', worktree: 'M', fileUrl: null }],
+				worktrees: [],
+				remotes: []
+			}
+		})
+	);
+	await page.setViewportSize(viewports[0]);
+	await addProject(page);
+	const dock = page.getByRole('navigation', { name: 'Project tools' });
+	await dock.getByRole('button', { name: 'Git, 1 changed files' }).click();
+	const git = page.getByRole('article', { name: 'Git status' });
+	const worktrees = page.getByRole('article', { name: 'Git worktrees' });
+	await page.getByRole('separator', { name: 'Resize Git and Worktrees' }).focus();
+	await page.keyboard.press('ArrowDown');
+	await git.locator(':scope > header').click({ position: { x: 20, y: 20 } });
+	await worktrees.locator(':scope > header').click({ position: { x: 20, y: 20 } });
+	const projectId = new URL(page.url()).searchParams.get('project')!;
+	expect(
+		await page.evaluate(
+			(id) => localStorage.getItem(`hue:project-tools:${id}:panel-sizes`),
+			projectId
+		)
+	).not.toBeNull();
+	await page.reload();
+	await expect(git.locator(':scope > header')).toHaveAttribute('aria-expanded', 'false');
+	await expect(worktrees.locator(':scope > header')).toHaveAttribute('aria-expanded', 'false');
+});
+
 test('typing in an empty Project chat creates a Session without losing the draft', async ({
 	page
 }) => {
@@ -762,6 +962,20 @@ test('Project file workspace stays usable across required viewports', async ({
 			.getByRole('button', { name: 'Browser', exact: true })
 	).toHaveAttribute('aria-expanded', 'false');
 	await expect(page.getByPlaceholder('Search files…')).toBeVisible();
+	await page.evaluate(() => {
+		const preferences = JSON.parse(localStorage.getItem('hue:preferences') ?? '{}');
+		preferences.hiddenFilePatterns = '.env';
+		localStorage.setItem('hue:preferences', JSON.stringify(preferences));
+		window.dispatchEvent(new CustomEvent('hue:preferences', { detail: preferences }));
+	});
+	await expect(page.getByRole('treeitem', { name: '.env', exact: true })).toHaveCount(0);
+	await page.evaluate(() => {
+		const preferences = JSON.parse(localStorage.getItem('hue:preferences') ?? '{}');
+		preferences.hiddenFilePatterns = '.DS_Store';
+		localStorage.setItem('hue:preferences', JSON.stringify(preferences));
+		window.dispatchEvent(new CustomEvent('hue:preferences', { detail: preferences }));
+	});
+	await expect(page.getByRole('treeitem', { name: '.env', exact: true })).toBeVisible();
 	const filesDock = page.getByRole('complementary', { name: 'Project files' });
 	const filesResizer = page.getByRole('separator', { name: 'Resize project files' });
 	const initialFilesWidth = (await filesDock.boundingBox())!.width;
@@ -769,6 +983,21 @@ test('Project file workspace stays usable across required viewports', async ({
 	await page.keyboard.press('ArrowRight');
 	expect((await filesDock.boundingBox())!.width).toBeLessThan(initialFilesWidth);
 	await page.keyboard.press('ArrowLeft');
+	await page.keyboard.press('Home');
+	const fileSidebar = page.locator('.file-sidebar');
+	const sidebarBox = (await fileSidebar.boundingBox())!;
+	for (const name of [
+		'Create file',
+		'Create folder',
+		'Refresh files',
+		'Expand all folders',
+		'Collapse all folders',
+		'Upload files'
+	]) {
+		const actionBox = (await fileSidebar.getByLabel(name, { exact: true }).boundingBox())!;
+		expect(actionBox.x + actionBox.width).toBeLessThanOrEqual(sidebarBox.x + sidebarBox.width + 1);
+	}
+	await page.keyboard.press('End');
 	await page.getByRole('treeitem', { name: '.env', exact: true }).click();
 	await expect(page.getByLabel('File content')).toHaveValue('HUE_TEST=1\n');
 	await page.getByRole('treeitem', { name: /README.md/ }).click();
@@ -789,6 +1018,15 @@ test('Project file workspace stays usable across required viewports', async ({
 		'aria-expanded',
 		'true'
 	);
+	expect(
+		await page.evaluate(() =>
+			JSON.parse(
+				localStorage.getItem(
+					`hue:project-files:${new URL(location.href).searchParams.get('project')}:expanded`
+				) ?? '[]'
+			)
+		)
+	).toContain('src');
 	await page.keyboard.press('ArrowRight');
 	await expect(page.getByRole('treeitem', { name: /main.ts/ })).toBeFocused();
 	await page.keyboard.press('ArrowLeft');
@@ -1622,6 +1860,14 @@ test('personalizes one Session with template and uploaded chat backgrounds', asy
 	const appSettingsButton = page.getByRole('button', { name: 'App settings' }).first();
 	await appSettingsButton.click();
 	let appSettings = page.getByRole('dialog', { name: 'App settings dialog' });
+	await appSettings.getByLabel('Hidden file patterns').fill('.DS_Store\n*.tmp');
+	await expect
+		.poll(() =>
+			page.evaluate(
+				() => JSON.parse(localStorage.getItem('hue:preferences') ?? '{}').hiddenFilePatterns
+			)
+		)
+		.toBe('.DS_Store\n*.tmp');
 	let generalBackground = appSettings.getByRole('group', { name: 'Default chat background' });
 	const sunsetChoice = generalBackground.getByRole('button', { name: 'Sunset chat background' });
 	await expect(sunsetChoice.locator('[data-mode="light"]')).toBeVisible();
@@ -1668,7 +1914,7 @@ test('personalizes one Session with template and uploaded chat backgrounds', asy
 	await expect(page.locator('.session-view')).toHaveAttribute('style', /radial-gradient/);
 	await sessionButton(page, 'Personal chat').click();
 
-	const optionsButton = page.getByRole('button', { name: 'Session options for Personal chat' });
+	const optionsButton = page.getByRole('button', { name: 'Session settings for Personal chat' });
 	await optionsButton.click();
 	const options = page.getByRole('dialog', { name: 'Session options' });
 	await options.getByRole('button', { name: 'Sunset chat background' }).click();
@@ -1678,6 +1924,7 @@ test('personalizes one Session with template and uploaded chat backgrounds', asy
 
 	await appSettingsButton.click();
 	appSettings = page.getByRole('dialog', { name: 'App settings dialog' });
+	await expect(appSettings.getByLabel('Hidden file patterns')).toHaveValue('.DS_Store\n*.tmp');
 	generalBackground = appSettings.getByRole('group', { name: 'Default chat background' });
 	await generalBackground.getByRole('button', { name: 'Meadow chat background' }).click();
 	await appSettings.getByRole('button', { name: 'Close settings' }).click();
@@ -3175,7 +3422,7 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 	if (!(await page.getByLabel('Hermes profile: default').isVisible())) await moreOptions.click();
 	await expect(page.getByLabel('Hermes profile: default')).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Prompt library' })).toBeVisible();
-	await page.getByRole('button', { name: 'Session options for Rich input' }).click();
+	await page.getByRole('button', { name: 'Session settings for Rich input' }).click();
 	const sessionOptions = page.getByRole('dialog', { name: 'Session options' });
 	await expect(sessionOptions.getByLabel('Hermes profile')).toHaveCount(0);
 	await expect(sessionOptions.getByRole('button', { name: /Prompt library/ })).toHaveCount(0);
@@ -3198,7 +3445,7 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 		await page.setViewportSize(viewport);
 		await expect(page.getByRole('listbox', { name: 'Hermes commands' })).toBeVisible();
 		await expect(modelTrigger).toBeVisible();
-		await page.getByRole('button', { name: 'Session options for Rich input' }).click();
+		await page.getByRole('button', { name: 'Session settings for Rich input' }).click();
 		await expect(page.getByRole('dialog', { name: 'Session options' })).toBeVisible();
 		await page.getByRole('button', { name: 'Close session options' }).click();
 		if (viewport.width <= 700) {
@@ -3540,6 +3787,10 @@ test('queues and edits messages with attachments while streaming, then can send 
 	await sessionButton(page, 'Queue').click();
 	await expect(page.getByLabel('Message Hermes')).toBeEnabled();
 	await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Edit approvals' })).toHaveCSS(
+		'border-top-width',
+		'1px'
+	);
 	await page.getByLabel('Attach images and files').setInputFiles({
 		name: 'queued.txt',
 		mimeType: 'text/plain',
@@ -4306,11 +4557,11 @@ test('searches and manages rename pin archive duplicate export and delete impact
 	await page.getByRole('searchbox', { name: 'Search Sessions' }).press('Enter');
 	expect(searched).toBe('Manage');
 	await sessionButton(page, 'Manage me').click();
-	await page.getByRole('button', { name: 'Session options for Manage me' }).click();
+	await page.getByRole('button', { name: 'Session settings for Manage me' }).click();
 	await page.getByRole('button', { name: 'Change session icon' }).click();
 	await expect(page.getByRole('dialog', { name: 'Session icon' })).toBeVisible();
 	await page.getByRole('button', { name: 'Close Session icon editor' }).click();
-	await page.getByRole('button', { name: 'Session options for Manage me' }).click();
+	await page.getByRole('button', { name: 'Session settings for Manage me' }).click();
 	await expect(page.getByRole('button', { name: 'Import unavailable' })).toBeDisabled();
 	await expect(page.getByRole('button', { name: 'Import unavailable' })).toHaveAttribute(
 		'title',
@@ -4348,7 +4599,7 @@ test('searches and manages rename pin archive duplicate export and delete impact
 
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
-		await page.getByRole('button', { name: 'Session options for Managed copy' }).click();
+		await page.getByRole('button', { name: 'Session settings for Managed copy' }).click();
 		const sectionField = page.getByLabel('Move to section');
 		await expect(sectionField).toBeVisible();
 		const fieldBox = (await sectionField.boundingBox())!;
@@ -4404,7 +4655,7 @@ test('disables image and duplicate controls when Hermes omits optional capabilit
 		const attachmentControl = page.getByLabel('Attach files');
 		await expect(attachmentControl).toBeEnabled();
 		await expect(attachmentControl).not.toHaveAttribute('accept', /\.png/);
-		await page.getByRole('button', { name: 'Session options for Reduced Hermes' }).click();
+		await page.getByRole('button', { name: 'Session settings for Reduced Hermes' }).click();
 		const duplicate = page.getByRole('button', { name: 'Duplicate' });
 		await expect(duplicate).toBeDisabled();
 		await expect(duplicate).toHaveAttribute('title', 'Hermes does not support Session duplication');
@@ -4493,6 +4744,8 @@ test('starts a new session without the previous session output', async ({ page }
 
 	await expect(page.getByRole('heading', { name: 'Start this Hermes Session' })).toBeVisible();
 	await expect(page.getByLabel('Message Hermes')).toBeFocused();
+	await expect(page.getByRole('button', { name: 'Edit approvals' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Edit approvals' })).toBeDisabled();
 	await expect(page.getByText('Previous session wall of text')).toBeHidden();
 	await expect(page.getByText('Delivery status unknown', { exact: true })).toBeHidden();
 	await expect(page.getByRole('region', { name: 'Conversation' })).toHaveCSS('contain', 'none');
@@ -4615,7 +4868,9 @@ test('opens the project prompt library from the composer across required viewpor
 			.getByRole('button', { name: /Prepare release/ })
 			.click();
 		await expect(dialog.getByRole('heading', { name: 'Prepare release' })).toBeVisible();
-		await expect(dialog.getByRole('button', { name: 'Add Prepare release to input' })).toBeVisible();
+		await expect(
+			dialog.getByRole('button', { name: 'Add Prepare release to input' })
+		).toBeVisible();
 		await expect(dialog.getByText('Run checks and prepare release notes.')).toBeVisible();
 		await expect(dialog.getByText('HUE · default · Autonomous')).toBeVisible();
 		const more = dialog.getByRole('button', { name: 'More actions for Prepare release' });
@@ -5196,7 +5451,7 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 	expect((await model.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 	await picker.getByRole('button', { name: 'Close model picker' }).click();
 
-	await page.locator('.session-header button[title="Session options"]').click();
+	await page.locator('.session-header button[title="Session settings"]').click();
 	const dialog = page.getByRole('dialog', { name: 'Session options' });
 	await expect(dialog.getByText('Saved automatically')).toBeVisible();
 	const removeBox = (await dialog.getByRole('button', { name: 'Remove' }).boundingBox())!;
@@ -6033,6 +6288,19 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		.getByText('Pull requests', { exact: true })
 		.click();
 	await expect(github.getByText('#44 Review project work')).toBeHidden();
+	expect(
+		await page.evaluate(
+			(id) => localStorage.getItem(`hue:project-tools:${id}:github-pulls-open`),
+			projectId
+		)
+	).toBe('false');
+	expect(
+		await page.evaluate(
+			(id) =>
+				JSON.parse(localStorage.getItem(`hue:project-tools:${id}:github-milestones-open`) ?? '{}'),
+			projectId
+		)
+	).toMatchObject({ M1: false });
 	await expect(workbench.getByRole('link', { name: 'Pull requests' })).toHaveAttribute(
 		'href',
 		'https://github.com/curi/hue/pulls'

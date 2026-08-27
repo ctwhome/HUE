@@ -523,6 +523,9 @@
 .composer-options-menu {
 	display: contents;
 }
+.composer-options-menu > .session-option-trigger {
+	border: 1px solid var(--border);
+}
 .composer-options-menu > .session-option-trigger > span {
 	display: none;
 }

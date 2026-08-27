@@ -1,8 +1,12 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import type { HermesInfo } from './types';
 
 	let { info }: { info: HermesInfo } = $props();
 	const card = 'rounded-xl border border-border bg-card p-4';
+	let capabilitiesOpen = $state(false);
+	const storageKey = 'hue:hermes:runtime-capabilities-open';
+	onMount(() => (capabilitiesOpen = localStorage.getItem(storageKey) === 'true'));
 </script>
 
 <div class="inventory-grid grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-2">
@@ -12,7 +16,14 @@
 		</article>
 	{/each}
 	{#if info.capabilities}
-		<details class={`${card} col-span-full`}>
+		<details
+			class={`${card} col-span-full`}
+			open={capabilitiesOpen}
+			ontoggle={(event) => {
+				capabilitiesOpen = event.currentTarget.open;
+				localStorage.setItem(storageKey, String(capabilitiesOpen));
+			}}
+		>
 			<summary class="cursor-pointer">Advertised capabilities</summary>
 			<pre class="overflow-auto">{JSON.stringify(info.capabilities, null, 2)}</pre>
 		</details>

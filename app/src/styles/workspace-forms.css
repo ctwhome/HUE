@@ -59,10 +59,45 @@
 
 .drawer-close,
 .session-list-back,
+.session-project-tools,
 .mobile-session-context,
 .mobile-install,
 .mobile-settings-selector {
 	display: none;
+}
+
+.session-context-ring {
+	position: relative;
+	display: grid;
+	width: 36px;
+	height: 36px;
+	flex: 0 0 auto;
+	place-items: center;
+	border: 0;
+	border-radius: 50%;
+	background: transparent;
+	padding: 0;
+	color: var(--foreground);
+	font-size: 10px;
+	font-weight: 700;
+}
+
+.session-context-ring::before {
+	position: absolute;
+	inset: 2px;
+	border-radius: inherit;
+	background: conic-gradient(
+		from -90deg,
+		currentColor calc(var(--context-percent) * 1%),
+		var(--border) 0
+	);
+	content: '';
+	-webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 0);
+	mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 0);
+}
+
+.session-context-ring:hover {
+	background: var(--accent);
 }
 
 .session-details summary {

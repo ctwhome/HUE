@@ -1,15 +1,18 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import ChevronRight from '~icons/lucide/chevron-right';
 	import GitHubMark from './GitHubMark.svelte';
 
 	type GitHubItem = { number: number; title: string; url: string };
 
 	let {
+		projectId,
 		items,
 		error,
 		links,
 		weight = 1
 	}: {
+		projectId: string;
 		items: {
 			issueGroups: Array<{ milestone: string | null; issues: GitHubItem[] }>;
 			pullRequests: GitHubItem[];
@@ -26,12 +29,43 @@
 		return new URL(repositoryLink.url).pathname.replace(/^\//, '') || 'GitHub';
 	});
 	let open = $state(true);
+	let issuesOpen = $state(true);
+	let pullRequestsOpen = $state(true);
+	let milestonesOpen = $state<Record<string, boolean>>({});
+	const storageKey = (name: string) => `hue:project-tools:${projectId}:github-${name}`;
 	function toggleFromHeader(event: MouseEvent | KeyboardEvent) {
 		if ((event.target as HTMLElement).closest('a, button')) return;
 		if (event instanceof KeyboardEvent && !['Enter', ' '].includes(event.key)) return;
 		event.preventDefault();
 		open = !open;
+		localStorage.setItem(storageKey('open'), String(open));
 	}
+	function saveSection(section: 'issues' | 'pulls', value: boolean) {
+		if (section === 'issues') issuesOpen = value;
+		else pullRequestsOpen = value;
+		localStorage.setItem(storageKey(`${section}-open`), String(value));
+	}
+	function saveMilestone(label: string, value: boolean) {
+		milestonesOpen = { ...milestonesOpen, [label]: value };
+		localStorage.setItem(storageKey('milestones-open'), JSON.stringify(milestonesOpen));
+	}
+
+	onMount(() => {
+		open = localStorage.getItem(storageKey('open')) !== 'false';
+		issuesOpen = localStorage.getItem(storageKey('issues-open')) !== 'false';
+		pullRequestsOpen = localStorage.getItem(storageKey('pulls-open')) !== 'false';
+		try {
+			const saved = JSON.parse(localStorage.getItem(storageKey('milestones-open')) ?? '{}');
+			if (saved && typeof saved === 'object' && !Array.isArray(saved))
+				milestonesOpen = Object.fromEntries(
+					Object.entries(saved).filter(
+						(entry): entry is [string, boolean] => typeof entry[1] === 'boolean'
+					)
+				);
+		} catch {
+			milestonesOpen = {};
+		}
+	});
 </script>
 
 <article
@@ -80,7 +114,12 @@
 					>{/each}
 			</nav>
 			<div class="grid gap-2 border-t border-border pt-2">
-				<details open class="group min-w-0" aria-label="GitHub issues">
+				<details
+					open={issuesOpen}
+					ontoggle={(event) => saveSection('issues', event.currentTarget.open)}
+					class="group min-w-0"
+					aria-label="GitHub issues"
+				>
 					<summary
 						class="flex min-h-8 cursor-pointer items-center gap-2 px-1 text-xs max-[700px]:min-h-11"
 					>
@@ -97,7 +136,12 @@
 					</summary>
 					<div class="grid gap-1 pl-2">
 						{#each items?.issueGroups ?? [] as group}
-							<details open class="group min-w-0 rounded-md border border-border/70">
+							<details
+								open={milestonesOpen[group.milestone ?? 'No milestone'] ?? true}
+								ontoggle={(event) =>
+									saveMilestone(group.milestone ?? 'No milestone', event.currentTarget.open)}
+								class="group min-w-0 rounded-md border border-border/70"
+							>
 								<summary
 									class="flex min-h-8 cursor-pointer items-center gap-2 px-2 text-xs max-[700px]:min-h-11"
 								>
@@ -134,7 +178,12 @@
 							>{/if}
 					</div>
 				</details>
-				<details open class="group min-w-0" aria-label="GitHub pull requests">
+				<details
+					open={pullRequestsOpen}
+					ontoggle={(event) => saveSection('pulls', event.currentTarget.open)}
+					class="group min-w-0"
+					aria-label="GitHub pull requests"
+				>
 					<summary
 						class="flex min-h-8 cursor-pointer items-center gap-2 px-1 text-xs max-[700px]:min-h-11"
 					>

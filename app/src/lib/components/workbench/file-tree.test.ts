@@ -38,6 +38,29 @@ test('visible tree order is type-safe and follows expanded ancestors', () => {
 	]);
 });
 
+test('breadth-first index renders descendants immediately below their folder', () => {
+	const indexed = [
+		entry('src', 'directory'),
+		entry('z.txt', 'file'),
+		entry('src/lib', 'directory'),
+		entry('src/main.ts', 'file'),
+		entry('src/lib/a.ts', 'file')
+	];
+	expect(visibleFileEntries(indexed, new Set(['src', 'src/lib'])).map(({ path }) => path)).toEqual([
+		'src',
+		'src/lib',
+		'src/lib/a.ts',
+		'src/main.ts',
+		'z.txt'
+	]);
+});
+
+test('search results remain visible when their parent folders are absent', () => {
+	expect(visibleFileEntries([entry('src/lib/a.ts', 'file')], new Set())).toEqual([
+		entry('src/lib/a.ts', 'file')
+	]);
+});
+
 test('tree keyboard action supports roving order, boundaries, expansion, child, and parent', () => {
 	const collapsed = new Set<string>();
 	expect(treeKeyboardAction(entries, collapsed, 'src', 'ArrowUp')).toEqual({

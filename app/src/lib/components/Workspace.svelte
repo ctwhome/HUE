@@ -116,6 +116,11 @@
 		const width = pane === 'projects' ? projectPaneWidth : sessionPaneWidth;
 		localStorage.setItem(`hue:shell:${pane}:width`, String(Math.round(width)));
 	}
+	function setShellPaneOpen(pane: ShellPane, open: boolean, persist = true) {
+		if (pane === 'projects') projectsPanelOpen = open;
+		else sessionsPanelOpen = open;
+		if (persist) localStorage.setItem(`hue:shell:${pane}:open`, String(open));
+	}
 	function startShellResize(event: PointerEvent) {
 		const target = event.currentTarget as HTMLElement;
 		const pane = target.dataset.pane as ShellPane;
@@ -291,10 +296,10 @@
 			return;
 		}
 		if ((selectedProject?.id ?? null) === (project?.id ?? null)) {
-			sessionsPanelOpen = !sessionsPanelOpen;
+			setShellPaneOpen('sessions', !sessionsPanelOpen);
 			return;
 		}
-		sessionsPanelOpen = true;
+		setShellPaneOpen('sessions', true);
 		void navigation.chooseProject(project);
 	}
 	let panelProjectId = $derived(selectedProject?.id ?? '');
@@ -464,6 +469,9 @@
 		for (const pane of ['projects', 'sessions'] as const) {
 			const savedWidth = Number(localStorage.getItem(`hue:shell:${pane}:width`));
 			if (savedWidth > 0) setShellPaneWidth(pane, savedWidth);
+			const savedOpen = localStorage.getItem(`hue:shell:${pane}:open`);
+			if (savedOpen === 'true' || savedOpen === 'false')
+				setShellPaneOpen(pane, savedOpen === 'true', false);
 		}
 		elapsedTimer = setInterval(() => (now = Date.now()), 1000);
 		mobileShell = new MobileShellController({
@@ -599,7 +607,7 @@
 		onlabel={projectManagement.setFolderLabel}
 		onarchiveRequest={projectManagement.requestRemoveProject}
 		onarchive={projectManagement.removeProject}
-		oncollapse={() => (projectsPanelOpen = false)}
+		oncollapse={() => setShellPaneOpen('projects', false)}
 		onclose={() => mobileShell?.close()}
 		isImage={isImageIcon}
 	/>
@@ -623,7 +631,7 @@
 		onicon={navigation.openSessionIconEditor}
 		onarchive={navigation.archiveSession}
 		onsearch={navigation.searchSessionList}
-		oncollapse={() => (sessionsPanelOpen = false)}
+		oncollapse={() => setShellPaneOpen('sessions', false)}
 		onclose={() => mobileShell?.close()}
 		isImage={isImageIcon}
 		automaticIcon={automaticSessionIcon}
@@ -646,7 +654,7 @@
 			<button
 				aria-label="Show Projects panel"
 				title="Show Projects panel"
-				onclick={() => (projectsPanelOpen = true)}
+				onclick={() => setShellPaneOpen('projects', true)}
 				><FolderKanban width={17} height={17} aria-hidden="true" /></button
 			>
 			<button
@@ -693,6 +701,9 @@
 			{sessions}
 			project={selectedProject}
 			projectId={selectedProject?.id ?? null}
+			sessionListLoaded={
+				navigation.loadedSessionListProjectId === (selectedProject?.id ?? null)
+			}
 			{workflows}
 			primarySession={selectedSession}
 			allowDocking={!embedded}
@@ -717,7 +728,9 @@
 					{delivery}
 					{pendingInteraction}
 					contextPercent={runtimeState.contextPercent}
+					{projectTools}
 					onsessions={() => mobileShell?.open('sessions')}
+					onprojecttools={(open) => (projectTools = open)}
 					onicon={(event) =>
 						selectedSession && navigation.openSessionIconEditor(event, selectedSession)}
 					onmanage={(event) =>
@@ -729,7 +742,7 @@
 					>
 						{error}
 					</div>{/if}
-				{#if selectedProject?.rootAvailable && mobile}<button
+				{#if selectedProject?.rootAvailable && mobile && !selectedSession}<button
 						class="mobile-project-tools mx-3 mt-2 min-h-11 rounded-md border border-border px-3 text-sm"
 						aria-label={projectTools ? 'Back to chat' : 'Open Project tools'}
 						onclick={() => (projectTools = !projectTools)}
@@ -773,7 +786,12 @@
 						bind:element={transcriptFollow.element}
 						follow={transcriptFollow.follow}
 					/>
-					<Composer
+					{#if selectedSession?.available === false}<div
+							class="m-4 rounded-lg border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-200"
+							role="status"
+						>
+							{selectedSession.recovery ?? 'Hermes Session is unavailable.'}
+						</div>{:else}<Composer
 						{composer}
 						plan={selectedPlan}
 						{timeline}
@@ -844,7 +862,7 @@
 						matchingCommands={messageState.matchingCommands}
 						contextPercent={runtimeState.contextPercent}
 						showContextUsage={false}
-					/>
+					/>{/if}
 				{:else if selectedProject && !selectedProject.rootAvailable}
 					<section
 						class="mx-auto mt-[12vh] grid max-w-xl gap-4 p-8 text-center text-muted-foreground"
