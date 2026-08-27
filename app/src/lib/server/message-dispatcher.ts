@@ -1,5 +1,5 @@
 import type { HUEStore } from './store';
-import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+import type { ImageAttachment, InputAttachment, ReviewContext } from '$lib/message-content';
 import { DEFAULT_WORK_MODE, type WorkMode } from '$lib/work-mode';
 
 export type SubagentChild = {
@@ -76,6 +76,7 @@ export interface PromptRuntime {
 		text: string;
 		images: ImageAttachment[];
 		attachments?: InputAttachment[];
+		reviewContexts?: ReviewContext[];
 		workMode: WorkMode;
 		onChunk: (text: string) => void;
 		onImage?: (image: ImageAttachment) => void;
@@ -94,6 +95,7 @@ export type MessageEnvelope = {
 	text: string;
 	images?: ImageAttachment[];
 	attachments?: InputAttachment[];
+	reviewContexts?: ReviewContext[];
 };
 
 export class DeliveryUncertainError extends Error {
@@ -301,6 +303,7 @@ export class MessageDispatcher {
 				text: queued.text,
 				images: queued.images,
 				attachments: attachments ?? [],
+				reviewContexts: queued.reviewContexts,
 				workMode: (this.store.getSession(envelope.projectId, envelope.sessionId)?.workMode ??
 					DEFAULT_WORK_MODE) as WorkMode
 			};
@@ -312,6 +315,7 @@ export class MessageDispatcher {
 				text: current.text,
 				images: current.images ?? [],
 				attachments: current.attachments ?? [],
+				reviewContexts: current.reviewContexts,
 				workMode: current.workMode,
 				onChunk: (text) => {
 					this.store.appendEvent(envelope.projectId, envelope.sessionId, 'agent.chunk', {

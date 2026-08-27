@@ -1,7 +1,13 @@
 <script lang="ts">
-	import { Copy, Download, ExternalLink, FolderOpen, GitFork, Pencil } from 'lucide-svelte';
-	import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+	import { Copy, Download, ExternalLink, FolderOpen, GitFork, Pencil, Quote } from 'lucide-svelte';
+	import type {
+		ImageAttachment,
+		InputAttachment,
+		ReviewContext,
+		ReviewContextSeed
+	} from '$lib/message-content';
 	import BrandMark from '$lib/components/BrandMark.svelte';
+	import { permissionDetails } from './permission-consequence';
 	import {
 		selectTranscriptTimeline,
 		type WorkspaceActivity,
@@ -13,6 +19,7 @@
 		text: string;
 		images?: ImageAttachment[];
 		attachments?: InputAttachment[];
+		reviewContexts?: ReviewContext[];
 		createdAt?: string;
 	};
 
@@ -20,6 +27,7 @@
 		timeline,
 		messageNotice,
 		agentLabel,
+		sessionLabel,
 		busy,
 		renderMarkdown,
 		onedit,
@@ -29,12 +37,14 @@
 		mediaPath,
 		onmedia,
 		onretrylast,
+		onquote,
 		element = $bindable(),
 		follow
 	}: {
 		timeline: WorkspaceTimelineItem[];
 		messageNotice: string;
 		agentLabel: string;
+		sessionLabel: string;
 		busy: boolean;
 		renderMarkdown: (text: string) => string;
 		onedit: (message: Message) => void;
@@ -50,6 +60,7 @@
 		mediaPath: string;
 		onmedia: (path: string, action: 'open' | 'reveal') => void;
 		onretrylast: () => void;
+		onquote: (context: ReviewContextSeed) => void;
 		element?: HTMLElement;
 		follow: (node: HTMLElement) => { destroy: () => void };
 	} = $props();
@@ -62,8 +73,6 @@
 		];
 	}
 
-	const serialized = (value: unknown) =>
-		typeof value === 'string' ? value : JSON.stringify(value, null, 2);
 	const validTimestamp = (value?: string): value is string =>
 		!!value && !Number.isNaN(Date.parse(value));
 	const timestamp = (value: string) =>
@@ -97,6 +106,20 @@
 		) as Record<string, string | string[]>;
 		oninteraction(item.id, { kind: 'clarify', action: 'accept', content });
 	}
+	function quoteSelection(event: MouseEvent) {
+		const article = (event.currentTarget as HTMLElement).closest('article');
+		const selection = getSelection();
+		const content = selection?.toString().trim() ?? '';
+		if (
+			!article ||
+			!content ||
+			!selection?.rangeCount ||
+			!article.contains(selection.getRangeAt(0).commonAncestorContainer)
+		)
+			return;
+		onquote({ source: 'assistant', label: `${agentLabel} response`, content });
+		selection.removeAllRanges();
+	}
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -129,6 +152,25 @@
 						><strong>{message.role === 'assistant' ? agentLabel : 'You'}</strong>
 					</div>
 					<div class="message-stack grid min-w-0">
+						{#if message.role === 'user' && message.reviewContexts?.length}<section
+								class="mb-2 grid gap-1.5"
+								aria-label="Sent review contexts"
+							>
+								{#each message.reviewContexts as context}<article
+										class="min-w-0 rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2 text-sm"
+									>
+										<strong class="block truncate text-xs">{context.label}</strong>
+										<details class="mt-1 min-w-0">
+											<summary>Captured source</summary>
+											<pre
+												class="mt-1 max-h-48 overflow-auto text-xs break-words whitespace-pre-wrap">{context.content}</pre>
+										</details>
+										{#if context.comment}<p class="mt-1 break-words">
+												<strong>Comment:</strong>
+												{context.comment}
+											</p>{/if}
+									</article>{/each}
+							</section>{/if}
 						{#if message.attachments?.length}<div
 								class="mb-2 grid gap-1.5"
 								aria-label="Message attachments"
@@ -236,6 +278,13 @@
 									title="Edit and resend message"
 									onclick={() => onedit(message)}><Pencil size={14} aria-hidden="true" /></button
 								>{/if}
+							{#if message.role === 'assistant'}<button
+									type="button"
+									class="max-[700px]:min-h-11 max-[700px]:min-w-11"
+									aria-label="Add selected text to prompt"
+									title="Select part of this response, then add it to the next prompt"
+									onclick={quoteSelection}><Quote size={14} aria-hidden="true" /></button
+								>{/if}
 							<button
 								type="button"
 								aria-label="Copy message"
@@ -265,7 +314,10 @@
 						</div>
 					</div>
 				</article>
-			{:else if item.kind === 'permission'}<section
+			{:else if item.kind === 'permission'}{@const permission = permissionDetails(
+					item.toolCall ?? {}
+				)}
+				<section
 					data-timeline-sequence={item.sequence}
 					data-message-id={item.messageId}
 					tabindex="-1"
@@ -280,8 +332,22 @@
 								aria-label={timestampTitle(item.createdAt)}>{timestamp(item.createdAt)}</time
 							>{/if}
 					</header>
-					<p>{item.toolCall?.title ?? 'Hermes requests permission.'}</p>
-					{#if item.toolCall?.args !== undefined}<pre>{serialized(item.toolCall.args)}</pre>{/if}
+					<h3>{permission.title}</h3>
+					<dl class="permission-context">
+						<div>
+							<dt>Action</dt>
+							<dd>{permission.action}</dd>
+						</div>
+						<div>
+							<dt>Session</dt>
+							<dd>{sessionLabel}</dd>
+						</div>
+						{#each permission.preview as row}<div>
+								<dt>{row.label}</dt>
+								<dd><code>{row.value}</code></dd>
+							</div>{/each}
+					</dl>
+					<p class="permission-consequence">{permission.consequence}</p>
 					{#if item.status === 'pending'}<div class="interaction-actions flex flex-wrap gap-2">
 							{#each item.options ?? [] as option}<button
 									type="button"

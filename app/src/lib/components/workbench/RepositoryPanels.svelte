@@ -15,42 +15,22 @@
 	import ModelPicker from '../ModelPicker.svelte';
 	import { api } from './api';
 	import GitHubPanels from './GitHubPanels.svelte';
-
-	type Repository = {
-		isRepository: boolean;
-		repositoryPath?: string;
-		repositories?: Array<{ path: string; label?: string }>;
-		branch: string | null;
-		changes: Array<{ path: string; index: string; worktree: string; fileUrl: string | null }>;
-		worktrees: Array<{ path: string; branch: string | null; head: string }>;
-		remotes: Array<{ name: string; webUrl: string | null }>;
-	};
-	type GitHubItem = { number: number; title: string; url: string };
-	type GitHubItems = {
-		issueGroups: Array<{ milestone: string | null; issues: GitHubItem[] }>;
-		pullRequests: GitHubItem[];
-	};
-	type CommitModelsResponse = {
-		options?: {
-			providers?: Array<{
-				slug: string;
-				name: string;
-				authenticated: boolean;
-				models: string[];
-			}>;
-		};
-	};
+	import RepositoryDiff from './RepositoryDiff.svelte';
+	import type { ReviewContextSeed } from '$lib/message-content';
+	import type { CommitModelsResponse, GitHubItems, Repository } from './repository-diff';
 
 	let {
 		projectId,
 		onbranch,
 		onopenfile,
-		onchanges
+		onchanges,
+		onreviewcontext
 	}: {
 		projectId: string;
 		onbranch: (branch: string | null) => void;
 		onopenfile: (path: string) => void;
 		onchanges: (count: number) => void;
+		onreviewcontext?: (context: ReviewContextSeed) => void;
 	} = $props();
 	let repository = $state<Repository | null>(null);
 	let repositoryLoading = $state(false);
@@ -209,7 +189,9 @@
 		worktreesOpen = !worktreesOpen;
 		localStorage.setItem(`hue:project-tools:${projectId}:worktrees-open`, String(worktreesOpen));
 	}
-	function toggleGit() { gitOpen = !gitOpen; }
+	function toggleGit() {
+		gitOpen = !gitOpen;
+	}
 	function selectCommitModel(modelId: string) {
 		commitModel = modelId;
 		localStorage.setItem('hue:commit-message-model', modelId);
@@ -235,7 +217,11 @@
 	});
 </script>
 
-<article class={`${panel} repository-panel`} style:flex={gitOpen ? undefined : '0 0 auto'} aria-label="Git status">
+<article
+	class={`${panel} repository-panel`}
+	style:flex={gitOpen ? undefined : '0 0 auto'}
+	aria-label="Git status"
+>
 	<header
 		class="flex min-h-11 cursor-pointer items-center justify-between gap-2 border-b border-border bg-muted/40 px-2.5 py-2"
 		role="button"
@@ -247,10 +233,10 @@
 		<div class="flex items-center gap-2">
 			<GitBranch size={17} aria-hidden="true" />
 			<div>
-			<strong class="block text-xs">Git</strong><span
-				class="block text-[0.68rem] text-muted-foreground"
-				>{repository?.branch ?? 'Repository'}</span
-			>
+				<strong class="block text-xs">Git</strong><span
+					class="block text-[0.68rem] text-muted-foreground"
+					>{repository?.branch ?? 'Repository'}</span
+				>
 			</div>
 		</div>
 		{#if (repository?.repositories?.length ?? 0) > 1}<select
@@ -281,167 +267,181 @@
 				onclick={refreshRepository}><RefreshCw size={15} aria-hidden="true" /></Button
 			>
 		</div>
-		{#if gitOpen}<ChevronDown size={16} aria-hidden="true" />{:else}<ChevronRight size={16} aria-hidden="true" />{/if}
+		{#if gitOpen}<ChevronDown size={16} aria-hidden="true" />{:else}<ChevronRight
+				size={16}
+				aria-hidden="true"
+			/>{/if}
 	</header>
 	{#if gitOpen}
-	<div class="repository-content min-h-0 flex-1 overflow-auto p-2">
-		{#if repositoryLoading}<p class="muted text-xs text-muted-foreground" role="status">
-				Reading repository…
-			</p>{/if}
-		{#if repositoryError}<p class="panel-error text-xs text-destructive" role="alert">
-				{repositoryError}
-			</p>{/if}
-		{#if repository && !repository.isRepository}<div
-				class="panel-empty grid min-h-32 place-content-center gap-1 text-center text-xs text-muted-foreground"
-			>
-				<strong class="text-foreground">Git not detected</strong><span
-					>This project is still available to Hermes.</span
+		<div class="repository-content min-h-0 flex-1 overflow-auto p-2">
+			{#if repositoryLoading}<p class="muted text-xs text-muted-foreground" role="status">
+					Reading repository…
+				</p>{/if}
+			{#if repositoryError}<p class="panel-error text-xs text-destructive" role="alert">
+					{repositoryError}
+				</p>{/if}
+			{#if repository && !repository.isRepository}<div
+					class="panel-empty grid min-h-32 place-content-center gap-1 text-center text-xs text-muted-foreground"
+				>
+					<strong class="text-foreground">Git not detected</strong><span
+						>This project is still available to Hermes.</span
+					>
+				</div>
+			{:else if repository?.isRepository}
+				<nav class="repository-links flex flex-wrap gap-1 pb-2" aria-label="Repository options">
+					{#each repositoryLinks().slice(0, 1) as link}<a
+							class="rounded-md border border-border px-2 py-1.5 text-[0.68rem]"
+							href={link.url}
+							target="_blank"
+							rel="noopener noreferrer"
+							title={`Open ${link.label}`}>{link.label}</a
+						>{/each}
+				</nav>
+				<RepositoryDiff
+					{projectId}
+					repositoryPath={selectedRepository}
+					revision={repository.changes
+						.map(({ path, index, worktree }) => `${path}:${index}${worktree}`)
+						.join('|')}
+					onselect={onreviewcontext}
+				/>
+				<section class="git-section mt-2" aria-label="Staged changes">
+					<header class="flex min-h-8 items-center gap-2 px-1">
+						<strong class="text-xs">Staged changes</strong><span
+							class="text-xs text-muted-foreground">{stagedChanges().length}</span
+						>{#if stagedChanges().length}<button
+								class="ml-auto text-[0.68rem] text-sky-400"
+								title="Unstage all changes"
+								disabled={repositoryBusy}
+								onclick={() => mutateRepository({ action: 'unstageAll' })}>Unstage all</button
+							>{/if}
+					</header>
+					<ul class="change-list grid list-none gap-0.5 p-0">
+						{#each stagedChanges() as change}<li
+								class="grid grid-cols-[22px_18px_minmax(0,1fr)] items-center gap-1 rounded-md px-1.5 py-1 text-xs hover:bg-muted"
+							>
+								<button
+									class="grid size-6 place-items-center"
+									title={`Unstage ${change.path}`}
+									aria-label={`Unstage ${change.path}`}
+									disabled={repositoryBusy}
+									onclick={() => mutateRepository({ action: 'unstage', path: change.path })}
+									><Minus size={14} aria-hidden="true" /></button
+								><code class="text-amber-300">{change.index}</code>{#if change.fileUrl}<button
+										class="overflow-hidden text-left text-ellipsis whitespace-nowrap hover:underline"
+										title={`Open ${change.path}`}
+										onclick={() => openValidated(change)}>{change.path}</button
+									>{:else}<span class="overflow-hidden text-ellipsis whitespace-nowrap"
+										>{change.path}</span
+									>{/if}
+							</li>{/each}
+					</ul>
+				</section>
+				<section class="git-section mt-2" aria-label="Changes">
+					<header class="flex min-h-8 items-center gap-2 px-1">
+						<strong class="text-xs">Changes</strong><span class="text-xs text-muted-foreground"
+							>{unstagedChanges().length}</span
+						>{#if unstagedChanges().length}<button
+								class="ml-auto text-[0.68rem] text-sky-400"
+								title="Stage all changes"
+								disabled={repositoryBusy}
+								onclick={() => mutateRepository({ action: 'stageAll' })}>Stage all</button
+							>{/if}
+					</header>
+					<ul class="change-list grid list-none gap-0.5 p-0">
+						{#each unstagedChanges() as change}<li
+								class="grid grid-cols-[22px_18px_minmax(0,1fr)] items-center gap-1 rounded-md px-1.5 py-1 text-xs hover:bg-muted"
+							>
+								<button
+									class="grid size-6 place-items-center"
+									title={`Stage ${change.path}`}
+									aria-label={`Stage ${change.path}`}
+									disabled={repositoryBusy}
+									onclick={() => mutateRepository({ action: 'stage', path: change.path })}
+									><Plus size={14} aria-hidden="true" /></button
+								><code class="text-amber-300">{change.worktree}</code>{#if change.fileUrl}<button
+										class="overflow-hidden text-left text-ellipsis whitespace-nowrap hover:underline"
+										title={`Open ${change.path}`}
+										onclick={() => openValidated(change)}>{change.path}</button
+									>{:else}<span class="overflow-hidden text-ellipsis whitespace-nowrap"
+										>{change.path}</span
+									>{/if}
+							</li>{/each}
+					</ul>
+				</section>
+				{#if !repository.changes.length}<div
+						class="panel-empty compact grid min-h-24 place-content-center text-xs text-muted-foreground"
+					>
+						<strong class="text-foreground">Working tree clean</strong>
+					</div>{/if}
+			{/if}
+		</div>
+		<form
+			class="git-commit grid gap-2 border-t border-border bg-card p-2.5"
+			onsubmit={(event) => {
+				event.preventDefault();
+				void mutateRepository({ action: 'commit', message: commitMessage });
+			}}
+		>
+			<div class="flex items-center gap-2">
+				<strong class="text-xs">Commit</strong><span
+					class="min-w-0 flex-1 text-right text-[0.68rem] text-muted-foreground"
+					>{stagedChanges().length
+						? `${stagedChanges().length} staged`
+						: 'Stage files to commit'}</span
+				>
+				<ModelPicker
+					models={commitModels}
+					value={commitModel}
+					ariaLabel="Commit message model"
+					ellipsis={true}
+					onselect={selectCommitModel}
+				/>
+			</div>
+			<div class="commit-message-field relative">
+				<Input
+					class="h-8 pr-10 text-xs max-[700px]:h-11 max-[700px]:pr-12"
+					bind:value={commitMessage}
+					aria-label="Commit message"
+					placeholder="Commit message"
+				/>
+				<button
+					type="button"
+					class="absolute top-1/2 right-0.5 grid size-7 -translate-y-1/2 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-[700px]:size-11"
+					aria-label="Generate commit message with Hermes"
+					title={stagedChanges().length
+						? 'Generate commit message with Hermes'
+						: 'Stage files first'}
+					disabled={repositoryBusy || commitMessageGenerating || !stagedChanges().length}
+					onclick={generateCommitMessage}
+				>
+					{#if commitMessageGenerating}<RefreshCw
+							size={15}
+							class="animate-spin"
+							aria-hidden="true"
+						/>{:else}<Sparkles size={15} aria-hidden="true" />{/if}
+				</button>
+			</div>
+			<div class="flex items-center justify-end gap-2">
+				{#if repositoryMessage}<small class="mr-auto text-muted-foreground" role="status"
+						>{repositoryMessage}</small
+					>{/if}<Button
+					variant="outline"
+					size="sm"
+					type="submit"
+					title="Commit staged changes"
+					disabled={repositoryBusy || !commitMessage.trim() || !stagedChanges().length}
+					>Commit</Button
+				><Button
+					variant="outline"
+					size="sm"
+					type="button"
+					title="Commit and push staged changes"
+					disabled={repositoryBusy || !commitMessage.trim() || !stagedChanges().length}
+					onclick={commitAndPush}>Commit &amp; push</Button
 				>
 			</div>
-		{:else if repository?.isRepository}
-			<nav class="repository-links flex flex-wrap gap-1 pb-2" aria-label="Repository options">
-				{#each repositoryLinks().slice(0, 1) as link}<a
-						class="rounded-md border border-border px-2 py-1.5 text-[0.68rem]"
-						href={link.url}
-						target="_blank"
-						rel="noopener noreferrer"
-						title={`Open ${link.label}`}>{link.label}</a
-					>{/each}
-			</nav>
-			<section class="git-section mt-2" aria-label="Staged changes">
-				<header class="flex min-h-8 items-center gap-2 px-1">
-					<strong class="text-xs">Staged changes</strong><span class="text-xs text-muted-foreground"
-						>{stagedChanges().length}</span
-					>{#if stagedChanges().length}<button
-							class="ml-auto text-[0.68rem] text-sky-400"
-							title="Unstage all changes"
-							disabled={repositoryBusy}
-							onclick={() => mutateRepository({ action: 'unstageAll' })}>Unstage all</button
-						>{/if}
-				</header>
-				<ul class="change-list grid list-none gap-0.5 p-0">
-					{#each stagedChanges() as change}<li
-							class="grid grid-cols-[22px_18px_minmax(0,1fr)] items-center gap-1 rounded-md px-1.5 py-1 text-xs hover:bg-muted"
-						>
-							<button
-								class="grid size-6 place-items-center"
-								title={`Unstage ${change.path}`}
-								aria-label={`Unstage ${change.path}`}
-								disabled={repositoryBusy}
-								onclick={() => mutateRepository({ action: 'unstage', path: change.path })}
-								><Minus size={14} aria-hidden="true" /></button
-							><code class="text-amber-300">{change.index}</code>{#if change.fileUrl}<button
-									class="overflow-hidden text-left text-ellipsis whitespace-nowrap hover:underline"
-									title={`Open ${change.path}`}
-									onclick={() => openValidated(change)}>{change.path}</button
-								>{:else}<span class="overflow-hidden text-ellipsis whitespace-nowrap"
-									>{change.path}</span
-								>{/if}
-						</li>{/each}
-				</ul>
-			</section>
-			<section class="git-section mt-2" aria-label="Changes">
-				<header class="flex min-h-8 items-center gap-2 px-1">
-					<strong class="text-xs">Changes</strong><span class="text-xs text-muted-foreground"
-						>{unstagedChanges().length}</span
-					>{#if unstagedChanges().length}<button
-							class="ml-auto text-[0.68rem] text-sky-400"
-							title="Stage all changes"
-							disabled={repositoryBusy}
-							onclick={() => mutateRepository({ action: 'stageAll' })}>Stage all</button
-						>{/if}
-				</header>
-				<ul class="change-list grid list-none gap-0.5 p-0">
-					{#each unstagedChanges() as change}<li
-							class="grid grid-cols-[22px_18px_minmax(0,1fr)] items-center gap-1 rounded-md px-1.5 py-1 text-xs hover:bg-muted"
-						>
-							<button
-								class="grid size-6 place-items-center"
-								title={`Stage ${change.path}`}
-								aria-label={`Stage ${change.path}`}
-								disabled={repositoryBusy}
-								onclick={() => mutateRepository({ action: 'stage', path: change.path })}
-								><Plus size={14} aria-hidden="true" /></button
-							><code class="text-amber-300">{change.worktree}</code>{#if change.fileUrl}<button
-									class="overflow-hidden text-left text-ellipsis whitespace-nowrap hover:underline"
-									title={`Open ${change.path}`}
-									onclick={() => openValidated(change)}>{change.path}</button
-								>{:else}<span class="overflow-hidden text-ellipsis whitespace-nowrap"
-									>{change.path}</span
-								>{/if}
-						</li>{/each}
-				</ul>
-			</section>
-			{#if !repository.changes.length}<div
-					class="panel-empty compact grid min-h-24 place-content-center text-xs text-muted-foreground"
-				>
-					<strong class="text-foreground">Working tree clean</strong>
-				</div>{/if}
-		{/if}
-	</div>
-	<form
-		class="git-commit grid gap-2 border-t border-border bg-card p-2.5"
-		onsubmit={(event) => {
-			event.preventDefault();
-			void mutateRepository({ action: 'commit', message: commitMessage });
-		}}
-	>
-		<div class="flex items-center gap-2">
-			<strong class="text-xs">Commit</strong><span
-				class="min-w-0 flex-1 text-right text-[0.68rem] text-muted-foreground"
-				>{stagedChanges().length
-					? `${stagedChanges().length} staged`
-					: 'Stage files to commit'}</span
-			>
-			<ModelPicker
-				models={commitModels}
-				value={commitModel}
-				ariaLabel="Commit message model"
-				ellipsis={true}
-				onselect={selectCommitModel}
-			/>
-		</div>
-		<div class="commit-message-field relative">
-			<Input
-				class="h-8 pr-10 text-xs max-[700px]:h-11 max-[700px]:pr-12"
-				bind:value={commitMessage}
-				aria-label="Commit message"
-				placeholder="Commit message"
-			/>
-			<button
-				type="button"
-				class="absolute top-1/2 right-0.5 grid size-7 -translate-y-1/2 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-[700px]:size-11"
-				aria-label="Generate commit message with Hermes"
-				title={stagedChanges().length ? 'Generate commit message with Hermes' : 'Stage files first'}
-				disabled={repositoryBusy || commitMessageGenerating || !stagedChanges().length}
-				onclick={generateCommitMessage}
-			>
-				{#if commitMessageGenerating}<RefreshCw
-						size={15}
-						class="animate-spin"
-						aria-hidden="true"
-					/>{:else}<Sparkles size={15} aria-hidden="true" />{/if}
-			</button>
-		</div>
-		<div class="flex items-center justify-end gap-2">
-			{#if repositoryMessage}<small class="mr-auto text-muted-foreground" role="status"
-					>{repositoryMessage}</small
-				>{/if}<Button
-				variant="outline"
-				size="sm"
-				type="submit"
-				title="Commit staged changes"
-				disabled={repositoryBusy || !commitMessage.trim() || !stagedChanges().length}>Commit</Button
-			><Button
-				variant="outline"
-				size="sm"
-				type="button"
-				title="Commit and push staged changes"
-				disabled={repositoryBusy || !commitMessage.trim() || !stagedChanges().length}
-				onclick={commitAndPush}>Commit &amp; push</Button
-			>
-		</div>
-	</form>
+		</form>
 	{/if}
 </article>
 
@@ -458,10 +458,15 @@
 		onclick={(event) => togglePanelFromHeader(event, toggleWorktrees)}
 		onkeydown={(event) => togglePanelFromHeader(event, toggleWorktrees)}
 	>
-		<strong class="flex items-center gap-2 text-xs"><GitFork size={17} aria-hidden="true" />Worktrees</strong>
+		<strong class="flex items-center gap-2 text-xs"
+			><GitFork size={17} aria-hidden="true" />Worktrees</strong
+		>
 		<div class="flex items-center gap-1">
 			<span class="text-[0.68rem] text-muted-foreground">{repository?.worktrees.length ?? 0}</span>
-			{#if worktreesOpen}<ChevronDown size={16} aria-hidden="true" />{:else}<ChevronRight size={16} aria-hidden="true" />{/if}
+			{#if worktreesOpen}<ChevronDown size={16} aria-hidden="true" />{:else}<ChevronRight
+					size={16}
+					aria-hidden="true"
+				/>{/if}
 		</div>
 	</header>
 	{#if worktreesOpen}<div class="worktree-list grid min-h-0 content-start gap-1 overflow-auto p-2">

@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import { applyMessageWorkMode } from '$lib/server/work-mode-context';
 import { services } from '$lib/server/route-services';
 import { MessageConflictError } from '$lib/server/store';
-import { validateMessageAttachments } from '$lib/message-content';
+import { validateMessageAttachments, validateReviewContexts } from '$lib/message-content';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ params, request }) => {
@@ -12,11 +12,16 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			text?: string;
 			images?: unknown;
 			attachments?: unknown;
+			reviewContexts?: unknown;
 		};
 		const messageId = body.messageId?.trim();
 		const text = body.text ?? '';
 		const { images, attachments } = validateMessageAttachments(body.images, body.attachments);
-		if (!messageId || (!text.trim() && !images.length && !attachments.length)) {
+		const reviewContexts = validateReviewContexts(body.reviewContexts);
+		if (
+			!messageId ||
+			(!text.trim() && !images.length && !attachments.length && !reviewContexts.length)
+		) {
 			return json({ error: 'messageId and message content are required' }, { status: 400 });
 		}
 		const accepted = await services().projectOperations.message(params.projectId, (project) => {
@@ -29,7 +34,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 				project.id,
 				params.sessionId,
 				text,
-				Boolean(images.length || attachments.length)
+				Boolean(images.length || attachments.length || reviewContexts.length)
 			);
 			if (workMode.consumed) {
 				return {
@@ -48,7 +53,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 					sessionId: params.sessionId,
 					text,
 					images,
-					attachments
+					attachments,
+					reviewContexts
 				}),
 				workModeChanged: workMode.changed,
 				workModeEvent: workMode.event
@@ -74,6 +80,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			text?: string;
 			images?: unknown;
 			attachments?: unknown;
+			reviewContexts?: unknown;
 			preserveAttachments?: boolean;
 		};
 		const messageId = body.messageId?.trim();
@@ -83,7 +90,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			body.images,
 			preserveAttachments ? [] : body.attachments
 		);
-		if (!messageId || (!text.trim() && !images.length && !attachments.length)) {
+		const reviewContexts =
+			body.reviewContexts === undefined ? undefined : validateReviewContexts(body.reviewContexts);
+		if (
+			!messageId ||
+			(!text.trim() && !images.length && !attachments.length && !reviewContexts?.length)
+		) {
 			return json({ error: 'messageId and message content are required' }, { status: 400 });
 		}
 		const message = await services().projectOperations.message(params.projectId, (project) => {
@@ -95,7 +107,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				sessionId: params.sessionId,
 				text,
 				images: preserveAttachments ? [] : images,
-				attachments: preserveAttachments ? undefined : attachments
+				attachments: preserveAttachments ? undefined : attachments,
+				reviewContexts
 			});
 		});
 		return json({ message });

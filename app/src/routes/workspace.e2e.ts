@@ -201,6 +201,108 @@ test.beforeEach(async ({ page }) => {
 	await mockDefaultSessionRequests(page);
 });
 
+test('global Session finder is keyboard-first, race-safe, and navigates directly', async ({
+	page
+}) => {
+	await page.setViewportSize(viewports[0]);
+	await page.goto('/');
+	let projectsResponse = await page.request.get('/api/projects');
+	let projectsBody = (await projectsResponse.json()) as {
+		projects: Array<{ id: string; name: string; primaryPath: string }>;
+	};
+	if (!projectsBody.projects.length) {
+		await addProject(page);
+		projectsResponse = await page.request.get('/api/projects');
+		projectsBody = (await projectsResponse.json()) as typeof projectsBody;
+	}
+	const project = projectsBody.projects[0];
+	const session = {
+		sessionId: 'finder-new',
+		cwd: project.primaryPath,
+		title: 'New result',
+		projectId: project.id,
+		projectName: project.name,
+		status: 'waiting',
+		archived: false,
+		folder: 'Review',
+		tags: ['p1']
+	};
+	await page.route('**/api/sessions/search**', async (route) => {
+		const url = new URL(route.request().url());
+		const query = url.searchParams.get('q');
+		if (query === 'old') await new Promise((resolve) => setTimeout(resolve, 200));
+		else await new Promise((resolve) => setTimeout(resolve, 10));
+		await route.fulfill({
+			json: {
+				results:
+					query === 'old'
+						? [{ ...session, sessionId: 'finder-old', title: 'Old result' }]
+						: query === 'new'
+							? [session]
+							: []
+			}
+		});
+	});
+	await page.route(
+		new RegExp(`/api/projects/${project.id}/sessions\\?sessionId=finder-new`),
+		(route) => route.fulfill({ json: { sessions: [session], hasMore: false } })
+	);
+	await page.route(`**/api/projects/${project.id}/sessions/finder-new`, (route) =>
+		route.fulfill({
+			json: {
+				transcript: [],
+				cursor: 0,
+				activeTurn: null,
+				events: [],
+				messages: [],
+				runtime: { profile: 'default' }
+			}
+		})
+	);
+
+	const workspaceButton = page.getByRole('button', { name: 'Workspace' });
+	await workspaceButton.focus();
+	await page.keyboard.press('Control+k');
+	const dialog = page.getByRole('dialog', { name: 'Find a Session' });
+	await expect(dialog).toBeVisible();
+	await expect(dialog.getByRole('searchbox', { name: 'Search Sessions' })).toBeFocused();
+	for (const label of ['Running', 'Waiting', 'Unknown', 'Failed', 'Archived']) {
+		await expect(dialog.getByRole('button', { name: label })).toBeVisible();
+	}
+	await dialog.evaluate((element) => {
+		element.dispatchEvent(new Event('cancel', { cancelable: true }));
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
+	});
+	await expect(dialog).toBeVisible();
+
+	const search = dialog.getByRole('searchbox', { name: 'Search Sessions' });
+	await search.fill('old');
+	await search.fill('new');
+	await expect(dialog.getByText('New result')).toBeVisible();
+	await page.waitForTimeout(250);
+	await expect(dialog.getByText('Old result')).toHaveCount(0);
+
+	await page.keyboard.press('Escape');
+	await expect(dialog).toBeHidden();
+	await expect(workspaceButton).toBeFocused();
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		await page.keyboard.press('Control+k');
+		await expect(dialog).toBeVisible();
+		expect((await dialog.boundingBox())!.width).toBeLessThanOrEqual(viewport.width);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		if (viewport.width <= 390) await expectMinimumTouchTargets(dialog.locator('button, input'));
+		await page.keyboard.press('Escape');
+	}
+	await page.setViewportSize(viewports[0]);
+	await page.keyboard.press('Control+k');
+	await search.fill('new');
+	await dialog.getByText('New result').click();
+	await expect(page).toHaveURL(new RegExp(`project=${project.id}.*session=finder-new`));
+});
+
 test('the active Project toggles Sessions without reserving a collapsed column', async ({
 	page
 }, testInfo) => {
@@ -2499,7 +2601,9 @@ test('copies and edits messages while selected-message fork stays honestly unava
 }) => {
 	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 	const sessions = [{ sessionId: 'message-actions', cwd: '/work/hue', title: 'Message actions' }];
-	await page.route('**/api/projects/*/sessions', (route) => route.fulfill({ json: { sessions } }));
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) =>
+		route.fulfill({ json: { sessions } })
+	);
 	await page.route(/\/sessions\/message-actions$/, async (route) => {
 		if (route.request().method() === 'POST') {
 			return route.fulfill({
@@ -2546,6 +2650,19 @@ test('copies and edits messages while selected-message fork stays honestly unava
 	);
 	await userMessage.getByRole('button', { name: 'Edit and resend message' }).click();
 	await expect(page.getByLabel('Message Hermes')).toHaveValue('Please inspect this message');
+	const assistantMessage = page.locator('.transcript article.assistant');
+	await assistantMessage.locator('.message').evaluate((element) => {
+		const range = document.createRange();
+		range.selectNodeContents(element);
+		const selection = getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+	});
+	await assistantMessage.getByRole('button', { name: 'Add selected text to prompt' }).click();
+	const reviewContext = page.getByLabel('Pending review context');
+	await expect(reviewContext).toContainText('Inspected.');
+	await reviewContext.getByLabel('Review comment').fill('Expand this finding.');
+	await expect(reviewContext.getByLabel('Review comment')).toHaveValue('Expand this finding.');
 	const fork = userMessage.getByRole('button', { name: 'Fork from this message unavailable' });
 	await expect(fork).toBeDisabled();
 	await expect(fork).toHaveAttribute(
@@ -5243,10 +5360,27 @@ test('defers health and keeps Git usable when health fails', async ({ page }) =>
 	}
 });
 
-test('switches between Git repositories discovered inside a project', async ({ page }) => {
+test('switches between Git repositories discovered inside a project', async ({ page, context }) => {
+	await context.grantPermissions(['clipboard-write']);
 	const requests: string[] = [];
+	const diffScopes: string[] = [];
 	await page.route(/\/api\/projects\/[^/]+\/repository(?:\?.*)?$/, async (route) => {
-		const repositoryPath = new URL(route.request().url()).searchParams.get('repository') ?? 'app';
+		const url = new URL(route.request().url());
+		const repositoryPath = url.searchParams.get('repository') ?? 'app';
+		if (url.searchParams.get('view') === 'diff') {
+			diffScopes.push(url.searchParams.get('scope') ?? '');
+			return route.fulfill({
+				json: {
+					scope: url.searchParams.get('scope'),
+					base: url.searchParams.get('scope') === 'branch' ? 'main' : null,
+					diff: `diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old value\n+new value\n@@ -10 +10 @@\n-old footer\n+new footer\ndiff --git a/src/other.ts b/src/other.ts\n--- a/src/other.ts\n+++ b/src/other.ts\n@@ -1 +1 @@\n-old other\n+new other\n`,
+					truncated: true,
+					maxBytes: 100000,
+					untrackedPaths: [],
+					untrackedPathsTruncated: false
+				}
+			});
+		}
 		requests.push(repositoryPath);
 		await route.fulfill({
 			json: {
@@ -5275,6 +5409,16 @@ test('switches between Git repositories discovered inside a project', async ({ p
 	const selector = gitPanel.getByRole('combobox', { name: 'Repository' });
 	await expect(selector).toHaveValue('app');
 	await expect(gitPanel).toContainText('src/app.ts');
+	const review = gitPanel.getByRole('region', { name: 'Diff review' });
+	await expect(review).toContainText('Diff output was limited to 100,000 bytes');
+	await review.getByRole('button', { name: 'Next hunk' }).click();
+	await expect(review).toContainText('@@ -10 +10 @@');
+	await review.getByRole('combobox', { name: 'Changed file' }).selectOption('src/other.ts');
+	await review.getByRole('button', { name: /Addition, new line 1: new other/ }).click();
+	await review.getByRole('button', { name: 'Copy selected lines' }).click();
+	await expect(review).toContainText('Selected lines copied.');
+	await review.getByRole('combobox', { name: 'Diff scope' }).selectOption('branch');
+	await expect.poll(() => diffScopes).toContain('branch');
 	await selector.selectOption('docs');
 	await expect(gitPanel).toContainText('guide.md');
 	expect(requests).toContain('docs');
@@ -5297,6 +5441,15 @@ test('switches between Git repositories discovered inside a project', async ({ p
 		);
 		if (viewport.width <= 390)
 			expect((await selector.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+		if (viewport.width <= 390) {
+			for (const control of [
+				review.getByRole('combobox', { name: 'Diff scope' }),
+				review.getByRole('combobox', { name: 'Changed file' }),
+				review.getByRole('button', { name: 'Refresh diff' })
+			]) {
+				expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+			}
+		}
 	}
 });
 

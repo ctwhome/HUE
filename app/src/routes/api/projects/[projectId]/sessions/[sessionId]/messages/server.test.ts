@@ -73,6 +73,30 @@ test('persists Project-scoped message under canonical Hermes id', async () => {
 	expect(envelope).toMatchObject({ projectId: 'canonical-project', sessionId: 'session' });
 });
 
+test('validates and submits structured review contexts', async () => {
+	envelope = null;
+	const { POST } = await import('./+server');
+	const reviewContexts = [
+		{
+			id: 'review-1',
+			source: 'assistant',
+			label: 'Hermes response',
+			content: 'Selected response text',
+			comment: 'Revise this.'
+		}
+	];
+	const response = await POST({
+		params: { projectId: 'project', sessionId: 'session' },
+		request: new Request('http://hue.test', {
+			method: 'POST',
+			body: JSON.stringify({ messageId: 'message-review', text: 'Please update.', reviewContexts })
+		})
+	} as never);
+
+	expect(response.status).toBe(202);
+	expect(envelope).toMatchObject({ reviewContexts });
+});
+
 test('updates queued message under canonical Hermes id inside Project operation lock', async () => {
 	updatedEnvelope = null;
 	operationReferences.length = 0;
