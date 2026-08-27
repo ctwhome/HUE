@@ -27,3 +27,9 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## prompts.chat prompt data
+
+HUE includes a curated subset of prompt data from
+[f/prompts.chat](https://github.com/f/prompts.chat), dedicated to the public domain under
+[CC0 1.0 Universal](https://github.com/f/prompts.chat/blob/main/LICENSE-CC0).

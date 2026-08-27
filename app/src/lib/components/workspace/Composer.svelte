@@ -1,19 +1,18 @@
 <script lang="ts">
-	import {
-		ArrowDown,
-		CircleHelp,
-		BookOpenText,
-		GripVertical,
-		Mic,
-		MicOff,
-		Paperclip,
-		PhoneCall,
-		PhoneOff,
-		Send,
-		Square,
-		UserRound,
-		X
-	} from 'lucide-svelte';
+	import ArrowDown from '~icons/lucide/arrow-down';
+	import CircleHelp from '~icons/lucide/circle-help';
+	import BookOpenText from '~icons/lucide/book-open-text';
+	import Ellipsis from '~icons/lucide/ellipsis';
+	import GripVertical from '~icons/lucide/grip-vertical';
+	import Mic from '~icons/lucide/mic';
+	import MicOff from '~icons/lucide/mic-off';
+	import Paperclip from '~icons/lucide/paperclip';
+	import PhoneCall from '~icons/lucide/phone-call';
+	import PhoneOff from '~icons/lucide/phone-off';
+	import Send from '~icons/lucide/send';
+	import Square from '~icons/lucide/square';
+	import UserRound from '~icons/lucide/user-round';
+	import X from '~icons/lucide/x';
 	import {
 		selectThinkingTimeline,
 		type WorkspacePlanEntry,
@@ -37,6 +36,7 @@
 		Workflow
 	} from './types';
 	import type { WorkMode } from '$lib/work-mode';
+	import type { CatalogPrompt } from '$lib/prompt-catalog';
 
 	let {
 		composer,
@@ -71,6 +71,7 @@
 		workflows,
 		workflowName = $bindable(),
 		workflowPrompt = $bindable(),
+		workflowFolder = $bindable(),
 		workflowProfile = $bindable(),
 		workflowWorkMode = $bindable(),
 		stopping,
@@ -101,6 +102,7 @@
 		onupdateworkflow,
 		ondeleteworkflow,
 		onduplicateworkflow,
+		onfavoritecatalog,
 		onrunworkflow,
 		onscrolllatest,
 		matchingCommands,
@@ -140,6 +142,7 @@
 		workflows: Workflow[];
 		workflowName: string;
 		workflowPrompt: string;
+		workflowFolder: string;
 		workflowProfile: string;
 		workflowWorkMode: WorkMode;
 		stopping: boolean;
@@ -167,13 +170,19 @@
 		onconfig: (configId: string, value: string | boolean) => void;
 		onworkmode: (value: WorkMode) => void;
 		onloadworkflows: (includeArchived?: boolean) => Promise<void>;
-		onworkflow: (event: SubmitEvent) => void;
+		onworkflow: (event: SubmitEvent) => boolean | void | Promise<boolean | void>;
 		onupdateworkflow: (
 			workflow: Workflow,
-			patch: Partial<Pick<Workflow, 'name' | 'prompt' | 'profile' | 'workMode' | 'archived'>>
+			patch: Partial<
+				Pick<
+					Workflow,
+					'name' | 'prompt' | 'folder' | 'favorite' | 'profile' | 'workMode' | 'archived'
+				>
+			>
 		) => Promise<boolean>;
 		ondeleteworkflow: (workflow: Workflow) => Promise<boolean>;
 		onduplicateworkflow: (workflow: Workflow) => Promise<boolean>;
+		onfavoritecatalog: (prompt: CatalogPrompt) => Promise<boolean>;
 		onrunworkflow: (workflow: Workflow) => void;
 		onscrolllatest: (behavior: ScrollBehavior) => void;
 		matchingCommands: () => Command[];
@@ -196,6 +205,9 @@
 	let imagePrompts = $derived(runtime.capabilities?.promptImage === true);
 	let promptLibraryDialog = $state<HTMLDialogElement>();
 	let promptLibraryLoading = $state(false);
+	let optionsOpen = $state(false);
+	let optionsButton = $state<HTMLButtonElement>();
+	let optionsMenu = $state<HTMLDivElement>();
 	function flattenOptions(options: SelectConfig['options']) {
 		return options.flatMap((option) => ('value' in option ? [option] : option.options));
 	}
@@ -215,14 +227,36 @@
 	});
 
 	async function openPromptLibrary() {
+		optionsOpen = false;
 		promptLibraryDialog?.showModal();
+		if (!promptLibraryAvailable) return;
 		promptLibraryLoading = true;
 		await onloadworkflows();
 		promptLibraryLoading = false;
 	}
+	function insertWorkflowPrompt(workflow: Workflow) {
+		if (!composerElement) return;
+		composerElement.value = [composer.trimEnd(), workflow.prompt].filter(Boolean).join('\n\n');
+		composerElement.dispatchEvent(new Event('input', { bubbles: true }));
+		promptLibraryDialog?.close();
+		queueMicrotask(() => composerElement?.focus());
+	}
+	function closeOptions(event: MouseEvent) {
+		const target = event.target as Node;
+		if (!optionsButton?.contains(target) && !optionsMenu?.contains(target)) optionsOpen = false;
+	}
 </script>
 
-<svelte:window onresize={resizeComposer} />
+<svelte:window
+	onresize={resizeComposer}
+	onclick={closeOptions}
+	onkeydown={(event) => {
+		if (event.key === 'Escape' && optionsOpen) {
+			optionsOpen = false;
+			optionsButton?.focus();
+		}
+	}}
+/>
 
 <form
 	class="composer sticky bottom-0 mx-[clamp(10px,2vw,40px)] mb-4 rounded-lg border border-border bg-card/95 px-2.5 py-2 shadow-lg backdrop-blur-xl"
@@ -244,7 +278,8 @@
 		title="Scroll to latest message"
 		disabled={!showScrollToLatest}
 		tabindex={showScrollToLatest ? 0 : -1}
-		onclick={() => onscrolllatest('smooth')}><ArrowDown size={16} aria-hidden="true" /></button
+		onclick={() => onscrolllatest('smooth')}
+		><ArrowDown width={16} height={16} aria-hidden="true" /></button
 	>
 	{#if matchingCommands().length}<div
 			class="command-menu absolute right-0 bottom-[calc(100%+8px)] left-0 max-h-[min(360px,45vh)] overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-xl"
@@ -270,7 +305,12 @@
 			<header><strong>Queued messages</strong><span>{queuedMessages.length}</span></header>
 			{#each queuedMessages as message}<article>
 					<div class="queued-copy flex min-w-0 flex-1 items-center gap-2 text-sm">
-						<GripVertical class="queue-handle text-muted-foreground" size={16} aria-hidden="true" />
+						<GripVertical
+							class="queue-handle text-muted-foreground"
+							width={16}
+							height={16}
+							aria-hidden="true"
+						/>
 						<span
 							>{message.text ||
 								`${message.images.length + message.attachments.length} file(s)`}</span
@@ -305,7 +345,7 @@
 						aria-label={`Remove ${image.name}`}
 						title={`Remove ${image.name}`}
 						onclick={() => (images = images.filter((_, item) => item !== index))}
-						><X size={14} aria-hidden="true" /></button
+						><X width={14} height={14} aria-hidden="true" /></button
 					>
 				</figure>{/each}
 		</div>{/if}
@@ -322,7 +362,7 @@
 						aria-label={`Remove ${attachment.name}`}
 						title={`Remove ${attachment.name}`}
 						onclick={() => (attachments = attachments.filter((_, item) => item !== index))}
-						><X size={14} aria-hidden="true" /></button
+						><X width={14} height={14} aria-hidden="true" /></button
 					>
 				</article>{/each}
 		</div>{/if}
@@ -342,7 +382,8 @@
 						class="grid min-h-11 min-w-11 place-items-center"
 						aria-label={`Remove review context ${context.label}`}
 						title={`Remove review context ${context.label}`}
-						onclick={() => onremovecontext(context.id)}><X size={14} aria-hidden="true" /></button
+						onclick={() => onremovecontext(context.id)}
+						><X width={14} height={14} aria-hidden="true" /></button
 					>
 					<label class="col-span-2 grid gap-1 text-xs text-muted-foreground">
 						Review comment
@@ -382,7 +423,7 @@
 						class="end-call text-destructive"
 						aria-label="Cancel voice message"
 						title="Cancel voice message"
-						onclick={onendcall}><X size={17} aria-hidden="true" /></button
+						onclick={onendcall}><X width={17} height={17} aria-hidden="true" /></button
 					>{:else}<button
 						bind:this={callMuteElement}
 						type="button"
@@ -391,8 +432,9 @@
 						title={callMuted ? 'Unmute microphone' : 'Mute microphone'}
 						onclick={onmute}
 					>
-						{#if callMuted}<MicOff size={17} aria-hidden="true" />{:else}<Mic
-								size={17}
+						{#if callMuted}<MicOff width={17} height={17} aria-hidden="true" />{:else}<Mic
+								width={17}
+								height={17}
 								aria-hidden="true"
 							/>{/if}
 					</button>
@@ -401,14 +443,14 @@
 							aria-label="Interrupt Hermes"
 							title="Interrupt Hermes and listen"
 							onclick={oninterrupt}
-							><Square size={13} fill="currentColor" aria-hidden="true" /></button
+							><Square width={13} height={13} fill="currentColor" aria-hidden="true" /></button
 						>{/if}
 					<button
 						type="button"
 						class="end-call text-destructive"
 						aria-label="End voice call"
 						title="End voice call"
-						onclick={onendcall}><PhoneOff size={17} aria-hidden="true" /></button
+						onclick={onendcall}><PhoneOff width={17} height={17} aria-hidden="true" /></button
 					>
 				{/if}
 			</div>
@@ -433,78 +475,136 @@
 			: 'Message Hermes… / for commands'}
 		aria-label="Message Hermes"></textarea>
 	<div class="composer-toolbar flex min-w-0 items-center gap-2 pt-1">
-		{#if promptLibraryAvailable}<button
+		<button
+			bind:this={optionsButton}
+			type="button"
+			class="composer-more grid size-11 shrink-0 place-items-center rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+			aria-label="More session options"
+			aria-expanded={optionsOpen}
+			aria-controls={`${instanceId}-composer-options`}
+			title="More session options"
+			onclick={() => (optionsOpen = !optionsOpen)}
+		>
+			<Ellipsis width={20} height={20} aria-hidden="true" />
+		</button>
+		<div
+			bind:this={optionsMenu}
+			id={`${instanceId}-composer-options`}
+			class="composer-options-menu"
+			class:open={optionsOpen}
+			role="group"
+			aria-label="Secondary session options"
+		>
+			<label
+				class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+				aria-label={imagePrompts ? 'Attach images and files' : 'Attach files'}
+				title={imagePrompts
+					? 'Attach documents, audio, video, archives, text, code, or images'
+					: 'Attach documents, audio, video, archives, text, or code. Hermes does not support image prompts.'}
+			>
+				<Paperclip width={20} height={20} aria-hidden="true" />
+				<span class="mobile-option-label">Attach files</span>
+				<input
+					type="file"
+					accept={`${imagePrompts ? '.png,.jpg,.jpeg,.gif,.webp,' : ''}.pdf,.doc,.docx,.mp3,.wav,.ogg,.oga,.m4a,.mp4,.m4v,.webm,.mov,.zip,.gz,.tgz,.tar,.7z,.txt,.log,.md,.markdown,.csv,.json,.xml,.css,.ts,.mts,.cts,.tsx,.py,.rs,.go,.java`}
+					multiple
+					onchange={(event) => {
+						optionsOpen = false;
+						onimages(event);
+					}}
+				/>
+			</label>
+			{#if !callActive}<button
+					bind:this={voiceMessageElement}
+					type="button"
+					class="attach-button voice-start grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+					aria-label="Record voice message"
+					title="Record and send voice message"
+					onclick={() => {
+						optionsOpen = false;
+						onvoiceMessage();
+					}}
+					><Mic width={20} height={20} aria-hidden="true" /><span class="mobile-option-label"
+						>Voice message</span
+					></button
+				>
+				<button
+					bind:this={voiceStartElement}
+					type="button"
+					class="attach-button voice-start grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+					aria-label="Start voice call"
+					title="Start voice call"
+					onclick={() => {
+						optionsOpen = false;
+						onvoiceCall();
+					}}
+					><PhoneCall width={20} height={20} aria-hidden="true" /><span class="mobile-option-label"
+						>Voice call</span
+					></button
+				>{/if}
+			{#if runtime.modes}<SessionOptionPicker
+					options={runtime.modes.availableModes.map((mode) => ({
+						value: mode.id,
+						name: mode.name,
+						description: `${mode.description ?? 'Choose how Hermes handles file edits.'} Other permission requests still ask.`
+					}))}
+					value={runtime.modes.currentModeId}
+					ariaLabel="Edit approvals"
+					kind="mode"
+					showLabel={true}
+					disabled={runtimeChanging || busy}
+					onselect={(value) => onruntime('modeId', value)}
+				/>{/if}
+			<span
+				class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border text-muted-foreground"
+				aria-label={`Hermes profile: ${runtime.profile}`}
+				title={`Hermes profile: ${runtime.profile}`}
+			>
+				<UserRound width={20} height={20} aria-hidden="true" />
+				<span class="mobile-option-label">Profile: {runtime.profile}</span>
+			</span>
+			<button
 				type="button"
 				class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
 				aria-label="Prompt library"
 				title="Open prompt library"
 				onclick={openPromptLibrary}
 			>
-				<BookOpenText size={20} aria-hidden="true" /></button
-			>{/if}
-		<label
-			class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-			aria-label={imagePrompts ? 'Attach images and files' : 'Attach files'}
-			title={imagePrompts
-				? 'Attach documents, audio, video, archives, text, code, or images'
-				: 'Attach documents, audio, video, archives, text, or code. Hermes does not support image prompts.'}
-		>
-			<Paperclip size={20} aria-hidden="true" />
-			<input
-				type="file"
-				accept={`${imagePrompts ? '.png,.jpg,.jpeg,.gif,.webp,' : ''}.pdf,.doc,.docx,.mp3,.wav,.ogg,.oga,.m4a,.mp4,.m4v,.webm,.mov,.zip,.gz,.tgz,.tar,.7z,.txt,.log,.md,.markdown,.csv,.json,.xml,.css,.ts,.mts,.cts,.tsx,.py,.rs,.go,.java`}
-				multiple
-				onchange={onimages}
-			/>
-		</label>
-		{#if !callActive}<button
-				bind:this={voiceMessageElement}
-				type="button"
-				class="attach-button voice-start grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-				aria-label="Record voice message"
-				title="Record and send voice message"
-				onclick={onvoiceMessage}><Mic size={20} aria-hidden="true" /></button
+				<BookOpenText width={20} height={20} aria-hidden="true" />
+				<span class="mobile-option-label">Prompt library</span></button
 			>
-			<button
-				bind:this={voiceStartElement}
-				type="button"
-				class="attach-button voice-start grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-				aria-label="Start voice call"
-				title="Start voice call"
-				onclick={onvoiceCall}><PhoneCall size={20} aria-hidden="true" /></button
-			>{/if}
-		{#if runtime.modes}<SessionOptionPicker
-				options={runtime.modes.availableModes.map((mode) => ({
-					value: mode.id,
-					name: mode.name,
-					description: `${mode.description ?? 'Choose how Hermes handles file edits.'} Other permission requests still ask.`
-				}))}
-				value={runtime.modes.currentModeId}
-				ariaLabel="Edit approvals"
-				kind="mode"
-				disabled={runtimeChanging || busy}
-				onselect={(value) => onruntime('modeId', value)}
-			/>{/if}
-		<span
-			class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border text-muted-foreground"
-			aria-label={`Hermes profile: ${runtime.profile}`}
-			title={`Hermes profile: ${runtime.profile}`}
-		>
-			<UserRound size={20} aria-hidden="true" />
-		</span>
+			{#if reasoning}<div class="mobile-reasoning-option">
+					<SessionOptionPicker
+						options={flattenOptions(reasoning.options)}
+						value={reasoning.currentValue}
+						ariaLabel="Reasoning"
+						kind="reasoning"
+						showLabel={true}
+						disabled={runtimeChanging || busy}
+						onselect={(value) => onconfig(reasoning!.id, value)}
+					/>
+				</div>{/if}
+			{#if delivery}<small
+					class="mobile-delivery text-xs text-muted-foreground"
+					class:warning={delivery.includes('unknown')}
+					>{delivery.includes('unknown') ? 'Delivery status unknown' : delivery}</small
+				>{/if}
+		</div>
 		<div
 			class="composer-context ml-auto flex min-w-0 items-center gap-1"
 			aria-label="Hermes session context"
 		>
-			{#if reasoning}<SessionOptionPicker
-					options={flattenOptions(reasoning.options)}
-					value={reasoning.currentValue}
-					ariaLabel="Reasoning"
-					kind="reasoning"
-					showLabel={true}
-					disabled={runtimeChanging || busy}
-					onselect={(value) => onconfig(reasoning!.id, value)}
-				/>{/if}
+			{#if reasoning}<div class="desktop-context-option">
+					<SessionOptionPicker
+						options={flattenOptions(reasoning.options)}
+						value={reasoning.currentValue}
+						ariaLabel="Reasoning"
+						kind="reasoning"
+						showLabel={true}
+						disabled={runtimeChanging || busy}
+						onselect={(value) => onconfig(reasoning!.id, value)}
+					/>
+				</div>{/if}
 			{#if runtime.models}<ModelPicker
 					models={runtime.models.availableModels}
 					value={runtime.models.currentModelId}
@@ -521,7 +621,7 @@
 				onselect={(value) => onworkmode(value as WorkMode)}
 			/>
 			{#if showContextUsage && contextPercent() !== null}<span
-					class="context-chip context-usage inline-flex min-h-8 shrink-0 items-center rounded-lg border border-emerald-900 bg-emerald-950 px-2 text-xs font-bold text-emerald-300"
+					class="desktop-context-option context-chip context-usage inline-flex min-h-8 shrink-0 items-center rounded-lg border border-emerald-900 bg-emerald-950 px-2 text-xs font-bold text-emerald-300"
 					class:warning={contextPercent()! >= 80}
 					title={`${runtime.usage!.used.toLocaleString()} of ${runtime.usage!.size.toLocaleString()} context tokens used`}
 					>{contextPercent()}%</span
@@ -533,7 +633,7 @@
 				title={delivery.includes('unknown')
 					? 'Hermes delivery acknowledgement was not confirmed'
 					: `Message ${delivery}`}
-				><CircleHelp size={14} aria-hidden="true" />{delivery.includes('unknown')
+				><CircleHelp width={14} height={14} aria-hidden="true" />{delivery.includes('unknown')
 					? 'Delivery status unknown'
 					: delivery}</small
 			>{/if}
@@ -551,7 +651,7 @@
 				onclick={onstop}
 				disabled={stopping || delivery === 'cancelling'}
 			>
-				<Square size={12} fill="currentColor" aria-hidden="true" /></button
+				<Square width={12} height={12} fill="currentColor" aria-hidden="true" /></button
 			>{:else}<button
 				type="submit"
 				class="composer-send grid size-9 place-items-center rounded-lg hover:bg-accent disabled:opacity-40"
@@ -562,7 +662,7 @@
 					!attachments.length &&
 					!reviewContexts.length}
 			>
-				<Send size={20} aria-hidden="true" /></button
+				<Send width={20} height={20} aria-hidden="true" /></button
 			>{/if}
 	</div>
 </form>
@@ -570,16 +670,19 @@
 	id={`${instanceId}-prompts`}
 	bind:dialog={promptLibraryDialog}
 	loading={promptLibraryLoading}
+	available={promptLibraryAvailable}
 	{projectName}
 	{workflows}
 	bind:name={workflowName}
 	bind:prompt={workflowPrompt}
+	bind:folder={workflowFolder}
 	bind:profile={workflowProfile}
 	bind:workMode={workflowWorkMode}
 	onsubmit={onworkflow}
 	onupdate={onupdateworkflow}
 	ondelete={ondeleteworkflow}
 	onduplicate={onduplicateworkflow}
+	{onfavoritecatalog}
 	onload={onloadworkflows}
-	onrun={onrunworkflow}
+	oninsert={insertWorkflowPrompt}
 />

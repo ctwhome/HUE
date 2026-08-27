@@ -14,6 +14,12 @@
 	import { SessionState } from './session-state.svelte';
 	import { TranscriptFollow } from './transcript-follow.svelte';
 	import { workspaceApi } from './api';
+	import {
+		CHAT_BACKGROUND_EVENT,
+		chatBackgroundStyle,
+		resolveChatBackground,
+		type ChatBackground
+	} from './chat-background';
 	import type { Project, Session, SessionLoad, Workflow } from './types';
 
 	let {
@@ -113,6 +119,7 @@
 	let hasTranscript = $derived(selectTranscriptTimeline(timeline).length > 0);
 	let runtime = $derived(sessionState.runtime);
 	let lastPublishedSession = fixedSession;
+	let chatBackground = $state<ChatBackground | null>(null);
 
 	$effect(() => {
 		navigation.workflows = workflows;
@@ -152,9 +159,14 @@
 	}
 
 	onMount(() => {
+		const refreshChatBackground = () =>
+			(chatBackground = resolveChatBackground(localStorage, fixedSession.sessionId));
+		refreshChatBackground();
+		window.addEventListener(CHAT_BACKGROUND_EVENT, refreshChatBackground);
 		messageState.restoreDraft();
 		void navigation.openSession(fixedSession, 'none');
 		return () => {
+			window.removeEventListener(CHAT_BACKGROUND_EVENT, refreshChatBackground);
 			messageState.saveCurrentDraft();
 			messageState.stopPolling();
 			voice.end(false);
@@ -165,8 +177,10 @@
 <svelte:window onpagehide={messageState.saveCurrentDraft} />
 
 <main
-	class="session-view flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+	class="session-view chat-background-surface flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
 	class:empty-session={!hasTranscript}
+	class:personal-background={chatBackground !== null}
+	style={chatBackgroundStyle(chatBackground)}
 	aria-busy={loading}
 >
 	{#if error}<div
@@ -229,6 +243,7 @@
 		workflows={navigation.workflows}
 		bind:workflowName={navigation.workflowName}
 		bind:workflowPrompt={navigation.workflowPrompt}
+		bind:workflowFolder={navigation.workflowFolder}
 		bind:workflowProfile={navigation.workflowProfile}
 		bind:workflowWorkMode={navigation.workflowWorkMode}
 		stopping={messageState.stopping}
@@ -260,6 +275,7 @@
 		onupdateworkflow={navigation.updateWorkflow}
 		ondeleteworkflow={navigation.deleteWorkflow}
 		onduplicateworkflow={navigation.duplicateWorkflow}
+		onfavoritecatalog={navigation.favoriteCatalogPrompt}
 		{onrunworkflow}
 		onscrolllatest={transcriptFollow.scrollToLatest}
 		matchingCommands={messageState.matchingCommands}

@@ -1,20 +1,19 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import {
-		ChevronDown,
-		ChevronRight,
-		GitBranch,
-		GitFork,
-		Minus,
-		Plus,
-		RefreshCw,
-		Sparkles
-	} from 'lucide-svelte';
+	import ChevronDown from '~icons/lucide/chevron-down';
+	import ChevronRight from '~icons/lucide/chevron-right';
+	import GitBranch from '~icons/lucide/git-branch';
+	import GitFork from '~icons/lucide/git-fork';
+	import Minus from '~icons/lucide/minus';
+	import Plus from '~icons/lucide/plus';
+	import RefreshCw from '~icons/lucide/refresh-cw';
+	import Sparkles from '~icons/lucide/sparkles';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
 	import ModelPicker from '../ModelPicker.svelte';
 	import { api } from './api';
 	import GitHubPanels from './GitHubPanels.svelte';
+	import GitPanelResizer from './GitPanelResizer.svelte';
 	import RepositoryDiff from './RepositoryDiff.svelte';
 	import type { ReviewContextSeed } from '$lib/message-content';
 	import type { CommitModelsResponse, GitHubItems, Repository } from './repository-diff';
@@ -44,6 +43,7 @@
 	let commitMessage = $state('');
 	let gitOpen = $state(true);
 	let worktreesOpen = $state(true);
+	let panelSizes = $state({ git: 1, worktrees: 1, github: 1 });
 	let commitModel = $state('openai-codex:gpt-5.6-luna');
 	let commitModels = $state([
 		{ modelId: 'openai-codex:gpt-5.6-luna', name: 'Codex · GPT-5.6 Luna' }
@@ -219,7 +219,7 @@
 
 <article
 	class={`${panel} repository-panel`}
-	style:flex={gitOpen ? undefined : '0 0 auto'}
+	style:flex={gitOpen ? `${panelSizes.git} 1 0px` : '0 0 auto'}
 	aria-label="Git status"
 >
 	<header
@@ -231,7 +231,7 @@
 		onkeydown={(event) => togglePanelFromHeader(event, toggleGit)}
 	>
 		<div class="flex items-center gap-2">
-			<GitBranch size={17} aria-hidden="true" />
+			<GitBranch width={17} height={17} aria-hidden="true" />
 			<div>
 				<strong class="block text-xs">Git</strong><span
 					class="block text-[0.68rem] text-muted-foreground"
@@ -264,11 +264,12 @@
 				title="Refresh Git status"
 				aria-label="Refresh Git status"
 				disabled={repositoryBusy}
-				onclick={refreshRepository}><RefreshCw size={15} aria-hidden="true" /></Button
+				onclick={refreshRepository}><RefreshCw width={15} height={15} aria-hidden="true" /></Button
 			>
 		</div>
-		{#if gitOpen}<ChevronDown size={16} aria-hidden="true" />{:else}<ChevronRight
-				size={16}
+		{#if gitOpen}<ChevronDown width={16} height={16} aria-hidden="true" />{:else}<ChevronRight
+				width={16}
+				height={16}
 				aria-hidden="true"
 			/>{/if}
 	</header>
@@ -326,7 +327,7 @@
 									aria-label={`Unstage ${change.path}`}
 									disabled={repositoryBusy}
 									onclick={() => mutateRepository({ action: 'unstage', path: change.path })}
-									><Minus size={14} aria-hidden="true" /></button
+									><Minus width={14} height={14} aria-hidden="true" /></button
 								><code class="text-amber-300">{change.index}</code>{#if change.fileUrl}<button
 										class="overflow-hidden text-left text-ellipsis whitespace-nowrap hover:underline"
 										title={`Open ${change.path}`}
@@ -358,7 +359,7 @@
 									aria-label={`Stage ${change.path}`}
 									disabled={repositoryBusy}
 									onclick={() => mutateRepository({ action: 'stage', path: change.path })}
-									><Plus size={14} aria-hidden="true" /></button
+									><Plus width={14} height={14} aria-hidden="true" /></button
 								><code class="text-amber-300">{change.worktree}</code>{#if change.fileUrl}<button
 										class="overflow-hidden text-left text-ellipsis whitespace-nowrap hover:underline"
 										title={`Open ${change.path}`}
@@ -377,19 +378,13 @@
 			{/if}
 		</div>
 		<form
-			class="git-commit grid gap-2 border-t border-border bg-card p-2.5"
+			class="git-commit grid gap-2 border-t border-border bg-card p-2"
 			onsubmit={(event) => {
 				event.preventDefault();
 				void mutateRepository({ action: 'commit', message: commitMessage });
 			}}
 		>
-			<div class="flex items-center gap-2">
-				<strong class="text-xs">Commit</strong><span
-					class="min-w-0 flex-1 text-right text-[0.68rem] text-muted-foreground"
-					>{stagedChanges().length
-						? `${stagedChanges().length} staged`
-						: 'Stage files to commit'}</span
-				>
+			<div class="flex min-w-0 items-center gap-2">
 				<ModelPicker
 					models={commitModels}
 					value={commitModel}
@@ -397,39 +392,44 @@
 					ellipsis={true}
 					onselect={selectCommitModel}
 				/>
-			</div>
-			<div class="commit-message-field relative">
-				<Input
-					class="h-8 pr-10 text-xs max-[700px]:h-11 max-[700px]:pr-12"
-					bind:value={commitMessage}
-					aria-label="Commit message"
-					placeholder="Commit message"
-				/>
-				<button
-					type="button"
-					class="absolute top-1/2 right-0.5 grid size-7 -translate-y-1/2 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-[700px]:size-11"
-					aria-label="Generate commit message with Hermes"
-					title={stagedChanges().length
-						? 'Generate commit message with Hermes'
-						: 'Stage files first'}
-					disabled={repositoryBusy || commitMessageGenerating || !stagedChanges().length}
-					onclick={generateCommitMessage}
-				>
-					{#if commitMessageGenerating}<RefreshCw
-							size={15}
-							class="animate-spin"
-							aria-hidden="true"
-						/>{:else}<Sparkles size={15} aria-hidden="true" />{/if}
-				</button>
+				<div class="commit-message-field relative min-w-0 flex-1">
+					<Input
+						class="h-8 pr-10 text-xs max-[700px]:h-11 max-[700px]:pr-12"
+						bind:value={commitMessage}
+						aria-label="Commit message"
+						placeholder="Commit message"
+					/>
+					<button
+						type="button"
+						class="absolute top-1/2 right-0.5 grid size-7 -translate-y-1/2 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-[700px]:size-11"
+						aria-label="Generate commit message with Hermes"
+						title={stagedChanges().length
+							? 'Generate commit message with Hermes'
+							: 'Stage files first'}
+						disabled={repositoryBusy || commitMessageGenerating || !stagedChanges().length}
+						onclick={generateCommitMessage}
+					>
+						{#if commitMessageGenerating}<RefreshCw
+								width={15}
+								height={15}
+								class="animate-spin"
+								aria-hidden="true"
+							/>{:else}<Sparkles width={15} height={15} aria-hidden="true" />{/if}
+					</button>
+				</div>
 			</div>
 			<div class="flex items-center justify-end gap-2">
-				{#if repositoryMessage}<small class="mr-auto text-muted-foreground" role="status"
-						>{repositoryMessage}</small
-					>{/if}<Button
+				<small class="mr-auto min-w-0 truncate text-muted-foreground" role="status"
+					>{repositoryMessage ||
+						(stagedChanges().length
+							? `${stagedChanges().length} staged`
+							: 'Stage files to commit')}</small
+				><Button
 					variant="outline"
 					size="sm"
 					type="submit"
 					title="Commit staged changes"
+					aria-label="Commit staged changes"
 					disabled={repositoryBusy || !commitMessage.trim() || !stagedChanges().length}
 					>Commit</Button
 				><Button
@@ -437,6 +437,7 @@
 					size="sm"
 					type="button"
 					title="Commit and push staged changes"
+					aria-label="Commit and push staged changes"
 					disabled={repositoryBusy || !commitMessage.trim() || !stagedChanges().length}
 					onclick={commitAndPush}>Commit &amp; push</Button
 				>
@@ -445,9 +446,15 @@
 	{/if}
 </article>
 
+{#if gitOpen && worktreesOpen}<GitPanelResizer
+		label="Resize Git and Worktrees"
+		firstWeight={panelSizes.git}
+		secondWeight={panelSizes.worktrees}
+		onresize={(git, worktrees) => ((panelSizes.git = git), (panelSizes.worktrees = worktrees))}
+	/>{/if}
 <article
 	class={`${panel} worktrees-panel`}
-	style:flex={worktreesOpen ? undefined : '0 0 auto'}
+	style:flex={worktreesOpen ? `${panelSizes.worktrees} 1 0px` : '0 0 auto'}
 	aria-label="Git worktrees"
 >
 	<header
@@ -459,14 +466,15 @@
 		onkeydown={(event) => togglePanelFromHeader(event, toggleWorktrees)}
 	>
 		<strong class="flex items-center gap-2 text-xs"
-			><GitFork size={17} aria-hidden="true" />Worktrees</strong
+			><GitFork width={17} height={17} aria-hidden="true" />Worktrees</strong
 		>
 		<div class="flex items-center gap-1">
 			<span class="text-[0.68rem] text-muted-foreground">{repository?.worktrees.length ?? 0}</span>
-			{#if worktreesOpen}<ChevronDown size={16} aria-hidden="true" />{:else}<ChevronRight
-					size={16}
+			{#if worktreesOpen}<ChevronDown
+					width={16}
+					height={16}
 					aria-hidden="true"
-				/>{/if}
+				/>{:else}<ChevronRight width={16} height={16} aria-hidden="true" />{/if}
 		</div>
 	</header>
 	{#if worktreesOpen}<div class="worktree-list grid min-h-0 content-start gap-1 overflow-auto p-2">
@@ -492,8 +500,19 @@
 		</div>{/if}
 </article>
 
+{#if worktreesOpen && isGitHubRepository()}<GitPanelResizer
+		label="Resize Worktrees and GitHub"
+		firstWeight={panelSizes.worktrees}
+		secondWeight={panelSizes.github}
+		onresize={(worktrees, github) => (
+			(panelSizes.worktrees = worktrees),
+			(panelSizes.github = github)
+		)}
+	/>{/if}
+
 {#if isGitHubRepository()}<GitHubPanels
 		items={githubItems}
 		error={githubError}
 		links={repositoryLinks()}
+		weight={panelSizes.github}
 	/>{/if}

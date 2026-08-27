@@ -723,7 +723,9 @@ describe('HUEStore project and workflow boundaries', () => {
 			name: 'Prepare release',
 			prompt: 'Run release checks.',
 			profile: 'work',
-			workMode: 'live'
+			workMode: 'live',
+			folder: 'Release',
+			favorite: true
 		});
 
 		expect(
@@ -746,6 +748,12 @@ describe('HUEStore project and workflow boundaries', () => {
 		expect(store.listWorkflows('hue', true)).toEqual([
 			expect.objectContaining({ id: 'release', archived: true })
 		]);
+		expect(store.listWorkflows('hue', true)[0]).toMatchObject({
+			folder: 'Release',
+			favorite: true
+		});
+		expect(store.updateWorkflow('hue', 'release', { folder: null })?.folder).toBeNull();
+		expect(store.updateWorkflow('hue', 'release', { favorite: false })?.favorite).toBe(false);
 
 		expect(store.updateWorkflow('hue', 'release', { archived: false })).toMatchObject({
 			archived: false

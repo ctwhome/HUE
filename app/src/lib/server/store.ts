@@ -34,6 +34,8 @@ export type Workflow = {
 	projectId: string;
 	name: string;
 	prompt: string;
+	folder: string | null;
+	favorite: boolean;
 	profile: string;
 	workMode: WorkMode;
 	archived: boolean;
@@ -133,9 +135,27 @@ type NotificationRow = {
 	acted_at: string | null;
 	interaction_id: string | null;
 	current_relevant: number;
+	project_name: string | null;
+	session_title: string | null;
 };
 
 function mapNotification(row: NotificationRow): StoredNotification {
+	const subject = row.session_title
+		? row.project_name
+			? `${row.session_title} in ${row.project_name}`
+			: row.session_title
+		: row.project_name
+			? `A session in ${row.project_name}`
+			: null;
+	const body = subject
+		? {
+				completed: `${subject} completed.`,
+				permission: `${subject} is waiting for permission.`,
+				clarify: `${subject} needs your input.`,
+				failed: `${subject} failed.`,
+				unknown: `The outcome of ${subject} is unknown.`
+			}[row.kind]
+		: row.body;
 	return {
 		id: row.id,
 		sourceEventId: row.source_event_id,
@@ -144,7 +164,7 @@ function mapNotification(row: NotificationRow): StoredNotification {
 		kind: row.kind,
 		priority: row.priority,
 		title: row.title,
-		body: row.body,
+		body,
 		path: row.path,
 		createdAt: row.created_at,
 		readAt: row.read_at,
@@ -283,7 +303,7 @@ export class HUEStore {
 			this.database.query('PRAGMA user_version').get() as { user_version: number }
 		).user_version;
 		if (currentVersion === HUE_SCHEMA_VERSION) return;
-		if (currentVersion !== 0) {
+		if (currentVersion !== 0 && currentVersion !== 1 && currentVersion !== 2) {
 			throw new Error(
 				`HUE schema migration ${currentVersion} -> ${HUE_SCHEMA_VERSION} is unsupported. Stop HUE and use an application version that supports this database.`
 			);
@@ -347,6 +367,8 @@ export class HUEStore {
 				project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
 				name TEXT NOT NULL,
 				prompt TEXT NOT NULL,
+				folder TEXT,
+				favorite INTEGER NOT NULL DEFAULT 0,
 				profile TEXT NOT NULL DEFAULT 'default',
 				work_mode TEXT NOT NULL DEFAULT 'autonomous',
 				archived INTEGER NOT NULL DEFAULT 0,
@@ -494,6 +516,8 @@ export class HUEStore {
 		}>;
 		for (const [name, definition] of [
 			['work_mode', "TEXT NOT NULL DEFAULT 'autonomous'"],
+			['folder', 'TEXT'],
+			['favorite', 'INTEGER NOT NULL DEFAULT 0'],
 			['archived', 'INTEGER NOT NULL DEFAULT 0'],
 			['updated_at', "TEXT NOT NULL DEFAULT ''"]
 		] as const) {
@@ -726,6 +750,7 @@ export class HUEStore {
 			.query(
 				`SELECT n.id, n.source_event_id, n.project_id, n.session_id, n.kind, n.priority,
 				 n.title, n.body, n.path, n.created_at, n.read_at, n.dismissed_at, n.acted_at,
+				 p.name project_name, ps.title session_title,
 				 CASE WHEN n.kind = 'permission' THEN json_extract(source.payload, '$.id') END interaction_id,
 				 CASE WHEN n.kind = 'permission' AND json_extract((
 				  SELECT latest.payload FROM session_events latest
@@ -736,6 +761,8 @@ export class HUEStore {
 				 ), '$.status') = 'pending' THEN 1 ELSE 0 END current_relevant
 				 FROM notifications n
 				 LEFT JOIN session_events source ON source.sequence = CAST(n.source_event_id AS INTEGER)
+				 LEFT JOIN projects p ON p.id = n.project_id
+				 LEFT JOIN project_sessions ps ON ps.session_id = n.session_id AND ps.project_id IS n.project_id
 				 WHERE CAST(n.source_event_id AS INTEGER) < ?
 				   AND (? = 0 OR (n.read_at IS NULL AND n.dismissed_at IS NULL))
 				 ORDER BY CAST(n.source_event_id AS INTEGER) DESC LIMIT ?`
@@ -775,6 +802,7 @@ export class HUEStore {
 			.query(
 				`SELECT n.id, n.source_event_id, n.project_id, n.session_id, n.kind, n.priority,
 				 n.title, n.body, n.path, n.created_at, n.read_at, n.dismissed_at, n.acted_at,
+				 p.name project_name, ps.title session_title,
 				 CASE WHEN n.kind = 'permission' THEN json_extract(source.payload, '$.id') END interaction_id,
 				 CASE WHEN n.kind = 'permission' AND json_extract((
 				  SELECT latest.payload FROM session_events latest
@@ -785,6 +813,8 @@ export class HUEStore {
 				 ), '$.status') = 'pending' THEN 1 ELSE 0 END current_relevant
 				 FROM notifications n
 				 LEFT JOIN session_events source ON source.sequence = CAST(n.source_event_id AS INTEGER)
+				 LEFT JOIN projects p ON p.id = n.project_id
+				 LEFT JOIN project_sessions ps ON ps.session_id = n.session_id AND ps.project_id IS n.project_id
 				 WHERE n.id = ?`
 			)
 			.get(id) as NotificationRow | null;
@@ -1669,6 +1699,8 @@ export class HUEStore {
 		projectId: string;
 		name: string;
 		prompt: string;
+		folder?: string | null;
+		favorite?: boolean;
 		profile?: string;
 		workMode?: WorkMode;
 	}): Workflow {
@@ -1677,25 +1709,36 @@ export class HUEStore {
 		const workMode = input.workMode ?? DEFAULT_WORK_MODE;
 		this.database
 			.query(
-				'INSERT INTO workflows (id, project_id, name, prompt, profile, work_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+				'INSERT INTO workflows (id, project_id, name, prompt, folder, favorite, profile, work_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
 			)
 			.run(
 				input.id,
 				input.projectId,
 				input.name,
 				input.prompt,
+				input.folder ?? null,
+				input.favorite ? 1 : 0,
 				profile,
 				workMode,
 				createdAt,
 				createdAt
 			);
-		return { ...input, profile, workMode, archived: false, createdAt, updatedAt: createdAt };
+		return {
+			...input,
+			folder: input.folder ?? null,
+			favorite: input.favorite ?? false,
+			profile,
+			workMode,
+			archived: false,
+			createdAt,
+			updatedAt: createdAt
+		};
 	}
 
 	listWorkflows(projectId: string, includeArchived = false): Workflow[] {
 		const rows = this.database
 			.query(
-				`SELECT id, project_id, name, prompt, profile, work_mode, archived, created_at, updated_at
+				`SELECT id, project_id, name, prompt, folder, favorite, profile, work_mode, archived, created_at, updated_at
 				 FROM workflows WHERE project_id = ? ${includeArchived ? '' : 'AND archived = 0'}
 				 ORDER BY archived, updated_at DESC, id`
 			)
@@ -1704,6 +1747,8 @@ export class HUEStore {
 			project_id: string;
 			name: string;
 			prompt: string;
+			folder: string | null;
+			favorite: number;
 			profile: string;
 			work_mode: string;
 			archived: number;
@@ -1715,6 +1760,8 @@ export class HUEStore {
 			projectId: row.project_id,
 			name: row.name,
 			prompt: row.prompt,
+			folder: row.folder,
+			favorite: Boolean(row.favorite),
 			profile: row.profile,
 			workMode: parseWorkMode(row.work_mode) ?? DEFAULT_WORK_MODE,
 			archived: Boolean(row.archived),
@@ -1726,19 +1773,26 @@ export class HUEStore {
 	updateWorkflow(
 		projectId: string,
 		id: string,
-		patch: Partial<Pick<Workflow, 'name' | 'prompt' | 'profile' | 'workMode' | 'archived'>>
+		patch: Partial<
+			Pick<
+				Workflow,
+				'name' | 'prompt' | 'folder' | 'favorite' | 'profile' | 'workMode' | 'archived'
+			>
+		>
 	): Workflow | null {
 		const current = this.listWorkflows(projectId, true).find((workflow) => workflow.id === id);
 		if (!current) return null;
 		const updated = { ...current, ...patch, updatedAt: new Date().toISOString() };
 		this.database
 			.query(
-				`UPDATE workflows SET name = ?, prompt = ?, profile = ?, work_mode = ?, archived = ?, updated_at = ?
+				`UPDATE workflows SET name = ?, prompt = ?, folder = ?, favorite = ?, profile = ?, work_mode = ?, archived = ?, updated_at = ?
 				 WHERE id = ? AND project_id = ?`
 			)
 			.run(
 				updated.name,
 				updated.prompt,
+				updated.folder,
+				updated.favorite ? 1 : 0,
 				updated.profile,
 				updated.workMode,
 				updated.archived ? 1 : 0,

@@ -7,6 +7,14 @@
 		readPreferences,
 		type HUEPreferences
 	} from '$lib/preferences';
+	import ChatBackgroundPicker from '../workspace/ChatBackgroundPicker.svelte';
+	import {
+		CHAT_BACKGROUND_EVENT,
+		readGeneralChatBackground,
+		resizeChatBackground,
+		writeGeneralChatBackground,
+		type ChatBackground
+	} from '../workspace/chat-background';
 
 	let sendKey = $state<HUEPreferences['sendKey']>(defaultPreferences.sendKey);
 	let theme = $state<HUEPreferences['theme']>(defaultPreferences.theme);
@@ -14,6 +22,8 @@
 	let language = $state(defaultPreferences.language);
 	let voice = $state(defaultPreferences.voice);
 	let showUsage = $state(defaultPreferences.showUsage);
+	let chatBackground = $state<ChatBackground | null>(null);
+	let backgroundError = $state('');
 	let ready = $state(false);
 	const selectClass = 'min-h-11 rounded-md border border-input bg-background px-3 text-sm';
 
@@ -40,9 +50,36 @@
 		language = preferences.language;
 		voice = preferences.voice;
 		showUsage = preferences.showUsage;
+		chatBackground = readGeneralChatBackground(localStorage);
 		ready = true;
 		apply();
 	});
+
+	function setChatBackground(background: ChatBackground | null) {
+		try {
+			writeGeneralChatBackground(
+				localStorage,
+				background?.kind === 'none' ? null : background
+			);
+			chatBackground = background?.kind === 'none' ? null : background;
+			backgroundError = '';
+			window.dispatchEvent(new CustomEvent(CHAT_BACKGROUND_EVENT));
+		} catch {
+			backgroundError = 'Could not save the background in this browser';
+		}
+	}
+
+	async function uploadChatBackground(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file) return;
+		try {
+			setChatBackground({ kind: 'custom', image: await resizeChatBackground(file) });
+		} catch (cause) {
+			backgroundError = cause instanceof Error ? cause.message : String(cause);
+		}
+	}
 </script>
 
 <section
@@ -94,6 +131,18 @@
 			><input type="checkbox" disabled /> Show CLI Sessions</label
 		>
 	</div>
+	<fieldset class="grid gap-2 border-t border-border pt-3">
+		<legend class="text-sm font-medium">Default chat background</legend>
+		<ChatBackgroundPicker
+			value={chatBackground}
+			onselect={setChatBackground}
+			onupload={uploadChatBackground}
+		/>
+		<p class="text-xs text-muted-foreground">
+			New and existing Sessions use this unless they have their own background.
+		</p>
+		{#if backgroundError}<p class="text-sm text-destructive" role="alert">{backgroundError}</p>{/if}
+	</fieldset>
 	<p class="text-xs text-muted-foreground">
 		Unsupported: Hermes session origin/source metadata unavailable; CLI Sessions cannot be filtered
 		authoritatively.

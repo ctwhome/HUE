@@ -53,8 +53,15 @@ describe('durable notification projection', () => {
 		}
 		expect(notifications.items.every(({ projectId }) => projectId === 'project-1')).toBe(true);
 		expect(notifications.items.every(({ sessionId }) => sessionId === 'session-1')).toBe(true);
+		expect(Object.fromEntries(notifications.items.map(({ kind, body }) => [kind, body]))).toEqual({
+			completed: 'Private session in Private project completed.',
+			permission: 'Private session in Private project is waiting for permission.',
+			clarify: 'Private session in Private project needs your input.',
+			failed: 'Private session in Private project failed.',
+			unknown: 'The outcome of Private session in Private project is unknown.'
+		});
 		expect(JSON.stringify(notifications)).not.toMatch(
-			/Private project|Private session|private failure|private uncertainty|private transcript|secret/i
+			/private failure|private uncertainty|private transcript|secret/i
 		);
 		expect(store.notificationCounts()).toEqual({ unread: 5, all: 5 });
 		store.close();

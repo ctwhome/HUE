@@ -77,3 +77,12 @@ test('document links manifest and stable theme metadata', () => {
 	expect(layout).toContain('rel="manifest"');
 	expect(layout).toContain('name="theme-color"');
 });
+
+test('application detects deployed builds and offers a restart', () => {
+	const vite = readFileSync(join(root, '..', 'vite.config.ts'), 'utf8');
+	const layout = readFileSync(join(root, 'routes', '+layout.svelte'), 'utf8');
+	expect(vite).toContain('pollInterval: 60_000');
+	expect(layout).toContain('updated.current');
+	expect(layout).toContain('Update the application to restart.');
+	expect(layout).toContain('location.reload()');
+});

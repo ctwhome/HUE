@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { onMount, type Component } from 'svelte';
-	import { Code2, Files, GitBranch, Globe, TerminalSquare } from 'lucide-svelte';
+	import Code2 from '~icons/lucide/code-2';
+	import Files from '~icons/lucide/files';
+	import GitBranch from '~icons/lucide/git-branch';
+	import Globe from '~icons/lucide/globe';
+	import TerminalSquare from '~icons/lucide/terminal-square';
 	import BrowserPanel from './workbench/BrowserPanel.svelte';
 	import FilesPanel from './workbench/FilesPanel.svelte';
 	import { afterInitialPaint } from './workbench/after-initial-paint';
@@ -245,13 +249,13 @@
 				class="flex min-h-9 items-center gap-2 rounded-md px-3 text-xs"
 				class:bg-secondary={view === 'develop'}
 				aria-pressed={view === 'develop'}
-				onclick={openDevelop}><Code2 size={15} aria-hidden="true" />Develop</button
+				onclick={openDevelop}><Code2 width={15} height={15} aria-hidden="true" />Develop</button
 			>
 			<button
 				class="flex min-h-9 items-center gap-2 rounded-md px-3 text-xs"
 				class:bg-secondary={view === 'files'}
 				aria-pressed={view === 'files'}
-				onclick={openFiles}><Files size={15} aria-hidden="true" />Files</button
+				onclick={openFiles}><Files width={15} height={15} aria-hidden="true" />Files</button
 			>
 		</nav>
 		<div class="relative min-h-0 flex-1">
@@ -274,13 +278,13 @@
 						<button
 							aria-pressed={developView === 'browser'}
 							onclick={() => chooseDevelopView('browser')}
-							><Globe size={17} aria-hidden="true" />Browser</button
+							><Globe width={17} height={17} aria-hidden="true" />Browser</button
 						><button
 							aria-pressed={developView === 'terminal'}
 							onclick={() => chooseDevelopView('terminal')}
-							><TerminalSquare size={17} aria-hidden="true" />Terminal</button
+							><TerminalSquare width={17} height={17} aria-hidden="true" />Terminal</button
 						><button aria-pressed={developView === 'git'} onclick={() => chooseDevelopView('git')}
-							><GitBranch size={17} aria-hidden="true" />Git</button
+							><GitBranch width={17} height={17} aria-hidden="true" />Git</button
 						>
 					</nav>{/if}
 				{#if !docked && (!compact || developView === 'browser')}<BrowserPanel
@@ -372,7 +376,7 @@
 				title={browserOpen ? 'Hide Browser' : 'Show Browser'}
 				onclick={onbrowser}
 			>
-				<Globe size={19} aria-hidden="true" />
+				<Globe width={19} height={19} aria-hidden="true" />
 			</button>
 			{#each tools.filter((tool) => tool.id === 'git') as tool}
 				{@const Icon = tool.icon}
@@ -386,7 +390,7 @@
 					title={`${open && activeTool === tool.id ? 'Hide' : 'Show'} ${tool.label}`}
 					onclick={() => toggleTool(tool.id)}
 				>
-					<Icon size={19} aria-hidden="true" />
+					<Icon width={19} height={19} aria-hidden="true" />
 					{#if tool.id === 'git' && gitChanges}<span class="git-change-badge">{gitChanges}</span
 						>{/if}
 				</button>
@@ -399,7 +403,7 @@
 				title={filesOpen ? 'Hide Files' : 'Show Files'}
 				onclick={onfiles}
 			>
-				<Files size={19} aria-hidden="true" />
+				<Files width={19} height={19} aria-hidden="true" />
 			</button>
 			<button
 				type="button"
@@ -410,7 +414,7 @@
 				title={`${terminalOpen ? 'Hide' : 'Show'} Terminal`}
 				onclick={toggleTerminal}
 			>
-				<TerminalSquare size={19} aria-hidden="true" />
+				<TerminalSquare width={19} height={19} aria-hidden="true" />
 			</button>
 		</nav>{/if}
 </div>

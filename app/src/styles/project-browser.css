@@ -108,10 +108,7 @@ dialog.global-panel::backdrop {
 	padding-inline: calc(var(--panel-gap) / 2);
 	padding-right: var(--panel-gap);
 }
-.session-workspace:has(
-		> .project-files-dock.open,
-		> .project-tool-dock.open
-	)
+.session-workspace:has(> .project-files-dock.open, > .project-tool-dock.open)
 	> .project-browser-dock.open
 	.project-browser-content
 	> div {
@@ -150,8 +147,9 @@ dialog.global-panel::backdrop {
 }
 .project-files-dock {
 	position: relative;
-	flex: 0 1 var(--project-files-width, 440px);
+	flex: 0 0 var(--project-files-width, 440px);
 	background: var(--project-shell-color, var(--background));
+	container: project-files / inline-size;
 }
 .project-files-dock:not(.open) {
 	flex-basis: 0;
@@ -163,7 +161,7 @@ dialog.global-panel::backdrop {
 }
 .project-files-dock .files-panel {
 	height: 100%;
-	grid-template-columns: minmax(120px, 40%) minmax(0, 1fr);
+	grid-template-columns: minmax(0, 1fr) minmax(240px, 31%);
 }
 .project-files-dock > section {
 	padding-inline: calc(var(--panel-gap) / 2);
@@ -172,15 +170,111 @@ dialog.global-panel::backdrop {
 .session-workspace:has(> .project-tool-dock.open) > .project-files-dock.open > section {
 	padding-right: calc(var(--panel-gap) / 2);
 }
-.project-files-dock .file-preview-title {
-	flex-wrap: wrap;
-}
-.project-files-dock .file-preview-title h2 {
-	flex-basis: 100%;
-}
 .project-files-dock .file-preview,
 .project-files-dock .file-sidebar {
 	overflow: hidden;
+}
+@container project-files (max-width: 500px) {
+	.project-files-dock .files-panel {
+		position: relative;
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.project-files-dock .file-workspace-header,
+	.project-files-dock .file-sidebar {
+		grid-column: 1;
+	}
+	.project-files-dock .file-preview {
+		display: none;
+	}
+	.project-files-dock .file-preview.open {
+		position: absolute;
+		z-index: 2;
+		inset: 48px 0 0;
+		display: flex;
+		background: var(--card);
+	}
+	.project-files-dock .file-preview-back {
+		display: inline-flex;
+	}
+}
+.file-preview .markdown {
+	border: 0;
+	border-radius: 0;
+	padding: clamp(20px, 3vw, 44px);
+	font-size: 16px;
+	line-height: 1.65;
+}
+.file-preview .markdown h1 {
+	margin: 0 0 1.25rem;
+	font-size: 2rem;
+	line-height: 1.2;
+}
+.file-preview .markdown h2 {
+	margin: 1.75rem 0 0.75rem;
+	font-size: 1.5rem;
+	line-height: 1.3;
+}
+.file-preview .markdown h3 {
+	margin: 1.4rem 0 0.6rem;
+	font-size: 1.2rem;
+}
+.file-preview .markdown p,
+.file-preview .markdown ul,
+.file-preview .markdown ol,
+.file-preview .markdown pre {
+	margin-block: 0.85rem;
+}
+.file-preview .markdown pre {
+	overflow: auto;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-panel);
+	background: var(--muted);
+	padding: 1rem;
+}
+.file-editor-code pre,
+.file-editor-code textarea {
+	tab-size: 2;
+	white-space: pre;
+	line-height: 1.5;
+}
+.file-editor-highlight .token.comment,
+.file-editor-highlight .token.prolog,
+.file-editor-highlight .token.doctype,
+.file-editor-highlight .token.cdata {
+	color: var(--muted-foreground);
+}
+.file-editor-highlight .token.punctuation,
+.file-editor-highlight .token.operator {
+	color: var(--syntax-marker);
+}
+.file-editor-highlight .token.property,
+.file-editor-highlight .token.tag,
+.file-editor-highlight .token.constant,
+.file-editor-highlight .token.symbol,
+.file-editor-highlight .token.deleted,
+.file-editor-highlight .token.attr-name {
+	color: var(--syntax-link);
+}
+.file-editor-highlight .token.boolean,
+.file-editor-highlight .token.number,
+.file-editor-highlight .token.selector,
+.file-editor-highlight .token.builtin {
+	color: var(--syntax-emphasis);
+}
+.file-editor-highlight .token.string,
+.file-editor-highlight .token.char,
+.file-editor-highlight .token.inserted,
+.file-editor-highlight .token.regex {
+	color: var(--syntax-code);
+}
+.file-editor-highlight .token.keyword,
+.file-editor-highlight .token.atrule,
+.file-editor-highlight .token.important {
+	color: var(--syntax-strong);
+}
+.file-editor-highlight .token.function,
+.file-editor-highlight .token.class-name {
+	color: var(--syntax-heading);
 }
 .project-tool-dock.docked > section {
 	background: var(--project-shell-color, var(--background));
@@ -191,6 +285,32 @@ dialog.global-panel::backdrop {
 .project-tool-dock.docked .project-workbench {
 	padding-right: var(--panel-gap);
 	padding-left: calc(var(--panel-gap) / 2);
+}
+.git-panel-resizer {
+	display: none;
+}
+.project-workbench.compact > .git-panel-resizer {
+	position: relative;
+	z-index: 1;
+	display: block;
+	min-height: 10px;
+	margin: -5px 0;
+	cursor: row-resize;
+	touch-action: none;
+}
+.git-panel-resizer::after {
+	position: absolute;
+	top: 4px;
+	right: 0;
+	left: 0;
+	height: 2px;
+	background: transparent;
+	content: '';
+}
+.git-panel-resizer:hover::after,
+.git-panel-resizer:focus-visible::after,
+.git-panel-resizer:active::after {
+	background: var(--primary);
 }
 .session-workspace:has(
 		> .project-browser-dock.open,

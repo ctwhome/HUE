@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
-	import { X } from 'lucide-svelte';
+	import X from '~icons/lucide/x';
 	import type { GlobalView } from './GlobalNavigation.svelte';
 	import AdminResourceView from './hermes/AdminResourceView.svelte';
 	import InventoryView from './hermes/InventoryView.svelte';
@@ -365,7 +365,7 @@
 				size="icon"
 				aria-label="Close settings"
 				title="Close settings"
-				onclick={() => navigate(null)}><X size={18} aria-hidden="true" /></Button
+				onclick={() => navigate(null)}><X width={18} height={18} aria-hidden="true" /></Button
 			>
 		</header>
 		{#if view !== 'app-settings'}<nav

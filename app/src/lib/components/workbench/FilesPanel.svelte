@@ -1,18 +1,17 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
-	import {
-		ChevronDown,
-		ChevronRight,
-		ChevronsDownUp,
-		ChevronsUpDown,
-		File,
-		FilePlus2,
-		Folder,
-		FolderPlus,
-		RefreshCw,
-		Search,
-		Upload
-	} from 'lucide-svelte';
+	import ChevronDown from '~icons/lucide/chevron-down';
+	import ChevronRight from '~icons/lucide/chevron-right';
+	import ChevronsDownUp from '~icons/lucide/chevrons-down-up';
+	import ChevronsUpDown from '~icons/lucide/chevrons-up-down';
+	import File from '~icons/lucide/file';
+	import FilePlus2 from '~icons/lucide/file-plus-2';
+	import Folder from '~icons/lucide/folder';
+	import FolderPlus from '~icons/lucide/folder-plus';
+	import RefreshCw from '~icons/lucide/refresh-cw';
+	import Search from '~icons/lucide/search';
+	import Upload from '~icons/lucide/upload';
+	import X from '~icons/lucide/x';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
 	import { api } from './api';
@@ -44,11 +43,13 @@
 	let {
 		projectId,
 		fileRequest,
-		dirtyGuard
+		dirtyGuard,
+		onclose
 	}: {
 		projectId: string;
 		fileRequest: { path: string; id: string } | null;
 		dirtyGuard: DirtyGuard;
+		onclose?: () => void;
 	} = $props();
 	let entries = $state<Entry[]>([]);
 	let expanded = $state(new Set<string>());
@@ -320,10 +321,52 @@
 </script>
 
 <section
-	class="files-panel grid min-h-0 flex-1 grid-cols-[minmax(260px,34%)_minmax(0,1fr)] overflow-hidden rounded-xl border border-border bg-card"
+	class="files-panel grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(240px,31%)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-xl border border-border bg-card"
 	aria-label="Project files"
 >
-	<aside class="file-sidebar flex min-h-0 flex-col border-r border-border">
+	<header
+		class="file-workspace-header col-span-2 flex min-h-12 items-center gap-3 border-b border-border px-3"
+		aria-label="File workspace"
+	>
+		<strong
+			class="min-w-0 flex-1 overflow-hidden text-sm font-medium text-ellipsis whitespace-nowrap"
+			>{selectedPath || 'Files'}</strong
+		>
+		{#if onclose}<Button
+				variant="ghost"
+				size="icon"
+				aria-label="Close Files workspace"
+				title="Close Files workspace"
+				onclick={() => guarded(onclose)}><X width={18} height={18} aria-hidden="true" /></Button
+			>{/if}
+	</header>
+	<FilePreview
+		{preview}
+		{selectedPath}
+		{contentUrl}
+		{editor}
+		{markdownMode}
+		{dirty}
+		{busy}
+		{error}
+		{status}
+		{externalChange}
+		{movedDeleted}
+		onback={requestClosePreview}
+		onmove={() => openAction('move')}
+		ondelete={openDelete}
+		onsave={saveFile}
+		onreload={() => guarded(() => void selectFile(selectedPath))}
+		onroot={() => guarded(clearPreviewSelection)}
+		onbreadcrumb={(path) => {
+			expanded.add(path);
+			expanded = new Set(expanded);
+		}}
+		oneditor={(value) => (editor = value)}
+		onmarkdownmode={(value) => (markdownMode = value)}
+	/>
+
+	<aside class="file-sidebar flex min-h-0 flex-col border-l border-border">
 		<header class="border-b border-border p-2">
 			<div class="flex items-center gap-1">
 				<Button
@@ -340,20 +383,36 @@
 					class="ml-auto"
 					variant="ghost"
 					size="icon"
+					aria-label="Create file"
+					title="Create file"
+					onclick={() => openAction('file')}
+					><FilePlus2 width={16} height={16} aria-hidden="true" /></Button
+				>
+				<Button
+					variant="ghost"
+					size="icon"
+					aria-label="Create folder"
+					title="Create folder"
+					onclick={() => openAction('folder')}
+					><FolderPlus width={16} height={16} aria-hidden="true" /></Button
+				>
+				<Button
+					variant="ghost"
+					size="icon"
 					aria-label="Refresh files"
 					title="Refresh files"
 					onclick={() => guarded(() => void loadTree())}
-					><RefreshCw size={16} aria-hidden="true" /></Button
+					><RefreshCw width={16} height={16} aria-hidden="true" /></Button
 				>
 			</div>
 			{#if view === 'files'}<label
 					class="mt-2 flex items-center gap-2 rounded-md border border-input px-2"
-					><Search size={15} aria-hidden="true" /><Input
+					><Search width={15} height={15} aria-hidden="true" /><Input
 						class="border-0 px-0 focus-visible:ring-0"
 						bind:value={query}
 						oninput={scheduleSearch}
 						aria-label="Search Project files"
-						placeholder="Search paths"
+						placeholder="Search files…"
 					/></label
 				>{/if}
 		</header>
@@ -367,7 +426,7 @@
 					onclick={() =>
 						(expanded = new Set(
 							entries.filter(({ type }) => type === 'directory').map(({ path }) => path)
-						))}><ChevronsUpDown size={16} aria-hidden="true" /></Button
+						))}><ChevronsUpDown width={16} height={16} aria-hidden="true" /></Button
 				>
 				<Button
 					variant="ghost"
@@ -377,27 +436,13 @@
 					onclick={() => {
 						expanded = new Set();
 						focusedPath = restoreTreeFocus(entries, expanded, focusedPath);
-					}}><ChevronsDownUp size={16} aria-hidden="true" /></Button
-				>
-				<Button
-					variant="ghost"
-					size="icon"
-					aria-label="Create file"
-					title="Create file"
-					onclick={() => openAction('file')}><FilePlus2 size={16} aria-hidden="true" /></Button
-				>
-				<Button
-					variant="ghost"
-					size="icon"
-					aria-label="Create folder"
-					title="Create folder"
-					onclick={() => openAction('folder')}><FolderPlus size={16} aria-hidden="true" /></Button
+					}}><ChevronsDownUp width={16} height={16} aria-hidden="true" /></Button
 				>
 				<label
 					class="grid min-h-9 min-w-9 cursor-pointer place-items-center rounded-md hover:bg-accent"
 					aria-label="Upload files"
 					title="Upload files"
-					><Upload size={16} aria-hidden="true" /><input
+					><Upload width={16} height={16} aria-hidden="true" /><input
 						class="sr-only"
 						type="file"
 						multiple
@@ -428,12 +473,18 @@
 						onkeydown={(event) => treeKey(event, entry)}
 					>
 						{#if entry.type === 'directory'}{#if expanded.has(entry.path)}<ChevronDown
-									size={14}
+									width={14}
+									height={14}
 									aria-hidden="true"
-								/>{:else}<ChevronRight size={14} aria-hidden="true" />{/if}<Folder
-								size={15}
+								/>{:else}<ChevronRight width={14} height={14} aria-hidden="true" />{/if}<Folder
+								width={15}
+								height={15}
 								aria-hidden="true"
-							/>{:else}<span class="w-3.5"></span><File size={15} aria-hidden="true" />{/if}
+							/>{:else}<span class="w-3.5"></span><File
+								width={15}
+								height={15}
+								aria-hidden="true"
+							/>{/if}
 						<span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{entry.name}</span
 						>
 					</button>
@@ -461,32 +512,6 @@
 			</ul>
 		{/if}
 	</aside>
-
-	<FilePreview
-		{preview}
-		{selectedPath}
-		{contentUrl}
-		{editor}
-		{markdownMode}
-		{dirty}
-		{busy}
-		{error}
-		{status}
-		{externalChange}
-		{movedDeleted}
-		onback={requestClosePreview}
-		onmove={() => openAction('move')}
-		ondelete={openDelete}
-		onsave={saveFile}
-		onreload={() => guarded(() => void selectFile(selectedPath))}
-		onroot={() => guarded(clearPreviewSelection)}
-		onbreadcrumb={(path) => {
-			expanded.add(path);
-			expanded = new Set(expanded);
-		}}
-		oneditor={(value) => (editor = value)}
-		onmarkdownmode={(value) => (markdownMode = value)}
-	/>
 </section>
 
 <FileDialogs

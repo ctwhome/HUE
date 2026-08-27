@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ArrowLeft } from 'lucide-svelte';
+	import ArrowLeft from '~icons/lucide/arrow-left';
 	import { highlightMarkdown } from '$lib/markdown-highlight';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
@@ -89,7 +89,7 @@
 	<div class="skill-editor grid h-full min-h-0 grid-rows-[auto_minmax(420px,1fr)_auto] gap-3.5">
 		<div class="skill-editor-heading flex items-center gap-3">
 			<Button variant="outline" title="Back to skills" onclick={onclose}
-				><ArrowLeft size={15} aria-hidden="true" /> Back to skills</Button
+				><ArrowLeft width={15} height={15} aria-hidden="true" /> Back to skills</Button
 			>
 			<h2 class="font-semibold">{selectedSkill}</h2>
 			{#if !selectedSkillEditable}<span class="text-sm text-muted-foreground"

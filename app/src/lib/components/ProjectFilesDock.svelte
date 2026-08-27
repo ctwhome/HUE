@@ -7,16 +7,18 @@
 		projectId,
 		open,
 		fileRequest,
-		dirtyGuard
+		dirtyGuard,
+		onclose
 	}: {
 		projectId: string;
 		open: boolean;
 		fileRequest: { path: string; id: string } | null;
 		dirtyGuard: DirtyGuard;
+		onclose: () => void;
 	} = $props();
 	let dockElement: HTMLElement;
-	let width = $state(440);
-	let maxWidth = $state(440);
+	let width = $state(960);
+	let maxWidth = $state(960);
 	let mounted = $state(false);
 	let resizeStart: { x: number; width: number } | null = null;
 	$effect(() => {
@@ -26,7 +28,7 @@
 	function limits() {
 		const available = dockElement.parentElement?.clientWidth ?? innerWidth;
 		const toolsWidth = dockElement.nextElementSibling?.clientWidth ?? 52;
-		return { min: 280, max: Math.max(280, available - toolsWidth - 320) };
+		return { min: 360, max: Math.max(360, available - toolsWidth - 280) };
 	}
 	function setWidth(next: number) {
 		const { min, max } = limits();
@@ -64,7 +66,7 @@
 
 	onMount(() => {
 		const savedWidth = Number(localStorage.getItem(`hue:project-files:${projectId}:width`));
-		const frame = requestAnimationFrame(() => setWidth(savedWidth > 0 ? savedWidth : 440));
+		const frame = requestAnimationFrame(() => setWidth(savedWidth > 0 ? savedWidth : 960));
 		const observer = new ResizeObserver(() => setWidth(width));
 		observer.observe(dockElement.parentElement!);
 		return () => {
@@ -84,21 +86,25 @@
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions (ARIA separator is keyboard-operable.) -->
 	{#if open}<div
-		class="project-files-resizer"
-		role="separator"
-		aria-label="Resize project files"
-		aria-orientation="vertical"
-		aria-valuemin="280"
-		aria-valuemax={maxWidth}
-		aria-valuenow={Math.round(width)}
-		tabindex="0"
-		onpointerdown={startResize}
-		onpointermove={resize}
-		onpointerup={finishResize}
-		onpointercancel={finishResize}
-		onkeydown={resizeWithKeyboard}
-	></div>{/if}
-	<section aria-hidden={!open} inert={!open ? true : undefined} class="min-h-0 flex-1 px-2.5 pt-2.5">
-		{#if mounted}<FilesPanel {projectId} {fileRequest} {dirtyGuard} />{/if}
+			class="project-files-resizer"
+			role="separator"
+			aria-label="Resize project files"
+			aria-orientation="vertical"
+			aria-valuemin="360"
+			aria-valuemax={maxWidth}
+			aria-valuenow={Math.round(width)}
+			tabindex="0"
+			onpointerdown={startResize}
+			onpointermove={resize}
+			onpointerup={finishResize}
+			onpointercancel={finishResize}
+			onkeydown={resizeWithKeyboard}
+		></div>{/if}
+	<section
+		aria-hidden={!open}
+		inert={!open ? true : undefined}
+		class="min-h-0 flex-1 px-2.5 pt-2.5"
+	>
+		{#if mounted}<FilesPanel {projectId} {fileRequest} {dirtyGuard} {onclose} />{/if}
 	</section>
 </aside>

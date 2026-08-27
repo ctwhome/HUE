@@ -1,5 +1,8 @@
 <script lang="ts">
-	import { Bell, FileText, Search, Settings } from 'lucide-svelte';
+	import Bell from '~icons/lucide/bell';
+	import FileText from '~icons/lucide/file-text';
+	import Search from '~icons/lucide/search';
+	import Settings from '~icons/lucide/settings';
 	import BrandMark from './BrandMark.svelte';
 	import Button from './ui/Button.svelte';
 

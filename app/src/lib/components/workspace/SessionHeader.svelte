@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { ArrowLeft, Ellipsis } from 'lucide-svelte';
+	import ArrowLeft from '~icons/lucide/arrow-left';
+	import Ellipsis from '~icons/lucide/ellipsis';
 	import { automaticSessionIcon } from '$lib/icon';
 	import { isImageIcon } from './project-management.svelte';
 	import SessionInspector from './SessionInspector.svelte';
@@ -35,7 +36,7 @@
 				class="session-list-back h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md"
 				aria-label="Back to Sessions"
 				title="Back to Sessions"
-				onclick={onsessions}><ArrowLeft size={20} aria-hidden="true" /></button
+				onclick={onsessions}><ArrowLeft width={20} height={20} aria-hidden="true" /></button
 			>{/if}
 		<button
 			class="session-icon-trigger grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md hover:bg-accent"
@@ -65,6 +66,6 @@
 			class="grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md hover:bg-accent"
 			aria-label={`Session options for ${session.title || 'Untitled session'}`}
 			title="Session options"
-			onclick={onmanage}><Ellipsis size={20} aria-hidden="true" /></button
+			onclick={onmanage}><Ellipsis width={20} height={20} aria-hidden="true" /></button
 		>
 	</header>{/if}

@@ -57,6 +57,8 @@ export type Workflow = {
 	id: string;
 	name: string;
 	prompt: string;
+	folder?: string | null;
+	favorite?: boolean;
 	profile: string;
 	workMode: WorkMode;
 	archived: boolean;

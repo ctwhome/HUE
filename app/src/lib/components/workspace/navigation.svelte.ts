@@ -1,5 +1,6 @@
 import { tick } from 'svelte';
 import { automaticSessionIcon } from '$lib/icon';
+import type { CatalogPrompt } from '$lib/prompt-catalog';
 import { isCurrentSessionRequest, isCurrentTabRequest } from '$lib';
 import type { MobilePane } from './mobile-navigation';
 import {
@@ -63,6 +64,7 @@ export class WorkspaceNavigation {
 	ready = $state(false);
 	workflowName = $state('');
 	workflowPrompt = $state('');
+	workflowFolder = $state('');
 	workflowProfile = $state('default');
 	workflowWorkMode = $state<'autonomous' | 'live'>('autonomous');
 	editSessionMenu = $state<HTMLElement>();
@@ -302,7 +304,8 @@ export class WorkspaceNavigation {
 		historyMode: HistoryMode = 'replace',
 		launchEventId: string | null = null
 	) => {
-		if (this.effects.guard(() => void this.openSession(session, historyMode, launchEventId))) return false;
+		if (this.effects.guard(() => void this.openSession(session, historyMode, launchEventId)))
+			return false;
 		if (session.available === false) {
 			this.effects.setError(session.recovery ?? 'Hermes Session is unavailable.');
 			return false;
@@ -373,6 +376,7 @@ export class WorkspaceNavigation {
 					body: JSON.stringify({
 						name: this.workflowName,
 						prompt: this.workflowPrompt,
+						folder: this.workflowFolder,
 						profile: this.workflowProfile,
 						workMode: this.workflowWorkMode
 					})
@@ -382,6 +386,38 @@ export class WorkspaceNavigation {
 			this.workflowLists.set(this.selectedProject.id, this.workflows);
 			this.workflowName = '';
 			this.workflowPrompt = '';
+			this.workflowFolder = '';
+			return true;
+		} catch (cause) {
+			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
+			return false;
+		}
+	};
+	favoriteCatalogPrompt = async (prompt: CatalogPrompt) => {
+		const project = this.selectedProject;
+		if (!project) return false;
+		const existing = this.workflows.find(
+			(workflow) => workflow.name === prompt.title && workflow.prompt === prompt.prompt
+		);
+		if (existing) return this.updateWorkflow(existing, { favorite: true });
+		try {
+			const body = await this.effects.api<{ workflow: Workflow }>(
+				`/api/projects/${project.id}/workflows`,
+				{
+					method: 'POST',
+					body: JSON.stringify({
+						name: prompt.title,
+						prompt: prompt.prompt,
+						folder: prompt.category,
+						favorite: true,
+						profile: 'default',
+						workMode: 'autonomous'
+					})
+				}
+			);
+			if (this.selectedProject?.id !== project.id) return false;
+			this.workflows = [...this.workflows, body.workflow];
+			this.workflowLists.set(project.id, this.workflows);
 			return true;
 		} catch (cause) {
 			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
@@ -390,7 +426,12 @@ export class WorkspaceNavigation {
 	};
 	updateWorkflow = async (
 		workflow: Workflow,
-		patch: Partial<Pick<Workflow, 'name' | 'prompt' | 'profile' | 'workMode' | 'archived'>>
+		patch: Partial<
+			Pick<
+				Workflow,
+				'name' | 'prompt' | 'folder' | 'favorite' | 'profile' | 'workMode' | 'archived'
+			>
+		>
 	) => {
 		const project = this.selectedProject;
 		if (!project) return false;
@@ -437,6 +478,8 @@ export class WorkspaceNavigation {
 					body: JSON.stringify({
 						name: `${workflow.name} copy`,
 						prompt: workflow.prompt,
+						folder: workflow.folder,
+						favorite: workflow.favorite,
 						profile: workflow.profile,
 						workMode: workflow.workMode
 					})

@@ -21,8 +21,8 @@
 	<h2>{projectCount ? 'Projects · Workflows · Sessions' : 'Start your first HUE workspace'}</h2>
 	<p>
 		{projectCount
-			? 'Choose a Project, or start a general Hermes Session.'
-			: 'Add a trusted local folder for project work, or start a private general Session.'}
+			? 'Choose a Project, or start a chat.'
+			: 'Add a trusted local folder for project work, or start a private chat.'}
 	</p>
 	<div class="mt-5 flex flex-wrap justify-center gap-2">
 		<button
@@ -32,7 +32,7 @@
 			onclick={onadd}>Add Project</button
 		>
 		<button class="min-h-11 rounded-md border border-border px-4" onclick={onprojectless}
-			>Start General Session</button
+			>Start a chat</button
 		>
 	</div>
 	<div class="principles mt-6 flex flex-wrap justify-center gap-2">

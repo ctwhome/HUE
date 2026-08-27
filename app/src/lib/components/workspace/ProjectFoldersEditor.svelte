@@ -1,5 +1,8 @@
 <script lang="ts">
-	import { Folder, FolderPlus, Star, Trash2 } from 'lucide-svelte';
+	import Folder from '~icons/lucide/folder';
+	import FolderPlus from '~icons/lucide/folder-plus';
+	import Star from '~icons/lucide/star';
+	import Trash2 from '~icons/lucide/trash-2';
 	import type { Project } from './types';
 
 	let {
@@ -27,16 +30,16 @@
 			disabled={saving || !project}
 			onclick={() => project && onadd(project)}
 		>
-			<FolderPlus size={16} aria-hidden="true" /> Add folder
+			<FolderPlus width={16} height={16} aria-hidden="true" /> Add folder
 		</button>
 	</div>
 	{#each project?.folders ?? [] as folder (folder.path)}
 		<div class="grid gap-2 rounded-lg border border-border p-3">
 			<div class="flex min-w-0 items-center gap-2">
 				{#if folder.isPrimary}
-					<Star size={16} fill="currentColor" aria-label="Primary folder" />
+					<Star width={16} height={16} fill="currentColor" aria-label="Primary folder" />
 				{:else}
-					<Folder size={16} aria-hidden="true" />
+					<Folder width={16} height={16} aria-hidden="true" />
 				{/if}
 				<code class="min-w-0 flex-1 overflow-hidden text-ellipsis">{folder.path}</code>
 				{#if !folder.available}<small class="text-amber-400">Unavailable</small>{/if}
@@ -65,7 +68,7 @@
 					disabled={saving || folder.isPrimary}
 					onclick={() => project && onsetprimary(project, folder.path)}
 				>
-					<Star size={16} aria-hidden="true" /> Make primary
+					<Star width={16} height={16} aria-hidden="true" /> Make primary
 				</button>
 				<button
 					type="button"
@@ -76,7 +79,7 @@
 						: 'Remove folder'}
 					onclick={() => project && onremove(project, folder.path)}
 				>
-					<Trash2 size={16} aria-hidden="true" /> Remove
+					<Trash2 width={16} height={16} aria-hidden="true" /> Remove
 				</button>
 			</form>
 		</div>

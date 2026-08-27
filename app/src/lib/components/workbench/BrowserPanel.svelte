@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { ExternalLink, Plus, X } from 'lucide-svelte';
+	import ExternalLink from '~icons/lucide/external-link';
+	import Plus from '~icons/lucide/plus';
+	import X from '~icons/lucide/x';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
 	import { normalizeBrowserUrl, restoreBrowserTabId, restoreBrowserView } from './browser-canvas';
@@ -210,7 +212,7 @@
 							aria-label={`Close ${tab.title}`}
 							title={`Close ${tab.title}`}
 							onclick={(event) => closeBrowserTab(event, tab.id)}
-							><X size={12} aria-hidden="true" /></button
+							><X width={12} height={12} aria-hidden="true" /></button
 						>
 					</div>
 				{/each}
@@ -220,7 +222,7 @@
 					class="add-tab size-9"
 					title="New browser tab"
 					aria-label="New browser tab"
-					onclick={addBrowserTab}><Plus size={16} aria-hidden="true" /></Button
+					onclick={addBrowserTab}><Plus width={16} height={16} aria-hidden="true" /></Button
 				>
 			</div>
 			<form
@@ -240,7 +242,8 @@
 						href={currentBrowserTab.url}
 						target="_blank"
 						rel="noopener noreferrer"
-						title="Open browser tab externally"><ExternalLink size={15} aria-hidden="true" /></a
+						title="Open browser tab externally"
+						><ExternalLink width={15} height={15} aria-hidden="true" /></a
 					>{/if}
 			</form>
 			{#if browserError}<small class="panel-error m-2 text-xs text-destructive" role="alert"

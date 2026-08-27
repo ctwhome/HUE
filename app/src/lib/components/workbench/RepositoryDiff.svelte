@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { ChevronLeft, ChevronRight, Copy, RefreshCw } from 'lucide-svelte';
+	import ChevronLeft from '~icons/lucide/chevron-left';
+	import ChevronRight from '~icons/lucide/chevron-right';
+	import Copy from '~icons/lucide/copy';
+	import RefreshCw from '~icons/lucide/refresh-cw';
 	import { api } from './api';
 	import { boundedDiffLineRange, parseUnifiedDiff } from './repository-diff';
 	import type { RepositoryDiffResponse } from './repository-diff';
@@ -144,7 +147,12 @@
 			title="Refresh diff"
 			disabled={loading}
 			onclick={() => void loadDiff()}
-			><RefreshCw size={15} class={loading ? 'animate-spin' : ''} aria-hidden="true" /></button
+			><RefreshCw
+				width={15}
+				height={15}
+				class={loading ? 'animate-spin' : ''}
+				aria-hidden="true"
+			/></button
 		>
 	</header>
 
@@ -194,13 +202,13 @@
 			aria-label="Previous hunk"
 			title="Previous hunk"
 			disabled={selectedHunk === 0}
-			onclick={() => moveHunk(-1)}><ChevronLeft size={15} aria-hidden="true" /></button
+			onclick={() => moveHunk(-1)}><ChevronLeft width={15} height={15} aria-hidden="true" /></button
 		><button
 			class="grid min-h-8 min-w-8 place-items-center rounded-md border border-border max-[700px]:min-h-11 max-[700px]:min-w-11"
 			aria-label="Next hunk"
 			title="Next hunk"
 			disabled={!currentFile || selectedHunk >= currentFile.hunks.length - 1}
-			onclick={() => moveHunk(1)}><ChevronRight size={15} aria-hidden="true" /></button
+			onclick={() => moveHunk(1)}><ChevronRight width={15} height={15} aria-hidden="true" /></button
 		>
 	</div>
 
@@ -246,7 +254,7 @@
 			class="flex min-h-8 items-center gap-1.5 rounded-md border border-border px-2 text-xs max-[700px]:min-h-11"
 			disabled={selectionStart === null}
 			onclick={() => void copySelection()}
-			><Copy size={14} aria-hidden="true" />Copy selected lines</button
+			><Copy width={14} height={14} aria-hidden="true" />Copy selected lines</button
 		>
 	</footer>
 </section>

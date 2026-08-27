@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Download, Link, Share2, X } from 'lucide-svelte';
+	import Download from '~icons/lucide/download';
+	import Link from '~icons/lucide/link';
+	import Share2 from '~icons/lucide/share-2';
+	import X from '~icons/lucide/x';
 	import {
 		INSTALL_DISMISSED_KEY,
 		actionFailureStatus,

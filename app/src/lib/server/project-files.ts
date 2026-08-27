@@ -243,6 +243,21 @@ function fileFormat(path: string): { kind: PreviewKind; mime: string } {
 	return { kind: 'binary', mime: 'application/octet-stream' };
 }
 
+function looksLikeText(fd: number, size: bigint) {
+	const bytes = Buffer.alloc(Math.min(Number(size), 8192));
+	if (bytes.length) readSync(fd, bytes, 0, bytes.length, 0);
+	if (bytes.includes(0)) return false;
+	try {
+		const value = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+		return ![...value].some((character) => {
+			const code = character.charCodeAt(0);
+			return code < 32 && character !== '\t' && character !== '\n' && character !== '\r';
+		});
+	} catch {
+		return false;
+	}
+}
+
 export class ProjectFiles {
 	static readonly MAX_TREE_ENTRIES = 10_000;
 	static readonly MAX_TREE_DEPTH = 32;
@@ -419,7 +434,9 @@ export class ProjectFiles {
 			assertSafeFile(stat);
 			const version =
 				stat.size <= BigInt(ProjectFiles.MAX_WRITE_BYTES) ? fileVersion(opened.fd, stat) : null;
-			const format = fileFormat(path);
+			let format = fileFormat(path);
+			if (format.kind === 'binary' && looksLikeText(opened.fd, stat.size))
+				format = { kind: 'text', mime: 'text/plain' };
 			const textual = ['text', 'code', 'markdown'].includes(format.kind);
 			const content =
 				textual && stat.size <= BigInt(ProjectFiles.MAX_PREVIEW_BYTES)
