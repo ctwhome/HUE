@@ -8,6 +8,7 @@
 		sessions,
 		project,
 		projectId,
+		sessionListLoaded,
 		workflows,
 		primarySession,
 		allowDocking = true,
@@ -20,6 +21,7 @@
 		sessions: Session[];
 		project: Project | null;
 		projectId: string | null;
+		sessionListLoaded: boolean;
 		workflows: Workflow[];
 		primarySession: Session | null;
 		allowDocking?: boolean;
@@ -36,6 +38,7 @@
 	let paneResize = $state<'column' | 'row' | null>(null);
 	let dropPreview = $state(false);
 	let hydratedProjectId: string | null | undefined;
+	let reconciledProjectId = $state<string | null | undefined>();
 	let layoutReady = false;
 	let restoredPrimary = $state<PaneSession | null>(null);
 	let paneCount = $derived(1 + dockedSessions.length);
@@ -87,6 +90,7 @@
 		if (!allowDocking || hydratedProjectId === projectId) return;
 		layoutReady = false;
 		hydratedProjectId = projectId;
+		reconciledProjectId = undefined;
 		setDockedSessions([]);
 		paneRatio.column = 50;
 		paneRatio.row = 50;
@@ -113,7 +117,30 @@
 		layoutReady = true;
 	});
 	$effect(() => {
-		if (!allowDocking) return;
+		if (!allowDocking || !layoutReady || !sessionListLoaded || reconciledProjectId === projectId)
+			return;
+		const currentSessions = new Map(sessions.map((session) => [session.sessionId, session]));
+		const paneSession = (session: Session): PaneSession => ({
+			sessionId: session.sessionId,
+			title: session.title,
+			cwd: session.cwd
+		});
+		restoredPrimary = restoredPrimary
+			? currentSessions.has(restoredPrimary.sessionId)
+				? paneSession(currentSessions.get(restoredPrimary.sessionId)!)
+				: null
+			: null;
+		reconciledProjectId = projectId;
+		setDockedSessions(
+			dockedSessions.flatMap((session) => {
+				const current = currentSessions.get(session.sessionId);
+				return current ? [paneSession(current)] : [];
+			})
+		);
+		if (!primarySession && restoredPrimary) onprimaryclose(restoredPrimary);
+	});
+	$effect(() => {
+		if (!allowDocking || reconciledProjectId !== projectId) return;
 		if (primarySession) {
 			restoredPrimary = {
 				sessionId: primarySession.sessionId,
@@ -271,36 +298,38 @@
 			data-destination={dropDestination}
 			aria-hidden="true"
 		></div>{/if}
-	{#each dockedSessions as session (session.sessionId)}
-		<article
-			class="session-pane flex min-h-0 min-w-0 flex-col overflow-hidden"
-			aria-label={`${currentPaneTitle(session) || 'Untitled session'} pane`}
-		>
-			<header
-				class="session-pane-header flex h-11 items-center gap-2 border-b border-border bg-card px-3"
+	{#if reconciledProjectId === projectId}
+		{#each dockedSessions as session (session.sessionId)}
+			<article
+				class="session-pane flex min-h-0 min-w-0 flex-col overflow-hidden"
+				aria-label={`${currentPaneTitle(session) || 'Untitled session'} pane`}
 			>
-				<strong class="min-w-0 flex-1 truncate text-sm"
-					>{currentPaneTitle(session) || 'Untitled session'}</strong
+				<header
+					class="session-pane-header flex h-11 items-center gap-2 border-b border-border bg-card px-3"
 				>
-				<button
-					class="grid size-11 place-items-center rounded-md hover:bg-accent"
-					aria-label={`Close ${currentPaneTitle(session) || 'Untitled session'} pane`}
-					title="Close pane"
-					onclick={() =>
-						setDockedSessions(
-							dockedSessions.filter((candidate) => candidate.sessionId !== session.sessionId)
-						)}><X width={16} height={16} aria-hidden="true" /></button
-				>
-			</header>
-			<SessionPanel
-				{project}
-				session={currentPaneSession(session)}
-				{workflows}
-				onupdate={onsessionupdate}
-				{onrunworkflow}
-			/>
-		</article>
-	{/each}
+					<strong class="min-w-0 flex-1 truncate text-sm"
+						>{currentPaneTitle(session) || 'Untitled session'}</strong
+					>
+					<button
+						class="grid size-11 place-items-center rounded-md hover:bg-accent"
+						aria-label={`Close ${currentPaneTitle(session) || 'Untitled session'} pane`}
+						title="Close pane"
+						onclick={() =>
+							setDockedSessions(
+								dockedSessions.filter((candidate) => candidate.sessionId !== session.sessionId)
+							)}><X width={16} height={16} aria-hidden="true" /></button
+					>
+				</header>
+				<SessionPanel
+					{project}
+					session={currentPaneSession(session)}
+					{workflows}
+					onupdate={onsessionupdate}
+					{onrunworkflow}
+				/>
+			</article>
+		{/each}
+	{/if}
 	{#if paneCount > 1 && paneCount <= 4}
 		<!-- svelte-ignore a11y_no_interactive_element_to_noninteractive_role (ARIA separator is keyboard-operable.) -->
 		<button

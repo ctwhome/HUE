@@ -8,12 +8,26 @@ export type TreeKeyboardAction = {
 };
 
 export function visibleFileEntries(entries: FileEntry[], expanded: ReadonlySet<string>) {
-	return entries.filter((entry) => {
-		const parts = entry.path.split('/');
-		return parts
-			.slice(0, -1)
-			.every((_, index) => expanded.has(parts.slice(0, index + 1).join('/')));
-	});
+	const directories = new Set(
+		entries.filter(({ type }) => type === 'directory').map(({ path }) => path)
+	);
+	const children = new Map<string, FileEntry[]>();
+	for (const entry of entries) {
+		const parent = entry.path.split('/').slice(0, -1).join('/');
+		const visibleParent = directories.has(parent) ? parent : '';
+		const siblings = children.get(visibleParent);
+		if (siblings) siblings.push(entry);
+		else children.set(visibleParent, [entry]);
+	}
+	const visible: FileEntry[] = [];
+	const append = (parent: string) => {
+		for (const entry of children.get(parent) ?? []) {
+			visible.push(entry);
+			if (entry.type === 'directory' && expanded.has(entry.path)) append(entry.path);
+		}
+	};
+	append('');
+	return visible;
 }
 
 export function restoreTreeFocus(

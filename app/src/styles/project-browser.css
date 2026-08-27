@@ -276,6 +276,36 @@ dialog.global-panel::backdrop {
 .file-editor-highlight .token.class-name {
 	color: var(--syntax-heading);
 }
+.file-type-icon {
+	flex: none;
+	color: var(--muted-foreground);
+}
+.file-type-icon.code,
+.file-type-icon.markdown {
+	color: var(--syntax-link);
+}
+.file-type-icon.config,
+.file-type-icon.lock,
+.file-type-icon.archive,
+.file-type-icon.presentation {
+	color: var(--syntax-heading);
+}
+.file-type-icon.image,
+.file-type-icon.spreadsheet {
+	color: var(--syntax-code);
+}
+.file-type-icon.audio,
+.file-type-icon.video,
+.file-type-icon.database {
+	color: var(--syntax-strong);
+}
+.file-type-icon.pdf {
+	color: var(--destructive);
+}
+.file-type-icon.document,
+.file-type-icon.text {
+	color: var(--syntax-emphasis);
+}
 .project-tool-dock.docked > section {
 	background: var(--project-shell-color, var(--background));
 }

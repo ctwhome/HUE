@@ -16,6 +16,7 @@ describe('HUE preferences', () => {
 				language: 'nl-NL',
 				voice: 'system',
 				showUsage: false,
+				hiddenFilePatterns: '.DS_Store\r\n*.log',
 				showCliSessions: false
 			})
 		).toEqual({
@@ -24,7 +25,8 @@ describe('HUE preferences', () => {
 			density: 'compact',
 			language: 'nl-NL',
 			voice: 'system',
-			showUsage: false
+			showUsage: false,
+			hiddenFilePatterns: '.DS_Store\n*.log'
 		});
 	});
 
@@ -35,7 +37,8 @@ describe('HUE preferences', () => {
 			density: 'comfortable',
 			language: 'en',
 			voice: 'hermes',
-			showUsage: true
+			showUsage: true,
+			hiddenFilePatterns: '.DS_Store'
 		});
 	});
 

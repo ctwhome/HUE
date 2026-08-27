@@ -252,7 +252,7 @@ describe('notification delivery boundary', () => {
 		store.close();
 	});
 
-	it('suppresses only matching endpoint context while retaining canonical notification', async () => {
+	it('keeps private context specific in-app and generic on Web Push', async () => {
 		const store = setup();
 		const sent: Array<{ endpoint: string; payload: string }> = [];
 		const transport: PushTransport = {
@@ -275,6 +275,9 @@ describe('notification delivery boundary', () => {
 			visible: true
 		});
 		store.appendEvent('project-1', 'session-1', 'message.completed', { messageId: 'message-1' });
+		expect(store.listNotifications({ limit: 1 }).items[0]!.body).toBe(
+			'Secret session in Secret project completed.'
+		);
 
 		await service.deliverPending();
 

@@ -15,6 +15,13 @@
 	import GitHubPanels from './GitHubPanels.svelte';
 	import GitPanelResizer from './GitPanelResizer.svelte';
 	import RepositoryDiff from './RepositoryDiff.svelte';
+	import {
+		defaultRepositoryLayout,
+		readRepositoryLayout,
+		resizeRepositoryPanels,
+		saveRepositorySelection,
+		toggleRepositoryPanel
+	} from './repository-layout';
 	import type { ReviewContextSeed } from '$lib/message-content';
 	import type { CommitModelsResponse, GitHubItems, Repository } from './repository-diff';
 
@@ -37,13 +44,10 @@
 	let repositoryBusy = $state(false);
 	let commitMessageGenerating = $state(false);
 	let repositoryMessage = $state('');
-	let selectedRepository = $state('');
 	let githubItems = $state<GitHubItems | null>(null);
 	let githubError = $state('');
 	let commitMessage = $state('');
-	let gitOpen = $state(true);
-	let worktreesOpen = $state(true);
-	let panelSizes = $state({ git: 1, worktrees: 1, github: 1 });
+	let layout = $state(defaultRepositoryLayout());
 	let commitModel = $state('openai-codex:gpt-5.6-luna');
 	let commitModels = $state([
 		{ modelId: 'openai-codex:gpt-5.6-luna', name: 'Codex · GPT-5.6 Luna' }
@@ -58,13 +62,13 @@
 		repositoryLoading = true;
 		repositoryError = '';
 		try {
-			const query = selectedRepository
-				? `?repository=${encodeURIComponent(selectedRepository)}`
+			const query = layout.selectedRepository
+				? `?repository=${encodeURIComponent(layout.selectedRepository)}`
 				: '';
 			const result = await api<Repository>(`/api/projects/${projectId}/repository${query}`);
 			if (!mounted || request !== repositoryRequestGeneration) return;
 			repository = result;
-			selectedRepository = result.repositoryPath ?? selectedRepository;
+			layout.selectedRepository = result.repositoryPath ?? layout.selectedRepository;
 			githubItems = null;
 			onbranch(result.branch);
 			onchanges(result.changes.length);
@@ -88,7 +92,7 @@
 		githubError = '';
 		try {
 			const params = new URLSearchParams({ view: 'github' });
-			if (selectedRepository) params.set('repository', selectedRepository);
+			if (layout.selectedRepository) params.set('repository', layout.selectedRepository);
 			githubItems = await api<GitHubItems>(`/api/projects/${projectId}/repository?${params}`);
 		} catch (cause) {
 			githubError = cause instanceof Error ? cause.message : String(cause);
@@ -124,7 +128,7 @@
 		try {
 			repository = await api<Repository>(`/api/projects/${projectId}/repository`, {
 				method: 'POST',
-				body: JSON.stringify({ ...operation, repository: selectedRepository })
+				body: JSON.stringify({ ...operation, repository: layout.selectedRepository })
 			});
 			onchanges(repository.changes.length);
 			repositoryMessage =
@@ -156,7 +160,7 @@
 				method: 'POST',
 				body: JSON.stringify({
 					action: 'generateCommitMessage',
-					repository: selectedRepository,
+					repository: layout.selectedRepository,
 					provider: commitModel.slice(0, separator),
 					model: commitModel.slice(separator + 1)
 				})
@@ -185,13 +189,12 @@
 			// The default remains available when Hermes model discovery is offline.
 		}
 	}
-	function toggleWorktrees() {
-		worktreesOpen = !worktreesOpen;
-		localStorage.setItem(`hue:project-tools:${projectId}:worktrees-open`, String(worktreesOpen));
+	function selectRepository() {
+		saveRepositorySelection(localStorage, projectId, layout.selectedRepository);
+		void loadRepository();
 	}
-	function toggleGit() {
-		gitOpen = !gitOpen;
-	}
+	const toggleRepository = (panel: 'git' | 'worktrees') =>
+		toggleRepositoryPanel(localStorage, projectId, layout, panel);
 	function selectCommitModel(modelId: string) {
 		commitModel = modelId;
 		localStorage.setItem('hue:commit-message-model', modelId);
@@ -206,8 +209,7 @@
 	onMount(() => {
 		mounted = true;
 		commitModel = localStorage.getItem('hue:commit-message-model') || commitModel;
-		worktreesOpen =
-			localStorage.getItem(`hue:project-tools:${projectId}:worktrees-open`) !== 'false';
+		layout = readRepositoryLayout(localStorage, projectId);
 		void loadRepository();
 		void loadCommitModels();
 		return () => {
@@ -219,16 +221,16 @@
 
 <article
 	class={`${panel} repository-panel`}
-	style:flex={gitOpen ? `${panelSizes.git} 1 0px` : '0 0 auto'}
+	style:flex={layout.gitOpen ? `${layout.panelSizes.git} 1 0px` : '0 0 auto'}
 	aria-label="Git status"
 >
 	<header
 		class="flex min-h-11 cursor-pointer items-center justify-between gap-2 border-b border-border bg-muted/40 px-2.5 py-2"
 		role="button"
 		tabindex="0"
-		aria-expanded={gitOpen}
-		onclick={(event) => togglePanelFromHeader(event, toggleGit)}
-		onkeydown={(event) => togglePanelFromHeader(event, toggleGit)}
+		aria-expanded={layout.gitOpen}
+		onclick={(event) => togglePanelFromHeader(event, () => toggleRepository('git'))}
+		onkeydown={(event) => togglePanelFromHeader(event, () => toggleRepository('git'))}
 	>
 		<div class="flex items-center gap-2">
 			<GitBranch width={17} height={17} aria-hidden="true" />
@@ -242,9 +244,9 @@
 		{#if (repository?.repositories?.length ?? 0) > 1}<select
 				class="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs max-[700px]:h-11"
 				aria-label="Repository"
-				bind:value={selectedRepository}
+				bind:value={layout.selectedRepository}
 				disabled={repositoryBusy || repositoryLoading}
-				onchange={() => void loadRepository()}
+				onchange={selectRepository}
 			>
 				{#each repository?.repositories ?? [] as item}<option value={item.path}
 						>{item.label ?? (item.path === '.' ? 'Project root' : item.path)}</option
@@ -267,13 +269,13 @@
 				onclick={refreshRepository}><RefreshCw width={15} height={15} aria-hidden="true" /></Button
 			>
 		</div>
-		{#if gitOpen}<ChevronDown width={16} height={16} aria-hidden="true" />{:else}<ChevronRight
+		{#if layout.gitOpen}<ChevronDown
 				width={16}
 				height={16}
 				aria-hidden="true"
-			/>{/if}
+			/>{:else}<ChevronRight width={16} height={16} aria-hidden="true" />{/if}
 	</header>
-	{#if gitOpen}
+	{#if layout.gitOpen}
 		<div class="repository-content min-h-0 flex-1 overflow-auto p-2">
 			{#if repositoryLoading}<p class="muted text-xs text-muted-foreground" role="status">
 					Reading repository…
@@ -300,7 +302,7 @@
 				</nav>
 				<RepositoryDiff
 					{projectId}
-					repositoryPath={selectedRepository}
+					repositoryPath={layout.selectedRepository}
 					revision={repository.changes
 						.map(({ path, index, worktree }) => `${path}:${index}${worktree}`)
 						.join('|')}
@@ -445,39 +447,41 @@
 		</form>
 	{/if}
 </article>
-
-{#if gitOpen && worktreesOpen}<GitPanelResizer
+{#if layout.gitOpen && layout.worktreesOpen}<GitPanelResizer
 		label="Resize Git and Worktrees"
-		firstWeight={panelSizes.git}
-		secondWeight={panelSizes.worktrees}
-		onresize={(git, worktrees) => ((panelSizes.git = git), (panelSizes.worktrees = worktrees))}
+		firstWeight={layout.panelSizes.git}
+		secondWeight={layout.panelSizes.worktrees}
+		onresize={(git, worktrees) =>
+			resizeRepositoryPanels(localStorage, projectId, layout, 'git', 'worktrees', git, worktrees)}
 	/>{/if}
 <article
 	class={`${panel} worktrees-panel`}
-	style:flex={worktreesOpen ? `${panelSizes.worktrees} 1 0px` : '0 0 auto'}
+	style:flex={layout.worktreesOpen ? `${layout.panelSizes.worktrees} 1 0px` : '0 0 auto'}
 	aria-label="Git worktrees"
 >
 	<header
 		class="flex min-h-11 cursor-pointer items-center justify-between border-b border-border bg-muted/40 px-2.5 py-2"
 		role="button"
 		tabindex="0"
-		aria-expanded={worktreesOpen}
-		onclick={(event) => togglePanelFromHeader(event, toggleWorktrees)}
-		onkeydown={(event) => togglePanelFromHeader(event, toggleWorktrees)}
+		aria-expanded={layout.worktreesOpen}
+		onclick={(event) => togglePanelFromHeader(event, () => toggleRepository('worktrees'))}
+		onkeydown={(event) => togglePanelFromHeader(event, () => toggleRepository('worktrees'))}
 	>
 		<strong class="flex items-center gap-2 text-xs"
 			><GitFork width={17} height={17} aria-hidden="true" />Worktrees</strong
 		>
 		<div class="flex items-center gap-1">
 			<span class="text-[0.68rem] text-muted-foreground">{repository?.worktrees.length ?? 0}</span>
-			{#if worktreesOpen}<ChevronDown
+			{#if layout.worktreesOpen}<ChevronDown
 					width={16}
 					height={16}
 					aria-hidden="true"
 				/>{:else}<ChevronRight width={16} height={16} aria-hidden="true" />{/if}
 		</div>
 	</header>
-	{#if worktreesOpen}<div class="worktree-list grid min-h-0 content-start gap-1 overflow-auto p-2">
+	{#if layout.worktreesOpen}<div
+			class="worktree-list grid min-h-0 content-start gap-1 overflow-auto p-2"
+		>
 			{#each repository?.worktrees ?? [] as worktree}<article
 					class="flex min-w-0 items-start justify-between gap-2 rounded-lg border border-border bg-background/50 p-2"
 				>
@@ -499,20 +503,25 @@
 				</p>{/if}
 		</div>{/if}
 </article>
-
-{#if worktreesOpen && isGitHubRepository()}<GitPanelResizer
+{#if layout.worktreesOpen && isGitHubRepository()}<GitPanelResizer
 		label="Resize Worktrees and GitHub"
-		firstWeight={panelSizes.worktrees}
-		secondWeight={panelSizes.github}
-		onresize={(worktrees, github) => (
-			(panelSizes.worktrees = worktrees),
-			(panelSizes.github = github)
-		)}
+		firstWeight={layout.panelSizes.worktrees}
+		secondWeight={layout.panelSizes.github}
+		onresize={(worktrees, github) =>
+			resizeRepositoryPanels(
+				localStorage,
+				projectId,
+				layout,
+				'worktrees',
+				'github',
+				worktrees,
+				github
+			)}
 	/>{/if}
-
 {#if isGitHubRepository()}<GitHubPanels
+		{projectId}
 		items={githubItems}
 		error={githubError}
 		links={repositoryLinks()}
-		weight={panelSizes.github}
+		weight={layout.panelSizes.github}
 	/>{/if}

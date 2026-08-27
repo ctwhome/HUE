@@ -8,7 +8,6 @@
 	import CircleX from '~icons/lucide/circle-x';
 	import EllipsisVertical from '~icons/lucide/ellipsis-vertical';
 	import Folder from '~icons/lucide/folder';
-	import GripVertical from '~icons/lucide/grip-vertical';
 	import LoaderCircle from '~icons/lucide/loader-circle';
 	import MessageSquare from '~icons/lucide/message-square';
 	import PanelLeftClose from '~icons/lucide/panel-left-close';
@@ -106,7 +105,6 @@
 	} = $props();
 	let sessionOrder = $state<string[]>([]);
 	let draggedSessionId = $state<string | null>(null);
-	let sessionDropTarget = $state<string | null>(null);
 	const orderedSessions = $derived.by(() => {
 		const groups = new Map<string, Session[]>();
 		for (const session of sessions) {
@@ -145,6 +143,7 @@
 	const groupLabel = (value: string) => value.slice(value.indexOf(':') + 1);
 	function dragSession(event: DragEvent, session: Session) {
 		if (!event.dataTransfer) return;
+		if (!sessionOrder.length) sessionOrder = orderedSessions.map(({ sessionId }) => sessionId);
 		draggedSessionId = session.sessionId;
 		event.dataTransfer.effectAllowed = 'copyMove';
 		event.dataTransfer.setData('application/x-hue-session-id', session.sessionId);
@@ -154,32 +153,31 @@
 		const dragged = sessions.find(({ sessionId }) => sessionId === draggedSessionId);
 		if (!dragged || group(dragged) !== group(session)) return;
 		event.preventDefault();
-		sessionDropTarget = session.sessionId;
 		if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+		if (dragged.sessionId === session.sessionId) return;
+		const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const withoutDragged = sessionOrder.filter((sessionId) => sessionId !== dragged.sessionId);
+		const targetIndex = withoutDragged.indexOf(session.sessionId);
+		const before =
+			event.clientY > bounds.top + bounds.height / 2
+				? (withoutDragged[targetIndex + 1] ?? null)
+				: session.sessionId;
+		sessionOrder = moveBefore(sessionOrder, dragged.sessionId, before);
 	}
 
-	function dropSession(event: DragEvent, session: Session) {
+	function dropSession(event: DragEvent, _session: Session) {
 		event.preventDefault();
-		const sessionId =
-			event.dataTransfer?.getData('application/x-hue-session-id') || draggedSessionId;
-		if (sessionId) {
-			sessionOrder = moveBefore(
-				sessionOrder.length ? sessionOrder : sessions.map((item) => item.sessionId),
-				sessionId,
-				session.sessionId
-			);
+		finishSessionDrag();
+	}
+
+	function finishSessionDrag() {
+		if (draggedSessionId) {
 			localStorage.setItem(
 				`hue:session-order:${selectedProject?.id ?? 'general'}`,
 				JSON.stringify(sessionOrder)
 			);
 		}
 		draggedSessionId = null;
-		sessionDropTarget = null;
-	}
-
-	function finishSessionDrag() {
-		draggedSessionId = null;
-		sessionDropTarget = null;
 	}
 	const rowState = (session: Session) =>
 		sessionRowState({
@@ -286,7 +284,7 @@
 	<div class="item-list grid gap-1 overflow-auto p-2">
 		<button
 			class="new-session-action sticky top-0 z-10 flex min-h-(--control-height) w-full items-center justify-center gap-2 rounded-md bg-primary px-3 font-medium text-primary-foreground hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-			onclick={oncreate}
+			onclick={() => oncreate()}
 			disabled={selectedProject?.rootAvailable === false}
 			><Plus width={18} height={18} aria-hidden="true" /> Add new session</button
 		>
@@ -298,7 +296,7 @@
 					{groupLabel(group(session))}
 				</h2>{/if}
 			<div
-				class={`session-row relative w-full min-w-0 ${sessionDropTarget === session.sessionId ? 'rounded-md ring-2 ring-ring' : ''}`}
+				class="session-row relative w-full min-w-0"
 				role="group"
 				aria-label={`Session ${session.title || 'Untitled session'}`}
 				ondragover={(event) => allowSessionDrop(event, session)}
@@ -321,11 +319,13 @@
 						>{/if}
 				</button>
 				<button
-					class="session-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md border border-transparent bg-transparent px-2 py-1 pr-24 pl-8 text-left hover:border-border hover:bg-accent [&.active]:border-border [&.active]:bg-accent"
+					class="session-select flex min-h-(--control-height) w-full cursor-grab items-center gap-2 rounded-md border border-transparent bg-transparent px-2 py-1 pr-16 pl-8 text-left hover:border-border hover:bg-accent active:cursor-grabbing [&.active]:border-border [&.active]:bg-accent"
 					class:active={selectedSession?.sessionId === session.sessionId}
 					aria-current={selectedSession?.sessionId === session.sessionId ? 'page' : undefined}
 					title={session.available === false ? session.recovery : undefined}
-					disabled={session.available === false}
+					draggable={session.available !== false}
+					ondragstart={(event) => dragSession(event, session)}
+					ondragend={finishSessionDrag}
 					onclick={() => onopen(session)}
 				>
 					<div class="session-row-copy min-w-0 flex-1">
@@ -370,18 +370,6 @@
 						>
 					{/if}
 				</button>
-				<button
-					class="session-drag absolute top-1/2 right-15 hidden size-7 -translate-y-1/2 cursor-grab place-items-center rounded-md opacity-0 hover:bg-accent focus:opacity-100 active:cursor-grabbing sm:grid [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
-					class:opacity-100={selectedSession?.sessionId === session.sessionId}
-					draggable={session.available !== false}
-					disabled={session.available === false}
-					aria-label={`Reorder ${session.title || 'Untitled session'}`}
-					title={`Drag ${session.title || 'Untitled session'} to reorder`}
-					ondragstart={(event) => dragSession(event, session)}
-					ondragend={finishSessionDrag}
-					onclick={(event) => event.preventDefault()}
-					><GripVertical width={14} height={14} aria-hidden="true" /></button
-				>
 				{#if !session.archived}<button
 						class="session-archive absolute top-1/2 right-8 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
 						aria-label={`Archive ${session.title || 'Untitled session'}`}

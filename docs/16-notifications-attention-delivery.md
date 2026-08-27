@@ -13,7 +13,7 @@ A notification is not a transient toast and not a raw worker log line. It is a d
 
 Current focused HUE implementation projects only five durable `session_events` kinds: `message.completed`, pending `agent.permission`, pending `agent.clarify`, `message.failed`, and `message.unknown`. Projectless Sessions remain supported. Routine chunks, thoughts, tools, plans, progress, and resolved interactions never create notifications.
 
-SQLite stores canonical notification lifecycle, device endpoints, endpoint-scoped presence, and delivery attempts separately. Source-event sequence is unique per canonical notification, so startup projection and replay are idempotent. Presentation copy is fixed and generic: prompts, transcript text, Project/Session titles, paths, tool arguments, answers, and secret-bearing errors are never copied into notification records or Web Push payloads.
+SQLite stores canonical notification lifecycle, device endpoints, endpoint-scoped presence, and delivery attempts separately. Source-event sequence is unique per canonical notification, so startup projection and replay are idempotent. Persisted presentation copy and Web Push payloads stay fixed and generic: prompts, transcript text, Project/Session titles, paths, tool arguments, answers, and secret-bearing errors are never copied into them. The authenticated in-app list resolves the current Session and Project names at read time so each card identifies its context without expanding external-channel disclosure.
 
 Web Push is optional. Configure all three values or HUE reports system delivery unavailable without failing startup:
 

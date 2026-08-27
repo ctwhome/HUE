@@ -4,7 +4,6 @@
 	import ChevronRight from '~icons/lucide/chevron-right';
 	import ChevronsDownUp from '~icons/lucide/chevrons-down-up';
 	import ChevronsUpDown from '~icons/lucide/chevrons-up-down';
-	import File from '~icons/lucide/file';
 	import FilePlus2 from '~icons/lucide/file-plus-2';
 	import Folder from '~icons/lucide/folder';
 	import FolderPlus from '~icons/lucide/folder-plus';
@@ -12,10 +11,13 @@
 	import Search from '~icons/lucide/search';
 	import Upload from '~icons/lucide/upload';
 	import X from '~icons/lucide/x';
+	import { isFilePathHidden } from '$lib/hidden-file-patterns';
+	import { defaultPreferences, readPreferences, type HUEPreferences } from '$lib/preferences';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
 	import { api } from './api';
 	import FilePreview from './FilePreview.svelte';
+	import FileTypeIcon from './FileTypeIcon.svelte';
 	import FileDialogs from './FileDialogs.svelte';
 	import {
 		restoreTreeFocus,
@@ -77,10 +79,20 @@
 	let deleteConfirmation = $state('');
 	let searchTimer: ReturnType<typeof setTimeout> | undefined;
 	let handledFileRequest = '';
+	let hiddenFilePatterns = $state(defaultPreferences.hiddenFilePatterns);
+	const expandedStorageKey = () => `hue:project-files:${projectId}:expanded`;
 	const previewRequests = createPreviewRequests();
 	const treeItems = new Map<string, HTMLButtonElement>();
 	let dirty = $derived(Boolean(preview?.content !== null && editor !== loadedContent));
 	let contentUrl = $derived(previewContentUrl(projectId, preview?.path));
+	let visibleEntries = $derived(
+		entries.filter(({ path }) => !isFilePathHidden(path, hiddenFilePatterns))
+	);
+	function applyHiddenFilePatterns(value: string) {
+		hiddenFilePatterns = value;
+		const filtered = entries.filter(({ path }) => !isFilePathHidden(path, value));
+		focusedPath = restoreTreeFocus(filtered, expanded, focusedPath || selectedPath);
+	}
 	function discardChanges() {
 		editor = loadedContent;
 		externalChange = movedDeleted = false;
@@ -116,7 +128,7 @@
 					);
 			entries = 'entries' in body ? body.entries : body.results;
 			truncated = body.truncated;
-			focusedPath = restoreTreeFocus(entries, expanded, focusedPath || selectedPath);
+			focusedPath = restoreTreeFocus(visibleEntries, expanded, focusedPath || selectedPath);
 			if (selectedPath) await checkSelected();
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : String(cause);
@@ -175,13 +187,17 @@
 	function toggleFolder(path: string) {
 		const next = new Set(expanded);
 		next.has(path) ? next.delete(path) : next.add(path);
+		setExpanded(next);
+	}
+	function setExpanded(next: Set<string>) {
 		expanded = next;
+		localStorage.setItem(expandedStorageKey(), JSON.stringify([...next]));
 	}
 	function treeKey(event: KeyboardEvent, entry: Entry) {
 		if (!['ArrowUp', 'ArrowDown', 'Home', 'End', 'ArrowLeft', 'ArrowRight'].includes(event.key))
 			return;
 		event.preventDefault();
-		const action = treeKeyboardAction(entries, expanded, entry.path, event.key as TreeKey);
+		const action = treeKeyboardAction(visibleEntries, expanded, entry.path, event.key as TreeKey);
 		if (action.expand && !expanded.has(action.expand)) toggleFolder(action.expand);
 		if (action.collapse && expanded.has(action.collapse)) toggleFolder(action.collapse);
 		void focusTree(action.focusPath);
@@ -311,8 +327,21 @@
 		}
 	});
 	onMount(() => {
+		applyHiddenFilePatterns(readPreferences(localStorage).hiddenFilePatterns);
+		const updatePreferences = (event: Event) => {
+			applyHiddenFilePatterns((event as CustomEvent<HUEPreferences>).detail.hiddenFilePatterns);
+		};
+		window.addEventListener('hue:preferences', updatePreferences);
+		try {
+			const saved = JSON.parse(localStorage.getItem(expandedStorageKey()) ?? '[]');
+			if (Array.isArray(saved))
+				expanded = new Set(saved.filter((path) => typeof path === 'string'));
+		} catch {
+			expanded = new Set();
+		}
 		void loadTree();
 		return () => {
+			window.removeEventListener('hue:preferences', updatePreferences);
 			dirtySource.unregister();
 			clearTimeout(searchTimer);
 			previewRequests.cancel();
@@ -360,7 +389,7 @@
 		onroot={() => guarded(clearPreviewSelection)}
 		onbreadcrumb={(path) => {
 			expanded.add(path);
-			expanded = new Set(expanded);
+			setExpanded(new Set(expanded));
 		}}
 		oneditor={(value) => (editor = value)}
 		onmarkdownmode={(value) => (markdownMode = value)}
@@ -368,7 +397,7 @@
 
 	<aside class="file-sidebar flex min-h-0 flex-col border-l border-border">
 		<header class="border-b border-border p-2">
-			<div class="flex items-center gap-1">
+			<div class="file-sidebar-tabs flex min-w-0 items-center gap-1">
 				<Button
 					variant={view === 'files' ? 'secondary' : 'ghost'}
 					size="sm"
@@ -379,8 +408,9 @@
 					size="sm"
 					onclick={loadArtifacts}>Artifacts and evidence</Button
 				>
+			</div>
+			<div class="file-sidebar-actions mt-1 flex min-w-0 flex-wrap items-center justify-end gap-1">
 				<Button
-					class="ml-auto"
 					variant="ghost"
 					size="icon"
 					aria-label="Create file"
@@ -404,29 +434,17 @@
 					onclick={() => guarded(() => void loadTree())}
 					><RefreshCw width={16} height={16} aria-hidden="true" /></Button
 				>
-			</div>
-			{#if view === 'files'}<label
-					class="mt-2 flex items-center gap-2 rounded-md border border-input px-2"
-					><Search width={15} height={15} aria-hidden="true" /><Input
-						class="border-0 px-0 focus-visible:ring-0"
-						bind:value={query}
-						oninput={scheduleSearch}
-						aria-label="Search Project files"
-						placeholder="Search files…"
-					/></label
-				>{/if}
-		</header>
-		{#if view === 'files'}
-			<div class="flex gap-1 border-b border-border p-1.5">
 				<Button
 					variant="ghost"
 					size="icon"
 					aria-label="Expand all folders"
 					title="Expand all folders"
 					onclick={() =>
-						(expanded = new Set(
-							entries.filter(({ type }) => type === 'directory').map(({ path }) => path)
-						))}><ChevronsUpDown width={16} height={16} aria-hidden="true" /></Button
+						setExpanded(
+							new Set(
+								visibleEntries.filter(({ type }) => type === 'directory').map(({ path }) => path)
+							)
+						)}><ChevronsUpDown width={16} height={16} aria-hidden="true" /></Button
 				>
 				<Button
 					variant="ghost"
@@ -434,8 +452,8 @@
 					aria-label="Collapse all folders"
 					title="Collapse all folders"
 					onclick={() => {
-						expanded = new Set();
-						focusedPath = restoreTreeFocus(entries, expanded, focusedPath);
+						setExpanded(new Set());
+						focusedPath = restoreTreeFocus(visibleEntries, expanded, focusedPath);
 					}}><ChevronsDownUp width={16} height={16} aria-hidden="true" /></Button
 				>
 				<label
@@ -450,11 +468,23 @@
 					/></label
 				>
 			</div>
+			{#if view === 'files'}<label
+					class="mt-2 flex items-center gap-2 rounded-md border border-input px-2"
+					><Search width={15} height={15} aria-hidden="true" /><Input
+						class="border-0 px-0 focus-visible:ring-0"
+						bind:value={query}
+						oninput={scheduleSearch}
+						aria-label="Search Project files"
+						placeholder="Search files…"
+					/></label
+				>{/if}
+		</header>
+		{#if view === 'files'}
 			<div class="min-h-0 flex-1 overflow-auto p-1" role="tree" aria-label="Project file tree">
 				{#if loading}<p class="p-2 text-xs text-muted-foreground" role="status">
 						Indexing files…
 					</p>{/if}
-				{#each visibleFileEntries(entries, expanded) as entry}
+				{#each visibleFileEntries(visibleEntries, expanded) as entry}
 					<button
 						use:treeItem={entry.path}
 						class="file-tree-row flex w-full items-center gap-1 rounded px-1.5 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
@@ -480,11 +510,7 @@
 								width={15}
 								height={15}
 								aria-hidden="true"
-							/>{:else}<span class="w-3.5"></span><File
-								width={15}
-								height={15}
-								aria-hidden="true"
-							/>{/if}
+							/>{:else}<span class="w-3.5"></span><FileTypeIcon path={entry.path} />{/if}
 						<span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{entry.name}</span
 						>
 					</button>

@@ -22,6 +22,7 @@
 	let language = $state(defaultPreferences.language);
 	let voice = $state(defaultPreferences.voice);
 	let showUsage = $state(defaultPreferences.showUsage);
+	let hiddenFilePatterns = $state(defaultPreferences.hiddenFilePatterns);
 	let chatBackground = $state<ChatBackground | null>(null);
 	let backgroundError = $state('');
 	let ready = $state(false);
@@ -35,7 +36,8 @@
 			density,
 			language,
 			voice,
-			showUsage
+			showUsage,
+			hiddenFilePatterns
 		});
 		localStorage.setItem('hue:preferences', JSON.stringify(preferences));
 		applyPreferences(document.documentElement, preferences);
@@ -50,6 +52,7 @@
 		language = preferences.language;
 		voice = preferences.voice;
 		showUsage = preferences.showUsage;
+		hiddenFilePatterns = preferences.hiddenFilePatterns;
 		chatBackground = readGeneralChatBackground(localStorage);
 		ready = true;
 		apply();
@@ -57,10 +60,7 @@
 
 	function setChatBackground(background: ChatBackground | null) {
 		try {
-			writeGeneralChatBackground(
-				localStorage,
-				background?.kind === 'none' ? null : background
-			);
+			writeGeneralChatBackground(localStorage, background?.kind === 'none' ? null : background);
 			chatBackground = background?.kind === 'none' ? null : background;
 			backgroundError = '';
 			window.dispatchEvent(new CustomEvent(CHAT_BACKGROUND_EVENT));
@@ -129,6 +129,17 @@
 		>
 		<label class="flex min-h-11 items-center gap-2 text-sm"
 			><input type="checkbox" disabled /> Show CLI Sessions</label
+		>
+		<label class="col-span-2 grid gap-1 text-sm max-[700px]:col-span-1"
+			>Hidden file patterns<textarea
+				class="min-h-32 resize-y rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
+				aria-label="Hidden file patterns"
+				placeholder={'.DS_Store\n*.log\nnode_modules'}
+				maxlength="10000"
+				bind:value={hiddenFilePatterns}
+				oninput={apply}></textarea><small class="text-muted-foreground"
+				>One exact name or * / ? pattern per line. Folder matches also hide their contents.</small
+			></label
 		>
 	</div>
 	<fieldset class="grid gap-2 border-t border-border pt-3">

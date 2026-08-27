@@ -20,9 +20,9 @@ test('commit generation lives in the message input and shares the model picker',
 });
 
 test('Git, Worktrees, and GitHub headers toggle their full panels', () => {
-	expect(source).toContain('aria-expanded={gitOpen}');
-	expect(source).toContain('onclick={(event) => togglePanelFromHeader(event, toggleGit)}');
-	expect(source).toContain('aria-expanded={worktreesOpen}');
+	expect(source).toContain('aria-expanded={layout.gitOpen}');
+	expect(source).toContain("toggleRepository('git')");
+	expect(source).toContain('aria-expanded={layout.worktreesOpen}');
 	expect(github).toContain('aria-expanded={open}');
 	expect(github).toContain('onclick={(event) => toggleFromHeader(event)}');
 });

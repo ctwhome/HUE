@@ -96,6 +96,7 @@ const composer = read('../lib/components/workspace/Composer.svelte');
 const modelPicker = read('../lib/components/ModelPicker.svelte');
 const sessionOptionPicker = read('../lib/components/SessionOptionPicker.svelte');
 const sessionHeader = read('../lib/components/workspace/SessionHeader.svelte');
+const sessionInspector = read('../lib/components/workspace/SessionInspector.svelte');
 const terminalPanel = read('../lib/components/workbench/TerminalPanel.svelte');
 const emojiPicker = read('../lib/components/EmojiPicker.svelte');
 const ui = [page, navigation, panel, workbench].join('\n');
@@ -245,7 +246,10 @@ test('prompt library opens from the composer instead of occupying session naviga
 	expect(contextPanel).not.toContain('>Workflows</button');
 	expect(composer).toContain('<PromptLibraryDialog');
 	expect(composer).not.toContain('{#if promptLibraryAvailable}<button');
-	expect(page).toContain('Select a Project to use its prompt library');
+	expect(page).not.toContain('Select a Project to use its prompt library');
+	expect(composer).not.toContain('if (!promptLibraryAvailable) return');
+	expect(page).toContain("if (!available) source = 'community'");
+	expect(page).toContain('oninsert(selectedCatalog.prompt)');
 	expect(composer.indexOf('Hermes profile:')).toBeLessThan(
 		composer.indexOf('aria-label="Prompt library"')
 	);
@@ -281,6 +285,17 @@ test('session rows expose archive on hover without redundant open tooltips', () 
 	expect(styles).toMatch(
 		/@media \(max-width: 700px\)[\s\S]*\.session-archive[\s\S]*width: 44px;[\s\S]*height: 44px;/
 	);
+});
+
+test('unavailable Sessions remain openable for recovery without exposing the composer', () => {
+	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
+	const sessionSelect = contextPanel.slice(
+		contextPanel.indexOf('class="session-select'),
+		contextPanel.indexOf('class="session-row-copy')
+	);
+	expect(sessionSelect).not.toContain('disabled={session.available === false}');
+	expect(page).toContain('{#if selectedSession?.available === false}');
+	expect(page).toContain("{selectedSession.recovery ?? 'Hermes Session is unavailable.'}");
 });
 
 test('Project rows do not show redundant open tooltips', () => {
@@ -402,6 +417,8 @@ test('Hermes management remains complete and request-race safe', () => {
 	expect(hermes).toContain('Create validated backup');
 	expect(hermes).toContain('HUE database');
 	expect(hermes).toContain('Offline restore');
+	expect(hermes).toContain('hue:hermes:runtime-capabilities-open');
+	expect(hermes).toContain('hue:hermes:error-logs-open');
 	expect(hermes).toContain('oncommand');
 	for (const action of ['Create schedule', 'Run now', 'Run history', 'Pause', 'Resume', 'Delete']) {
 		expect(hermes).toContain(action);
@@ -453,6 +470,7 @@ test('preferences expose supported appearance, input, language, voice, usage, an
 		expect(preferences).toContain(label);
 	}
 	expect(preferences).toContain('hue:preferences');
+	expect(preferences).toContain('aria-label="Hidden file patterns"');
 	expect(preferences).toContain('disabled');
 	expect(preferences).toContain('Unsupported: Hermes session origin/source metadata unavailable');
 	expect(preferences).not.toContain('bind:checked={showCliSessions}');
@@ -678,6 +696,10 @@ test('Project files expose bounded accessible tree, previews, evidence, and guar
 		workbenchFiles[3].indexOf('<aside class="file-sidebar')
 	);
 	expect(workbenchFiles[3]).toContain('placeholder="Search files…"');
+	expect(workbenchFiles[3]).toContain('class="file-sidebar-tabs');
+	expect(workbenchFiles[3]).toContain('class="file-sidebar-actions');
+	expect(workbenchFiles[3]).toContain('<FileTypeIcon path={entry.path}');
+	expect(workbenchFiles[3]).toContain('isFilePathHidden');
 	expect(workbenchFiles[4]).toContain('aria-label="Preview Markdown"');
 	expect(workbenchFiles[4]).toContain('aria-label="Edit Markdown source"');
 	expect(workbenchFiles[4]).toContain('highlightFileSource');
@@ -709,7 +731,7 @@ test('mobile chat exposes resilient content, compact context, and auto-growing i
 	expect(styles).toContain('overflow-wrap: anywhere');
 	expect(styles).toContain('max-inline-size: 100%');
 	expect(page).toContain('function resizeComposer()');
-	expect(page).toContain('title="Session options"');
+	expect(page).toContain('title="Session settings"');
 	expect(page).toContain('Delivery status unknown');
 	expect(modelPicker).toContain('aria-label="Search models"');
 	expect(modelPicker).toContain('class="model-list min-h-0 flex-1 overflow-y-auto"');
@@ -722,10 +744,29 @@ test('mobile chat exposes resilient content, compact context, and auto-growing i
 	);
 	expect(styles).toContain('flex-wrap: wrap');
 	expect(composer.indexOf('<ModelPicker')).toBeLessThan(composer.indexOf('ariaLabel="Work mode"'));
-	expect(page).toContain("aria-label={`Manage ${session.title || 'Untitled session'}`}");
+	expect(page).toContain("aria-label={`Change icon for ${session.title || 'Untitled session'}`}");
 	expect(page).toContain('popover="auto"');
 	expect(page).toContain('Saved automatically');
 	expect(page).not.toContain('Save changes');
+});
+
+test('mobile session header groups Project tools, settings, and context percentage', () => {
+	expect(sessionHeader).toContain('class="session-project-tools');
+	expect(sessionHeader).toContain("projectTools ? 'Back to chat' : 'Open Project tools'");
+	expect(sessionHeader).toContain('class="session-settings-trigger');
+	expect(sessionInspector).toContain("contextPercent === null ? '--' : `${contextPercent}%`");
+	expect(sessionInspector).toContain("`Inspect Session context, ${contextPercent}% used`");
+	expect(sessionInspector).toContain('class="session-inspector-trigger session-context-ring context-usage"');
+	expect(sessionInspector).not.toContain('emerald');
+	expect(styles).toContain('conic-gradient(');
+	expect(sessionHeader).toContain('title="Change session icon"');
+	expect(sessionHeader.indexOf('class="session-project-tools')).toBeLessThan(
+		sessionHeader.indexOf('class="session-settings-trigger')
+	);
+	expect(sessionHeader.indexOf('class="session-settings-trigger')).toBeLessThan(
+		sessionHeader.lastIndexOf('<SessionInspector')
+	);
+	expect(workspace).toContain('selectedProject?.rootAvailable && mobile && !selectedSession');
 });
 
 test('mobile composer keeps model, work mode, and send visible beside a secondary-options menu', () => {
@@ -779,7 +820,11 @@ test('Project groups expose editable, persistent, accessible collapsible heading
 	expect(projectRail).toContain('<EllipsisVertical');
 	expect(contextPanel).toContain('hue:session-order:');
 	expect(contextPanel).toContain('ondrop={(event) => dropSession(event, session)}');
-	expect(contextPanel).toContain('<GripVertical');
+	expect(contextPanel).toContain('event.clientY > bounds.top + bounds.height / 2');
+	expect(contextPanel).not.toContain('sessionDropTarget');
+	expect(contextPanel).toContain('draggable={session.available !== false}');
+	expect(contextPanel).toContain('ondragstart={(event) => dragSession(event, session)}');
+	expect(contextPanel).not.toContain('<GripVertical');
 	expect(contextPanel).toContain('<EllipsisVertical');
 	expect(projectRail).toContain('Group label');
 	expect(projectRail).toContain('<datalist');
@@ -841,6 +886,9 @@ test('composer exposes HUE work mode selector and timeline status item hooks', (
 	expect(composer).toContain('Live');
 	expect(composer).toContain("import SessionOptionPicker from '../SessionOptionPicker.svelte'");
 	expect(composer).toContain('ariaLabel="Edit approvals"');
+	expect(composer).toContain('title="Edit approvals are unavailable until Hermes starts"');
+	expect(styles).toContain('.composer-options-menu > .session-option-trigger');
+	expect(styles).toContain('.composer-toolbar > .composer-send');
 	expect(composer).toContain('ariaLabel="Reasoning"');
 	expect(sessionOptionPicker).toContain('role="menuitemradio"');
 	expect(sessionOptionPicker).toContain('<Icon width={16} height={16}');
@@ -851,6 +899,9 @@ test('composer exposes HUE work mode selector and timeline status item hooks', (
 	expect(composer).toContain('aria-label={`Hermes profile: ${runtime.profile}`}');
 	expect(composer).toContain('<UserRound');
 	expect(composer).toContain('aria-label="Prompt library"');
+	expect(composer.indexOf('aria-label="Prompt library"')).toBeLessThan(
+		composer.indexOf('ariaLabel="Edit approvals"')
+	);
 	expect(workspace).not.toContain('showPromptLibrary={false}');
 	expect(sessionManager).not.toContain('aria-label="Hermes profile"');
 	expect(sessionManager).not.toContain('Prompt library');
@@ -879,6 +930,7 @@ test('clean chat keeps thinking and tasks in responsive composer panels', () => 
 	expect(task).toContain('aria-expanded={tasksExpanded}');
 	expect(task).toContain('showModal()');
 	expect(task).toContain('aria-label="Tasks"');
+	expect(task).toContain('hue:current-task:open');
 	expect(styles).toContain('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)');
 	expect(styles).toMatch(/@media \(max-width: 700px\)[\s\S]*\.task-dialog/);
 	expect(orb).toContain('Hermes reasoning');

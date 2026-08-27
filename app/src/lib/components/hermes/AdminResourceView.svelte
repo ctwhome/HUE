@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
 	import type { GlobalView } from '../GlobalNavigation.svelte';
@@ -26,7 +27,10 @@
 	let modelProvider = $state('');
 	let modelName = $state('');
 	let result = $state<Record<string, any> | null>(null);
+	let errorLogsOpen = $state(false);
 	const card = 'rounded-xl border border-border bg-card p-4';
+	const errorLogsStorageKey = 'hue:hermes:error-logs-open';
+	onMount(() => (errorLogsOpen = localStorage.getItem(errorLogsStorageKey) === 'true'));
 	const profiles = () => (data.profiles ?? []) as Array<Record<string, any>>;
 	const servers = () => (data.servers ?? []) as Array<Record<string, any>>;
 	const providers = () => (data.options?.providers ?? []) as Array<Record<string, any>>;
@@ -127,7 +131,14 @@
 			<strong>Update availability</strong>
 			<p class="mt-1 text-sm">{data.administration?.update?.message ?? 'Not checked'}</p>
 		</article>
-		<details class={card}>
+		<details
+			class={card}
+			open={errorLogsOpen}
+			ontoggle={(event) => {
+				errorLogsOpen = event.currentTarget.open;
+				localStorage.setItem(errorLogsStorageKey, String(errorLogsOpen));
+			}}
+		>
 			<summary>Redacted error logs</summary>
 			<pre class="mt-2 max-h-80 overflow-auto text-xs">{(
 					data.administration?.logs?.lines ?? []

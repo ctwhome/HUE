@@ -229,14 +229,15 @@
 	async function openPromptLibrary() {
 		optionsOpen = false;
 		promptLibraryDialog?.showModal();
-		if (!promptLibraryAvailable) return;
-		promptLibraryLoading = true;
-		await onloadworkflows();
-		promptLibraryLoading = false;
+		if (promptLibraryAvailable) {
+			promptLibraryLoading = true;
+			await onloadworkflows();
+			promptLibraryLoading = false;
+		}
 	}
-	function insertWorkflowPrompt(workflow: Workflow) {
+	function insertPrompt(prompt: string) {
 		if (!composerElement) return;
-		composerElement.value = [composer.trimEnd(), workflow.prompt].filter(Boolean).join('\n\n');
+		composerElement.value = [composer.trimEnd(), prompt].filter(Boolean).join('\n\n');
 		composerElement.dispatchEvent(new Event('input', { bubbles: true }));
 		promptLibraryDialog?.close();
 		queueMicrotask(() => composerElement?.focus());
@@ -542,19 +543,6 @@
 						>Voice call</span
 					></button
 				>{/if}
-			{#if runtime.modes}<SessionOptionPicker
-					options={runtime.modes.availableModes.map((mode) => ({
-						value: mode.id,
-						name: mode.name,
-						description: `${mode.description ?? 'Choose how Hermes handles file edits.'} Other permission requests still ask.`
-					}))}
-					value={runtime.modes.currentModeId}
-					ariaLabel="Edit approvals"
-					kind="mode"
-					showLabel={true}
-					disabled={runtimeChanging || busy}
-					onselect={(value) => onruntime('modeId', value)}
-				/>{/if}
 			<span
 				class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border text-muted-foreground"
 				aria-label={`Hermes profile: ${runtime.profile}`}
@@ -573,6 +561,28 @@
 				<BookOpenText width={20} height={20} aria-hidden="true" />
 				<span class="mobile-option-label">Prompt library</span></button
 			>
+			{#if runtime.modes}<SessionOptionPicker
+					options={runtime.modes.availableModes.map((mode) => ({
+						value: mode.id,
+						name: mode.name,
+						description: `${mode.description ?? 'Choose how Hermes handles file edits.'} Other permission requests still ask.`
+					}))}
+					value={runtime.modes.currentModeId}
+					ariaLabel="Edit approvals"
+					kind="mode"
+					showLabel={true}
+					disabled={runtimeChanging || busy}
+					onselect={(value) => onruntime('modeId', value)}
+				/>{:else}<button
+					type="button"
+					class="context-chip session-option-trigger inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-lg px-1.5 text-xs text-muted-foreground sm:min-h-8 sm:min-w-8"
+					aria-label="Edit approvals"
+					title="Edit approvals are unavailable until Hermes starts"
+					disabled
+				>
+					<CircleHelp width={16} height={16} aria-hidden="true" />
+					<span class="max-w-24 truncate">Unavailable</span>
+				</button>{/if}
 			{#if reasoning}<div class="mobile-reasoning-option">
 					<SessionOptionPicker
 						options={flattenOptions(reasoning.options)}
@@ -684,5 +694,5 @@
 	onduplicate={onduplicateworkflow}
 	{onfavoritecatalog}
 	onload={onloadworkflows}
-	oninsert={insertWorkflowPrompt}
+	oninsert={insertPrompt}
 />
