@@ -9,6 +9,8 @@ const metadataIds: string[] = [];
 const sessionProjectIds: string[] = [];
 const operationReferences: string[] = [];
 let updatedEnvelope: Record<string, unknown> | null = null;
+let runtimeStarted = false;
+let negotiatedImageCapability = false;
 mock.module('$lib/server/route-services', () => ({
 	...serviceExportStubs,
 	authoritativeProject: async () => ({ id: 'project' }),
@@ -48,6 +50,12 @@ mock.module('$lib/server/route-services', () => ({
 				operationReferences.push(reference);
 				return operation({ id: 'canonical-project' });
 			}
+		},
+		runtime: {
+			start: async () => {
+				runtimeStarted = true;
+			},
+			getCapabilities: () => ({ promptImage: runtimeStarted && negotiatedImageCapability })
 		}
 	})
 }));
@@ -149,6 +157,63 @@ test('rejects combined image and generic attachment count before dispatch', asyn
 	expect(response.status).toBe(400);
 	expect(await response.json()).toEqual({ error: 'Attach no more than 8 files' });
 	expect(submitted).toBe(false);
+});
+
+test('rejects an unsupported image before HUE dispatch persistence', async () => {
+	submitted = false;
+	runtimeStarted = false;
+	negotiatedImageCapability = false;
+	const { POST } = await import('./+server');
+	const response = await POST({
+		params: { projectId: 'project', sessionId: 'session' },
+		request: new Request('http://hue.test', {
+			method: 'POST',
+			body: JSON.stringify({
+				messageId: 'image-message',
+				text: 'Inspect',
+				images: [
+					{
+						name: 'screen.png',
+						mimeType: 'image/png',
+						data: Buffer.from('89504e470d0a1a0a', 'hex').toString('base64')
+					}
+				]
+			})
+		})
+	} as never);
+
+	expect(response.status).toBe(400);
+	expect(await response.json()).toEqual({ error: 'Hermes does not support image prompts' });
+	expect(submitted).toBe(false);
+	expect(runtimeStarted).toBe(true);
+});
+
+test('accepts an image after cold-start capability negotiation', async () => {
+	submitted = false;
+	runtimeStarted = false;
+	negotiatedImageCapability = true;
+	const { POST } = await import('./+server');
+	const response = await POST({
+		params: { projectId: 'project', sessionId: 'session' },
+		request: new Request('http://hue.test', {
+			method: 'POST',
+			body: JSON.stringify({
+				messageId: 'supported-image',
+				text: 'Inspect',
+				images: [
+					{
+						name: 'screen.png',
+						mimeType: 'image/png',
+						data: Buffer.from('89504e470d0a1a0a', 'hex').toString('base64')
+					}
+				]
+			})
+		})
+	} as never);
+
+	expect(response.status).toBe(202);
+	expect(runtimeStarted).toBe(true);
+	expect(submitted).toBe(true);
 });
 
 test('message acceptance returns effective work mode after natural-language switch', async () => {

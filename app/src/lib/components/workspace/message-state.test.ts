@@ -193,3 +193,38 @@ test('sendText records a stale rejected POST only on the origin', async () => {
 	expect(harness.session.delivery).toBe('not accepted');
 	expect(harness.busyCalls.at(-1)).toEqual(['origin-session', null, 'origin-project']);
 });
+
+test('unsupported image capability rejects only images and preserves file attachments', async () => {
+	class TestFileReader {
+		result: string | null = null;
+		onload: (() => void) | null = null;
+		onerror: (() => void) | null = null;
+		readAsDataURL(file: File) {
+			queueMicrotask(() => {
+				this.result = `data:${file.type};base64,${
+					file.type === 'image/png'
+						? Buffer.from('89504e470d0a1a0a', 'hex').toString('base64')
+						: Buffer.from('notes').toString('base64')
+				}`;
+				this.onload?.();
+			});
+		}
+	}
+	Reflect.set(globalThis, 'FileReader', TestFileReader);
+	const errors: string[] = [];
+	const state = new MessageState({
+		session: { runtime: { profile: 'default', capabilities: { promptImage: false } } },
+		setError: (message: string) => errors.push(message)
+	} as never);
+
+	await state.addFiles([
+		{ name: 'screen.png', type: 'image/png', size: 8 } as File,
+		{ name: 'notes.txt', type: 'text/plain', size: 5 } as File
+	]);
+
+	expect(state.images).toEqual([]);
+	expect(state.attachments).toEqual([
+		expect.objectContaining({ name: 'notes.txt', mimeType: 'text/plain', size: 5 })
+	]);
+	expect(errors.at(-1)).toBe('Hermes does not support image prompts');
+});

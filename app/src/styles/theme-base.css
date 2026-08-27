@@ -49,6 +49,10 @@
 	--control-height-icon: 2rem;
 	--navigation-icon-size: 1.5rem;
 	--panel-gap: 0.5rem;
+	--safe-area-top: env(safe-area-inset-top, 0px);
+	--safe-area-right: env(safe-area-inset-right, 0px);
+	--safe-area-bottom: env(safe-area-inset-bottom, 0px);
+	--safe-area-left: env(safe-area-inset-left, 0px);
 	--background: #050505;
 	--foreground: #f0f0f0;
 	--card: #0b0b0b;

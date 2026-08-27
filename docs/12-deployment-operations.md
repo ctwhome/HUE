@@ -88,6 +88,18 @@ The current P0 slice creates a consistent SQLite snapshot of the HUE control-pla
 reported as successful until SQLite integrity and the required HUE schema have been validated.
 Hermes databases, transcripts, memory, credentials and other Hermes-owned state are never included.
 
+HUE records its control-plane schema in SQLite `PRAGMA user_version`; the current version is `1`.
+Opening a database already at that version performs no schema writes and creates no migration backup.
+Before the version `0` cancelled-message status migration reconstructs `messages` and
+`message_attachments`, HUE automatically creates and validates a private snapshot in the same
+`backups` directory. In-memory databases migrate transactionally without a backup artifact.
+
+Schema changes and the `user_version` update commit in one transaction. If migration fails, startup
+stops with either the complete old schema or the complete new schema; it does not expose partially
+reconstructed tables. The local startup error reports the current and target versions, the backup
+filename, and the offline recovery action without putting an absolute private path in remote
+diagnostics.
+
 Live restore is intentionally unavailable because HUE does not yet have a lifecycle seam that can
 drain delivery, close every database user and restart safely. To restore manually:
 
@@ -95,6 +107,11 @@ drain delivery, close every database user and restart safely. To restore manuall
 2. Preserve the current HUE database and its `-wal`/`-shm` files instead of overwriting them in place.
 3. Copy a validated backup to a fresh `HUE_DATABASE_PATH` ending in `hue.db`.
 4. Start HUE with that path and inspect Runtime diagnostics before resuming work.
+
+For migration rollback, use the backup filename reported by the startup error and follow the same
+offline procedure. Keep the failed database and any `-wal`/`-shm` files for diagnosis; restore the
+validated snapshot to a fresh HUE path rather than copying it over the failed path. A failed migration
+does not modify Hermes data, and a HUE migration backup must never be placed in a Hermes data path.
 
 Do not restore a HUE backup into a Hermes data path. Broader export/import and conflict-aware restore
 remain `TBI`.

@@ -71,6 +71,7 @@ describe('durable notification projection', () => {
 		store.database
 			.query('UPDATE notifications SET path = ? WHERE id = ?')
 			.run('/?project=project-1&session=session-1', first.id);
+		store.database.exec('PRAGMA user_version = 0');
 		store.close();
 
 		const restarted = new HUEStore(path);
@@ -136,6 +137,44 @@ describe('durable notification projection', () => {
 		expect(
 			store.listNotifications({ limit: 10 }).items.every(({ readAt }) => Boolean(readAt))
 		).toBe(true);
+		store.close();
+	});
+
+	it('exposes exact interaction identity and current pending relevance for safe visual grouping', () => {
+		const store = seededStore();
+		store.appendEvent('project-1', 'session-1', 'agent.permission', {
+			id: 'permission-1',
+			status: 'pending'
+		});
+		store.appendEvent('project-1', 'session-1', 'agent.permission', {
+			id: 'permission-1',
+			status: 'pending'
+		});
+		let permissions = store
+			.listNotifications({ limit: 10 })
+			.items.filter(({ kind }) => kind === 'permission');
+
+		expect(permissions).toHaveLength(2);
+		expect(permissions.every(({ interactionId }) => interactionId === 'permission-1')).toBe(true);
+		expect(permissions.every(({ currentRelevant }) => currentRelevant)).toBe(true);
+
+		store.appendEvent('project-1', 'session-1', 'agent.permission', {
+			id: 'permission-1',
+			status: 'resolved'
+		});
+		permissions = store
+			.listNotifications({ limit: 10 })
+			.items.filter(({ kind }) => kind === 'permission');
+		expect(permissions.every(({ currentRelevant }) => !currentRelevant)).toBe(true);
+		store.close();
+	});
+
+	it('keeps durable notifications visible when source events are removed', () => {
+		const store = seededStore();
+		const event = store.appendEvent('project-1', 'session-1', 'message.completed', {});
+		store.database.query('DELETE FROM session_events WHERE sequence = ?').run(event.sequence);
+
+		expect(store.listNotifications({ limit: 10 }).items).toHaveLength(1);
 		store.close();
 	});
 });

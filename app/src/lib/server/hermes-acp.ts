@@ -52,6 +52,7 @@ type HermesModelState = {
 
 export type HermesSessionState = {
 	profile: string;
+	capabilities: HermesCapabilities;
 	clarify?: HermesClarifyCapability;
 	models?: HermesModelState | null;
 	modes?: acp.SessionModeState | null;
@@ -63,9 +64,32 @@ export type HermesRuntimeInfo = {
 	profile: string;
 	protocolVersion?: number;
 	agent?: { name: string; version: string };
-	capabilities?: Record<string, unknown>;
+	capabilities?: HermesCapabilities;
 	clarify?: HermesClarifyCapability;
 };
+
+export type HermesCapabilities = {
+	loadSession: boolean;
+	promptImage: boolean;
+	sessionList: boolean;
+	sessionFork: boolean;
+	sessionResume: boolean;
+	commands: string[];
+};
+
+export function normalizeHermesCapabilities(
+	value?: acp.AgentCapabilities,
+	commands: Array<Pick<acp.AvailableCommand, 'name'>> = []
+): HermesCapabilities {
+	return {
+		loadSession: value?.loadSession === true,
+		promptImage: value?.promptCapabilities?.image === true,
+		sessionList: value?.sessionCapabilities?.list != null,
+		sessionFork: value?.sessionCapabilities?.fork != null,
+		sessionResume: value?.sessionCapabilities?.resume != null,
+		commands: [...new Set(commands.map(({ name }) => name))]
+	};
+}
 
 type HermesClarifyCapability = {
 	status: 'unsupported' | 'available';
@@ -334,6 +358,7 @@ export class HermesACP implements PromptRuntime {
 	private readonly sessionStates = new Map<string, HermesSessionState>();
 	private readonly stateWaiters = new Map<string, Set<() => void>>();
 	private runtimeInfo: HermesRuntimeInfo;
+	private agentCapabilities?: acp.AgentCapabilities;
 
 	constructor(options: HermesACPOptions = {}) {
 		this.command = options.command ?? 'hermes';
@@ -419,6 +444,7 @@ export class HermesACP implements PromptRuntime {
 					`Hermes negotiated ACP v${initialized.protocolVersion}; HUE requires v${acp.PROTOCOL_VERSION}`
 				);
 			}
+			this.assertRequiredCapabilities();
 		} catch (error) {
 			connection.close(error);
 			child.kill('SIGTERM');
@@ -437,15 +463,16 @@ export class HermesACP implements PromptRuntime {
 		const value = response as {
 			protocolVersion?: number;
 			agentInfo?: { name?: string; version?: string };
-			agentCapabilities?: Record<string, unknown>;
+			agentCapabilities?: acp.AgentCapabilities;
 		};
+		this.agentCapabilities = value.agentCapabilities;
 		this.runtimeInfo = {
 			profile: this.profile,
 			...(value.protocolVersion !== undefined ? { protocolVersion: value.protocolVersion } : {}),
 			...(value.agentInfo?.name && value.agentInfo.version
 				? { agent: { name: value.agentInfo.name, version: value.agentInfo.version } }
 				: {}),
-			...(value.agentCapabilities ? { capabilities: value.agentCapabilities } : {}),
+			capabilities: normalizeHermesCapabilities(value.agentCapabilities),
 			clarify: {
 				status: 'unsupported',
 				reason: 'Hermes ACP has not sent elicitation/create'
@@ -457,8 +484,29 @@ export class HermesACP implements PromptRuntime {
 		return this.runtimeInfo;
 	}
 
+	getCapabilities(sessionId?: string): HermesCapabilities {
+		return normalizeHermesCapabilities(
+			this.agentCapabilities,
+			sessionId ? this.getAvailableCommands(sessionId) : []
+		);
+	}
+
+	private assertRequiredCapabilities(): void {
+		const capabilities = this.getCapabilities();
+		const missing = [
+			...(!capabilities.loadSession ? ['session/load'] : []),
+			...(!capabilities.sessionList ? ['session/list'] : [])
+		];
+		if (!missing.length) return;
+		const version = this.runtimeInfo.agent?.version ?? 'version unknown';
+		throw new Error(
+			`Hermes ${version} is incompatible with HUE: missing ${missing.join(' and ')}. Upgrade Hermes to a compatible version.`
+		);
+	}
+
 	private clearRuntimeState(): void {
 		this.runtimeInfo = { profile: this.profile };
+		this.agentCapabilities = undefined;
 		this.availableCommands.clear();
 		this.sessionStates.clear();
 	}
@@ -498,6 +546,9 @@ export class HermesACP implements PromptRuntime {
 
 	async forkSession(cwd: string, sessionId: string): Promise<HermesSession> {
 		const context = await this.context();
+		if (!this.getCapabilities().sessionFork) {
+			throw new Error('Hermes does not support Session duplication');
+		}
 		const response = await this.requestRaw<HermesSessionResponse>(
 			context,
 			acp.methods.agent.session.fork,
@@ -510,6 +561,8 @@ export class HermesACP implements PromptRuntime {
 
 	async listSessions(cwd: string): Promise<HermesSession[]> {
 		const context = await this.context();
+		if (!this.getCapabilities().sessionList)
+			throw new Error('Hermes does not support Session listing');
 		const sessions: acp.SessionInfo[] = [];
 		const seenCursors = new Set<string>();
 		let cursor: string | undefined;
@@ -540,6 +593,8 @@ export class HermesACP implements PromptRuntime {
 		onChunk?: (text: string) => void
 	): Promise<void> {
 		const context = await this.context();
+		if (!this.getCapabilities().loadSession)
+			throw new Error('Hermes does not support Session loading');
 		const unsubscribe = this.setTextHandler(sessionId, onChunk);
 		try {
 			const response = await this.requestRaw<HermesSessionResponse | null>(
@@ -561,6 +616,8 @@ export class HermesACP implements PromptRuntime {
 
 	async loadTranscript(cwd: string, sessionId: string): Promise<HermesTranscriptMessage[]> {
 		const context = await this.context();
+		if (!this.getCapabilities().loadSession)
+			throw new Error('Hermes does not support Session loading');
 		const transcript: HermesTranscriptMessage[] = [];
 		const unsubscribe = this.subscribe(sessionId, (update) => {
 			if (update.sessionUpdate === 'user_message_chunk' && update.content.type === 'text') {
@@ -609,6 +666,9 @@ export class HermesACP implements PromptRuntime {
 		onSubagent?: (update: SubagentTree) => void;
 	}): Promise<void> {
 		const context = await this.context();
+		if (input.images.length && !this.getCapabilities().promptImage) {
+			throw new Error('Hermes does not support image prompts');
+		}
 		let stagingRoot: string | null = null;
 		let resources: Array<{
 			type: 'resource_link';
@@ -852,7 +912,8 @@ export class HermesACP implements PromptRuntime {
 		return {
 			profile: this.profile,
 			...(this.runtimeInfo.clarify ? { clarify: this.runtimeInfo.clarify } : {}),
-			...(this.sessionStates.get(sessionId) ?? {})
+			...(this.sessionStates.get(sessionId) ?? {}),
+			capabilities: this.getCapabilities(sessionId)
 		};
 	}
 

@@ -7,6 +7,7 @@ import {
 	HermesACP,
 	buildWorkModePromptEnvelope,
 	isolatedHermesEnvironment,
+	normalizeHermesCapabilities,
 	normalizeDelegateTaskUpdate,
 	normalizeToolCallUpdate,
 	redactToolPayload,
@@ -182,6 +183,100 @@ print(json.dumps(_content_blocks_to_openai_user_content([block])))`,
 });
 
 describe('HermesACP update subscriptions', () => {
+	it('normalizes absent and advertised ACP capabilities into one typed view', () => {
+		expect(normalizeHermesCapabilities(undefined)).toEqual({
+			loadSession: false,
+			promptImage: false,
+			sessionList: false,
+			sessionFork: false,
+			sessionResume: false,
+			commands: []
+		});
+		expect(
+			normalizeHermesCapabilities(
+				{
+					loadSession: true,
+					promptCapabilities: { image: true },
+					sessionCapabilities: { list: {}, fork: {}, resume: {} }
+				},
+				[{ name: 'help' }, { name: 'compress' }, { name: 'help' }]
+			)
+		).toEqual({
+			loadSession: true,
+			promptImage: true,
+			sessionList: true,
+			sessionFork: true,
+			sessionResume: true,
+			commands: ['help', 'compress']
+		});
+	});
+
+	it('reports an actionable compatibility error when required capabilities are absent', () => {
+		const runtime = new HermesACP();
+		const internals = runtime as unknown as {
+			captureInitialization: (response: unknown) => void;
+			assertRequiredCapabilities: () => void;
+		};
+		internals.captureInitialization({
+			protocolVersion: 1,
+			agentInfo: { name: 'hermes-agent', version: '0.19.0' },
+			agentCapabilities: { promptCapabilities: { image: true } }
+		});
+
+		expect(() => internals.assertRequiredCapabilities()).toThrow(
+			'Hermes 0.19.0 is incompatible with HUE: missing session/load and session/list. Upgrade Hermes to a compatible version.'
+		);
+	});
+
+	it('negotiates before rejecting session/fork when Hermes did not advertise it', async () => {
+		const runtime = new HermesACP();
+		let contextCalls = 0;
+		const internals = runtime as unknown as {
+			captureInitialization: (response: unknown) => void;
+			context: () => Promise<object>;
+		};
+		internals.captureInitialization({
+			protocolVersion: 1,
+			agentCapabilities: { loadSession: true, sessionCapabilities: { list: {} } }
+		});
+		internals.context = async () => {
+			contextCalls += 1;
+			return {};
+		};
+
+		await expect(runtime.forkSession('/work/hue', 'session-1')).rejects.toThrow(
+			'Hermes does not support Session duplication'
+		);
+		expect(contextCalls).toBe(1);
+	});
+
+	it('negotiates before rejecting image prompts on a reduced-capability Hermes runtime', async () => {
+		const runtime = new HermesACP();
+		let contextCalls = 0;
+		const internals = runtime as unknown as {
+			captureInitialization: (response: unknown) => void;
+			context: () => Promise<object>;
+		};
+		internals.captureInitialization({
+			protocolVersion: 1,
+			agentCapabilities: { loadSession: true, sessionCapabilities: { list: {} } }
+		});
+		internals.context = async () => {
+			contextCalls += 1;
+			return {};
+		};
+
+		await expect(
+			runtime.prompt({
+				sessionId: 'session-1',
+				text: 'Inspect',
+				images: [{ name: 'screen.png', mimeType: 'image/png', data: 'aGVsbG8=' }],
+				workMode: 'autonomous',
+				onChunk: () => {}
+			})
+		).rejects.toThrow('Hermes does not support image prompts');
+		expect(contextCalls).toBe(1);
+	});
 	it('builds exact work-mode _meta envelope and strips only exact replay preamble', () => {
 		const live = buildWorkModePromptEnvelope('live', 'Ship fix');
 		expect(live.meta).toEqual({
@@ -496,6 +591,9 @@ describe('HermesACP update subscriptions', () => {
 			) => Promise<{ sessionId: string }>;
 		};
 		internals.context = async () => ({});
+		(runtime as unknown as { agentCapabilities: unknown }).agentCapabilities = {
+			sessionCapabilities: { fork: {} }
+		};
 		internals.requestRaw = async (_context, method, params) => {
 			requests.push({ method, params });
 			return { sessionId: 'forked-session' };
@@ -714,7 +812,8 @@ describe('HermesACP update subscriptions', () => {
 			agentInfo: { name: 'hermes-agent', version: '0.2.0' },
 			agentCapabilities: {
 				loadSession: true,
-				promptCapabilities: { image: true }
+				promptCapabilities: { image: true },
+				_meta: { token: 'must-not-leak' }
 			}
 		});
 
@@ -723,8 +822,12 @@ describe('HermesACP update subscriptions', () => {
 			protocolVersion: 1,
 			agent: { name: 'hermes-agent', version: '0.2.0' },
 			capabilities: {
+				commands: [],
 				loadSession: true,
-				promptCapabilities: { image: true }
+				promptImage: true,
+				sessionList: false,
+				sessionFork: false,
+				sessionResume: false
 			},
 			clarify: {
 				status: 'unsupported',
@@ -748,6 +851,14 @@ describe('HermesACP update subscriptions', () => {
 		internals.clearRuntimeState();
 
 		expect(runtime.getRuntimeInfo()).toEqual({ profile: 'work' });
+		expect(runtime.getCapabilities()).toEqual({
+			loadSession: false,
+			promptImage: false,
+			sessionList: false,
+			sessionFork: false,
+			sessionResume: false,
+			commands: []
+		});
 		expect(runtime.getAvailableCommands('session-1')).toEqual([]);
 	});
 
@@ -804,6 +915,14 @@ describe('HermesACP update subscriptions', () => {
 
 		expect(runtime.getSessionState('session-1')).toEqual({
 			profile: 'work',
+			capabilities: {
+				commands: [],
+				loadSession: false,
+				promptImage: false,
+				sessionList: false,
+				sessionFork: false,
+				sessionResume: false
+			},
 			models: {
 				currentModelId: 'openai:gpt-5.6',
 				availableModels: [{ modelId: 'openai:gpt-5.6', name: 'GPT 5.6' }]
@@ -976,6 +1095,28 @@ describe('HermesACP update subscriptions', () => {
 		expect(runtime.getAvailableCommands('session-1')).toEqual([
 			{ name: 'compress', description: 'Compress conversation context', input: null }
 		]);
+		expect(runtime.getCapabilities('session-1').commands).toEqual(['compress']);
+	});
+
+	it('returns current commands after session runtime state is cached', () => {
+		const runtime = new HermesACP();
+		const subscriptions = runtime as unknown as {
+			dispatchUpdate: (sessionId: string, update: unknown) => void;
+		};
+		subscriptions.dispatchUpdate('session-1', {
+			sessionUpdate: 'usage_update',
+			used: 32_000,
+			size: 128_000
+		});
+		subscriptions.dispatchUpdate('session-1', {
+			sessionUpdate: 'available_commands_update',
+			availableCommands: [{ name: 'compress', description: 'Compress conversation context' }]
+		});
+
+		expect(runtime.getSessionState('session-1')).toMatchObject({
+			capabilities: { commands: ['compress'] },
+			usage: { used: 32_000, size: 128_000 }
+		});
 	});
 
 	it('keeps concurrent handlers until each operation unsubscribes', () => {

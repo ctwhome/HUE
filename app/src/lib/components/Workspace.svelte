@@ -477,10 +477,7 @@
 		onview={setGlobalView}
 		onfind={() => (finderOpen = true)}
 	/>
-	<SessionFinder
-		bind:open={finderOpen}
-		onnavigate={openFinderResult}
-	/>
+	<SessionFinder bind:open={finderOpen} onnavigate={openFinderResult} />
 	<MobileNavigation
 		drawer={navigation.mobileDrawer}
 		ready={navigation.ready}
@@ -907,7 +904,7 @@
 		{/key}
 	{/if}
 </div>
-<SessionManagerOverlay {navigation} />
+<SessionManagerOverlay {navigation} canDuplicate={runtime.capabilities?.sessionFork === true} />
 <QuickCapture
 	bind:this={quickCapture}
 	projects={projectManagement.projects}
