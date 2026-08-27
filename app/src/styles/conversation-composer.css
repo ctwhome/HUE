@@ -1,7 +1,58 @@
+.chat-background-surface {
+	background-image: var(--chat-background-light);
+	background-position: center;
+	background-size: cover;
+}
+:root:is([data-theme='dark'], [data-theme='tokyo-night'], [data-theme='nord'], [data-theme='oled'])
+	.chat-background-surface {
+	background-image: var(--chat-background-dark);
+}
+@media (prefers-color-scheme: dark) {
+	:root[data-theme='system'] .chat-background-surface {
+		background-image: var(--chat-background-dark);
+	}
+}
 .transcript {
 	contain: paint;
 	overflow-anchor: none;
 	overscroll-behavior: contain;
+}
+.session-view.personal-background {
+	position: relative;
+	isolation: isolate;
+	background-color: var(--background);
+}
+.session-view.personal-background::before {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	background: rgb(0 0 0 / 8%);
+	content: '';
+	pointer-events: none;
+}
+.session-view.personal-background > * {
+	position: relative;
+	z-index: 1;
+}
+.session-view.personal-background .composer {
+	border-color: color-mix(in srgb, var(--border) 70%, white 18%);
+	background: color-mix(in srgb, var(--card) 68%, transparent);
+	box-shadow: 0 16px 42px rgb(0 0 0 / 22%);
+	backdrop-filter: blur(20px) saturate(135%);
+}
+.session-view.personal-background .welcome,
+.session-view.personal-background .message-identity,
+.session-view.personal-background .message-actions {
+	border-radius: var(--radius-panel);
+	background: color-mix(in srgb, var(--card) 62%, transparent);
+	backdrop-filter: blur(12px) saturate(125%);
+}
+.session-view.personal-background .welcome {
+	padding: 20px 24px;
+}
+.session-view.personal-background .message-identity,
+.session-view.personal-background .message-actions {
+	padding: 3px 6px;
 }
 .transcript.empty {
 	contain: none;
@@ -462,6 +513,18 @@
 }
 .composer-send {
 	margin-left: auto;
+}
+.composer-more,
+.mobile-option-label,
+.mobile-reasoning-option,
+.mobile-delivery {
+	display: none;
+}
+.composer-options-menu {
+	display: contents;
+}
+.composer-options-menu > .session-option-trigger > span {
+	display: none;
 }
 
 .context-select select {

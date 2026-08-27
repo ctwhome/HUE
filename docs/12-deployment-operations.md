@@ -88,8 +88,11 @@ The current P0 slice creates a consistent SQLite snapshot of the HUE control-pla
 reported as successful until SQLite integrity and the required HUE schema have been validated.
 Hermes databases, transcripts, memory, credentials and other Hermes-owned state are never included.
 
-HUE records its control-plane schema in SQLite `PRAGMA user_version`; the current version is `1`.
+HUE records its control-plane schema in SQLite `PRAGMA user_version`; the current version is `3`.
 Opening a database already at that version performs no schema writes and creates no migration backup.
+Version `1` databases migrate transactionally by adding nullable Workflow folder metadata without a
+backup because the change is additive and does not rewrite user data.
+Version `2` databases similarly add a non-destructive Workflow favorite flag.
 Before the version `0` cancelled-message status migration reconstructs `messages` and
 `message_attachments`, HUE automatically creates and validates a private snapshot in the same
 `backups` directory. In-memory databases migrate transactionally without a backup artifact.

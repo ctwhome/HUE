@@ -24,6 +24,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		const body = (await request.json()) as {
 			name?: string;
 			prompt?: string;
+			folder?: unknown;
+			favorite?: unknown;
 			profile?: string;
 			workMode?: unknown;
 		};
@@ -31,6 +33,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		const prompt = body.prompt?.trim();
 		if (!name || !prompt)
 			return json({ error: 'Workflow name and prompt are required' }, { status: 400 });
+		if (
+			body.folder !== undefined &&
+			(typeof body.folder !== 'string' || body.folder.trim().length > 100)
+		)
+			return json({ error: 'Folder must be at most 100 characters' }, { status: 400 });
+		if (body.favorite !== undefined && typeof body.favorite !== 'boolean')
+			return json({ error: 'favorite must be a boolean' }, { status: 400 });
 		const workMode = body.workMode === undefined ? undefined : parseWorkMode(body.workMode);
 		if (body.workMode !== undefined && !workMode)
 			return json({ error: 'Invalid work mode' }, { status: 400 });
@@ -39,6 +48,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			projectId: project.id,
 			name,
 			prompt,
+			folder: typeof body.folder === 'string' ? body.folder.trim() || null : null,
+			favorite: body.favorite === true,
 			profile: body.profile?.trim() || 'default',
 			workMode: workMode ?? undefined
 		});

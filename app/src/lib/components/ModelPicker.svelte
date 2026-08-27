@@ -1,5 +1,10 @@
 <script lang="ts">
-	import { Check, ChevronDown, ChevronRight, CircleDot, Ellipsis, X } from 'lucide-svelte';
+	import Check from '~icons/lucide/check';
+	import ChevronDown from '~icons/lucide/chevron-down';
+	import ChevronRight from '~icons/lucide/chevron-right';
+	import CircleDot from '~icons/lucide/circle-dot';
+	import Ellipsis from '~icons/lucide/ellipsis';
+	import X from '~icons/lucide/x';
 	import { compactModelLabel } from './workspace/mobile-navigation';
 
 	export type ModelOption = { modelId: string; name: string; description?: string | null };
@@ -42,7 +47,8 @@
 			)
 				continue;
 			const provider = model.modelId.includes(':') ? model.modelId.split(':', 1)[0] : 'other';
-			const label = labels[provider] ?? provider.replace(/(^|[-_])\w/g, (part) => part.toUpperCase());
+			const label =
+				labels[provider] ?? provider.replace(/(^|[-_])\w/g, (part) => part.toUpperCase());
 			grouped.set(label, [...(grouped.get(label) ?? []), model]);
 		}
 		return [...grouped].map(([name, options]) => ({ name, models: options }));
@@ -54,7 +60,7 @@
 	}
 </script>
 
-	<button
+<button
 	type="button"
 	class={`context-chip context-select context-model inline-flex min-h-8 shrink-0 items-center rounded-lg text-xs hover:bg-accent ${ellipsis ? 'size-8 justify-center p-0 max-[700px]:size-11' : 'max-w-40 gap-1.5 px-2'}`}
 	aria-label={ariaLabel}
@@ -66,12 +72,13 @@
 		: `${selected?.name ?? value} · ${value}`}
 	{disabled}
 >
-	{#if ellipsis}<Ellipsis size={18} aria-hidden="true" />{:else}<CircleDot
-			size={14}
+	{#if ellipsis}<Ellipsis width={18} height={18} aria-hidden="true" />{:else}<CircleDot
+			width={14}
+			height={14}
 			aria-hidden="true"
 		/>
 		<span>{compactModelLabel(value, selected?.name ?? value)}</span>
-		<ChevronDown size={13} aria-hidden="true" />{/if}
+		<ChevronDown width={13} height={13} aria-hidden="true" />{/if}
 </button>
 <div
 	bind:this={popover}
@@ -93,7 +100,7 @@
 			class="model-menu-close"
 			aria-label="Close model picker"
 			title="Close model picker"
-			onclick={() => popover?.hidePopover()}><X size={18} aria-hidden="true" /></button
+			onclick={() => popover?.hidePopover()}><X width={18} height={18} aria-hidden="true" /></button
 		>
 	</header>
 	<label class="model-search"
@@ -109,8 +116,9 @@
 			<details open={Boolean(search) || category.models.some((model) => model.modelId === value)}>
 				<summary>
 					<span>{category.name}</span>
-					<small>{category.models.length} {category.models.length === 1 ? 'model' : 'models'}</small>
-					<ChevronRight size={14} aria-hidden="true" />
+					<small>{category.models.length} {category.models.length === 1 ? 'model' : 'models'}</small
+					>
+					<ChevronRight width={14} height={14} aria-hidden="true" />
 				</summary>
 				<div class="model-options pb-1.5">
 					{#each category.models as model}<button
@@ -121,7 +129,11 @@
 							onclick={() => select(model.modelId)}
 						>
 							<span class="model-check pt-0.5 text-primary"
-								>{#if model.modelId === value}<Check size={15} aria-hidden="true" />{/if}</span
+								>{#if model.modelId === value}<Check
+										width={15}
+										height={15}
+										aria-hidden="true"
+									/>{/if}</span
 							>
 							<span
 								><strong>{model.name}</strong><small
@@ -132,6 +144,8 @@
 				</div>
 			</details>
 		{/each}
-		{#if categories.length === 0}<p class="p-3 text-sm text-muted-foreground">No matching models.</p>{/if}
+		{#if categories.length === 0}<p class="p-3 text-sm text-muted-foreground">
+				No matching models.
+			</p>{/if}
 	</div>
 </div>

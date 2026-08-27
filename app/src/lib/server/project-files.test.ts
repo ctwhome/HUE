@@ -389,6 +389,38 @@ test('classifies previews and artifacts honestly with provenance', () => {
 	);
 });
 
+test('previews common developer files and unknown UTF-8 text without treating binary as text', () => {
+	const { root, files } = fixture();
+	for (const [name, content] of [
+		['.env', 'API_URL=http://localhost:3000\n'],
+		['.env.example', 'API_URL=\n'],
+		['Makefile', 'build:\n\tbun run build\n'],
+		['.gitignore', 'node_modules\n'],
+		['config.custom', 'enabled=true\n'],
+		['app.js', 'export default true;\n'],
+		['types.ts', 'export type ID = string;\n'],
+		['package.json', '{"private":true}\n']
+	] as const)
+		writeFileSync(join(root, name), content);
+	writeFileSync(join(root, 'unknown.data'), Buffer.from([0, 1, 2, 3]));
+
+	for (const name of [
+		'.env',
+		'.env.example',
+		'Makefile',
+		'.gitignore',
+		'config.custom',
+		'app.js',
+		'types.ts',
+		'package.json'
+	])
+		expect(files.preview(name)).toMatchObject({
+			kind: expect.stringMatching(/^(text|code)$/),
+			content: expect.any(String)
+		});
+	expect(files.preview('unknown.data')).toMatchObject({ kind: 'binary', content: null });
+});
+
 test('enforces preview, write, upload, and search limits', () => {
 	const { files } = fixture();
 	expect(() => files.save('too-big.txt', 'x'.repeat(ProjectFiles.MAX_WRITE_BYTES + 1))).toThrow(

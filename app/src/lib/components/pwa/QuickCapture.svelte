@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { Lightbulb, X } from 'lucide-svelte';
+	import Lightbulb from '~icons/lucide/lightbulb';
+	import X from '~icons/lucide/x';
 	import type { ImageAttachment, InputAttachment } from '$lib/message-content';
 	import { captureDraftStorage, splitCaptureAttachments } from '$lib/pwa/quick-capture';
 	import type { Project } from '$lib/components/workspace/types';
@@ -108,7 +109,9 @@
 	}}
 >
 	<header class="flex items-start gap-3 border-b border-border p-4 pr-3">
-		<div class="grid size-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
+		<div
+			class="grid size-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground"
+		>
 			<Lightbulb aria-hidden="true" />
 		</div>
 		<div class="min-w-0 flex-1">

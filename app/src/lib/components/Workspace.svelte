@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { Diamond, Folder, FolderKanban } from 'lucide-svelte';
+	import Folder from '~icons/lucide/folder';
+	import FolderKanban from '~icons/lucide/folder-kanban';
+	import MessageSquare from '~icons/lucide/message-square';
 	import { formatElapsed, isTurnBusy, selectLatestPlan, selectTranscriptTimeline } from '$lib';
 	import { automaticSessionIcon } from '$lib/icon';
 	import { applyPreferences, readPreferences } from '$lib/preferences';
@@ -46,6 +48,12 @@
 	import { RuntimeState } from './workspace/runtime-state.svelte';
 	import { SessionState } from './workspace/session-state.svelte';
 	import { TranscriptFollow } from './workspace/transcript-follow.svelte';
+	import {
+		CHAT_BACKGROUND_EVENT,
+		chatBackgroundStyle,
+		resolveChatBackground,
+		type ChatBackground
+	} from './workspace/chat-background';
 	import type {
 		Project,
 		Session,
@@ -293,6 +301,15 @@
 	let sessions = $derived(navigation.sessions);
 	let workflows = $derived(navigation.workflows);
 	let selectedSession = $derived(navigation.selectedSession);
+	let chatBackground = $state<ChatBackground | null>(null);
+	let chatBackgroundRevision = $state(0);
+	$effect(() => {
+		chatBackgroundRevision;
+		chatBackground =
+			selectedSession && typeof localStorage !== 'undefined'
+				? resolveChatBackground(localStorage, selectedSession.sessionId)
+				: null;
+	});
 	let timeline = $derived(sessionState.timeline);
 	let hasTranscript = $derived(selectTranscriptTimeline(timeline).length > 0);
 	let selectedPlan = $derived(selectLatestPlan(timeline));
@@ -338,9 +355,22 @@
 		previewUrl = '';
 		fileRequest = null;
 		({ browserOpen, filesOpen, terminalOpen } = readProjectPanels(localStorage, panelProjectId));
+		if (filesOpen) browserOpen = false;
 		if (sessionPaneCount > 1 && innerWidth < 1600) browserOpen = false;
 		terminalHeight = 300;
 	});
+	function toggleBrowserPanel() {
+		const opening = !browserOpen;
+		browserOpen = togglePanel(localStorage, panelProjectId, 'browser', browserOpen);
+		if (opening && filesOpen)
+			filesOpen = togglePanel(localStorage, panelProjectId, 'files', filesOpen);
+	}
+	function toggleFilesPanel() {
+		const opening = !filesOpen;
+		filesOpen = togglePanel(localStorage, panelProjectId, 'files', filesOpen);
+		if (opening && browserOpen)
+			browserOpen = togglePanel(localStorage, panelProjectId, 'browser', browserOpen);
+	}
 	const changeWorkMode = async (workMode: WorkMode) => {
 		if (!navigation.selectedSession || workModeChanging) return;
 		workModeChanging = true;
@@ -428,6 +458,8 @@
 		await messageState.submit(event);
 	}
 	onMount(() => {
+		const refreshChatBackground = () => (chatBackgroundRevision += 1);
+		window.addEventListener(CHAT_BACKGROUND_EVENT, refreshChatBackground);
 		applyPreferences(document.documentElement, readPreferences(localStorage));
 		for (const pane of ['projects', 'sessions'] as const) {
 			const savedWidth = Number(localStorage.getItem(`hue:shell:${pane}:width`));
@@ -443,6 +475,7 @@
 		});
 		mobileShell.start();
 		return () => {
+			window.removeEventListener(CHAT_BACKGROUND_EVENT, refreshChatBackground);
 			mobileShell?.destroy();
 			mobileShell = null;
 			voice.end(false);
@@ -614,14 +647,15 @@
 				aria-label="Show Projects panel"
 				title="Show Projects panel"
 				onclick={() => (projectsPanelOpen = true)}
-				><FolderKanban size={17} aria-hidden="true" /></button
+				><FolderKanban width={17} height={17} aria-hidden="true" /></button
 			>
 			<button
 				class:active={!selectedProject}
-				aria-label="General"
+				aria-label="Chats"
 				aria-current={!selectedProject ? 'page' : undefined}
-				title="General"
-				onclick={() => chooseProjectFromRail(null)}><Diamond size={18} aria-hidden="true" /></button
+				title="Chats"
+				onclick={() => chooseProjectFromRail(null)}
+				><MessageSquare width={18} height={18} aria-hidden="true" /></button
 			>
 			{#each projectManagement.projects as project (project.id)}<button
 					class:active={selectedProject?.id === project.id}
@@ -634,7 +668,8 @@
 							src={project.icon ?? ''}
 							alt=""
 						/>{:else if project.icon}<span>{project.icon}</span>{:else}<Folder
-							size={18}
+							width={18}
+							height={18}
 							aria-hidden="true"
 						/>{/if}
 				</button>{/each}
@@ -670,8 +705,10 @@
 			onrunworkflow={navigation.runWorkflow}
 		>
 			<main
-				class="session-view flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+				class="session-view chat-background-surface flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
 				class:empty-session={!hasTranscript}
+				class:personal-background={chatBackground !== null}
+				style={chatBackgroundStyle(chatBackground)}
 			>
 				<SessionHeader
 					session={selectedSession}
@@ -769,6 +806,7 @@
 						{workflows}
 						bind:workflowName={navigation.workflowName}
 						bind:workflowPrompt={navigation.workflowPrompt}
+						bind:workflowFolder={navigation.workflowFolder}
 						bind:workflowProfile={navigation.workflowProfile}
 						bind:workflowWorkMode={navigation.workflowWorkMode}
 						stopping={messageState.stopping}
@@ -800,6 +838,7 @@
 						onupdateworkflow={navigation.updateWorkflow}
 						ondeleteworkflow={navigation.deleteWorkflow}
 						onduplicateworkflow={navigation.duplicateWorkflow}
+						onfavoritecatalog={navigation.favoriteCatalogPrompt}
 						onrunworkflow={navigation.runWorkflow}
 						onscrolllatest={transcriptFollow.scrollToLatest}
 						matchingCommands={messageState.matchingCommands}
@@ -860,6 +899,7 @@
 					open={filesOpen}
 					{fileRequest}
 					{dirtyGuard}
+					onclose={toggleFilesPanel}
 				/>
 				<ProjectWorkbench
 					projectId={selectedProject.id}
@@ -870,14 +910,11 @@
 					{filesOpen}
 					{terminalOpen}
 					onpreviewchange={(url) => (previewUrl = url)}
-					onbrowser={() =>
-						(browserOpen = togglePanel(localStorage, panelProjectId, 'browser', browserOpen))}
-					onfiles={() =>
-						(filesOpen = togglePanel(localStorage, panelProjectId, 'files', filesOpen))}
+					onbrowser={toggleBrowserPanel}
+					onfiles={toggleFilesPanel}
 					onopenfile={(path) => {
 						fileRequest = { path, id: crypto.randomUUID() };
-						if (!filesOpen)
-							filesOpen = togglePanel(localStorage, panelProjectId, 'files', filesOpen);
+						if (!filesOpen) toggleFilesPanel();
 					}}
 					onterminal={() =>
 						(terminalOpen = togglePanel(localStorage, panelProjectId, 'terminal', terminalOpen))}

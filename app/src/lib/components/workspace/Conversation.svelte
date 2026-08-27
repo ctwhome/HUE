@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { Copy, Download, ExternalLink, FolderOpen, GitFork, Pencil, Quote } from 'lucide-svelte';
+	import Copy from '~icons/lucide/copy';
+	import Download from '~icons/lucide/download';
+	import ExternalLink from '~icons/lucide/external-link';
+	import FolderOpen from '~icons/lucide/folder-open';
+	import GitFork from '~icons/lucide/git-fork';
+	import Pencil from '~icons/lucide/pencil';
+	import Quote from '~icons/lucide/quote';
 	import type {
 		ImageAttachment,
 		InputAttachment,
@@ -215,25 +221,29 @@
 												target="_blank"
 												rel="noreferrer"
 												aria-label={`Preview ${path}`}
-												title={`Preview ${path}`}><ExternalLink size={16} aria-hidden="true" /></a
+												title={`Preview ${path}`}
+												><ExternalLink width={16} height={16} aria-hidden="true" /></a
 											><a
 												class="grid min-h-11 min-w-11 place-items-center"
 												href={`${mediaPath}?path=${encodeURIComponent(path)}&download=true`}
 												download
 												aria-label={`Download ${path}`}
-												title={`Download ${path}`}><Download size={16} aria-hidden="true" /></a
+												title={`Download ${path}`}
+												><Download width={16} height={16} aria-hidden="true" /></a
 											><button
 												type="button"
 												class="grid min-h-11 min-w-11 place-items-center"
 												onclick={() => onmedia(path, 'open')}
 												aria-label={`Open ${path}`}
-												title={`Open ${path}`}><ExternalLink size={16} aria-hidden="true" /></button
+												title={`Open ${path}`}
+												><ExternalLink width={16} height={16} aria-hidden="true" /></button
 											><button
 												type="button"
 												class="grid min-h-11 min-w-11 place-items-center"
 												onclick={() => onmedia(path, 'reveal')}
 												aria-label={`Reveal ${path}`}
-												title={`Reveal ${path}`}><FolderOpen size={16} aria-hidden="true" /></button
+												title={`Reveal ${path}`}
+												><FolderOpen width={16} height={16} aria-hidden="true" /></button
 											>
 										</div>
 									</article>{/each}
@@ -276,26 +286,29 @@
 									type="button"
 									aria-label="Edit and resend message"
 									title="Edit and resend message"
-									onclick={() => onedit(message)}><Pencil size={14} aria-hidden="true" /></button
+									onclick={() => onedit(message)}
+									><Pencil width={14} height={14} aria-hidden="true" /></button
 								>{/if}
 							{#if message.role === 'assistant'}<button
 									type="button"
 									class="max-[700px]:min-h-11 max-[700px]:min-w-11"
 									aria-label="Add selected text to prompt"
 									title="Select part of this response, then add it to the next prompt"
-									onclick={quoteSelection}><Quote size={14} aria-hidden="true" /></button
+									onclick={quoteSelection}
+									><Quote width={14} height={14} aria-hidden="true" /></button
 								>{/if}
 							<button
 								type="button"
 								aria-label="Copy message"
 								title="Copy message"
-								onclick={() => oncopy(message)}><Copy size={14} aria-hidden="true" /></button
+								onclick={() => oncopy(message)}
+								><Copy width={14} height={14} aria-hidden="true" /></button
 							>
 							<button
 								type="button"
 								aria-label="Fork from this message unavailable"
 								title="Hermes ACP can duplicate a full Session but cannot fork from a selected message"
-								disabled><GitFork size={14} aria-hidden="true" /></button
+								disabled><GitFork width={14} height={14} aria-hidden="true" /></button
 							>
 							{#if message.role === 'assistant' && index === transcriptTimeline.length - 1}<button
 									type="button"

@@ -491,7 +491,7 @@
 	overflow: hidden;
 }
 .project-tool-dock.docked .files-panel {
-	grid-template-columns: minmax(120px, 40%) minmax(0, 1fr);
+	grid-template-columns: minmax(0, 1fr) minmax(240px, 31%);
 }
 .project-tool-dock.docked .file-sidebar {
 	overflow: hidden;

@@ -5,12 +5,16 @@ const source = readFileSync(new URL('./RepositoryPanels.svelte', import.meta.url
 const github = readFileSync(new URL('./GitHubPanels.svelte', import.meta.url), 'utf8');
 
 test('commit generation lives in the message input and shares the model picker', () => {
-	expect(source).toContain('class="commit-message-field relative"');
+	expect(source).toContain('class="git-commit grid gap-2');
+	expect(source).toContain('class="commit-message-field relative min-w-0 flex-1"');
 	expect(source).toContain('class="h-8 pr-10 text-xs');
 	expect(source).toContain('aria-label="Generate commit message with Hermes"');
+	expect(source).toContain('aria-label="Commit staged changes"');
+	expect(source).toContain('aria-label="Commit and push staged changes"');
 	expect(source).toContain("import ModelPicker from '../ModelPicker.svelte'");
 	expect(source).toContain('ariaLabel="Commit message model"');
 	expect(source).toContain('ellipsis={true}');
+	expect(source).toContain('class="flex items-center justify-end gap-2"');
 	expect(source).not.toContain('commitModelDialog');
 	expect(source.indexOf('aria-label="Git worktrees"')).toBeLessThan(source.indexOf('<GitHubPanels'));
 });

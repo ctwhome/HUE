@@ -1,16 +1,16 @@
 <script lang="ts">
-	import {
-		Archive,
-		ArchiveRestore,
-		Copy,
-		Download,
-		FileJson,
-		Pin,
-		PinOff,
-		Trash2,
-		Upload,
-		X
-	} from 'lucide-svelte';
+	import Archive from '~icons/lucide/archive';
+	import ArchiveRestore from '~icons/lucide/archive-restore';
+	import Copy from '~icons/lucide/copy';
+	import Download from '~icons/lucide/download';
+	import FileJson from '~icons/lucide/file-json';
+	import Pin from '~icons/lucide/pin';
+	import PinOff from '~icons/lucide/pin-off';
+	import Trash2 from '~icons/lucide/trash-2';
+	import Upload from '~icons/lucide/upload';
+	import X from '~icons/lucide/x';
+	import type { ChatBackground } from './chat-background';
+	import ChatBackgroundPicker from './ChatBackgroundPicker.svelte';
 	let {
 		menu = $bindable(),
 		title = $bindable(),
@@ -28,7 +28,10 @@
 		ondelete,
 		onexport,
 		isImage,
-		iconPreview
+		iconPreview,
+		background,
+		onbackground,
+		onbackgroundupload
 	}: {
 		menu?: HTMLElement;
 		title: string;
@@ -47,6 +50,9 @@
 		onexport: (format: 'markdown' | 'json') => void;
 		isImage: (icon: string | null) => boolean;
 		iconPreview: () => string;
+		background: ChatBackground | null;
+		onbackground: (background: ChatBackground | null) => void;
+		onbackgroundupload: (event: Event) => void;
 	} = $props();
 </script>
 
@@ -76,7 +82,7 @@
 			class="grid size-9 place-items-center rounded-lg hover:bg-accent"
 			aria-label="Close session options"
 			title="Close"
-			onclick={() => menu?.hidePopover()}><X size={17} aria-hidden="true" /></button
+			onclick={() => menu?.hidePopover()}><X width={17} height={17} aria-hidden="true" /></button
 		>
 	</header>
 
@@ -111,6 +117,18 @@
 				/></label
 			>
 		</div>
+		<fieldset class="grid gap-2 border-t border-border pt-3">
+			<legend class="text-xs font-medium">Chat background</legend>
+			<ChatBackgroundPicker
+				value={background}
+				inherit
+				onselect={onbackground}
+				onupload={onbackgroundupload}
+			/>
+			<p class="text-[11px] text-muted-foreground">
+				General follows the App settings choice. Session overrides stay in this browser.
+			</p>
+		</fieldset>
 		<div class="grid grid-cols-2 gap-2 border-y border-border py-2">
 			<button
 				class="flex min-h-10 items-center gap-2 rounded-lg px-3 text-left text-sm hover:bg-accent"
@@ -120,8 +138,10 @@
 				onclick={() => {
 					pinned = !pinned;
 					void onsave();
-				}}>{#if pinned}<PinOff size={16} aria-hidden="true" /> Unpin{:else}<Pin
-						size={16}
+				}}
+				>{#if pinned}<PinOff width={16} height={16} aria-hidden="true" /> Unpin{:else}<Pin
+						width={16}
+						height={16}
 						aria-hidden="true"
 					/> Pin{/if}</button
 			><button
@@ -132,44 +152,40 @@
 				onclick={() => {
 					archived = !archived;
 					void onsave();
-				}}>{#if archived}<ArchiveRestore size={16} aria-hidden="true" /> Restore{:else}<Archive
-						size={16}
+				}}
+				>{#if archived}<ArchiveRestore width={16} height={16} aria-hidden="true" /> Restore{:else}<Archive
+						width={16}
+						height={16}
 						aria-hidden="true"
 					/> Archive{/if}</button
 			>
 		</div>
 
-		<section aria-labelledby="session-actions-heading" class="grid gap-1 border-t border-border pt-2">
+		<section
+			aria-labelledby="session-actions-heading"
+			class="grid gap-1 border-t border-border pt-2"
+		>
 			<h3 id="session-actions-heading" class="px-2 py-1 text-xs font-medium text-muted-foreground">
 				Actions
 			</h3>
 			<button
 				class="session-menu-action"
 				disabled
-				title="Hermes ACP does not provide a Session import seam"><Upload
-					size={16}
-					aria-hidden="true"
-				/> Import unavailable</button
-			><button class="session-menu-action" onclick={() => onexport('markdown')}><Download
-					size={16}
-					aria-hidden="true"
-				/> Export Markdown</button
-			><button class="session-menu-action" onclick={() => onexport('json')}><FileJson
-					size={16}
-					aria-hidden="true"
-				/> Export JSON</button
+				title="Hermes ACP does not provide a Session import seam"
+				><Upload width={16} height={16} aria-hidden="true" /> Import unavailable</button
+			><button class="session-menu-action" onclick={() => onexport('markdown')}
+				><Download width={16} height={16} aria-hidden="true" /> Export Markdown</button
+			><button class="session-menu-action" onclick={() => onexport('json')}
+				><FileJson width={16} height={16} aria-hidden="true" /> Export JSON</button
 			><button
 				class="session-menu-action"
 				disabled={saving || !canDuplicate}
 				title={canDuplicate ? 'Duplicate Session' : 'Hermes does not support Session duplication'}
-				onclick={onduplicate}><Copy
-					size={16}
-					aria-hidden="true"
-				/> Duplicate</button
+				onclick={onduplicate}><Copy width={16} height={16} aria-hidden="true" /> Duplicate</button
 			><button
 				class="session-menu-action mt-1 border-t border-border text-destructive"
 				disabled={saving}
-				onclick={ondelete}><Trash2 size={16} aria-hidden="true" /> Remove</button
+				onclick={ondelete}><Trash2 width={16} height={16} aria-hidden="true" /> Remove</button
 			>
 		</section>
 		{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}

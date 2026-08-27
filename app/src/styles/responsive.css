@@ -119,13 +119,21 @@
 		--navigation-icon-size: 1.5rem;
 	}
 	.files-panel {
-		display: block;
+		display: grid;
 		position: relative;
 		height: 100%;
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: auto minmax(0, 1fr);
+	}
+	.file-workspace-header {
+		grid-column: 1;
+		grid-row: 1;
 	}
 	.file-sidebar {
-		height: 100%;
+		grid-row: 2;
+		height: auto;
 		border-right: 0;
+		border-left: 0;
 	}
 	.file-preview {
 		position: fixed;
@@ -331,20 +339,79 @@
 		position: sticky;
 		bottom: 0;
 		z-index: 2;
-		grid-template-columns: repeat(3, 44px) minmax(0, 1fr) 44px;
+		grid-template-columns: 44px minmax(0, 1fr) 44px;
 		gap: 4px;
 		background: var(--card);
 		padding-top: 0;
 	}
-	.composer-context {
+	.composer-more {
+		display: grid;
+		grid-column: 1;
+	}
+	.composer-options-menu {
+		display: none;
 		grid-column: 1 / -1;
 		grid-row: 1;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 6px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-panel);
+		background: var(--card);
+		padding: 8px;
+		box-shadow: 0 16px 40px #0008;
+	}
+	.composer-options-menu.open {
+		display: grid;
+	}
+	.composer > .command-menu {
+		position: relative;
+		right: auto;
+		bottom: auto;
+		left: auto;
+		margin-bottom: 8px;
+	}
+	.composer-toolbar:has(.composer-options-menu.open) .composer-context,
+	.composer-toolbar:has(.composer-options-menu.open) > .composer-send {
+		grid-row: 2;
+	}
+	.composer-options-menu > .attach-button,
+	.composer-options-menu > .session-option-trigger,
+	.mobile-reasoning-option > .session-option-trigger {
+		display: flex;
+		width: 100%;
+		min-width: 0;
+		justify-content: flex-start;
+		gap: 8px;
+		padding-inline: 10px;
+	}
+	.composer-options-menu > .session-option-trigger > span,
+	.mobile-option-label,
+	.mobile-reasoning-option {
+		display: initial;
+	}
+	.mobile-reasoning-option {
+		min-width: 0;
+	}
+	.mobile-delivery {
+		display: block;
+		grid-column: 1 / -1;
+		padding: 4px 10px;
+	}
+	.composer-context {
+		display: grid;
+		grid-column: 2;
+		grid-row: 1;
+		grid-template-columns: minmax(0, 1fr) auto;
 		width: 100%;
 		margin-left: 0;
 		justify-content: flex-start;
 	}
-	.composer-context .context-profile {
+	.composer-context .desktop-context-option {
 		display: none;
+	}
+	.composer-context .context-model {
+		width: 100%;
+		max-width: none;
 	}
 	.model-menu,
 	.session-option-menu {
@@ -354,21 +421,12 @@
 	.scroll-to-latest {
 		min-width: 44px;
 	}
-	.composer-toolbar > .attach-button,
-	.composer-toolbar > .session-option-trigger {
-		width: 44px;
-	}
 	.composer-delivery {
-		grid-column: 4;
-		grid-row: 2;
-		min-width: 0;
-		overflow: hidden;
-		text-align: right;
-		line-height: 1.15;
+		display: none;
 	}
 	.composer-toolbar > .composer-send {
-		grid-column: 5;
-		grid-row: 2;
+		grid-column: 3;
+		grid-row: 1;
 		width: 44px;
 		height: 44px;
 	}

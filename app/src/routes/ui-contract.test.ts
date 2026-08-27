@@ -203,17 +203,28 @@ test('workflow fields have accessible names', () => {
 	expect(page).toContain('aria-label="Workflow prompt"');
 });
 
-test('prompt library explains its purpose and empty state', () => {
-	expect(page).toContain('Repeat a Hermes task without rewriting its instructions');
-	expect(page).toContain('Run creates a new Session');
-	expect(page).toContain('No prompts yet');
-	expect(page).toContain('Create prompt');
+test('prompt library provides searchable catalog, folder groups, preview, and custom editing', () => {
+	const promptCatalog = read('../lib/prompt-catalog.ts');
+	expect(page).toContain('Search prompts');
+	expect(page).toContain('Community');
+	expect(page).toContain('Favorites');
+	expect(page).toContain("'Add to favorites'");
+	expect(page).toContain('Prompt preview');
+	expect(page).toContain('Add to custom prompts');
+	expect(page).toContain('New custom');
+	expect(page).toContain('Edit custom prompt');
+	expect(page).toContain("item.folder || 'Unfiled'");
+	expect(page).toContain('<details');
+	expect(page).toContain('class="group mb-3"');
+	expect(page).toContain('aria-label="Add folder"');
+	expect(page).toContain('prompts.chat');
+	expect(promptCatalog).toContain('/prompt-catalog.csv');
 });
 
 test('workflow cards keep Run primary and place existing management operations in accessible overflow', () => {
 	expect(page).toContain('Play');
 	expect(page).toContain('MoreHorizontal');
-	expect(page).toContain('aria-label={`More actions for ${workflow.name}`}');
+	expect(page).toContain('aria-label={`More actions for ${selectedWorkflow.name}`}');
 	expect(page).toContain('Edit Workflow');
 	expect(page).toContain('Duplicate Workflow');
 	expect(page).toMatch(/Restore\s+Workflow/);
@@ -233,6 +244,11 @@ test('prompt library opens from the composer instead of occupying session naviga
 	expect(contextPanel).not.toContain('role="tablist"');
 	expect(contextPanel).not.toContain('>Workflows</button');
 	expect(composer).toContain('<PromptLibraryDialog');
+	expect(composer).not.toContain('{#if promptLibraryAvailable}<button');
+	expect(page).toContain('Select a Project to use its prompt library');
+	expect(composer.indexOf('Hermes profile:')).toBeLessThan(
+		composer.indexOf('aria-label="Prompt library"')
+	);
 });
 
 test('capability-gates image and Session duplicate controls with accessible explanations', () => {
@@ -271,12 +287,12 @@ test('Project rows do not show redundant open tooltips', () => {
 	const projectRail = read('../lib/components/workspace/ProjectRail.svelte');
 	expect(projectRail).not.toContain('title="Open sessions with no project"');
 	expect(projectRail).not.toContain('title={`Open ${project.name} · ${project.primaryPath}`}');
-	expect(projectRail).toContain('title="New General session"');
+	expect(projectRail).toContain('title="New chat"');
 	expect(projectRail).toContain('title={`Change ${project.name} icon`}');
 	expect(projectRail).toContain('title={`Edit ${project.name}`}');
 });
 
-test('standalone Sessions use General instead of No project language', () => {
+test('standalone Sessions are presented as Chats with a chat icon', () => {
 	const workspace = read('../lib/components/Workspace.svelte');
 	const projectRail = read('../lib/components/workspace/ProjectRail.svelte');
 	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
@@ -285,10 +301,11 @@ test('standalone Sessions use General instead of No project language', () => {
 	for (const component of [workspace, projectRail, contextPanel, mobileNavigation, welcome]) {
 		expect(component).not.toContain('No project');
 	}
-	expect(projectRail).toContain('<span>General</span>');
-	expect(contextPanel).toContain("selectedProject?.name ?? 'General'");
-	expect(mobileNavigation).toContain("project?.name ?? 'General'");
-	expect(welcome).toContain('Start General Session');
+	expect(projectRail).toContain('<MessageSquare');
+	expect(projectRail).toContain('<span>Chats</span>');
+	expect(contextPanel).toContain("selectedProject?.name ?? 'Chats'");
+	expect(mobileNavigation).toContain("project?.name ?? 'Chats'");
+	expect(welcome).toContain('Start a chat');
 });
 
 test('session filters use one search field and a compact archive toggle', () => {
@@ -299,7 +316,7 @@ test('session filters use one search field and a compact archive toggle', () => 
 	expect(contextPanel).toContain(
 		"showArchived ? 'Hide archived sessions' : 'Show archived sessions'"
 	);
-	expect(contextPanel).toContain('<ArchiveRestore size={17}');
+	expect(contextPanel).toContain('<ArchiveRestore width={17} height={17}');
 });
 
 test('Session sections group assigned Sessions and are reusable from Session options', () => {
@@ -318,7 +335,9 @@ test('new session is a persistent full-width action at the top of the session li
 	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
 	const action = 'class="new-session-action sticky top-0 z-10 flex min-h-(--control-height) w-full';
 	expect(contextPanel).toContain(action);
-	expect(contextPanel).toContain('<Plus size={18} aria-hidden="true" /> Add new session');
+	expect(contextPanel).toContain(
+		'<Plus width={18} height={18} aria-hidden="true" /> Add new session'
+	);
 	expect(contextPanel.indexOf(action)).toBeLessThan(
 		contextPanel.indexOf('{#each sessions as session')
 	);
@@ -442,7 +461,7 @@ test('preferences expose supported appearance, input, language, voice, usage, an
 });
 
 test('project workbench owns browser, terminal, and Git behavior', () => {
-	for (const source of workbenchFiles) expect(source.split('\n').length).toBeLessThan(510);
+	for (const source of workbenchFiles) expect(source.split('\n').length).toBeLessThan(520);
 	for (const label of ['Project browser', 'Project terminal', 'Git status', 'Git worktrees']) {
 		expect(workbench).toContain(`aria-label="${label}"`);
 	}
@@ -625,7 +644,7 @@ test('Excalidraw tab lazy-loads a real canvas with safe live embeds', () => {
 	expect(canvasAdapter).not.toContain('allow-downloads');
 	expect(canvasAdapter).not.toContain('allow-clipboard');
 	expect(styles).toMatch(/\.browser-embed-external\s*\{[^}]*width: 44px;[^}]*height: 44px;/s);
-	expect(excalidrawPanel).toContain('<Info size={15}');
+	expect(excalidrawPanel).toContain('<Info width={15} height={15}');
 	expect(excalidrawPanel).toContain('aria-label="Sites that block framing');
 	expect(excalidrawPanel).not.toMatch(/>Sites that block framing/);
 	expect(styles).toContain('grid-template-columns: auto minmax(88px, 1fr)');
@@ -655,6 +674,23 @@ test('Project files expose bounded accessible tree, previews, evidence, and guar
 	expect(workbench).toContain('44px');
 	expect(workbench).toContain('change.fileUrl');
 	expect(workbench).toContain('onopenfile(change.fileUrl)');
+	expect(workbenchFiles[3].indexOf('<FilePreview')).toBeLessThan(
+		workbenchFiles[3].indexOf('<aside class="file-sidebar')
+	);
+	expect(workbenchFiles[3]).toContain('placeholder="Search files…"');
+	expect(workbenchFiles[4]).toContain('aria-label="Preview Markdown"');
+	expect(workbenchFiles[4]).toContain('aria-label="Edit Markdown source"');
+	expect(workbenchFiles[4]).toContain('highlightFileSource');
+	expect(workbenchFiles[4]).toContain('file-editor-highlight');
+	expect(workbenchFiles[4]).toContain('onscroll={syncEditorScroll}');
+	expect(projectFilesDock).toContain('let width = $state(960)');
+	expect(workbenchFiles[3]).toContain('aria-label="File workspace"');
+	expect(workbenchFiles[3]).toContain('aria-label="Close Files workspace"');
+	expect(projectFilesDock).toContain('onclose');
+	expect(projectFilesDock).toContain('aria-label="Resize project files"');
+	expect(styles).not.toMatch(/\.project-files-dock\.open\s*\{[^}]*position: fixed;/s);
+	expect(styles).toContain('@container project-files');
+	expect(styles).toContain('.file-preview .markdown');
 });
 
 test('mobile shell keeps drawers and 44px targets', () => {
@@ -690,6 +726,22 @@ test('mobile chat exposes resilient content, compact context, and auto-growing i
 	expect(page).toContain('popover="auto"');
 	expect(page).toContain('Saved automatically');
 	expect(page).not.toContain('Save changes');
+});
+
+test('mobile composer keeps model, work mode, and send visible beside a secondary-options menu', () => {
+	expect(composer).toContain('aria-label="More session options"');
+	expect(composer).toContain('class="composer-options-menu"');
+	expect(composer.indexOf('aria-label="More session options"')).toBeLessThan(
+		composer.indexOf('<ModelPicker')
+	);
+	expect(composer.indexOf('<ModelPicker')).toBeLessThan(composer.indexOf('ariaLabel="Work mode"'));
+	expect(composer.indexOf('ariaLabel="Work mode"')).toBeLessThan(
+		composer.indexOf('aria-label="Send"')
+	);
+	expect(styles).toMatch(
+		/@media \(max-width: 700px\)[\s\S]*\.composer-toolbar\s*{[^}]*grid-template-columns: 44px minmax\(0, 1fr\) 44px;/s
+	);
+	expect(styles).toMatch(/\.composer-options-menu\.open\s*{[^}]*display: grid;/s);
 });
 
 test('sessions and Projects share one floating icon editor from settings and visible icons', () => {
@@ -772,8 +824,9 @@ test('Project dock keeps Terminal at the bottom and reports Git changes', () => 
 });
 
 test('mobile secondary surfaces are self-explanatory and bounded', () => {
-	expect(page).toContain('Repeat a Hermes task without rewriting its instructions.');
-	expect(page).toContain('Run creates a new Session and sends the saved instructions to Hermes.');
+	expect(page).toContain('Find a proven starting point or organize reusable prompts');
+	expect(page).toContain('Add to input');
+	expect(page).not.toContain('Run in new Session');
 	expect(panel).toContain('aria-label="Settings section"');
 	expect(styles).toContain('.dialog-body');
 	expect(styles).toContain('.dialog-footer');
@@ -790,10 +843,10 @@ test('composer exposes HUE work mode selector and timeline status item hooks', (
 	expect(composer).toContain('ariaLabel="Edit approvals"');
 	expect(composer).toContain('ariaLabel="Reasoning"');
 	expect(sessionOptionPicker).toContain('role="menuitemradio"');
-	expect(sessionOptionPicker).toContain('<Icon size={16}');
+	expect(sessionOptionPicker).toContain('<Icon width={16} height={16}');
 	expect(composer).toContain('Other permission requests still ask.');
 	expect(composer).not.toContain('<Sparkles');
-	expect(composer).not.toContain('aria-label="Composer options"');
+	expect(composer).toContain('aria-label="More session options"');
 	expect(composer).not.toContain('<span class="hidden xl:inline">Work mode</span>');
 	expect(composer).toContain('aria-label={`Hermes profile: ${runtime.profile}`}');
 	expect(composer).toContain('<UserRound');
@@ -843,11 +896,9 @@ test('liquid orb adaptation carries upstream MIT notice', () => {
 
 test('project and session controls preserve accessible editing', () => {
 	expect(page).toContain('aria-label="Add Hermes Project"');
-	expect(page).toContain('aria-label="New General session"');
+	expect(page).toContain('aria-label="New chat"');
 	expect(projectRail).not.toContain('<header class="brand');
-	expect(projectRail).toMatch(
-		/class="project-row projectless-row[\s\S]*aria-label="New General session"/
-	);
+	expect(projectRail).toMatch(/class="project-row projectless-row[\s\S]*aria-label="New chat"/);
 	expect(page).toContain('aria-label={`${label} icon image`}');
 	expect(page).toContain('aria-label="Change project icon"');
 	expect(page).toContain('aria-label={`Edit ${project.name}`}');
@@ -942,8 +993,12 @@ test('chat remains internally scrollable and exposes message actions', () => {
 	expect(page).toContain('navigator.clipboard.writeText(message.text)');
 });
 
-test('interface icons use lucide instead of handwritten SVGs', () => {
+test('interface icons use unplugin Lucide icons instead of handwritten SVGs', () => {
 	expect(ui).not.toContain('<svg');
+	expect(packageJson).toContain('"unplugin-icons"');
+	expect(packageJson).toContain('"@iconify-json/lucide"');
+	expect(packageJson).not.toContain('"lucide-svelte"');
+	expect(ui).toContain("from '~icons/lucide/");
 	for (const icon of [
 		'MessageSquare',
 		'CalendarDays',

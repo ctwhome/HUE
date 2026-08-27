@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { Info, X } from 'lucide-svelte';
+	import Info from '~icons/lucide/info';
+	import X from '~icons/lucide/x';
 	import { sessionInspectorRows } from './session-inspector';
 	import type { HermesRuntime, Project, Session } from './types';
 
@@ -33,7 +34,7 @@
 	class="session-inspector-trigger grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md hover:bg-accent"
 	aria-label="Inspect Session context"
 	title="Inspect Session context"
-	onclick={() => dialog.showModal()}><Info size={18} aria-hidden="true" /></button
+	onclick={() => dialog.showModal()}><Info width={18} height={18} aria-hidden="true" /></button
 >
 <dialog
 	bind:this={dialog}
@@ -50,7 +51,7 @@
 			type="button"
 			aria-label="Close Session inspector"
 			title="Close"
-			onclick={() => dialog.close()}><X size={20} aria-hidden="true" /></button
+			onclick={() => dialog.close()}><X width={20} height={20} aria-hidden="true" /></button
 		>
 	</header>
 	{#if rows.length}<dl>

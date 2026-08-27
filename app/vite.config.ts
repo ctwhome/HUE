@@ -2,6 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
 import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
+import Icons from 'unplugin-icons/vite';
 
 const disableSanitizeHtmlPostcss = {
 	name: 'sanitize-html-browser',
@@ -16,6 +17,7 @@ const disableSanitizeHtmlPostcss = {
 
 export default defineConfig({
 	plugins: [
+		Icons({ compiler: 'svelte' }),
 		{
 			name: 'docs-directory-index',
 			configureServer(server) {
@@ -35,7 +37,8 @@ export default defineConfig({
 				runes: ({ filename }) =>
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
-			adapter: adapter()
+			adapter: adapter(),
+			version: { pollInterval: 60_000 }
 		})
 	],
 	server: {

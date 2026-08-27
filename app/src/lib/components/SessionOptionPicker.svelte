@@ -1,17 +1,15 @@
 <script lang="ts">
-	import {
-		Bot,
-		Brain,
-		Check,
-		ChevronDown,
-		FileCheck2,
-		Gauge,
-		MessageCircleQuestion,
-		Radio,
-		ShieldAlert,
-		ShieldCheck,
-		Zap
-	} from 'lucide-svelte';
+	import Bot from '~icons/lucide/bot';
+	import Brain from '~icons/lucide/brain';
+	import Check from '~icons/lucide/check';
+	import ChevronDown from '~icons/lucide/chevron-down';
+	import FileCheck2 from '~icons/lucide/file-check-2';
+	import Gauge from '~icons/lucide/gauge';
+	import MessageCircleQuestion from '~icons/lucide/message-circle-question';
+	import Radio from '~icons/lucide/radio';
+	import ShieldAlert from '~icons/lucide/shield-alert';
+	import ShieldCheck from '~icons/lucide/shield-check';
+	import Zap from '~icons/lucide/zap';
 
 	export type SessionOption = { value: string; name: string; description?: string | null };
 
@@ -69,9 +67,9 @@
 	title={`${ariaLabel}: ${selected?.name ?? value}`}
 	{disabled}
 >
-	<SelectedIcon size={16} aria-hidden="true" />
+	<SelectedIcon width={16} height={16} aria-hidden="true" />
 	{#if showLabel}<span class="max-w-24 truncate">{selected?.name ?? value}</span>{/if}
-	<ChevronDown size={12} aria-hidden="true" />
+	<ChevronDown width={12} height={12} aria-hidden="true" />
 </button>
 <div
 	bind:this={menu}
@@ -91,13 +89,14 @@
 			class="flex min-h-11 w-full items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-accent"
 			onclick={() => select(option.value)}
 		>
-			<Icon size={16} class="mt-0.5 shrink-0" aria-hidden="true" />
-			<span class="grid min-w-0 flex-1 text-xs"><strong>{option.name}</strong>{#if option.description}<small
-						class="text-muted-foreground">{option.description}</small
+			<Icon width={16} height={16} class="mt-0.5 shrink-0" aria-hidden="true" />
+			<span class="grid min-w-0 flex-1 text-xs"
+				><strong>{option.name}</strong>{#if option.description}<small class="text-muted-foreground"
+						>{option.description}</small
 					>{/if}</span
 			>
 			<span class="grid w-4 shrink-0 place-items-center pt-0.5"
-				>{#if option.value === value}<Check size={15} aria-hidden="true" />{/if}</span
+				>{#if option.value === value}<Check width={15} height={15} aria-hidden="true" />{/if}</span
 			>
 		</button>
 	{/each}

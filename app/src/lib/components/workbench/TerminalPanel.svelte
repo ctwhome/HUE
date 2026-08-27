@@ -3,7 +3,9 @@
 	import { Terminal } from '@xterm/xterm';
 	import { FitAddon } from '@xterm/addon-fit';
 	import '@xterm/xterm/css/xterm.css';
-	import { Circle, Plus, X } from 'lucide-svelte';
+	import Circle from '~icons/lucide/circle';
+	import Plus from '~icons/lucide/plus';
+	import X from '~icons/lucide/x';
 	import Button from '../ui/Button.svelte';
 	import { api } from './api';
 
@@ -272,7 +274,8 @@
 						><span class="min-w-0 flex-1 overflow-hidden text-left text-ellipsis whitespace-nowrap"
 							>{tab.label}</span
 						><Circle
-							size={7}
+							width={7}
+							height={7}
 							fill="currentColor"
 							class={tab.status === 'exited' ? 'exited' : 'text-emerald-400'}
 							aria-hidden="true"
@@ -283,7 +286,7 @@
 						aria-label={`Close ${tab.label}`}
 						title={`Close ${tab.label}`}
 						onclick={(event) => closeTerminalTab(event, tab)}
-						><X size={12} aria-hidden="true" /></button
+						><X width={12} height={12} aria-hidden="true" /></button
 					>
 				</div>{/each}
 		</div>
@@ -293,7 +296,7 @@
 			class="size-8"
 			title="New terminal"
 			aria-label="New terminal"
-			onclick={addTerminalTab}><Plus size={16} aria-hidden="true" /></Button
+			onclick={addTerminalTab}><Plus width={16} height={16} aria-hidden="true" /></Button
 		>
 	</header>
 	<div

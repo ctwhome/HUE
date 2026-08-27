@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { ExternalLink, Info, Monitor, Smartphone, Tablet } from 'lucide-svelte';
+	import ExternalLink from '~icons/lucide/external-link';
+	import Info from '~icons/lucide/info';
+	import Monitor from '~icons/lucide/monitor';
+	import Smartphone from '~icons/lucide/smartphone';
+	import Tablet from '~icons/lucide/tablet';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
 	import { afterInitialPaint } from './after-initial-paint';
@@ -121,7 +125,8 @@
 					disabled={!canvasReady}
 					onclick={() => addBrowser('desktop')}
 					aria-label="Add desktop"
-					title="Add desktop (1440 × 900)"><Monitor size={15} aria-hidden="true" /></Button
+					title="Add desktop (1440 × 900)"
+					><Monitor width={15} height={15} aria-hidden="true" /></Button
 				>
 				<Button
 					size="icon"
@@ -129,7 +134,8 @@
 					disabled={!canvasReady}
 					onclick={() => addBrowser('tablet')}
 					aria-label="Add tablet"
-					title="Add tablet (768 × 1024)"><Tablet size={15} aria-hidden="true" /></Button
+					title="Add tablet (768 × 1024)"
+					><Tablet width={15} height={15} aria-hidden="true" /></Button
 				>
 				<Button
 					size="icon"
@@ -137,7 +143,8 @@
 					disabled={!canvasReady}
 					onclick={() => addBrowser('mobile')}
 					aria-label="Add mobile"
-					title="Add mobile (390 × 844)"><Smartphone size={15} aria-hidden="true" /></Button
+					title="Add mobile (390 × 844)"
+					><Smartphone width={15} height={15} aria-hidden="true" /></Button
 				>
 			</div>
 			<Button
@@ -146,7 +153,7 @@
 				class="browser-frame-note w-7 cursor-help px-0 text-muted-foreground"
 				aria-label="Sites that block framing through X-Frame-Options, CSP, or mixed-content rules must open externally."
 				title="Sites that block framing through X-Frame-Options, CSP, or mixed-content rules must open externally."
-				><Info size={15} aria-hidden="true" /></Button
+				><Info width={15} height={15} aria-hidden="true" /></Button
 			>
 		</div>
 		<form class="browser-address" onsubmit={applyAddress}>
@@ -163,7 +170,8 @@
 					target="_blank"
 					rel="noopener noreferrer"
 					aria-label="Open current address externally"
-					title="Open current address externally"><ExternalLink size={15} aria-hidden="true" /></a
+					title="Open current address externally"
+					><ExternalLink width={15} height={15} aria-hidden="true" /></a
 				>{/if}
 		</form>
 		{#if error}<small

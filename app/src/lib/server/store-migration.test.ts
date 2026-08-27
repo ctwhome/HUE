@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { lstatSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { validateHueBackup } from './runtime-reliability';
@@ -175,6 +175,44 @@ function createHistoricalRequiredProjectSessionSchema(path: string): void {
 }
 
 describe('HUEStore versioned migrations', () => {
+	it('adds Workflow folders to version 1 databases without rewriting existing data', () => {
+		const { root, path } = temporaryDatabase('workflow-folders-migration');
+		mkdirSync(root, { recursive: true });
+		const database = new Database(path);
+		database.exec(`
+			CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, root_path TEXT NOT NULL UNIQUE, icon TEXT, group_name TEXT, legacy INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, color TEXT);
+			CREATE TABLE workflows (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, name TEXT NOT NULL, prompt TEXT NOT NULL, profile TEXT NOT NULL DEFAULT 'default', work_mode TEXT NOT NULL DEFAULT 'autonomous', archived INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+			INSERT INTO projects VALUES ('hue', 'HUE', '/work/hue', NULL, NULL, 0, '2026-08-27T00:00:00.000Z', NULL);
+			INSERT INTO workflows VALUES ('release', 'hue', 'Release', 'Run checks.', 'default', 'autonomous', 0, '2026-08-27T00:00:00.000Z', '2026-08-27T00:00:00.000Z');
+			PRAGMA user_version = 1;
+		`);
+		database.close();
+
+		const store = new HUEStore(path);
+		expect(store.listWorkflows('hue')[0]).toMatchObject({ id: 'release', folder: null });
+		expect(store.database.query('PRAGMA user_version').get()).toEqual({
+			user_version: HUE_SCHEMA_VERSION
+		});
+		store.close();
+		expect(readdirSync(root)).toEqual(['hue.db']);
+	});
+
+	it('adds Workflow favorites to version 2 databases without a backup', () => {
+		const { root, path } = temporaryDatabase('workflow-favorites-migration');
+		const initial = new HUEStore(path);
+		initial.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		initial.createWorkflow({ id: 'release', projectId: 'hue', name: 'Release', prompt: 'Ship.' });
+		initial.close();
+		const historical = new Database(path);
+		historical.exec('ALTER TABLE workflows DROP COLUMN favorite; PRAGMA user_version = 2;');
+		historical.close();
+
+		const migrated = new HUEStore(path);
+		expect(migrated.listWorkflows('hue')[0]).toMatchObject({ id: 'release', favorite: false });
+		migrated.close();
+		expect(readdirSync(root)).toEqual(['hue.db']);
+	});
+
 	it('versions a fresh database and reopens it without schema writes or backups', () => {
 		const { root, path } = temporaryDatabase('fresh-migration');
 		const store = new HUEStore(path);

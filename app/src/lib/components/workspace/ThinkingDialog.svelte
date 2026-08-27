@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { ChevronDown, ChevronRight, LoaderCircle } from 'lucide-svelte';
+	import ChevronDown from '~icons/lucide/chevron-down';
+	import ChevronRight from '~icons/lucide/chevron-right';
+	import LoaderCircle from '~icons/lucide/loader-circle';
 	import type { WorkspaceTimelineItem } from '$lib';
 
 	let {
@@ -46,9 +48,9 @@
 			aria-expanded={open}
 			onclick={() => (open = !open)}
 		>
-			<LoaderCircle class="animate-spin" size={16} aria-hidden="true" />
+			<LoaderCircle class="animate-spin" width={16} height={16} aria-hidden="true" />
 			<span>Thinking</span><small>In progress</small>
-			<ChevronDown class={open ? 'expanded' : ''} size={16} aria-hidden="true" />
+			<ChevronDown class={open ? 'expanded' : ''} width={16} height={16} aria-hidden="true" />
 		</button>
 		{#if open}<div {id} class="thinking-panel">
 				<div class="thinking-timeline" aria-label="Thinking timeline">
@@ -73,7 +75,7 @@
 									aria-label={item.title ?? item.name ?? 'Tool call'}
 								>
 									<summary
-										><ChevronRight size={14} aria-hidden="true" /><span
+										><ChevronRight width={14} height={14} aria-hidden="true" /><span
 											>{item.status.replace('_', ' ')}</span
 										>{#if item.durationMs !== undefined}<span>{item.durationMs} ms</span
 											>{/if}</summary

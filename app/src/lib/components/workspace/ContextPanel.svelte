@@ -1,18 +1,22 @@
 <script lang="ts">
-	import {
-		Archive,
-		ArchiveRestore,
-		ArrowLeft,
-		EllipsisVertical,
-		Folder,
-		GripVertical,
-		LoaderCircle,
-		PanelLeftClose,
-		Pin,
-		Plus,
-		Search,
-		X
-	} from 'lucide-svelte';
+	import Archive from '~icons/lucide/archive';
+	import ArchiveRestore from '~icons/lucide/archive-restore';
+	import ArrowLeft from '~icons/lucide/arrow-left';
+	import Ban from '~icons/lucide/ban';
+	import CircleCheck from '~icons/lucide/circle-check';
+	import CircleHelp from '~icons/lucide/circle-help';
+	import CircleX from '~icons/lucide/circle-x';
+	import EllipsisVertical from '~icons/lucide/ellipsis-vertical';
+	import Folder from '~icons/lucide/folder';
+	import GripVertical from '~icons/lucide/grip-vertical';
+	import LoaderCircle from '~icons/lucide/loader-circle';
+	import MessageSquare from '~icons/lucide/message-square';
+	import PanelLeftClose from '~icons/lucide/panel-left-close';
+	import Pin from '~icons/lucide/pin';
+	import Plus from '~icons/lucide/plus';
+	import Search from '~icons/lucide/search';
+	import WifiOff from '~icons/lucide/wifi-off';
+	import X from '~icons/lucide/x';
 	import { moveBefore, sortByOrder } from '$lib/drag-order';
 	import { sessionRowState } from './session-row-state';
 	type Project = {
@@ -204,7 +208,7 @@
 			data-drawer-focus
 			aria-label="Back to Projects"
 			title="Back to Projects"
-			onclick={onback}><ArrowLeft size={20} aria-hidden="true" /></button
+			onclick={onback}><ArrowLeft width={20} height={20} aria-hidden="true" /></button
 		>
 		<h1 class="selected-project-title flex min-w-0 flex-1 items-center gap-2 font-semibold">
 			{#if selectedProject}{#if isImage(selectedProject.icon)}<img
@@ -217,29 +221,38 @@
 						>{selectedProject.icon}</span
 					>{:else}<Folder
 						class="title-icon project-icon-default size-(--navigation-icon-size) shrink-0 text-muted-foreground"
-						size={18}
+						width={18}
+						height={18}
 						aria-hidden="true"
-					/>{/if}{/if}<span class="truncate">{selectedProject?.name ?? 'General'}</span>
+					/>{/if}{:else}<MessageSquare
+					class="title-icon size-(--navigation-icon-size) shrink-0 text-muted-foreground"
+					width={18}
+					height={18}
+					aria-hidden="true"
+				/>{/if}<span class="truncate">{selectedProject?.name ?? 'Chats'}</span>
 		</h1>
 		{#if mobile}<button
 				class="drawer-close grid size-11 shrink-0 place-items-center rounded-md"
 				aria-label="Close Sessions"
 				title="Close Sessions"
-				onclick={onclose}><X size={20} aria-hidden="true" /></button
+				onclick={onclose}><X width={20} height={20} aria-hidden="true" /></button
 			>{/if}
 	</header>
 	<form class="flex gap-2 border-b border-border p-2" role="search" onsubmit={onsearch}>
 		<label
 			class="flex min-h-(--control-height) min-w-0 flex-1 items-center gap-2 rounded-md border border-border px-2.5"
 		>
-			<Search size={16} aria-hidden="true" /><span class="sr-only">Search Sessions</span><input
+			<Search width={16} height={16} aria-hidden="true" /><span class="sr-only"
+				>Search Sessions</span
+			><input
 				class="min-w-0 flex-1 border-0 bg-transparent"
 				bind:value={sessionSearch}
 				type="search"
 				placeholder="Search Sessions"
 			/>
 			{#if loading}<LoaderCircle
-					size={14}
+					width={14}
+					height={14}
 					class="loading-indicator active shrink-0 animate-spin"
 					role="status"
 					aria-label="Loading project contents"
@@ -256,8 +269,9 @@
 				showArchived = !showArchived;
 				onsearch();
 			}}
-			>{#if showArchived}<ArchiveRestore size={17} aria-hidden="true" />{:else}<Archive
-					size={17}
+			>{#if showArchived}<ArchiveRestore width={17} height={17} aria-hidden="true" />{:else}<Archive
+					width={17}
+					height={17}
 					aria-hidden="true"
 				/>{/if}</button
 		>
@@ -266,7 +280,7 @@
 				type="button"
 				aria-label="Hide Sessions panel"
 				title="Hide Sessions panel"
-				onclick={oncollapse}><PanelLeftClose size={17} aria-hidden="true" /></button
+				onclick={oncollapse}><PanelLeftClose width={17} height={17} aria-hidden="true" /></button
 			>{/if}
 	</form>
 	<div class="item-list grid gap-1 overflow-auto p-2">
@@ -274,7 +288,7 @@
 			class="new-session-action sticky top-0 z-10 flex min-h-(--control-height) w-full items-center justify-center gap-2 rounded-md bg-primary px-3 font-medium text-primary-foreground hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
 			onclick={oncreate}
 			disabled={selectedProject?.rootAvailable === false}
-			><Plus size={18} aria-hidden="true" /> Add new session</button
+			><Plus width={18} height={18} aria-hidden="true" /> Add new session</button
 		>
 		{#each orderedSessions as session, index (session.sessionId)}
 			{@const state = rowState(session)}
@@ -298,11 +312,11 @@
 					onclick={(event) => onicon(event, session)}
 				>
 					{#if isImage(session.icon ?? null)}<img
-							class="session-icon session-icon-image size-(--navigation-icon-size) rounded-md object-cover"
+							class="session-icon session-icon-image size-8 rounded-md object-cover"
 							src={session.icon ?? ''}
 							alt=""
 						/>{:else}<span
-							class="session-icon grid size-(--navigation-icon-size) place-items-center rounded-md"
+							class="session-icon grid size-8 place-items-center rounded-md text-2xl leading-none"
 							>{session.icon ?? automaticIcon(session.title)}</span
 						>{/if}
 				</button>
@@ -317,13 +331,22 @@
 					<div class="session-row-copy min-w-0 flex-1">
 						<div class="session-row-title flex min-w-0 items-baseline gap-2">
 							<strong>{session.title || 'Untitled session'}</strong>{#if session.pinned}<Pin
-									size={12}
+									width={12}
+									height={12}
 									aria-label="Pinned"
 								/>{/if}
-							<span
-								class="session-state text-xs whitespace-nowrap"
-								aria-label={`Status: ${state.label}`}>{state.label}</span
-							>{#if session.busySince}<span
+							<span class="session-state shrink-0" aria-label={`Status: ${state.label}`} title={state.label}>
+								{#if state.icon === 'running'}<LoaderCircle
+										class="animate-spin"
+										width={15}
+										height={15}
+										aria-hidden="true"
+									/>{:else if state.icon === 'waiting'}<CircleHelp width={15} height={15} aria-hidden="true" />
+								{:else if state.icon === 'failed'}<CircleX width={15} height={15} aria-hidden="true" />
+								{:else if state.icon === 'cancelled'}<Ban width={15} height={15} aria-hidden="true" />
+								{:else if state.icon === 'unknown'}<WifiOff width={15} height={15} aria-hidden="true" />
+								{:else}<CircleCheck width={15} height={15} aria-hidden="true" />{/if}
+							</span>{#if session.busySince}<span
 									class="busy-timer text-xs whitespace-nowrap text-sky-400 tabular-nums"
 									aria-label={`Busy for ${elapsed(session.busySince, now)}`}
 									>{elapsed(session.busySince, now)}</span
@@ -357,21 +380,21 @@
 					ondragstart={(event) => dragSession(event, session)}
 					ondragend={finishSessionDrag}
 					onclick={(event) => event.preventDefault()}
-					><GripVertical size={14} aria-hidden="true" /></button
+					><GripVertical width={14} height={14} aria-hidden="true" /></button
 				>
 				{#if !session.archived}<button
 						class="session-archive absolute top-1/2 right-8 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
 						aria-label={`Archive ${session.title || 'Untitled session'}`}
 						title={`Archive ${session.title || 'Untitled session'}`}
 						onclick={(event) => onarchive(event, session)}
-						><Archive size={15} aria-hidden="true" /></button
+						><Archive width={15} height={15} aria-hidden="true" /></button
 					>{/if}
 				<button
 					class="session-edit absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
 					aria-label={`Edit ${session.title || 'Untitled session'}`}
 					title={`Edit ${session.title || 'Untitled session'}`}
 					onclick={(event) => onedit(event, session)}
-					><EllipsisVertical size={16} aria-hidden="true" /></button
+					><EllipsisVertical width={16} height={16} aria-hidden="true" /></button
 				>
 			</div>
 		{/each}

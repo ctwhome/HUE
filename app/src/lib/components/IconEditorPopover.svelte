@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { autoUpdate, computePosition, flip, offset, shift, size } from '@floating-ui/dom';
 	import { onDestroy } from 'svelte';
-	import { Image, RotateCcw, SmilePlus, X } from 'lucide-svelte';
+	import Image from '~icons/lucide/image';
+	import RotateCcw from '~icons/lucide/rotate-ccw';
+	import SmilePlus from '~icons/lucide/smile-plus';
+	import X from '~icons/lucide/x';
 	import EmojiPicker from './EmojiPicker.svelte';
 
 	let {
@@ -79,12 +82,15 @@
 			class="grid size-9 place-items-center rounded-lg hover:bg-accent"
 			aria-label={`Close ${label} icon editor`}
 			title="Close"
-			onclick={() => popover?.hidePopover()}><X size={17} aria-hidden="true" /></button
+			onclick={() => popover?.hidePopover()}><X width={17} height={17} aria-hidden="true" /></button
 		>
 	</header>
 	<div class="grid grid-cols-3 gap-2">
-		<button class="icon-editor-action"><SmilePlus size={16} aria-hidden="true" /> Emoji</button>
-		<label class="icon-editor-action cursor-pointer"><Image size={16} aria-hidden="true" /> Image<input
+		<button class="icon-editor-action"
+			><SmilePlus width={16} height={16} aria-hidden="true" /> Emoji</button
+		>
+		<label class="icon-editor-action cursor-pointer"
+			><Image width={16} height={16} aria-hidden="true" /> Image<input
 				type="file"
 				accept="image/png,image/jpeg,image/gif,image/webp"
 				class="sr-only"
@@ -92,10 +98,8 @@
 				onchange={chooseImage}
 			/></label
 		>
-		<button class="icon-editor-action" onclick={() => select(null)}><RotateCcw
-				size={16}
-				aria-hidden="true"
-			/> Auto</button
+		<button class="icon-editor-action" onclick={() => select(null)}
+			><RotateCcw width={16} height={16} aria-hidden="true" /> Auto</button
 		>
 	</div>
 	<EmojiPicker onselect={select} />

@@ -26,7 +26,19 @@ export function sessionRowState(input: SessionRowStateInput) {
 									  ) ||
 									  input.status === 'running'
 									? 'Running'
-									: 'Quiet';
+									: 'Idle';
+	const icon =
+		label === 'Running' || label === 'Cancelling'
+			? 'running'
+			: label.startsWith('Waiting')
+				? 'waiting'
+				: label === 'Failed'
+					? 'failed'
+					: label === 'Cancelled'
+						? 'cancelled'
+						: label === 'Interrupted, delivery unknown'
+							? 'unknown'
+							: 'idle';
 	const attention =
 		input.unreadAttention === true ||
 		[
@@ -37,6 +49,7 @@ export function sessionRowState(input: SessionRowStateInput) {
 		].includes(label);
 	return {
 		label,
+		icon,
 		attention,
 		...(input.unreadAttention ? { note: 'Unread attention' } : {})
 	};

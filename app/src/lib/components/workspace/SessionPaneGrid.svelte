@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { X } from 'lucide-svelte';
+	import X from '~icons/lucide/x';
 	import SessionPanel from './SessionPanel.svelte';
 	import type { Project, Session, Workflow } from './types';
 
@@ -261,7 +261,7 @@
 					class="grid size-11 place-items-center rounded-md hover:bg-accent"
 					aria-label={`Close ${primarySession.title || 'Untitled session'} pane`}
 					title="Close pane"
-					onclick={closePrimary}><X size={16} aria-hidden="true" /></button
+					onclick={closePrimary}><X width={16} height={16} aria-hidden="true" /></button
 				>
 			</header>{/if}
 		{@render children()}
@@ -289,7 +289,7 @@
 					onclick={() =>
 						setDockedSessions(
 							dockedSessions.filter((candidate) => candidate.sessionId !== session.sessionId)
-						)}><X size={16} aria-hidden="true" /></button
+						)}><X width={16} height={16} aria-hidden="true" /></button
 				>
 			</header>
 			<SessionPanel

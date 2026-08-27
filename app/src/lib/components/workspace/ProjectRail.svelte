@@ -1,19 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import {
-		Archive,
-		ArrowUp,
-		Check,
-		ChevronRight,
-		Diamond,
-		EllipsisVertical,
-		Folder,
-		FolderPlus,
-		GripVertical,
-		PanelLeftClose,
-		Plus,
-		X
-	} from 'lucide-svelte';
+	import Archive from '~icons/lucide/archive';
+	import ArrowUp from '~icons/lucide/arrow-up';
+	import Check from '~icons/lucide/check';
+	import ChevronRight from '~icons/lucide/chevron-right';
+	import EllipsisVertical from '~icons/lucide/ellipsis-vertical';
+	import Folder from '~icons/lucide/folder';
+	import FolderPlus from '~icons/lucide/folder-plus';
+	import GripVertical from '~icons/lucide/grip-vertical';
+	import MessageSquare from '~icons/lucide/message-square';
+	import PanelLeftClose from '~icons/lucide/panel-left-close';
+	import Plus from '~icons/lucide/plus';
+	import X from '~icons/lucide/x';
 	import { moveBefore, sortByOrder } from '$lib/drag-order';
 	import IconEditorPopover from '$lib/components/IconEditorPopover.svelte';
 	import ProjectFoldersEditor from './ProjectFoldersEditor.svelte';
@@ -239,7 +237,8 @@
 				before
 			);
 			localStorage.setItem('hue:project-order', JSON.stringify(projectOrder));
-			if (projects.find(({ id }) => id === projectId)?.group !== group) void onmove(projectId, group);
+			if (projects.find(({ id }) => id === projectId)?.group !== group)
+				void onmove(projectId, group);
 		}
 	}
 
@@ -274,7 +273,7 @@
 			class="drawer-close grid size-11 place-items-center rounded-md"
 			aria-label="Close Projects"
 			title="Close Projects"
-			onclick={onclose}><X size={20} aria-hidden="true" /></button
+			onclick={onclose}><X width={20} height={20} aria-hidden="true" /></button
 		>{/if}
 	<div class="section-heading flex items-center justify-between">
 		<span
@@ -287,13 +286,13 @@
 				aria-label="Add Hermes Project"
 				title={addDisabled ? projectsError : 'Add Hermes Project'}
 				disabled={addDisabled}
-				onclick={onaddopen}><Plus size={18} aria-hidden="true" /></button
+				onclick={onaddopen}><Plus width={18} height={18} aria-hidden="true" /></button
 			>
 			{#if !mobile}<button
 					class="icon-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border bg-secondary hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
 					aria-label="Hide Projects panel"
 					title="Hide Projects panel"
-					onclick={oncollapse}><PanelLeftClose size={17} aria-hidden="true" /></button
+					onclick={oncollapse}><PanelLeftClose width={17} height={17} aria-hidden="true" /></button
 				>{/if}
 		</div>
 	</div>
@@ -331,18 +330,19 @@
 				aria-expanded={!selectedProject ? sessionsOpen : undefined}
 				onclick={() => onchoose(null)}
 			>
-				<Diamond
+				<MessageSquare
 					class="project-icon grid size-(--navigation-icon-size) shrink-0 place-items-center rounded-md"
-					size={18}
+					width={18}
+					height={18}
 					aria-hidden="true"
 				/>
-				<span>General</span>
+				<span>Chats</span>
 			</button>
 			<button
 				class="icon-button workspace-session-add absolute top-1/2 right-0 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-				aria-label="New General session"
-				title="New General session"
-				onclick={onprojectless}><Plus size={18} aria-hidden="true" /></button
+				aria-label="New chat"
+				title="New chat"
+				onclick={onprojectless}><Plus width={18} height={18} aria-hidden="true" /></button
 			>
 		</div>
 		<button
@@ -350,7 +350,8 @@
 			aria-label="Add Project section"
 			title="Add section"
 			disabled={addDisabled || projects.length === 0}
-			onclick={openSectionDialog}><FolderPlus size={15} aria-hidden="true" /> Add section</button
+			onclick={openSectionDialog}
+			><FolderPlus width={15} height={15} aria-hidden="true" /> Add section</button
 		>
 		{#if draggedProjectId}<div
 				class={`mt-1 flex min-h-11 items-center rounded-md border border-dashed px-2 text-xs sm:min-h-8 ${dropGroup === '' ? 'border-ring bg-accent text-foreground' : 'border-border text-muted-foreground'}`}
@@ -358,8 +359,9 @@
 				aria-label="Move Project to ungrouped"
 				ondragover={(event) => allowProjectDrop(event, null)}
 				ondrop={(event) => dropProject(event, null)}
-				>Move to ungrouped</div
-			>{/if}
+			>
+				Move to ungrouped
+			</div>{/if}
 		{#each projectGroups as group (group.label ?? '')}
 			{#if group.label}<button
 					class={`mt-2 flex min-h-11 w-full items-center gap-1 rounded-md px-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8 ${dropGroup === group.label ? 'bg-accent ring-2 ring-ring' : ''}`}
@@ -374,7 +376,8 @@
 				>
 					<ChevronRight
 						class={`shrink-0 transition-transform ${collapsedGroups.has(group.label) ? '' : 'rotate-90'}`}
-						size={14}
+						width={14}
+						height={14}
 						aria-hidden="true"
 					/>
 					<span class="min-w-0 flex-1 truncate">{group.label}</span>
@@ -409,7 +412,8 @@
 									>{project.icon}</span
 								>{:else}<Folder
 									class="project-icon project-icon-default size-(--navigation-icon-size) text-muted-foreground"
-									size={18}
+									width={18}
+									height={18}
 									aria-hidden="true"
 								/>{/if}
 						</button>
@@ -430,28 +434,30 @@
 									>{project.icon}</span
 								>{:else}<Folder
 									class="project-icon-inline project-icon-default size-(--navigation-icon-size) text-muted-foreground"
-									size={18}
+									width={18}
+									height={18}
 									aria-hidden="true"
 								/>{/if}
 							<span class="min-w-0 truncate">{project.name}</span>
 							{#if !project.rootAvailable}<small class="text-amber-400">Missing</small>{/if}
 						</button>
 						<button
-							class="project-drag absolute top-1/2 right-8 hidden h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 cursor-grab place-items-center rounded-md opacity-0 hover:bg-accent focus:opacity-100 active:cursor-grabbing group-hover:opacity-100 sm:grid"
+							class="project-drag absolute top-1/2 right-8 hidden h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 cursor-grab place-items-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent focus:opacity-100 active:cursor-grabbing sm:grid"
 							class:opacity-100={selectedProject?.id === project.id}
 							draggable="true"
 							aria-label={`Reorder ${project.name}`}
 							title={`Drag ${project.name} to reorder`}
 							ondragstart={(event) => startProjectDrag(event, project.id)}
 							ondragend={finishProjectDrag}
-							onclick={(event) => event.preventDefault()}><GripVertical size={15} aria-hidden="true" /></button
+							onclick={(event) => event.preventDefault()}
+							><GripVertical width={15} height={15} aria-hidden="true" /></button
 						>
 						<button
 							class="project-edit absolute top-1/2 right-0 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent focus:opacity-100"
 							aria-label={`Edit ${project.name}`}
 							title={`Edit ${project.name}`}
 							onclick={(event) => onedit(event, project)}
-							><EllipsisVertical size={16} aria-hidden="true" /></button
+							><EllipsisVertical width={16} height={16} aria-hidden="true" /></button
 						>
 					</div>
 				{/each}
@@ -512,7 +518,8 @@
 			class="icon-button absolute top-3 right-3 grid size-11 place-items-center rounded-md"
 			aria-label="Close section creator"
 			title="Close"
-			onclick={() => addSectionDialog?.close()}><X size={18} aria-hidden="true" /></button
+			onclick={() => addSectionDialog?.close()}
+			><X width={18} height={18} aria-hidden="true" /></button
 		>
 	</dialog>
 
@@ -553,7 +560,7 @@
 				disabled={!projectDirectoryParent || directoryLoading}
 				onclick={() => projectDirectoryParent && ondirectory(projectDirectoryParent)}
 				aria-label="Parent directory"
-				title="Parent directory"><ArrowUp size={16} aria-hidden="true" /></button
+				title="Parent directory"><ArrowUp width={16} height={16} aria-hidden="true" /></button
 			>
 			<code class="min-w-0 overflow-hidden text-ellipsis">{projectRoot || 'Loading…'}</code>
 		</div>
@@ -575,7 +582,9 @@
 						title={`Open ${directory.name}`}
 						onclick={() => ondirectory(directory.path)}
 					>
-						<Folder size={16} aria-hidden="true" /><span class="truncate">{directory.name}</span>
+						<Folder width={16} height={16} aria-hidden="true" /><span class="truncate"
+							>{directory.name}</span
+						>
 					</button>
 				{/each}
 			{/if}
@@ -584,7 +593,7 @@
 		{#if locatingProject}
 			<div class="mt-3 flex justify-end">
 				<button class="min-h-11" disabled={!projectRoot || projectSaving} onclick={onaddfolder}>
-					<FolderPlus size={16} aria-hidden="true" /> Add this folder
+					<FolderPlus width={16} height={16} aria-hidden="true" /> Add this folder
 				</button>
 			</div>
 		{:else}
@@ -595,10 +604,8 @@
 					disabled={!projectRoot}
 					onclick={() => ontogglefolder(projectRoot)}
 				>
-					{#if currentFolderSelected}<Check size={16} aria-hidden="true" /> Remove current folder{:else}<FolderPlus
-							size={16}
-							aria-hidden="true"
-						/> Select current folder{/if}
+					{#if currentFolderSelected}<Check width={16} height={16} aria-hidden="true" /> Remove current
+						folder{:else}<FolderPlus width={16} height={16} aria-hidden="true" /> Select current folder{/if}
 				</button>
 				<fieldset class="grid gap-2 rounded-lg border border-border p-3">
 					<legend>Selected folders</legend>
@@ -617,7 +624,8 @@
 								class="grid size-11 place-items-center"
 								aria-label={`Remove ${folder}`}
 								title={`Remove ${folder}`}
-								onclick={() => ontogglefolder(folder)}><X size={16} aria-hidden="true" /></button
+								onclick={() => ontogglefolder(folder)}
+								><X width={16} height={16} aria-hidden="true" /></button
 							>
 						</label>
 					{:else}
@@ -641,7 +649,8 @@
 			class="icon-button absolute top-3 right-3 grid size-11 place-items-center rounded-md"
 			aria-label="Close Project folder browser"
 			title="Close"
-			onclick={() => addProjectDialog?.close()}><X size={18} aria-hidden="true" /></button
+			onclick={() => addProjectDialog?.close()}
+			><X width={18} height={18} aria-hidden="true" /></button
 		>
 	</dialog>
 
@@ -662,7 +671,12 @@
 			>
 				{#if isImage(projectIcon)}<img src={projectIcon ?? ''} alt="" />{:else if projectIcon}<span
 						>{projectIcon}</span
-					>{:else}<Folder class="text-muted-foreground" size={20} aria-hidden="true" />{/if}
+					>{:else}<Folder
+						class="text-muted-foreground"
+						width={20}
+						height={20}
+						aria-hidden="true"
+					/>{/if}
 			</button>
 			<div class="min-w-0 flex-1">
 				<h2 id="edit-project-title" class="truncate text-sm font-semibold">Project options</h2>
@@ -674,7 +688,8 @@
 				class="grid size-9 place-items-center rounded-lg hover:bg-accent"
 				aria-label="Close project options"
 				title="Close"
-				onclick={() => editProjectDialog?.hidePopover()}><X size={17} aria-hidden="true" /></button
+				onclick={() => editProjectDialog?.hidePopover()}
+				><X width={17} height={17} aria-hidden="true" /></button
 			>
 		</header>
 		<div class="grid gap-3 px-2 pb-2">
@@ -731,7 +746,7 @@
 					class="session-menu-action text-destructive"
 					disabled={projectSaving}
 					onclick={onarchiveRequest}
-					><Archive size={16} aria-hidden="true" /> Archive Project</button
+					><Archive width={16} height={16} aria-hidden="true" /> Archive Project</button
 				>
 			</section>
 		</div>

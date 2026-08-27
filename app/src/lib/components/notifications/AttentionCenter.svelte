@@ -1,6 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { ArrowLeft, Bell, Check, Settings, Trash2, X } from 'lucide-svelte';
+	import ArrowLeft from '~icons/lucide/arrow-left';
+	import Bell from '~icons/lucide/bell';
+	import Check from '~icons/lucide/check';
+	import Settings from '~icons/lucide/settings';
+	import Trash2 from '~icons/lucide/trash-2';
+	import X from '~icons/lucide/x';
 	import {
 		acknowledgeThenNavigate,
 		attentionState,

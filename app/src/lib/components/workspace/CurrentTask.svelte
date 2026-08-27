@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { ChevronDown, ListTodo, X } from 'lucide-svelte';
+	import ChevronDown from '~icons/lucide/chevron-down';
+	import ListTodo from '~icons/lucide/list-todo';
+	import X from '~icons/lucide/x';
 	import { onMount, tick } from 'svelte';
 	import { selectTaskSummary, type WorkspacePlanEntry } from '$lib';
 
@@ -76,9 +78,14 @@
 			aria-expanded={tasksExpanded}
 			onclick={toggle}
 		>
-			<ListTodo size={16} aria-hidden="true" />
+			<ListTodo width={16} height={16} aria-hidden="true" />
 			<span>Tasks</span><small>{status} · {summary.completed}/{summary.total}</small>
-			<ChevronDown class={tasksExpanded ? 'expanded' : ''} size={15} aria-hidden="true" />
+			<ChevronDown
+				class={tasksExpanded ? 'expanded' : ''}
+				width={15}
+				height={15}
+				aria-hidden="true"
+			/>
 		</button>
 		{#if tasksExpanded && !mobile}{@render entries()}{/if}
 	</section>{/if}
@@ -94,9 +101,13 @@
 		onclick={(event) => event.target === dialog && void close()}
 	>
 		<header>
-			<div><ListTodo size={18} aria-hidden="true" /><strong>Tasks</strong><small>{status}</small></div>
+			<div>
+				<ListTodo width={18} height={18} aria-hidden="true" /><strong>Tasks</strong><small
+					>{status}</small
+				>
+			</div>
 			<button type="button" aria-label="Close Tasks" title="Close Tasks" onclick={close}
-				><X size={18} aria-hidden="true" /></button
+				><X width={18} height={18} aria-hidden="true" /></button
 			>
 		</header>
 		{@render entries()}

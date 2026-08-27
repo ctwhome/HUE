@@ -33,6 +33,8 @@ test('updates and deletes a workflow through the canonical Hermes project', asyn
 				prompt: 'Run checks.',
 				profile: 'default',
 				workMode: 'live',
+				folder: 'Delivery',
+				favorite: true,
 				archived: true
 			})
 		})
@@ -51,6 +53,8 @@ test('updates and deletes a workflow through the canonical Hermes project', asyn
 				prompt: 'Run checks.',
 				profile: 'default',
 				workMode: 'live',
+				folder: 'Delivery',
+				favorite: true,
 				archived: true
 			}
 		},

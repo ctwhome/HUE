@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { Archive, CircleAlert, CircleHelp, LoaderCircle, Search, X, Zap } from 'lucide-svelte';
+	import Archive from '~icons/lucide/archive';
+	import CircleAlert from '~icons/lucide/circle-alert';
+	import CircleHelp from '~icons/lucide/circle-help';
+	import LoaderCircle from '~icons/lucide/loader-circle';
+	import Search from '~icons/lucide/search';
+	import X from '~icons/lucide/x';
+	import Zap from '~icons/lucide/zap';
 	import { tick } from 'svelte';
 	import type { SessionFinderResult } from './types';
 

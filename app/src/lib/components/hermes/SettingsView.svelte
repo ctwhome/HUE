@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ChevronRight } from 'lucide-svelte';
+	import ChevronRight from '~icons/lucide/chevron-right';
 	import type { GlobalView } from '../GlobalNavigation.svelte';
 	import type { HermesSection } from './types';
 
@@ -28,7 +28,12 @@
 					<strong>{section.label}</strong>
 					<span class="text-sm text-muted-foreground">{section.description}</span>
 				</div>
-				<ChevronRight class="shrink-0 text-muted-foreground" size={18} aria-hidden="true" />
+				<ChevronRight
+					class="shrink-0 text-muted-foreground"
+					width={18}
+					height={18}
+					aria-hidden="true"
+				/>
 			</button>
 		{/each}
 	</div>
