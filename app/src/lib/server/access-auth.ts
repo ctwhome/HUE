@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { requestOriginMatches } from './same-origin';
 
 export const ACCESS_COOKIE = 'hue_access';
 export const ACCESS_SESSION_SECONDS = 7 * 24 * 60 * 60;
@@ -45,13 +46,7 @@ function cookieValue(request: Request): string | undefined {
 function requestOriginAllowed(request: Request, url: URL): boolean {
 	const host = request.headers.get('host') ?? url.host;
 	if (host !== url.host) return false;
-	const origin = request.headers.get('origin');
-	if (!origin) return true;
-	try {
-		return new URL(origin).origin === url.origin;
-	} catch {
-		return false;
-	}
+	return !request.headers.has('origin') || requestOriginMatches(request, url);
 }
 
 export function requestAccessAllowed(
@@ -63,10 +58,13 @@ export function requestAccessAllowed(
 ): boolean {
 	if (!clientAddress || !requestOriginAllowed(request, url)) return false;
 	const address = clientAddress.replace(/^::ffff:/, '');
-	const hostname = url.hostname;
+	const proxied = ['forwarded', 'x-forwarded-for', 'x-forwarded-proto'].some((header) =>
+		request.headers.has(header)
+	);
 	if (
+		!proxied &&
 		['127.0.0.1', '::1'].includes(address) &&
-		['127.0.0.1', 'localhost', '[::1]'].includes(hostname)
+		['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
 	)
 		return true;
 	return !!secret && accessSessionValid(cookieValue(request), secret, now);
