@@ -30,6 +30,31 @@ test('loopback access remains available without configuration', () => {
 	);
 });
 
+test('a loopback reverse proxy cannot receive the local bypass', () => {
+	const local = new Request('http://localhost:4010/', {
+		headers: {
+			host: 'localhost:4010',
+			'x-forwarded-for': '100.64.0.2',
+			'x-forwarded-proto': 'https'
+		}
+	});
+
+	expect(requestAccessAllowed(local, new URL(local.url), '127.0.0.1', undefined, now)).toBe(false);
+});
+
+test('remote access accepts same-host HTTPS terminated at an HTTP proxy', () => {
+	const token = createAccessSession(secret, now);
+	const remote = new Request('http://hue.example.test/api/projects', {
+		headers: {
+			host: 'hue.example.test',
+			origin: 'https://hue.example.test',
+			cookie: `${ACCESS_COOKIE}=${token}`
+		}
+	});
+
+	expect(requestAccessAllowed(remote, new URL(remote.url), '100.64.0.2', secret, now)).toBe(true);
+});
+
 test('remote access requires a configured secret and valid session', () => {
 	const token = createAccessSession(secret, now);
 	const remote = request('https://hue.example.test/', token);
