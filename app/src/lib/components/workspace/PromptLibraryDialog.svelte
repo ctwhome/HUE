@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Archive, Copy, Pencil, RotateCcw, Trash2, X } from 'lucide-svelte';
+	import { Archive, Copy, MoreHorizontal, Pencil, Play, RotateCcw, Trash2, X } from 'lucide-svelte';
 	import type { WorkMode } from '$lib/work-mode';
 	import type { Workflow } from './types';
 
@@ -46,6 +46,7 @@
 	let editWorkMode = $state<WorkMode>('autonomous');
 	let showArchived = $state(false);
 	let launching = $state<Workflow | null>(null);
+	let actions = $state<string | null>(null);
 
 	function run(workflow: Workflow) {
 		launching = workflow;
@@ -84,6 +85,18 @@
 	async function toggleArchived() {
 		showArchived = !showArchived;
 		await onload(showArchived);
+	}
+	function closeActions() {
+		actions = null;
+	}
+	function closeActionsOnEscape(event: KeyboardEvent) {
+		if (event.key !== 'Escape') return;
+		event.preventDefault();
+		closeActions();
+		(event.currentTarget as HTMLElement)
+			.closest('.workflow-actions')
+			?.querySelector('button')
+			?.focus();
 	}
 </script>
 
@@ -154,45 +167,74 @@
 							<strong>{workflow.name}</strong>
 							<p>{workflow.prompt}</p>
 							<small class="text-muted-foreground"
-								>{workflow.profile} · {workflow.workMode === 'live'
+								>{projectName} · {workflow.profile} · {workflow.workMode === 'live'
 									? 'Live'
 									: 'Autonomous'}{workflow.archived ? ' · Archived' : ''}</small
 							>
 						</div>
-						<div class="flex shrink-0 flex-wrap justify-end gap-1">
+						<div class="flex shrink-0 items-start gap-1">
 							{#if !workflow.archived}<button
 									type="button"
+									class="inline-flex items-center gap-1.5"
 									aria-label={`Run ${workflow.name}`}
-									onclick={() => run(workflow)}>Run</button
+									onclick={() => run(workflow)}><Play size={15} aria-hidden="true" />Run</button
 								>{/if}
-							<button
-								type="button"
-								aria-label={`Edit ${workflow.name}`}
-								title="Edit Workflow"
-								onclick={() => edit(workflow)}><Pencil size={15} aria-hidden="true" /></button
-							>
-							<button
-								type="button"
-								aria-label={`Duplicate ${workflow.name}`}
-								title="Duplicate Workflow"
-								onclick={() => onduplicate(workflow)}><Copy size={15} aria-hidden="true" /></button
-							>
-							<button
-								type="button"
-								aria-label={`${workflow.archived ? 'Restore' : 'Archive'} ${workflow.name}`}
-								title={workflow.archived ? 'Restore Workflow' : 'Archive Workflow'}
-								onclick={() => onupdate(workflow, { archived: !workflow.archived })}
-								>{#if workflow.archived}<RotateCcw size={15} aria-hidden="true" />{:else}<Archive
-										size={15}
-										aria-hidden="true"
-									/>{/if}</button
-							>
-							<button
-								type="button"
-								aria-label={`Delete ${workflow.name}`}
-								title="Delete Workflow"
-								onclick={() => remove(workflow)}><Trash2 size={15} aria-hidden="true" /></button
-							>
+							<div class="workflow-actions relative">
+								<button
+									type="button"
+									class="grid size-11 cursor-pointer list-none place-items-center rounded-md bg-secondary"
+									aria-label={`More actions for ${workflow.name}`}
+									aria-expanded={actions === workflow.id}
+									onclick={() => (actions = actions === workflow.id ? null : workflow.id)}
+									onkeydown={closeActionsOnEscape}
+									title="Workflow actions"><MoreHorizontal size={17} aria-hidden="true" /></button
+								>
+								{#if actions === workflow.id}<div
+										class="absolute top-full right-0 z-10 mt-1 grid min-w-44 gap-1 rounded-lg border border-border bg-card p-1 shadow-xl"
+										role="menu"
+										tabindex="-1"
+										onkeydown={closeActionsOnEscape}
+									>
+										<button
+											type="button"
+											role="menuitem"
+											class="flex items-center gap-2 whitespace-nowrap"
+											onclick={(event) => {
+												closeActions();
+												edit(workflow);
+											}}><Pencil size={15} aria-hidden="true" />Edit Workflow</button
+										>
+										<button
+											type="button"
+											role="menuitem"
+											class="flex items-center gap-2 whitespace-nowrap"
+											onclick={(event) => {
+												closeActions();
+												void onduplicate(workflow);
+											}}><Copy size={15} aria-hidden="true" />Duplicate Workflow</button
+										>
+										<button
+											type="button"
+											role="menuitem"
+											class="flex items-center gap-2 whitespace-nowrap"
+											onclick={(event) => {
+												closeActions();
+												void onupdate(workflow, { archived: !workflow.archived });
+											}}
+											>{#if workflow.archived}<RotateCcw size={15} aria-hidden="true" />Restore
+												Workflow{:else}<Archive size={15} aria-hidden="true" />Archive Workflow{/if}</button
+										>
+										<button
+											type="button"
+											class="flex items-center gap-2 whitespace-nowrap text-destructive"
+											role="menuitem"
+											onclick={(event) => {
+												closeActions();
+												void remove(workflow);
+											}}><Trash2 size={15} aria-hidden="true" />Delete Workflow</button
+										>
+									</div>{/if}
+							</div>
 						</div>
 					</article>
 				{/each}

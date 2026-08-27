@@ -114,7 +114,11 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			}
 		});
 	} catch (cause) {
-		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 503 });
+		const message = cause instanceof Error ? cause.message : String(cause);
+		return json(
+			{ error: message },
+			{ status: message === 'Hermes does not support Session duplication' ? 409 : 503 }
+		);
 	}
 };
 

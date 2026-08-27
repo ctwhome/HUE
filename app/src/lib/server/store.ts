@@ -6,9 +6,11 @@ import { validateIcon } from '$lib/icon';
 import type { ImageAttachment, InputAttachment, ReviewContext } from '$lib/message-content';
 import { validateProjectColor } from '$lib/project-color';
 import { DEFAULT_WORK_MODE, parseWorkMode, type WorkMode } from '$lib/work-mode';
+import { createHueDatabaseBackup, HUE_SCHEMA_VERSION } from './hue-backup';
 import { redactPersistedValue } from './redaction';
 
 const runtimeRequire = createRequire(import.meta.url);
+export { HUE_SCHEMA_VERSION } from './hue-backup';
 
 export type MessageStatus = 'queued' | 'running' | 'completed' | 'failed' | 'unknown' | 'cancelled';
 
@@ -77,6 +79,8 @@ export type StoredNotification = {
 	readAt: string | null;
 	dismissedAt: string | null;
 	actedAt: string | null;
+	interactionId: string | null;
+	currentRelevant: boolean;
 };
 
 export type StoredSession = {
@@ -127,6 +131,8 @@ type NotificationRow = {
 	read_at: string | null;
 	dismissed_at: string | null;
 	acted_at: string | null;
+	interaction_id: string | null;
+	current_relevant: number;
 };
 
 function mapNotification(row: NotificationRow): StoredNotification {
@@ -143,7 +149,9 @@ function mapNotification(row: NotificationRow): StoredNotification {
 		createdAt: row.created_at,
 		readAt: row.read_at,
 		dismissedAt: row.dismissed_at,
-		actedAt: row.acted_at
+		actedAt: row.acted_at,
+		interactionId: row.interaction_id,
+		currentRelevant: !!row.current_relevant
 	};
 }
 
@@ -253,7 +261,7 @@ export class HUEStore {
 	readonly database: BunDatabase;
 	readonly filename: string;
 
-	constructor(filename: string) {
+	constructor(filename: string, options: { migrationFault?: () => void } = {}) {
 		this.filename = filename;
 		if (filename !== ':memory:') secureDatabasePath(filename);
 		const { Database } = runtimeRequire('bun:sqlite') as typeof import('bun:sqlite');
@@ -262,10 +270,67 @@ export class HUEStore {
 			chmodSync(filename, 0o600);
 		this.database.exec('PRAGMA foreign_keys = ON');
 		this.database.exec('PRAGMA secure_delete = ON');
-		this.migrate();
+		try {
+			this.migrate(options.migrationFault);
+		} catch (cause) {
+			this.database.close();
+			throw cause;
+		}
 	}
 
-	private migrate() {
+	private migrate(migrationFault?: () => void) {
+		const currentVersion = (
+			this.database.query('PRAGMA user_version').get() as { user_version: number }
+		).user_version;
+		if (currentVersion === HUE_SCHEMA_VERSION) return;
+		if (currentVersion !== 0) {
+			throw new Error(
+				`HUE schema migration ${currentVersion} -> ${HUE_SCHEMA_VERSION} is unsupported. Stop HUE and use an application version that supports this database.`
+			);
+		}
+		const messagesSchema = this.database
+			.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'messages'")
+			.get() as { sql: string } | null;
+		const rebuildsMessages =
+			messagesSchema?.sql.includes('CHECK') && !messagesSchema.sql.includes("'cancelled'");
+		const rebuildsProjectSessions = Boolean(
+			(
+				this.database
+					.query(
+						"SELECT [notnull] FROM pragma_table_info('project_sessions') WHERE name = 'project_id'"
+					)
+					.get() as { notnull: number } | null
+			)?.notnull
+		);
+		const destructiveMigration = rebuildsMessages || rebuildsProjectSessions;
+		let backup: { filename: string } | null = null;
+		if (this.filename !== ':memory:' && destructiveMigration) {
+			try {
+				backup = createHueDatabaseBackup(this.database, this.filename, undefined, true);
+			} catch {
+				throw new Error(
+					`HUE schema migration ${currentVersion} -> ${HUE_SCHEMA_VERSION} failed before schema changes. Backup: unavailable. Stop HUE and fix backup storage before retrying.`
+				);
+			}
+		}
+		if (destructiveMigration) this.database.exec('PRAGMA foreign_keys = OFF');
+		try {
+			this.database.transaction(() => {
+				this.migrateUnversionedSchema();
+				migrationFault?.();
+				this.database.exec(`PRAGMA user_version = ${HUE_SCHEMA_VERSION}`);
+			})();
+		} catch {
+			const filename = backup?.filename ?? 'no backup created';
+			throw new Error(
+				`HUE schema migration ${currentVersion} -> ${HUE_SCHEMA_VERSION} failed. Backup: ${filename}. Stop HUE and restore the backup to a fresh HUE database path before retrying.`
+			);
+		} finally {
+			if (destructiveMigration) this.database.exec('PRAGMA foreign_keys = ON');
+		}
+	}
+
+	private migrateUnversionedSchema() {
 		this.database.exec(`
 			CREATE TABLE IF NOT EXISTS projects (
 				id TEXT PRIMARY KEY,
@@ -520,10 +585,7 @@ export class HUEStore {
 			.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'messages'")
 			.get() as { sql: string } | null;
 		if (messagesSchema?.sql.includes('CHECK') && !messagesSchema.sql.includes("'cancelled'")) {
-			this.database.exec('PRAGMA foreign_keys = OFF');
-			try {
-				this.database.transaction(() => {
-					this.database.exec(`
+			this.database.exec(`
 						ALTER TABLE message_attachments RENAME TO message_attachments_before_cancelled;
 						ALTER TABLE messages RENAME TO messages_before_cancelled;
 						CREATE TABLE messages (
@@ -552,10 +614,6 @@ export class HUEStore {
 						DROP TABLE message_attachments_before_cancelled;
 						DROP TABLE messages_before_cancelled;
 					`);
-				})();
-			} finally {
-				this.database.exec('PRAGMA foreign_keys = ON');
-			}
 		}
 		const eventColumns = this.database.query('PRAGMA table_info(session_events)').all() as Array<{
 			name: string;
@@ -666,12 +724,21 @@ export class HUEStore {
 		if (!Number.isSafeInteger(cursor) || cursor < 1) throw new Error('Invalid notification cursor');
 		const rows = this.database
 			.query(
-				`SELECT id, source_event_id, project_id, session_id, kind, priority, title, body, path,
-				 created_at, read_at, dismissed_at, acted_at
-				 FROM notifications
-				 WHERE CAST(source_event_id AS INTEGER) < ?
-				   AND (? = 0 OR (read_at IS NULL AND dismissed_at IS NULL))
-				 ORDER BY CAST(source_event_id AS INTEGER) DESC LIMIT ?`
+				`SELECT n.id, n.source_event_id, n.project_id, n.session_id, n.kind, n.priority,
+				 n.title, n.body, n.path, n.created_at, n.read_at, n.dismissed_at, n.acted_at,
+				 CASE WHEN n.kind = 'permission' THEN json_extract(source.payload, '$.id') END interaction_id,
+				 CASE WHEN n.kind = 'permission' AND json_extract((
+				  SELECT latest.payload FROM session_events latest
+				  WHERE latest.project_id IS n.project_id AND latest.session_id = n.session_id
+				   AND latest.type = 'agent.permission'
+				   AND json_extract(latest.payload, '$.id') = json_extract(source.payload, '$.id')
+				  ORDER BY latest.sequence DESC LIMIT 1
+				 ), '$.status') = 'pending' THEN 1 ELSE 0 END current_relevant
+				 FROM notifications n
+				 LEFT JOIN session_events source ON source.sequence = CAST(n.source_event_id AS INTEGER)
+				 WHERE CAST(n.source_event_id AS INTEGER) < ?
+				   AND (? = 0 OR (n.read_at IS NULL AND n.dismissed_at IS NULL))
+				 ORDER BY CAST(n.source_event_id AS INTEGER) DESC LIMIT ?`
 			)
 			.all(cursor, options.unreadOnly ? 1 : 0, limit + 1) as NotificationRow[];
 		const items = rows.slice(0, limit).map(mapNotification);
@@ -706,8 +773,19 @@ export class HUEStore {
 	getNotification(id: string): StoredNotification | null {
 		const row = this.database
 			.query(
-				`SELECT id, source_event_id, project_id, session_id, kind, priority, title, body, path,
-				 created_at, read_at, dismissed_at, acted_at FROM notifications WHERE id = ?`
+				`SELECT n.id, n.source_event_id, n.project_id, n.session_id, n.kind, n.priority,
+				 n.title, n.body, n.path, n.created_at, n.read_at, n.dismissed_at, n.acted_at,
+				 CASE WHEN n.kind = 'permission' THEN json_extract(source.payload, '$.id') END interaction_id,
+				 CASE WHEN n.kind = 'permission' AND json_extract((
+				  SELECT latest.payload FROM session_events latest
+				  WHERE latest.project_id IS n.project_id AND latest.session_id = n.session_id
+				   AND latest.type = 'agent.permission'
+				   AND json_extract(latest.payload, '$.id') = json_extract(source.payload, '$.id')
+				  ORDER BY latest.sequence DESC LIMIT 1
+				 ), '$.status') = 'pending' THEN 1 ELSE 0 END current_relevant
+				 FROM notifications n
+				 LEFT JOIN session_events source ON source.sequence = CAST(n.source_event_id AS INTEGER)
+				 WHERE n.id = ?`
 			)
 			.get(id) as NotificationRow | null;
 		return row ? mapNotification(row) : null;

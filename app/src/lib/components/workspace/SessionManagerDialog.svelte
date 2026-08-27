@@ -21,6 +21,7 @@
 		tags = $bindable(),
 		error,
 		saving,
+		canDuplicate,
 		onicon,
 		onsave,
 		onduplicate,
@@ -38,6 +39,7 @@
 		tags: string;
 		error: string;
 		saving: boolean;
+		canDuplicate: boolean;
 		onicon: (event: MouseEvent) => void;
 		onsave: () => void | Promise<void>;
 		onduplicate: () => void;
@@ -156,7 +158,11 @@
 					size={16}
 					aria-hidden="true"
 				/> Export JSON</button
-			><button class="session-menu-action" disabled={saving} onclick={onduplicate}><Copy
+			><button
+				class="session-menu-action"
+				disabled={saving || !canDuplicate}
+				title={canDuplicate ? 'Duplicate Session' : 'Hermes does not support Session duplication'}
+				onclick={onduplicate}><Copy
 					size={16}
 					aria-hidden="true"
 				/> Duplicate</button

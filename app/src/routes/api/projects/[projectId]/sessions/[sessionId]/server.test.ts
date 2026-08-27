@@ -13,6 +13,7 @@ let storedFork: typeof forked | null = null;
 let transcriptCwd = '';
 let sourceTitle = 'Source';
 let forkCalls = 0;
+let canFork = true;
 let failCopy = false;
 let lockActive = false;
 let metadataMutated = false;
@@ -93,6 +94,7 @@ mock.module('$lib/server/route-services', () => ({
 			forkSession: async () => {
 				forkCalls += 1;
 				if (!lockActive) throw new Error('fork escaped Session delivery lock');
+				if (!canFork) throw new Error('Hermes does not support Session duplication');
 				return forked;
 			},
 			listSessions: async () => {
@@ -154,6 +156,23 @@ test('does not fork while the source session has an active turn', async () => {
 
 	expect(response.status).toBe(409);
 	expect(storedFork).toBeNull();
+});
+
+test('returns an actionable conflict after core negotiation finds fork unsupported', async () => {
+	associated = true;
+	snapshot.activeTurn = null as never;
+	forkCalls = 0;
+	canFork = false;
+	const { POST } = await import('./+server');
+	const response = await POST({
+		params: { projectId: 'project-1', sessionId: 'session-1' },
+		request: new Request('http://hue.test', { method: 'POST', body: '{}' })
+	} as never);
+
+	expect(response.status).toBe(409);
+	expect(await response.json()).toEqual({ error: 'Hermes does not support Session duplication' });
+	expect(forkCalls).toBe(1);
+	canFork = true;
 });
 
 test('rejects explicit and derived overlong duplicate titles before Hermes fork', async () => {

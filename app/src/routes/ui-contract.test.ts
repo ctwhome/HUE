@@ -5,6 +5,7 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 const route = read('./+page.svelte');
 const workspace = read('../lib/components/Workspace.svelte');
 const projectRail = read('../lib/components/workspace/ProjectRail.svelte');
+const sessionManager = read('../lib/components/workspace/SessionManagerDialog.svelte');
 const workspacePaths = [
 	'../lib/components/Workspace.svelte',
 	'../lib/components/workspace/Composer.svelte',
@@ -209,12 +210,37 @@ test('prompt library explains its purpose and empty state', () => {
 	expect(page).toContain('Create prompt');
 });
 
+test('workflow cards keep Run primary and place existing management operations in accessible overflow', () => {
+	expect(page).toContain('Play');
+	expect(page).toContain('MoreHorizontal');
+	expect(page).toContain('aria-label={`More actions for ${workflow.name}`}');
+	expect(page).toContain('Edit Workflow');
+	expect(page).toContain('Duplicate Workflow');
+	expect(page).toMatch(/Restore\s+Workflow/);
+	expect(page).toContain('Archive Workflow');
+	expect(page).toContain('Delete Workflow');
+	expect(page).toContain('Type ${workflow.name} to delete this Workflow');
+});
+
+test('mobile viewport opts into safe-area insets', () => {
+	const app = read('../../src/app.html');
+	expect(app).toContain('width=device-width, initial-scale=1, viewport-fit=cover');
+});
+
 test('prompt library opens from the composer instead of occupying session navigation', () => {
 	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
 	const composer = read('../lib/components/workspace/Composer.svelte');
 	expect(contextPanel).not.toContain('role="tablist"');
 	expect(contextPanel).not.toContain('>Workflows</button');
 	expect(composer).toContain('<PromptLibraryDialog');
+});
+
+test('capability-gates image and Session duplicate controls with accessible explanations', () => {
+	expect(composer).not.toContain('disabled={!imagePrompts}');
+	expect(composer).toContain("imagePrompts ? '.png,.jpg,.jpeg,.gif,.webp,' : ''");
+	expect(composer).toContain('Hermes does not support image prompts.');
+	expect(sessionManager).toContain('disabled={saving || !canDuplicate}');
+	expect(sessionManager).toContain("'Hermes does not support Session duplication'");
 });
 
 test('long session titles stay inside the row so session actions remain reachable', () => {
@@ -543,7 +569,7 @@ test('global navigation separates app and Hermes settings into modal surfaces', 
 	expect(panel).toContain('aria-label="Close settings"');
 	expect(panel).toContain('event.target === modal && navigate(null)');
 	expect(attentionCenter).toContain('showModal()');
-	expect(attentionCenter).toContain('aria-label="Close notifications"');
+	expect(attentionCenter).toContain('aria-label="Back to workspace"');
 	expect(attentionCenter).toContain('event.target === modal && onclose()');
 	expect(settingsView).not.toContain('<PreferencesView');
 	expect(panel).toContain('{#each sections as section}');

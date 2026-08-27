@@ -51,6 +51,23 @@ describe('HUE runtime reliability', () => {
 		expect(validateHueBackup(path).ok).toBe(false);
 	});
 
+	it('rejects a readable two-table database as an incomplete HUE backup', () => {
+		const path = join(tmpdir(), `hue-incomplete-${crypto.randomUUID()}.sqlite`);
+		paths.push(path);
+		const database = new Database(path, { create: true, strict: true });
+		database.exec(`
+			CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, root_path TEXT NOT NULL);
+			CREATE TABLE messages (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, text TEXT NOT NULL, status TEXT NOT NULL);
+			PRAGMA user_version = 1;
+		`);
+		database.close();
+
+		expect(validateHueBackup(path)).toEqual({
+			ok: false,
+			error: 'Backup failed HUE database validation'
+		});
+	});
+
 	it('reports only runtime facts exposed by existing services', async () => {
 		const store = new HUEStore(':memory:');
 		const diagnostics = await runtimeDiagnostics({
@@ -61,7 +78,14 @@ describe('HUE runtime reliability', () => {
 					profile: 'default',
 					protocolVersion: 1,
 					agent: { name: 'hermes-agent', version: '0.20.5' },
-					capabilities: { loadSession: true }
+					capabilities: {
+						loadSession: true,
+						promptImage: false,
+						sessionList: true,
+						sessionFork: false,
+						sessionResume: false,
+						commands: []
+					}
 				})
 			},
 			admin: {
@@ -74,7 +98,14 @@ describe('HUE runtime reliability', () => {
 			status: 'ready',
 			protocolVersion: 1,
 			agent: { name: 'hermes-agent', version: '0.20.5' },
-			capabilities: { loadSession: true }
+			capabilities: {
+				loadSession: true,
+				promptImage: false,
+				sessionList: true,
+				sessionFork: false,
+				sessionResume: false,
+				commands: []
+			}
 		});
 		expect(diagnostics.admin).toEqual({ status: 'idle' });
 		expect(diagnostics.admin).not.toHaveProperty('version');

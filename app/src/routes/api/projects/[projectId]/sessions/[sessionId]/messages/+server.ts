@@ -17,6 +17,12 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		const messageId = body.messageId?.trim();
 		const text = body.text ?? '';
 		const { images, attachments } = validateMessageAttachments(body.images, body.attachments);
+		if (images.length) {
+			await services().runtime.start();
+			if (!services().runtime.getCapabilities(params.sessionId).promptImage) {
+				return json({ error: 'Hermes does not support image prompts' }, { status: 400 });
+			}
+		}
 		const reviewContexts = validateReviewContexts(body.reviewContexts);
 		if (
 			!messageId ||
@@ -90,6 +96,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			body.images,
 			preserveAttachments ? [] : body.attachments
 		);
+		if (images.length) {
+			await services().runtime.start();
+			if (!services().runtime.getCapabilities(params.sessionId).promptImage) {
+				return json({ error: 'Hermes does not support image prompts' }, { status: 400 });
+			}
+		}
 		const reviewContexts =
 			body.reviewContexts === undefined ? undefined : validateReviewContexts(body.reviewContexts);
 		if (

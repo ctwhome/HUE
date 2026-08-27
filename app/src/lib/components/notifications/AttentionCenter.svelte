@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Bell, Check, Settings, Trash2, X } from 'lucide-svelte';
+	import { ArrowLeft, Bell, Check, Settings, Trash2, X } from 'lucide-svelte';
 	import {
 		acknowledgeThenNavigate,
 		attentionState,
 		decodeApplicationServerKey,
+		groupNotifications,
 		notificationCapability,
 		shouldPlaySound,
 		shouldPresentForeground
@@ -23,6 +24,8 @@
 		readAt: string | null;
 		dismissedAt: string | null;
 		actedAt: string | null;
+		interactionId: string | null;
+		currentRelevant: boolean;
 	};
 	type Endpoint = {
 		id: string;
@@ -69,6 +72,7 @@
 	let refreshesInFlight = 0;
 	let markingAllRead = $state(false);
 	let centerState = $derived(attentionState({ loading, error, items, unread }));
+	let groupedItems = $derived(groupNotifications(items));
 	const endpointKey = 'hue:notification:endpoint-id';
 	const deviceKey = 'hue:notification:device-id';
 	const soundKey = 'hue:notification:sound';
@@ -213,12 +217,16 @@
 		playChime();
 	}
 
-	async function mutate(id: string, state: 'read' | 'dismissed' | 'acted') {
+	async function mutate(targets: Item[], state: 'read' | 'dismissed') {
 		try {
-			await api(`/api/notifications/${encodeURIComponent(id)}`, {
-				method: 'PATCH',
-				body: JSON.stringify({ state })
-			});
+			await Promise.all(
+				targets.map(({ id }) =>
+					api(`/api/notifications/${encodeURIComponent(id)}`, {
+						method: 'PATCH',
+						body: JSON.stringify({ state })
+					})
+				)
+			);
 			await refresh();
 		} catch {
 			error = 'Unable to update notification';
@@ -233,16 +241,24 @@
 		});
 	}
 
-	async function openNotification(event: MouseEvent, item: Item) {
+	async function openNotification(event: MouseEvent, targets: Item[]) {
+		const item = targets[0];
+		if (!item) return;
 		if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-			void markActed(item, true).catch(() => undefined);
+			for (const target of targets) void markActed(target, true).catch(() => undefined);
 			return;
 		}
 		event.preventDefault();
 		await acknowledgeThenNavigate(
-			() => markActed(item),
+			() => Promise.all(targets.map((target) => markActed(target))),
 			() => window.focus(),
-			() => window.location.assign(item.path)
+			() => {
+				onclose();
+				setTimeout(() => {
+					window.history.pushState(null, '', item.path);
+					window.dispatchEvent(new PopStateEvent('popstate'));
+				}, 0);
+			}
 		);
 	}
 
@@ -397,9 +413,9 @@
 			<header class="flex min-h-16 items-center gap-3 border-b border-border px-5 max-[700px]:px-3">
 				<button
 					class="grid size-11 place-items-center rounded-md border border-border"
-					aria-label="Close notifications"
-					title="Close notifications"
-					onclick={onclose}><X class="size-5" aria-hidden="true" /></button
+					aria-label="Back to workspace"
+					title="Back to workspace"
+					onclick={onclose}><ArrowLeft class="size-5" aria-hidden="true" /></button
 				>
 				<div class="min-w-0 flex-1">
 					<p class="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
@@ -569,39 +585,45 @@
 						</div>
 					{:else}
 						<ul class="mx-auto grid max-w-3xl gap-3">
-							{#each items as item (item.id)}
+							{#each groupedItems as group (group.item.id)}
+								{@const item = group.item}
 								<li
-									class="rounded-xl border border-border bg-card p-4"
-									class:opacity-65={Boolean(item.readAt || item.dismissedAt)}
+									class="flex min-w-0 items-start gap-3 rounded-xl border border-border bg-card p-4"
+									class:opacity-65={group.items.every((entry) => entry.readAt || entry.dismissedAt)}
 								>
-									<div class="flex items-start gap-3">
-										<span
-											class="mt-1 size-2.5 shrink-0 rounded-full"
-											class:bg-destructive={item.priority === 'high'}
-											class:bg-primary={item.priority === 'normal'}
-											aria-hidden="true"
-										></span>
-										<div class="min-w-0 flex-1">
-											<a
-												class="font-semibold hover:underline"
-												href={item.path}
-												onclick={(event) => void openNotification(event, item)}>{item.title}</a
-											>
-											<p class="mt-1 text-sm text-muted-foreground">{item.body}</p>
-											<time
-												class="mt-2 block text-xs text-muted-foreground"
-												datetime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time
-											>
-										</div>
+									<span
+										class="mt-1 size-2.5 shrink-0 rounded-full"
+										class:bg-destructive={item.priority === 'high'}
+										class:bg-primary={item.priority === 'normal'}
+										aria-hidden="true"
+									></span>
+									<div class="min-w-0 flex-1">
+										<a
+											class="font-semibold hover:underline"
+											href={item.path}
+											onclick={(event) => void openNotification(event, group.items)}>{item.title}</a
+										>
+										{#if group.items.length > 1}<p class="text-xs font-medium text-foreground">
+												{group.items.length} pending requests
+											</p>{/if}
+										<p class="mt-1 text-sm text-muted-foreground">{item.body}</p>
+										<time class="mt-2 block text-xs text-muted-foreground" datetime={item.createdAt}
+											>{new Date(item.createdAt).toLocaleString()}</time
+										>
 									</div>
-									<div class="mt-3 flex flex-wrap justify-end gap-2">
-										{#if !item.readAt}<button
-												class="min-h-11 rounded-md border border-border px-3"
-												onclick={() => void mutate(item.id, 'read')}>Mark read</button
+									<div class="flex shrink-0 gap-1" aria-label="Notification actions">
+										{#if group.items.some((entry) => !entry.readAt)}<button
+												class="grid size-11 place-items-center rounded-md border border-border"
+												aria-label={`Mark ${group.items.length > 1 ? `${group.items.length} notifications` : item.title} read`}
+												title="Mark read"
+												onclick={() => void mutate(group.items, 'read')}
+												><Check class="size-4" aria-hidden="true" /></button
 											>{/if}<button
-											class="min-h-11 rounded-md border border-border px-3"
-											onclick={() => void mutate(item.id, 'dismissed')}
-											><X class="mr-1 inline size-4" aria-hidden="true" />Dismiss</button
+											class="grid size-11 place-items-center rounded-md border border-border"
+											aria-label={`Dismiss ${group.items.length > 1 ? `${group.items.length} notifications` : item.title}`}
+											title="Dismiss"
+											onclick={() => void mutate(group.items, 'dismissed')}
+											><X class="size-4" aria-hidden="true" /></button
 										>
 									</div>
 								</li>
