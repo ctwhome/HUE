@@ -37,6 +37,9 @@ export type Session = {
 	recovery?: string | null;
 	attention?: boolean;
 	error?: boolean;
+	status?:
+		'running' | 'waiting-permission' | 'waiting-answer' | 'unknown' | 'failed' | 'cancelled' | null;
+	unreadAttention?: boolean;
 	pinned?: boolean;
 	archived?: boolean;
 	folder?: string | null;
@@ -44,7 +47,16 @@ export type Session = {
 	workMode?: WorkMode;
 };
 
-export type Workflow = { id: string; name: string; prompt: string; profile: string };
+export type Workflow = {
+	id: string;
+	name: string;
+	prompt: string;
+	profile: string;
+	workMode: WorkMode;
+	archived: boolean;
+	createdAt?: string;
+	updatedAt?: string;
+};
 export type HermesCommand = { name: string; description: string; input?: { hint: string } | null };
 export type HermesRuntime = {
 	profile: string;
@@ -71,9 +83,9 @@ export type HermesRuntime = {
 							groupId: string;
 							name: string;
 							options: Array<{ value: string; name: string; description?: string | null }>;
-						}
+					  }
 				>;
-			}
+		  }
 		| {
 				type: 'boolean';
 				id: string;
@@ -81,7 +93,7 @@ export type HermesRuntime = {
 				description?: string | null;
 				category?: string | null;
 				currentValue: boolean;
-			}
+		  }
 	> | null;
 	usage?: { used: number; size: number };
 };

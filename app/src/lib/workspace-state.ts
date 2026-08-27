@@ -379,13 +379,19 @@ export function applySessionEvents(
 		if (event.type === 'agent.plan' && Array.isArray(event.payload.entries)) {
 			next.plan = event.payload.entries as WorkspacePlanEntry[];
 		}
-		if (['message.completed', 'message.failed', 'message.unknown'].includes(event.type)) {
+		if (
+			['message.completed', 'message.failed', 'message.unknown', 'message.cancelled'].includes(
+				event.type
+			)
+		) {
 			next.delivery =
 				event.type === 'message.completed'
 					? 'completed'
 					: event.type === 'message.failed'
 						? 'failed'
-						: 'delivery unknown';
+						: event.type === 'message.cancelled'
+							? 'cancelled'
+							: 'delivery unknown';
 			if (next.pendingAssistant || next.pendingImages?.length) {
 				next.transcript.push({
 					role: 'assistant',
@@ -438,7 +444,7 @@ export function isCurrentTabRequest(
 }
 
 export function isTurnBusy(delivery: string): boolean {
-	return ['saving', 'accepted', 'running', 'reconnecting'].includes(delivery);
+	return ['saving', 'accepted', 'running', 'reconnecting', 'cancelling'].includes(delivery);
 }
 
 export function formatElapsed(startedAt: string, now = Date.now()): string {

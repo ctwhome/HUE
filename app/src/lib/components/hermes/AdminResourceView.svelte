@@ -6,7 +6,8 @@
 	let {
 		view,
 		data,
-		onaction
+		onaction,
+		onbackup
 	}: {
 		view: GlobalView;
 		data: Record<string, any>;
@@ -14,6 +15,7 @@
 			action: string,
 			input: Record<string, unknown>
 		) => Promise<Record<string, any> | undefined>;
+		onbackup: () => Promise<void>;
 	} = $props();
 	let name = $state('');
 	let cloneFrom = $state('');
@@ -69,6 +71,13 @@
 {:else if view === 'runtime'}
 	<div class="grid gap-3">
 		<div class="inventory-grid grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-2">
+			<article class={card}>
+				<small class="text-muted-foreground">HUE database</small>
+				<strong class="mt-1 block">{data.diagnostics?.database?.status ?? 'not checked'}</strong>
+				{#if data.diagnostics?.database?.action}<p class="mt-1 text-sm text-muted-foreground">
+						{data.diagnostics.database.action}
+					</p>{/if}
+			</article>
 			{#if data.agent}<article class={card}>
 					<small class="text-muted-foreground">Agent</small><strong class="mt-1 block"
 						>{data.agent.name} {data.agent.version}</strong
@@ -97,6 +106,22 @@
 				variant="outline"
 				onclick={() => act('runtime.reconnect-acp', { confirm: 'reconnect' })}>Reconnect ACP</Button
 			>
+		</article>
+		<article class={`${card} flex flex-wrap items-center gap-3`}>
+			<div class="mr-auto">
+				<strong>HUE data backup</strong>
+				<p class="text-sm text-muted-foreground">
+					Includes HUE-owned SQLite state only. Hermes data is not included.
+				</p>
+			</div>
+			<Button variant="outline" onclick={onbackup}>Create validated backup</Button>
+			{#if data.backup?.path}<p class="w-full text-sm break-all" role="status">
+					Validated backup: {data.backup.path}
+				</p>{/if}
+			<p class="w-full text-sm text-muted-foreground">
+				Offline restore: stop HUE, preserve the current database, then replace it with a validated
+				backup before restarting. Live restore is intentionally unavailable.
+			</p>
 		</article>
 		<article class={card}>
 			<strong>Update availability</strong>

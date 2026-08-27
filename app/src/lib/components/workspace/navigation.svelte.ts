@@ -25,11 +25,14 @@ type NavigationEffects = {
 	saveDraft: () => void;
 	clearSession: () => void;
 	showCachedSession: (session: Session) => void;
-	applyCreatedSession: (body: {
-		commands?: HermesCommand[];
-		runtime?: HermesRuntime;
-		branch?: string | null;
-	}) => void | Promise<void>;
+	applyCreatedSession: (
+		body: {
+			commands?: HermesCommand[];
+			runtime?: HermesRuntime;
+			branch?: string | null;
+		},
+		preserveWorkMode?: boolean
+	) => void | Promise<void>;
 	applyLoadedSession: (body: SessionLoad) => void;
 	focusNotificationTarget: (
 		events: SessionLoad['events'],
@@ -42,6 +45,7 @@ type NavigationEffects = {
 	scrollToLatest: () => Promise<void>;
 	focusComposer: () => void;
 	getDelivery: () => string;
+	getRuntimeProfile: () => string;
 	sendText: (text: string) => Promise<boolean>;
 	setError: (message: string) => void;
 	setLoading: (loading: boolean) => void;
@@ -59,6 +63,8 @@ export class WorkspaceNavigation {
 	ready = $state(false);
 	workflowName = $state('');
 	workflowPrompt = $state('');
+	workflowProfile = $state('default');
+	workflowWorkMode = $state<'autonomous' | 'live'>('autonomous');
 	editSessionMenu = $state<HTMLElement>();
 	sessionIconMenu = $state<HTMLElement>();
 	sessionIconAnchor = $state<HTMLElement>();
@@ -80,9 +86,9 @@ export class WorkspaceNavigation {
 	private sessionLists = new Map<string, Session[]>();
 	private workflowLists = new Map<string, Workflow[]>();
 	get sessionSections() {
-		return [...new Set(this.sessions.flatMap((session) => (session.folder ? [session.folder] : [])))].sort(
-			(left, right) => left.localeCompare(right)
-		);
+		return [
+			...new Set(this.sessions.flatMap((session) => (session.folder ? [session.folder] : [])))
+		].sort((left, right) => left.localeCompare(right));
 	}
 	constructor(
 		initialProject: Project | null,
@@ -225,12 +231,12 @@ export class WorkspaceNavigation {
 		this.activeTab = tab;
 		await this.loadActiveTab();
 	};
-	loadWorkflows = async () => {
+	loadWorkflows = async (includeArchived = false) => {
 		const project = this.selectedProject;
 		if (!project?.rootAvailable) return;
 		try {
 			const body = await this.effects.api<{ workflows: Workflow[] }>(
-				`/api/projects/${project.id}/workflows`
+				`/api/projects/${project.id}/workflows${includeArchived ? '?archived=true' : ''}`
 			);
 			if (this.selectedProject?.id !== project.id) return;
 			this.workflows = body.workflows;
@@ -239,8 +245,8 @@ export class WorkspaceNavigation {
 			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
 		}
 	};
-	createSession = async (): Promise<Session | null> => {
-		if (this.effects.guard(() => void this.createSession())) return null;
+	createSession = async (workMode?: 'autonomous' | 'live'): Promise<Session | null> => {
+		if (this.effects.guard(() => void this.createSession(workMode))) return null;
 		this.effects.endVoice();
 		this.effects.saveDraft();
 		this.effects.cacheSession();
@@ -252,14 +258,17 @@ export class WorkspaceNavigation {
 				commands?: HermesCommand[];
 				runtime?: HermesRuntime;
 				branch?: string | null;
-			}>(this.sessionApiPath(), { method: 'POST' });
+			}>(this.sessionApiPath(), {
+				method: 'POST',
+				...(workMode ? { body: JSON.stringify({ workMode }) } : {})
+			});
 			if ((this.selectedProject?.id ?? null) !== projectId) return null;
 			this.sessions = [body.session, ...this.sessions];
 			this.sessionLists.set(projectId ?? 'none', this.sessions);
 			this.selectedSession = body.session;
 			this.mobileDrawer = null;
 			this.persistSelection('push');
-			await this.effects.applyCreatedSession(body);
+			await this.effects.applyCreatedSession(body, Boolean(workMode));
 			this.effects.setError('');
 			this.effects.restoreDraft();
 			this.mobileDrawer = null;
@@ -291,6 +300,7 @@ export class WorkspaceNavigation {
 		this.effects.cacheSession();
 		this.effects.stopPolling();
 		this.selectedSession = session;
+		this.effects.restoreDraft();
 		this.effects.showCachedSession(session);
 		this.effects.beginTranscriptEntryStick();
 		await this.effects.scrollToLatest();
@@ -339,7 +349,12 @@ export class WorkspaceNavigation {
 				`/api/projects/${this.selectedProject.id}/workflows`,
 				{
 					method: 'POST',
-					body: JSON.stringify({ name: this.workflowName, prompt: this.workflowPrompt })
+					body: JSON.stringify({
+						name: this.workflowName,
+						prompt: this.workflowPrompt,
+						profile: this.workflowProfile,
+						workMode: this.workflowWorkMode
+					})
 				}
 			);
 			this.workflows = [...this.workflows, body.workflow];
@@ -352,11 +367,81 @@ export class WorkspaceNavigation {
 			return false;
 		}
 	};
+	updateWorkflow = async (
+		workflow: Workflow,
+		patch: Partial<Pick<Workflow, 'name' | 'prompt' | 'profile' | 'workMode' | 'archived'>>
+	) => {
+		const project = this.selectedProject;
+		if (!project) return false;
+		try {
+			const body = await this.effects.api<{ workflow: Workflow }>(
+				`/api/projects/${project.id}/workflows/${workflow.id}`,
+				{ method: 'PATCH', body: JSON.stringify(patch) }
+			);
+			if (this.selectedProject?.id !== project.id) return false;
+			this.workflows = this.workflows.map((item) =>
+				item.id === workflow.id ? body.workflow : item
+			);
+			this.workflowLists.set(project.id, this.workflows);
+			return true;
+		} catch (cause) {
+			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
+			return false;
+		}
+	};
+	deleteWorkflow = async (workflow: Workflow) => {
+		const project = this.selectedProject;
+		if (!project) return false;
+		try {
+			await this.effects.api(`/api/projects/${project.id}/workflows/${workflow.id}`, {
+				method: 'DELETE'
+			});
+			if (this.selectedProject?.id !== project.id) return false;
+			this.workflows = this.workflows.filter((item) => item.id !== workflow.id);
+			this.workflowLists.set(project.id, this.workflows);
+			return true;
+		} catch (cause) {
+			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
+			return false;
+		}
+	};
+	duplicateWorkflow = async (workflow: Workflow) => {
+		const project = this.selectedProject;
+		if (!project) return false;
+		try {
+			const body = await this.effects.api<{ workflow: Workflow }>(
+				`/api/projects/${project.id}/workflows`,
+				{
+					method: 'POST',
+					body: JSON.stringify({
+						name: `${workflow.name} copy`,
+						prompt: workflow.prompt,
+						profile: workflow.profile,
+						workMode: workflow.workMode
+					})
+				}
+			);
+			if (this.selectedProject?.id !== project.id) return false;
+			this.workflows = [...this.workflows, body.workflow];
+			this.workflowLists.set(project.id, this.workflows);
+			return true;
+		} catch (cause) {
+			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
+			return false;
+		}
+	};
 	runWorkflow = async (workflow: Workflow) => {
 		if (this.effects.guard(() => void this.runWorkflow(workflow))) return;
+		if (workflow.profile !== this.effects.getRuntimeProfile()) {
+			this.effects.setError(
+				`Workflow requires Hermes profile ${workflow.profile}; restart HUE with HUE_HERMES_PROFILE=${workflow.profile} before running it.`
+			);
+			return;
+		}
 		this.activeTab = 'sessions';
-		const session = await this.createSession();
-		if (session) await this.effects.sendText(workflow.prompt);
+		const session = await this.createSession(workflow.workMode);
+		if (!session) return;
+		await this.effects.sendText(workflow.prompt);
 	};
 	openEditSession = (event: MouseEvent, session: Session) => {
 		event.stopPropagation();

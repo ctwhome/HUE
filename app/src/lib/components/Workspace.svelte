@@ -54,11 +54,15 @@
 	}: WorkspaceProps = $props();
 	let loading = $state(false),
 		error = $state('');
-	let globalView = $state<GlobalView | null>(null), unreadNotifications = $state(0);
+	let globalView = $state<GlobalView | null>(null),
+		unreadNotifications = $state(0);
 	let now = $state(Date.now());
 	let dirtyGuardOpen = $state(false),
 		dirtyGuardDirty = $state(false);
-	let mobile = $state(false), projectTools = $state(false), projectsPanelOpen = $state(true), sessionsPanelOpen = $state(true);
+	let mobile = $state(false),
+		projectTools = $state(false),
+		projectsPanelOpen = $state(true),
+		sessionsPanelOpen = $state(true);
 	let embedded = $derived(page.url.searchParams.get('embed') === 'chat');
 	type ShellPane = 'projects' | 'sessions';
 	let projectPaneWidth = $state(220),
@@ -172,7 +176,7 @@
 				sessionState.clear();
 			},
 			showCachedSession: sessionState.showCached,
-			applyCreatedSession: async (body) => {
+			applyCreatedSession: async (body, preserveWorkMode = false) => {
 				messageState.clear();
 				const selectedSession = navigation.selectedSession;
 				if (!selectedSession) {
@@ -180,7 +184,15 @@
 					return;
 				}
 				const selections = await applyLastSessionSelections({
-					storage: localStorage,
+					storage: preserveWorkMode
+						? {
+								getItem: (key) => {
+									const saved = JSON.parse(localStorage.getItem(key) ?? '{}');
+									delete saved.workMode;
+									return JSON.stringify(saved);
+								}
+							}
+						: localStorage,
 					runtime: body.runtime ?? { profile: 'default' },
 					workMode: selectedSession.workMode ?? 'autonomous',
 					changeRuntime: async (kind, value) => {
@@ -213,6 +225,7 @@
 			scrollToLatest: transcriptFollow.scrollToLatest,
 			focusComposer: () => messageState.composerElement?.focus(),
 			getDelivery: () => sessionState.delivery,
+			getRuntimeProfile: () => sessionState.runtime.profile,
 			sendText: messageState.sendText,
 			setError: (message) => (error = message),
 			setLoading: (value) => (loading = value),
@@ -280,10 +293,21 @@
 	let branch = $derived(sessionState.branch);
 	let queuedMessages = $derived(sessionState.queuedMessages);
 	let delivery = $derived(sessionState.delivery);
+	let selectedAttentionStatus: Session['status'] = $derived.by(() => {
+		const interaction = timeline.findLast(
+			(item) => (item.kind === 'permission' || item.kind === 'clarify') && item.status === 'pending'
+		);
+		return interaction?.kind === 'permission'
+			? 'waiting-permission'
+			: interaction?.kind === 'clarify'
+				? 'waiting-answer'
+				: null;
+	});
 	let composer = $derived(messageState.composer);
 	let editingQueuedMessageId = $derived(messageState.editingQueuedMessageId);
 	let workModeChanging = $state(false);
-	let browserOpen = $state(true), filesOpen = $state(false);
+	let browserOpen = $state(true),
+		filesOpen = $state(false);
 	let fileRequest = $state<{ path: string; id: string } | null>(null);
 	let previewUrl = $state('');
 	let terminalOpen = $state(false);
@@ -376,10 +400,11 @@
 			if (elapsedTimer) clearInterval(elapsedTimer);
 		};
 	});
-	installDirtyNavigation(dirtyGuard);
+	installDirtyNavigation(dirtyGuard, messageState.saveCurrentDraft);
 </script>
 
 <svelte:window
+	onpagehide={messageState.saveCurrentDraft}
 	onkeydown={(event) =>
 		event.key === 'Escape' && !document.querySelector('dialog[open]') && mobileShell?.close()}
 	onbeforeunload={(event) => {
@@ -392,7 +417,8 @@
 	class:ready={navigation.ready}
 	class:drawer-gesture-active={gestureActive}
 	class:gesture-reveal-projects={gestureAction === 'show-projects'}
-	class:projects-panel-closed={!projectsPanelOpen} class:sessions-panel-closed={!sessionsPanelOpen}
+	class:projects-panel-closed={!projectsPanelOpen}
+	class:sessions-panel-closed={!sessionsPanelOpen}
 	class:embedded
 	style={`--project-pane-width: ${projectPaneWidth}px; --session-pane-width: ${sessionPaneWidth}px; --project-shell-color: ${selectedProject?.color ?? 'var(--background)'}`}
 >
@@ -418,17 +444,17 @@
 		oncounts={(count) => (unreadNotifications = count)}
 	/>
 	{#if globalView && globalView !== 'notifications'}{#key globalView}<HermesPanel
-			view={globalView}
-			{commands}
-			{dirtyGuard}
-			onview={setGlobalView}
-			oncommand={(command) => {
-				guarded(() => {
-					globalView = null;
-					void messageState.sendText(`/${command.name}`, [], []);
-				});
-			}}
-		/>{/key}{/if}
+				view={globalView}
+				{commands}
+				{dirtyGuard}
+				onview={setGlobalView}
+				oncommand={(command) => {
+					guarded(() => {
+						globalView = null;
+						void messageState.sendText(`/${command.name}`, [], []);
+					});
+				}}
+			/>{/key}{/if}
 	<ProjectRail
 		bind:element={projectDrawerElement}
 		open={navigation.mobileDrawer === 'projects'}
@@ -497,6 +523,8 @@
 		{loading}
 		{sessions}
 		{selectedSession}
+		selectedDelivery={delivery}
+		selectedStatus={selectedAttentionStatus}
 		bind:sessionSearch={navigation.sessionSearch}
 		bind:showArchived={navigation.showArchived}
 		{now}
@@ -523,11 +551,15 @@
 		onfinish={finishShellResize}
 		onkeydown={resizeShellPaneWithKeyboard}
 	/>
-	{#if !mobile && !projectsPanelOpen}<nav class="collapsed-project-rail" aria-label="Collapsed Projects">
+	{#if !mobile && !projectsPanelOpen}<nav
+			class="collapsed-project-rail"
+			aria-label="Collapsed Projects"
+		>
 			<button
 				aria-label="Show Projects panel"
 				title="Show Projects panel"
-				onclick={() => (projectsPanelOpen = true)}><FolderKanban size={17} aria-hidden="true" /></button
+				onclick={() => (projectsPanelOpen = true)}
+				><FolderKanban size={17} aria-hidden="true" /></button
 			>
 			<button
 				class:active={!selectedProject}
@@ -543,9 +575,13 @@
 					title={project.name}
 					onclick={() => chooseProjectFromRail(project)}
 				>
-					{#if isImageIcon(project.icon)}<img src={project.icon ?? ''} alt="" />{:else if project.icon}<span
-							>{project.icon}</span
-						>{:else}<Folder size={18} aria-hidden="true" />{/if}
+					{#if isImageIcon(project.icon)}<img
+							src={project.icon ?? ''}
+							alt=""
+						/>{:else if project.icon}<span>{project.icon}</span>{:else}<Folder
+							size={18}
+							aria-hidden="true"
+						/>{/if}
 				</button>{/each}
 		</nav>{/if}
 	<ShellResizer
@@ -665,9 +701,12 @@
 						{workModeChanging}
 						runtimeChanging={runtimeState.changing}
 						promptLibraryAvailable={Boolean(selectedProject?.rootAvailable)}
+						projectName={selectedProject?.name ?? ''}
 						{workflows}
 						bind:workflowName={navigation.workflowName}
 						bind:workflowPrompt={navigation.workflowPrompt}
+						bind:workflowProfile={navigation.workflowProfile}
+						bind:workflowWorkMode={navigation.workflowWorkMode}
 						stopping={messageState.stopping}
 						showScrollToLatest={timeline.length > 0 && transcriptFollow.showScrollToLatest}
 						busy={isTurnBusy(delivery)}
@@ -692,6 +731,9 @@
 						onworkmode={changeWorkMode}
 						onloadworkflows={navigation.loadWorkflows}
 						onworkflow={navigation.addWorkflow}
+						onupdateworkflow={navigation.updateWorkflow}
+						ondeleteworkflow={navigation.deleteWorkflow}
+						onduplicateworkflow={navigation.duplicateWorkflow}
 						onrunworkflow={navigation.runWorkflow}
 						onscrolllatest={transcriptFollow.scrollToLatest}
 						matchingCommands={messageState.matchingCommands}
@@ -742,21 +784,37 @@
 		</SessionPaneGrid>
 		{#if selectedProject?.rootAvailable && navigation.ready && !mobile}
 			{#key selectedProject.id}
-				<ProjectBrowserDock projectId={selectedProject.id} open={browserOpen}
-					onpreviewchange={(url) => (previewUrl = url)} />
-				<ProjectFilesDock projectId={selectedProject.id} open={filesOpen} {fileRequest}
-					{dirtyGuard} />
-				<ProjectWorkbench
-					projectId={selectedProject.id} projectName={selectedProject.name} compact={false} docked={true}
-					{browserOpen} {filesOpen} {terminalOpen}
+				<ProjectBrowserDock
+					projectId={selectedProject.id}
+					open={browserOpen}
 					onpreviewchange={(url) => (previewUrl = url)}
-					onbrowser={() => (browserOpen = togglePanel(localStorage, panelProjectId, 'browser', browserOpen))}
-					onfiles={() => (filesOpen = togglePanel(localStorage, panelProjectId, 'files', filesOpen))}
+				/>
+				<ProjectFilesDock
+					projectId={selectedProject.id}
+					open={filesOpen}
+					{fileRequest}
+					{dirtyGuard}
+				/>
+				<ProjectWorkbench
+					projectId={selectedProject.id}
+					projectName={selectedProject.name}
+					compact={false}
+					docked={true}
+					{browserOpen}
+					{filesOpen}
+					{terminalOpen}
+					onpreviewchange={(url) => (previewUrl = url)}
+					onbrowser={() =>
+						(browserOpen = togglePanel(localStorage, panelProjectId, 'browser', browserOpen))}
+					onfiles={() =>
+						(filesOpen = togglePanel(localStorage, panelProjectId, 'files', filesOpen))}
 					onopenfile={(path) => {
 						fileRequest = { path, id: crypto.randomUUID() };
-						if (!filesOpen) filesOpen = togglePanel(localStorage, panelProjectId, 'files', filesOpen);
+						if (!filesOpen)
+							filesOpen = togglePanel(localStorage, panelProjectId, 'files', filesOpen);
 					}}
-					onterminal={() => (terminalOpen = togglePanel(localStorage, panelProjectId, 'terminal', terminalOpen))}
+					onterminal={() =>
+						(terminalOpen = togglePanel(localStorage, panelProjectId, 'terminal', terminalOpen))}
 					onbranch={(value) => (branch = value)}
 					{dirtyGuard}
 				/>

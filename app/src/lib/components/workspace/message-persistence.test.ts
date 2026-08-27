@@ -48,3 +48,24 @@ test('pending persistence strips generic bytes and restores explicit reattach st
 		}
 	]);
 });
+
+test('drafts remain scoped to their project and Session identity', () => {
+	let projectId = 'project-a';
+	let sessionId = 'session-1';
+	const persistence = new MessagePersistence(
+		() => ({ id: projectId }) as never,
+		() => ({ sessionId }) as never
+	);
+
+	persistence.draft('Project A, Session 1');
+	sessionId = 'session-2';
+	persistence.draft('Project A, Session 2');
+	projectId = 'project-b';
+	expect(persistence.draft()).toBe('');
+	persistence.draft('Project B, Session 2');
+
+	projectId = 'project-a';
+	expect(persistence.draft()).toBe('Project A, Session 2');
+	sessionId = 'session-1';
+	expect(persistence.draft()).toBe('Project A, Session 1');
+});

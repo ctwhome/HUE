@@ -201,10 +201,9 @@ test.beforeEach(async ({ page }) => {
 	await mockDefaultSessionRequests(page);
 });
 
-test('the active Project toggles Sessions without reserving a collapsed column', async (
-	{ page },
-	testInfo
-) => {
+test('the active Project toggles Sessions without reserving a collapsed column', async ({
+	page
+}, testInfo) => {
 	await page.setViewportSize(viewports[0]);
 	await addProject(page);
 	const project = page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' });
@@ -218,9 +217,12 @@ test('the active Project toggles Sessions without reserving a collapsed column',
 		await expect(sessions).toBeHidden();
 		await expect(page.getByRole('button', { name: 'Show Sessions panel' })).toHaveCount(0);
 		expect(
-			await page.locator('.workspace').evaluate((element) =>
-				getComputedStyle(element).gridTemplateColumns.split(' ').filter(Boolean).length
-			)
+			await page
+				.locator('.workspace')
+				.evaluate(
+					(element) =>
+						getComputedStyle(element).gridTemplateColumns.split(' ').filter(Boolean).length
+				)
 		).toBe(3);
 		await testInfo.attach(`project-session-toggle-${viewport.width}x${viewport.height}`, {
 			body: await page.screenshot(),
@@ -450,7 +452,9 @@ test('Project tools stay docked across Sessions and collapse to their rail', asy
 		.getByRole('region', { name: 'Workspace terminal panel' })
 		.boundingBox())!;
 	const chatBox = (await page.getByRole('main').boundingBox())!;
-	const filesBox = (await page.getByRole('complementary', { name: 'Project files' }).boundingBox())!;
+	const filesBox = (await page
+		.getByRole('complementary', { name: 'Project files' })
+		.boundingBox())!;
 	expect(terminalBox.x).toBeLessThanOrEqual(chatBox.x + 1);
 	expect(terminalBox.x + terminalBox.width).toBeGreaterThan(filesBox.x + filesBox.width - 2);
 	expect(terminalBox.y).toBeGreaterThan(filesBox.y);
@@ -3186,6 +3190,7 @@ test('queues and edits messages with attachments while streaming, then can send 
 	expect(preservedAttachment).toBe(true);
 	await page.getByRole('button', { name: 'Send queued message now' }).click();
 	await expect.poll(() => cancellations).toBe(1);
+	await expect(page.getByRole('button', { name: 'Cancelling' })).toBeDisabled();
 });
 
 test('shows durable delegate_task children as a collapsible status and result tree', async ({
@@ -4123,7 +4128,10 @@ test('opens the project prompt library from the composer across required viewpor
 					{
 						id: 'release',
 						name: 'Prepare release',
-						prompt: 'Run checks and prepare release notes.'
+						prompt: 'Run checks and prepare release notes.',
+						profile: 'default',
+						workMode: 'autonomous',
+						archived: false
 					}
 				]
 			}
@@ -4154,6 +4162,10 @@ test('opens the project prompt library from the composer across required viewpor
 	await page.getByRole('button', { name: 'Prompt library' }).click();
 	const dialog = page.getByRole('dialog', { name: 'Prompt library' });
 	await dialog.getByRole('button', { name: 'Run Prepare release' }).click();
+	await expect(dialog.getByRole('region', { name: 'Workflow launch preview' })).toContainText(
+		'Run checks and prepare release notes.'
+	);
+	await dialog.getByRole('button', { name: 'Start new Session' }).click();
 	await expect(dialog).toBeHidden();
 	await expect.poll(() => sentPrompt).toBe('Run checks and prepare release notes.');
 	expect(browserErrors).toEqual([]);

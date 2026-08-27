@@ -61,9 +61,12 @@
 		workModeChanging,
 		runtimeChanging,
 		promptLibraryAvailable,
+		projectName,
 		workflows,
 		workflowName = $bindable(),
 		workflowPrompt = $bindable(),
+		workflowProfile = $bindable(),
+		workflowWorkMode = $bindable(),
 		stopping,
 		showScrollToLatest,
 		onsubmit,
@@ -87,6 +90,9 @@
 		onworkmode,
 		onloadworkflows,
 		onworkflow,
+		onupdateworkflow,
+		ondeleteworkflow,
+		onduplicateworkflow,
 		onrunworkflow,
 		onscrolllatest,
 		matchingCommands,
@@ -121,9 +127,12 @@
 		workModeChanging: boolean;
 		runtimeChanging: boolean;
 		promptLibraryAvailable: boolean;
+		projectName: string;
 		workflows: Workflow[];
 		workflowName: string;
 		workflowPrompt: string;
+		workflowProfile: string;
+		workflowWorkMode: WorkMode;
 		stopping: boolean;
 		showScrollToLatest: boolean;
 		busy: boolean;
@@ -146,8 +155,14 @@
 		onruntime: (kind: 'modelId' | 'modeId', value: string) => void;
 		onconfig: (configId: string, value: string | boolean) => void;
 		onworkmode: (value: WorkMode) => void;
-		onloadworkflows: () => Promise<void>;
+		onloadworkflows: (includeArchived?: boolean) => Promise<void>;
 		onworkflow: (event: SubmitEvent) => void;
+		onupdateworkflow: (
+			workflow: Workflow,
+			patch: Partial<Pick<Workflow, 'name' | 'prompt' | 'profile' | 'workMode' | 'archived'>>
+		) => Promise<boolean>;
+		ondeleteworkflow: (workflow: Workflow) => Promise<boolean>;
+		onduplicateworkflow: (workflow: Workflow) => Promise<boolean>;
 		onrunworkflow: (workflow: Workflow) => void;
 		onscrolllatest: (behavior: ScrollBehavior) => void;
 		matchingCommands: () => Command[];
@@ -162,7 +177,8 @@
 	type SelectConfig = Extract<NonNullable<Runtime['configOptions']>[number], { type: 'select' }>;
 	let reasoning = $derived(
 		runtime.configOptions?.find(
-			(option): option is SelectConfig => option.type === 'select' && option.category === 'thought_level'
+			(option): option is SelectConfig =>
+				option.type === 'select' && option.category === 'thought_level'
 		)
 	);
 	let thinkingTimeline = $derived(selectThinkingTimeline(timeline));
@@ -486,10 +502,10 @@
 			>{:else if busy}<button
 				type="button"
 				class="composer-send stop-message grid size-9 place-items-center rounded-lg text-orange-300 hover:bg-accent"
-				aria-label="Stop"
-				title="Stop current turn"
+				aria-label={delivery === 'cancelling' ? 'Cancelling' : 'Stop'}
+				title={delivery === 'cancelling' ? 'Cancellation requested' : 'Stop current turn'}
 				onclick={onstop}
-				disabled={stopping}
+				disabled={stopping || delivery === 'cancelling'}
 			>
 				<Square size={12} fill="currentColor" aria-hidden="true" /></button
 			>{:else}<button
@@ -504,12 +520,19 @@
 	</div>
 </form>
 <PromptLibraryDialog
-		id={`${instanceId}-prompts`}
-		bind:dialog={promptLibraryDialog}
-		loading={promptLibraryLoading}
-		{workflows}
-		bind:name={workflowName}
-		bind:prompt={workflowPrompt}
-		onsubmit={onworkflow}
-		onrun={onrunworkflow}
-	/>
+	id={`${instanceId}-prompts`}
+	bind:dialog={promptLibraryDialog}
+	loading={promptLibraryLoading}
+	{projectName}
+	{workflows}
+	bind:name={workflowName}
+	bind:prompt={workflowPrompt}
+	bind:profile={workflowProfile}
+	bind:workMode={workflowWorkMode}
+	onsubmit={onworkflow}
+	onupdate={onupdateworkflow}
+	ondelete={ondeleteworkflow}
+	onduplicate={onduplicateworkflow}
+	onload={onloadworkflows}
+	onrun={onrunworkflow}
+/>

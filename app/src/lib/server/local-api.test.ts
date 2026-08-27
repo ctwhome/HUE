@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { ACCESS_COOKIE, createAccessSession } from './access-auth';
 import { localApiAllowed } from './local-api';
 
 test('allows only loopback clients with a loopback Host and same origin', () => {
@@ -29,4 +30,23 @@ test('allows only loopback clients with a loopback Host and same origin', () => 
 			'127.0.0.1'
 		)
 	).toBe(false);
+});
+
+test('requires an authenticated session through a local Tailscale Serve proxy', () => {
+	const url = new URL('https://m3-max.tail33436f.ts.net:4010/api/projects');
+	const unauthenticated = new Request(url, {
+		headers: { host: url.host, origin: url.origin }
+	});
+	const secret = 'configured-secret';
+	const authenticated = new Request(url, {
+		headers: {
+			host: url.host,
+			origin: url.origin,
+			cookie: `${ACCESS_COOKIE}=${createAccessSession(secret)}`
+		}
+	});
+
+	expect(localApiAllowed(unauthenticated, url, '127.0.0.1', secret)).toBe(false);
+	expect(localApiAllowed(authenticated, url, '127.0.0.1', secret)).toBe(true);
+	expect(localApiAllowed(authenticated, url, '203.0.113.10', secret)).toBe(true);
 });

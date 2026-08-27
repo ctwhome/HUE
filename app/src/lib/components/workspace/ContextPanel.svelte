@@ -14,6 +14,7 @@
 		X
 	} from 'lucide-svelte';
 	import { moveBefore, sortByOrder } from '$lib/drag-order';
+	import { sessionRowState } from './session-row-state';
 	type Project = {
 		id: string;
 		name: string;
@@ -34,6 +35,15 @@
 		recovery?: string | null;
 		attention?: boolean;
 		error?: boolean;
+		status?:
+			| 'running'
+			| 'waiting-permission'
+			| 'waiting-answer'
+			| 'unknown'
+			| 'failed'
+			| 'cancelled'
+			| null;
+		unreadAttention?: boolean;
 		pinned?: boolean;
 		archived?: boolean;
 		folder?: string | null;
@@ -47,6 +57,8 @@
 		loading,
 		sessions,
 		selectedSession,
+		selectedDelivery,
+		selectedStatus,
 		sessionSearch = $bindable(),
 		showArchived = $bindable(),
 		now,
@@ -70,6 +82,8 @@
 		loading: boolean;
 		sessions: Session[];
 		selectedSession: Session | null;
+		selectedDelivery: string;
+		selectedStatus: Session['status'];
 		sessionSearch: string;
 		showArchived: boolean;
 		now: number;
@@ -163,6 +177,16 @@
 		draggedSessionId = null;
 		sessionDropTarget = null;
 	}
+	const rowState = (session: Session) =>
+		sessionRowState({
+			...session,
+			...(selectedSession?.sessionId === session.sessionId
+				? {
+						delivery: selectedDelivery,
+						status: selectedDelivery ? selectedStatus : (selectedStatus ?? session.status)
+					}
+				: {})
+		});
 </script>
 
 <aside
@@ -253,6 +277,7 @@
 			><Plus size={18} aria-hidden="true" /> Add new session</button
 		>
 		{#each orderedSessions as session, index (session.sessionId)}
+			{@const state = rowState(session)}
 			{#if index === 0 || group(orderedSessions[index - 1]) !== group(session)}<h2
 					class="px-2 pt-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
 				>
@@ -295,7 +320,10 @@
 									size={12}
 									aria-label="Pinned"
 								/>{/if}
-							{#if session.busySince}<span
+							<span
+								class="session-state text-xs whitespace-nowrap"
+								aria-label={`Status: ${state.label}`}>{state.label}</span
+							>{#if session.busySince}<span
 									class="busy-timer text-xs whitespace-nowrap text-sky-400 tabular-nums"
 									aria-label={`Busy for ${elapsed(session.busySince, now)}`}
 									>{elapsed(session.busySince, now)}</span
@@ -306,19 +334,18 @@
 								? new Date(session.updatedAt).toLocaleString()
 								: session.available === false
 									? session.recovery
-								: 'New session'}{session.tags
-								?.length
+									: 'New session'}{session.tags?.length
 								? ` · ${session.tags.join(', ')}`
 								: ''}</small
 						>
 					</div>
-					{#if session.error}<span class="session-indicator error" aria-label="Session failed"
-							>!</span
+					{#if state.attention}<span
+							class="session-indicator"
+							class:error={session.error}
+							class:attention={!session.error}
+							aria-label={state.note ?? state.label}>!</span
 						>
-					{:else if session.attention}<span
-							class="session-indicator attention"
-							aria-label="Session needs attention">•</span
-						>{/if}
+					{/if}
 				</button>
 				<button
 					class="session-drag absolute top-1/2 right-15 hidden size-7 -translate-y-1/2 cursor-grab place-items-center rounded-md opacity-0 hover:bg-accent focus:opacity-100 active:cursor-grabbing sm:grid [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
@@ -329,7 +356,8 @@
 					title={`Drag ${session.title || 'Untitled session'} to reorder`}
 					ondragstart={(event) => dragSession(event, session)}
 					ondragend={finishSessionDrag}
-					onclick={(event) => event.preventDefault()}><GripVertical size={14} aria-hidden="true" /></button
+					onclick={(event) => event.preventDefault()}
+					><GripVertical size={14} aria-hidden="true" /></button
 				>
 				{#if !session.archived}<button
 						class="session-archive absolute top-1/2 right-8 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
