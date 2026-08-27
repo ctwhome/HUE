@@ -10,7 +10,7 @@ import { redactPersistedValue } from './redaction';
 
 const runtimeRequire = createRequire(import.meta.url);
 
-export type MessageStatus = 'queued' | 'running' | 'completed' | 'failed' | 'unknown';
+export type MessageStatus = 'queued' | 'running' | 'completed' | 'failed' | 'unknown' | 'cancelled';
 
 export type Project = {
 	id: string;
@@ -33,7 +33,10 @@ export type Workflow = {
 	name: string;
 	prompt: string;
 	profile: string;
+	workMode: WorkMode;
+	archived: boolean;
 	createdAt: string;
+	updatedAt: string;
 };
 
 export type StoredMessage = {
@@ -230,10 +233,11 @@ export class MessageConflictError extends Error {
 
 const allowedTransitions: Record<MessageStatus, ReadonlySet<MessageStatus>> = {
 	queued: new Set(['running', 'failed']),
-	running: new Set(['completed', 'failed', 'unknown']),
+	running: new Set(['completed', 'failed', 'unknown', 'cancelled']),
 	completed: new Set(),
 	failed: new Set(),
-	unknown: new Set()
+	unknown: new Set(),
+	cancelled: new Set()
 };
 
 export class HUEStore {
@@ -270,7 +274,10 @@ export class HUEStore {
 				name TEXT NOT NULL,
 				prompt TEXT NOT NULL,
 				profile TEXT NOT NULL DEFAULT 'default',
-				created_at TEXT NOT NULL
+				work_mode TEXT NOT NULL DEFAULT 'autonomous',
+				archived INTEGER NOT NULL DEFAULT 0,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
 			);
 
 			CREATE INDEX IF NOT EXISTS workflows_project_id_idx
@@ -304,7 +311,7 @@ export class HUEStore {
 				id TEXT PRIMARY KEY,
 				session_id TEXT NOT NULL,
 				text TEXT NOT NULL,
-				status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'unknown')),
+				status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'unknown', 'cancelled')),
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL
 			);
@@ -407,6 +414,19 @@ export class HUEStore {
 		if (!projectColumns.some((column) => column.name === 'group_name')) {
 			this.database.exec('ALTER TABLE projects ADD COLUMN group_name TEXT');
 		}
+		const workflowColumns = this.database.query('PRAGMA table_info(workflows)').all() as Array<{
+			name: string;
+		}>;
+		for (const [name, definition] of [
+			['work_mode', "TEXT NOT NULL DEFAULT 'autonomous'"],
+			['archived', 'INTEGER NOT NULL DEFAULT 0'],
+			['updated_at', "TEXT NOT NULL DEFAULT ''"]
+		] as const) {
+			if (!workflowColumns.some((column) => column.name === name)) {
+				this.database.exec(`ALTER TABLE workflows ADD COLUMN ${name} ${definition}`);
+			}
+		}
+		this.database.exec("UPDATE workflows SET updated_at = created_at WHERE updated_at = ''");
 		let sessionColumns = this.database.query('PRAGMA table_info(project_sessions)').all() as Array<{
 			name: string;
 			notnull: number;
@@ -481,6 +501,46 @@ export class HUEStore {
 		if (!attachmentColumns.some((column) => column.name === 'size')) {
 			this.database.exec('ALTER TABLE message_attachments ADD COLUMN size INTEGER');
 		}
+		const messagesSchema = this.database
+			.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'messages'")
+			.get() as { sql: string } | null;
+		if (messagesSchema?.sql.includes('CHECK') && !messagesSchema.sql.includes("'cancelled'")) {
+			this.database.exec('PRAGMA foreign_keys = OFF');
+			try {
+				this.database.transaction(() => {
+					this.database.exec(`
+						ALTER TABLE message_attachments RENAME TO message_attachments_before_cancelled;
+						ALTER TABLE messages RENAME TO messages_before_cancelled;
+						CREATE TABLE messages (
+							id TEXT PRIMARY KEY,
+							project_id TEXT REFERENCES projects(id),
+							session_id TEXT NOT NULL,
+							text TEXT NOT NULL,
+							status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'unknown', 'cancelled')),
+							created_at TEXT NOT NULL,
+							updated_at TEXT NOT NULL
+						);
+						INSERT INTO messages SELECT id, project_id, session_id, text, status, created_at, updated_at
+							FROM messages_before_cancelled;
+						CREATE TABLE message_attachments (
+							message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+							position INTEGER NOT NULL,
+							name TEXT NOT NULL,
+							mime_type TEXT NOT NULL,
+							data TEXT NOT NULL,
+							size INTEGER,
+							PRIMARY KEY (message_id, position)
+						);
+						INSERT INTO message_attachments SELECT message_id, position, name, mime_type, data, size
+							FROM message_attachments_before_cancelled;
+						DROP TABLE message_attachments_before_cancelled;
+						DROP TABLE messages_before_cancelled;
+					`);
+				})();
+			} finally {
+				this.database.exec('PRAGMA foreign_keys = ON');
+			}
+		}
 		const eventColumns = this.database.query('PRAGMA table_info(session_events)').all() as Array<{
 			name: string;
 		}>;
@@ -500,6 +560,8 @@ export class HUEStore {
 			initializeEndpointBaselines = true;
 		}
 		this.database.exec(`
+			CREATE INDEX IF NOT EXISTS messages_session_id_idx
+				ON messages(session_id, created_at, id);
 			CREATE INDEX IF NOT EXISTS messages_project_session_idx
 				ON messages(project_id, session_id, created_at, id);
 				CREATE INDEX IF NOT EXISTS session_events_project_cursor_idx
@@ -1434,21 +1496,34 @@ export class HUEStore {
 		name: string;
 		prompt: string;
 		profile?: string;
+		workMode?: WorkMode;
 	}): Workflow {
 		const createdAt = new Date().toISOString();
 		const profile = input.profile ?? 'default';
+		const workMode = input.workMode ?? DEFAULT_WORK_MODE;
 		this.database
 			.query(
-				'INSERT INTO workflows (id, project_id, name, prompt, profile, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+				'INSERT INTO workflows (id, project_id, name, prompt, profile, work_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
 			)
-			.run(input.id, input.projectId, input.name, input.prompt, profile, createdAt);
-		return { ...input, profile, createdAt };
+			.run(
+				input.id,
+				input.projectId,
+				input.name,
+				input.prompt,
+				profile,
+				workMode,
+				createdAt,
+				createdAt
+			);
+		return { ...input, profile, workMode, archived: false, createdAt, updatedAt: createdAt };
 	}
 
-	listWorkflows(projectId: string): Workflow[] {
+	listWorkflows(projectId: string, includeArchived = false): Workflow[] {
 		const rows = this.database
 			.query(
-				'SELECT id, project_id, name, prompt, profile, created_at FROM workflows WHERE project_id = ? ORDER BY created_at, id'
+				`SELECT id, project_id, name, prompt, profile, work_mode, archived, created_at, updated_at
+				 FROM workflows WHERE project_id = ? ${includeArchived ? '' : 'AND archived = 0'}
+				 ORDER BY archived, updated_at DESC, id`
 			)
 			.all(projectId) as Array<{
 			id: string;
@@ -1456,7 +1531,10 @@ export class HUEStore {
 			name: string;
 			prompt: string;
 			profile: string;
+			work_mode: string;
+			archived: number;
 			created_at: string;
+			updated_at: string;
 		}>;
 		return rows.map((row) => ({
 			id: row.id,
@@ -1464,8 +1542,45 @@ export class HUEStore {
 			name: row.name,
 			prompt: row.prompt,
 			profile: row.profile,
-			createdAt: row.created_at
+			workMode: parseWorkMode(row.work_mode) ?? DEFAULT_WORK_MODE,
+			archived: Boolean(row.archived),
+			createdAt: row.created_at,
+			updatedAt: row.updated_at
 		}));
+	}
+
+	updateWorkflow(
+		projectId: string,
+		id: string,
+		patch: Partial<Pick<Workflow, 'name' | 'prompt' | 'profile' | 'workMode' | 'archived'>>
+	): Workflow | null {
+		const current = this.listWorkflows(projectId, true).find((workflow) => workflow.id === id);
+		if (!current) return null;
+		const updated = { ...current, ...patch, updatedAt: new Date().toISOString() };
+		this.database
+			.query(
+				`UPDATE workflows SET name = ?, prompt = ?, profile = ?, work_mode = ?, archived = ?, updated_at = ?
+				 WHERE id = ? AND project_id = ?`
+			)
+			.run(
+				updated.name,
+				updated.prompt,
+				updated.profile,
+				updated.workMode,
+				updated.archived ? 1 : 0,
+				updated.updatedAt,
+				id,
+				projectId
+			);
+		return updated;
+	}
+
+	deleteWorkflow(projectId: string, id: string): boolean {
+		return (
+			this.database
+				.query('DELETE FROM workflows WHERE id = ? AND project_id = ?')
+				.run(id, projectId).changes > 0
+		);
 	}
 
 	acceptMessage(input: {
@@ -1625,9 +1740,22 @@ export class HUEStore {
 		return Object.fromEntries(rows.map((row) => [row.session_id, row.started_at]));
 	}
 
-	getSessionIndicators(
-		projectId: string | null
-	): Record<string, { attention: boolean; error: boolean }> {
+	getSessionIndicators(projectId: string | null): Record<
+		string,
+		{
+			attention: boolean;
+			error: boolean;
+			status:
+				| 'running'
+				| 'waiting-permission'
+				| 'waiting-answer'
+				| 'unknown'
+				| 'failed'
+				| 'cancelled'
+				| null;
+			unreadAttention: boolean;
+		}
+	> {
 		const rows = this.database
 			.query(
 				`
@@ -1636,32 +1764,66 @@ export class HUEStore {
 					ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at DESC, id DESC) AS rank
 				FROM messages WHERE project_id IS ?
 			), latest_interaction AS (
-				SELECT session_id, json_extract(payload, '$.status') AS status,
+				SELECT session_id, type, json_extract(payload, '$.status') AS status,
 					ROW_NUMBER() OVER (
 						PARTITION BY session_id, type, json_extract(payload, '$.id') ORDER BY sequence DESC
 					) AS rank
 				FROM session_events
 				WHERE project_id IS ? AND type IN ('agent.permission', 'agent.clarify')
+			), latest_terminal AS (
+				SELECT session_id, type,
+					ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY sequence DESC) AS rank
+				FROM session_events
+				WHERE project_id IS ? AND type IN ('message.completed', 'message.failed', 'message.unknown', 'message.cancelled')
 			)
 			SELECT ps.session_id,
-				MAX(CASE WHEN lm.status IN ('failed', 'unknown') THEN 1 ELSE 0 END) AS error,
-				MAX(CASE WHEN li.status = 'pending' THEN 1 ELSE 0 END) AS pending
+				MAX(CASE WHEN lm.status IN ('failed', 'unknown') AND COALESCE(lt.type, '') != 'message.cancelled' THEN 1 ELSE 0 END) AS error,
+				MAX(CASE WHEN li.status = 'pending' THEN 1 ELSE 0 END) AS pending,
+				CASE
+					WHEN MAX(CASE WHEN lt.type = 'message.cancelled' THEN 1 ELSE 0 END) = 1 THEN 'cancelled'
+					WHEN MAX(CASE WHEN li.type = 'agent.clarify' AND li.status = 'pending' THEN 1 ELSE 0 END) = 1 THEN 'waiting-answer'
+					WHEN MAX(CASE WHEN li.type = 'agent.permission' AND li.status = 'pending' THEN 1 ELSE 0 END) = 1 THEN 'waiting-permission'
+					WHEN MAX(CASE WHEN lm.status = 'unknown' THEN 1 ELSE 0 END) = 1 THEN 'unknown'
+					WHEN MAX(CASE WHEN lm.status = 'failed' THEN 1 ELSE 0 END) = 1 THEN 'failed'
+					WHEN MAX(CASE WHEN lm.status IN ('queued', 'running') THEN 1 ELSE 0 END) = 1 THEN 'running'
+					ELSE NULL
+				END AS status,
+				EXISTS(
+					SELECT 1 FROM notifications n
+					WHERE n.project_id IS ps.project_id AND n.session_id = ps.session_id
+						AND n.read_at IS NULL AND n.dismissed_at IS NULL
+				) AS unread_attention
 			FROM project_sessions ps
 			LEFT JOIN latest_message lm ON lm.session_id = ps.session_id AND lm.rank = 1
 			LEFT JOIN latest_interaction li ON li.session_id = ps.session_id AND li.rank = 1
+			LEFT JOIN latest_terminal lt ON lt.session_id = ps.session_id AND lt.rank = 1
 			WHERE ps.project_id IS ?
 			GROUP BY ps.session_id
 		`
 			)
-			.all(projectId, projectId, projectId) as Array<{
+			.all(projectId, projectId, projectId, projectId) as Array<{
 			session_id: string;
 			error: number;
 			pending: number;
+			status:
+				| 'running'
+				| 'waiting-permission'
+				| 'waiting-answer'
+				| 'unknown'
+				| 'failed'
+				| 'cancelled'
+				| null;
+			unread_attention: number;
 		}>;
 		return Object.fromEntries(
 			rows.map((row) => [
 				row.session_id,
-				{ attention: !!row.error || !!row.pending, error: !!row.error }
+				{
+					attention: !!row.error || !!row.pending,
+					error: !!row.error,
+					status: row.status,
+					unreadAttention: !!row.unread_attention
+				}
 			])
 		);
 	}
@@ -1756,6 +1918,17 @@ export class HUEStore {
 		})();
 	}
 
+	transitionCancelledMessage(id: string): void {
+		const message = this.getMessage(id);
+		if (!message) throw new Error(`Message ${id} was not found`);
+		this.database.transaction(() => {
+			this.updateMessageStatus(id, 'cancelled');
+			this.appendEvent(message.projectId, message.sessionId, 'message.cancelled', {
+				messageId: id
+			});
+		})();
+	}
+
 	appendEvent(
 		projectId: string | null,
 		sessionId: string,
@@ -1773,7 +1946,9 @@ export class HUEStore {
 				.run(projectId, sessionId, type, JSON.stringify(redactedPayload), createdAt);
 			sequence = Number(result.lastInsertRowid);
 			if (
-				['message.completed', 'message.failed', 'message.unknown'].includes(type) ||
+				['message.completed', 'message.failed', 'message.unknown', 'message.cancelled'].includes(
+					type
+				) ||
 				(['agent.permission', 'agent.clarify'].includes(type) &&
 					redactedPayload.status === 'pending')
 			) {

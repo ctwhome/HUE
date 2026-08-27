@@ -421,8 +421,13 @@ describe('HUEStore project and workflow boundaries', () => {
 		});
 
 		expect(store.getSessionIndicators('hue')).toEqual({
-			waiting: { attention: true, error: false },
-			failed: { attention: true, error: true }
+			waiting: {
+				attention: true,
+				error: false,
+				status: 'waiting-permission',
+				unreadAttention: true
+			},
+			failed: { attention: true, error: true, status: 'failed', unreadAttention: true }
 		});
 		store.appendEvent('hue', 'waiting', 'agent.permission', {
 			id: 'permission-1',
@@ -430,7 +435,9 @@ describe('HUEStore project and workflow boundaries', () => {
 		});
 		expect(store.getSessionIndicators('hue').waiting).toEqual({
 			attention: false,
-			error: false
+			error: false,
+			status: null,
+			unreadAttention: true
 		});
 		store.close();
 	});
@@ -473,6 +480,66 @@ describe('HUEStore project and workflow boundaries', () => {
 		expect(store.listWorkflows('hue').map((workflow) => workflow.id)).toEqual(['build']);
 		expect(store.listWorkflows('notidian').map((workflow) => workflow.id)).toEqual(['review']);
 
+		store.close();
+	});
+
+	it('updates, archives, restores, and deletes workflows inside their project', () => {
+		const store = makeStore();
+		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.createWorkflow({
+			id: 'release',
+			projectId: 'hue',
+			name: 'Prepare release',
+			prompt: 'Run release checks.',
+			profile: 'work',
+			workMode: 'live'
+		});
+
+		expect(
+			store.updateWorkflow('hue', 'release', {
+				name: 'Ship release',
+				prompt: 'Run checks and prepare release notes.',
+				profile: 'default',
+				workMode: 'autonomous',
+				archived: true
+			})
+		).toMatchObject({
+			id: 'release',
+			projectId: 'hue',
+			name: 'Ship release',
+			profile: 'default',
+			workMode: 'autonomous',
+			archived: true
+		});
+		expect(store.listWorkflows('hue')).toEqual([]);
+		expect(store.listWorkflows('hue', true)).toEqual([
+			expect.objectContaining({ id: 'release', archived: true })
+		]);
+
+		expect(store.updateWorkflow('hue', 'release', { archived: false })).toMatchObject({
+			archived: false
+		});
+		expect(store.deleteWorkflow('hue', 'release')).toBe(true);
+		expect(store.listWorkflows('hue', true)).toEqual([]);
+		store.close();
+	});
+
+	it('does not mutate a workflow through another project', () => {
+		const store = makeStore();
+		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.createProject({ id: 'other', name: 'Other', rootPath: '/work/other' });
+		store.createWorkflow({
+			id: 'release',
+			projectId: 'hue',
+			name: 'Prepare release',
+			prompt: 'Run release checks.'
+		});
+
+		expect(store.updateWorkflow('other', 'release', { name: 'Wrong' })).toBeNull();
+		expect(store.deleteWorkflow('other', 'release')).toBe(false);
+		expect(store.listWorkflows('hue')).toEqual([
+			expect.objectContaining({ id: 'release', name: 'Prepare release' })
+		]);
 		store.close();
 	});
 
@@ -673,6 +740,31 @@ describe('HUEStore acknowledged message transport', () => {
 			expect.objectContaining({ id: 'msg-1', text: 'Preserve me', projectId: 'hue' })
 		]);
 		expect(store.listEvents('hue', 'session-1')).toHaveLength(1);
+		store.close();
+	});
+	it('migrates delivery status for cancelled turns without losing attachments', () => {
+		const filename = join(tmpdir(), `hue-store-${crypto.randomUUID()}.db`);
+		temporaryDatabases.push(filename);
+		const legacy = new Database(filename, { create: true });
+		legacy.exec(`
+			CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, root_path TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL);
+			CREATE TABLE project_sessions (session_id TEXT PRIMARY KEY, project_id TEXT REFERENCES projects(id), cwd TEXT NOT NULL, updated_at TEXT NOT NULL);
+			CREATE TABLE messages (id TEXT PRIMARY KEY, project_id TEXT REFERENCES projects(id), session_id TEXT NOT NULL, text TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'unknown')), created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+			CREATE TABLE message_attachments (message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE, position INTEGER NOT NULL, name TEXT NOT NULL, mime_type TEXT NOT NULL, data TEXT NOT NULL, size INTEGER, PRIMARY KEY (message_id, position));
+			INSERT INTO projects VALUES ('hue', 'HUE', '/work/hue', '2026-08-21T00:00:00.000Z');
+			INSERT INTO project_sessions VALUES ('session-1', 'hue', '/work/hue', '2026-08-21T00:00:00.000Z');
+			INSERT INTO messages VALUES ('msg-1', 'hue', 'session-1', 'Stop me', 'running', '2026-08-21T00:00:00.000Z', '2026-08-21T00:00:00.000Z');
+			INSERT INTO message_attachments VALUES ('msg-1', 0, 'note.txt', 'text/plain', 'aGVsbG8=', 5);
+		`);
+		legacy.close();
+
+		const store = new HUEStore(filename);
+		store.transitionCancelledMessage('msg-1');
+
+		expect(store.getMessage('msg-1')).toMatchObject({
+			status: 'cancelled',
+			attachments: [expect.objectContaining({ name: 'note.txt', size: 5 })]
+		});
 		store.close();
 	});
 	it('persists the complete text before accepting a message', () => {

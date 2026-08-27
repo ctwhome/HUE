@@ -1,8 +1,9 @@
 import { beforeNavigate, goto } from '$app/navigation';
 import type { DirtyGuard } from './dirty-guard';
 
-export function installDirtyNavigation(guard: DirtyGuard) {
+export function installDirtyNavigation(guard: DirtyGuard, flush: () => void = () => undefined) {
 	beforeNavigate((navigation) => {
+		flush();
 		if (!navigation.to || !guard.dirty) return;
 		navigation.cancel();
 		guard.block(() => {

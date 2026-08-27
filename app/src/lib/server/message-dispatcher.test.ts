@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
 	DeliveryUncertainError,
 	MessageDispatcher,
+	TurnCancelledError,
 	type PromptRuntime
 } from './message-dispatcher';
 import { HUEStore } from './store';
@@ -254,6 +255,27 @@ describe('MessageDispatcher', () => {
 		expect(store.listEvents('hue', 'session-1').at(-1)).toMatchObject({
 			type: 'message.failed',
 			payload: { messageId: 'queued', error: 'resume unavailable' }
+		});
+		store.close();
+	});
+	it('settles a user-cancelled turn without reporting a failure', async () => {
+		const store = makeStore();
+		const runtime = new RecordingRuntime();
+		runtime.failure = new TurnCancelledError();
+		const dispatcher = new MessageDispatcher(store, runtime);
+
+		dispatcher.submit({ id: 'cancelled', projectId: 'hue', sessionId: 'session-1', text: 'Stop' });
+		await dispatcher.whenIdle('session-1');
+
+		expect(store.getMessage('cancelled')?.status).toBe('cancelled');
+		expect(store.listEvents('hue', 'session-1').at(-1)).toMatchObject({
+			type: 'message.cancelled',
+			payload: { messageId: 'cancelled' }
+		});
+		expect(store.getSessionIndicators('hue')['session-1']).toMatchObject({
+			status: 'cancelled',
+			attention: false,
+			error: false
 		});
 		store.close();
 	});

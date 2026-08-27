@@ -14,7 +14,12 @@ const project = {
 };
 const listRoots: string[] = [];
 const createdRoots: string[] = [];
-const stored: Array<{ projectId: string; sessionId: string; cwd: string }> = [];
+const stored: Array<{
+	projectId: string;
+	sessionId: string;
+	cwd: string;
+	workMode?: string | null;
+}> = [];
 
 mock.module('node:fs', () => ({ statSync: () => ({ isDirectory: () => true }) }));
 mock.module('$lib/server/route-services', () => ({
@@ -34,7 +39,7 @@ mock.module('$lib/server/route-services', () => ({
 							...session,
 							icon: null,
 							title: null,
-							workMode: 'autonomous',
+							workMode: session.workMode ?? 'autonomous',
 							pinned: false,
 							archived: false,
 							folder: null,
@@ -45,8 +50,10 @@ mock.module('$lib/server/route-services', () => ({
 			},
 			listSessionRoots: () => [],
 			isSessionDismissed: () => false,
-			upsertSession: (projectId: string, session: { sessionId: string; cwd: string }) =>
-				stored.push({ projectId, ...session }),
+			upsertSession: (
+				projectId: string,
+				session: { sessionId: string; cwd: string; workMode?: string | null }
+			) => stored.push({ projectId, ...session }),
 			getBusySessionStarts: () => ({}),
 			getSessionIndicators: () => ({}),
 			listSessionPage: () => ({
@@ -107,7 +114,10 @@ test('discovers Sessions under every Project folder and preserves actual cwd', a
 
 test('creates new Hermes Session in primary folder', async () => {
 	const { POST } = await import('./+server');
-	const response = await POST({ params: { projectId: 'project-slug' } } as never);
+	const response = await POST({
+		params: { projectId: 'project-slug' },
+		request: new Request('http://localhost/api/projects/p_1/sessions', { method: 'POST' })
+	} as never);
 
 	expect(response.status).toBe(201);
 	expect(createdRoots).toEqual(['/work/app']);
@@ -115,4 +125,18 @@ test('creates new Hermes Session in primary folder', async () => {
 		cwd: '/work/app',
 		workMode: 'autonomous'
 	});
+});
+
+test('creates a Workflow Session with its requested HUE work mode', async () => {
+	const { POST } = await import('./+server');
+	const response = await POST({
+		params: { projectId: 'project-slug' },
+		request: new Request('http://localhost/api/projects/p_1/sessions', {
+			method: 'POST',
+			body: JSON.stringify({ workMode: 'live' })
+		})
+	} as never);
+
+	expect(response.status).toBe(201);
+	expect((await response.json()).session).toMatchObject({ workMode: 'live' });
 });

@@ -59,6 +59,10 @@ Bundled client and local service, user-selected data directory, OS credential va
 
 Browser UI connects to loopback or authenticated tailnet/local-network service. Must protect against hostile origins, CSRF and accidental public exposure.
 
+The implemented P0 path preserves unauthenticated loopback use and enables non-loopback requests only when `HUE_ACCESS_SECRET` is configured and the browser holds a valid signed session. Deploy it behind Tailscale Serve or another trusted HTTPS reverse proxy, keep the HUE listener on loopback, and set `ORIGIN` to the exact public HTTPS origin. Remote sessions use HttpOnly, Secure, SameSite cookies and expire after seven days; rotating the access secret invalidates them all.
+
+This is a single-user access gate, not an internet-facing identity system. Use a unique high-entropy secret, keep it out of command history and logs, restrict network reachability to the trusted LAN or tailnet, and do not terminate remote access over plain HTTP. Per-device revocation, accounts, audit trails and brute-force rate limiting remain deferred.
+
 ### Headless/home server (`DEFERRED`)
 
 Control plane on a trusted server with desktop/mobile clients. Requires mature auth, device management and remote computer-use boundaries.
@@ -77,7 +81,23 @@ Not a prerequisite for local alpha.
 
 Secrets are never stored in normal config. Configuration is schema-versioned, validated and exportable with secret references redacted.
 
-## Backup and restore — `TBI`
+## Backup and restore
+
+The current P0 slice creates a consistent SQLite snapshot of the HUE control-plane database in a
+`backups` directory beside `HUE_DATABASE_PATH`. The artifact is written with mode `0600` and is not
+reported as successful until SQLite integrity and the required HUE schema have been validated.
+Hermes databases, transcripts, memory, credentials and other Hermes-owned state are never included.
+
+Live restore is intentionally unavailable because HUE does not yet have a lifecycle seam that can
+drain delivery, close every database user and restart safely. To restore manually:
+
+1. Stop HUE completely.
+2. Preserve the current HUE database and its `-wal`/`-shm` files instead of overwriting them in place.
+3. Copy a validated backup to a fresh `HUE_DATABASE_PATH` ending in `hue.db`.
+4. Start HUE with that path and inspect Runtime diagnostics before resuming work.
+
+Do not restore a HUE backup into a Hermes data path. Broader export/import and conflict-aware restore
+remain `TBI`.
 
 Backup includes:
 

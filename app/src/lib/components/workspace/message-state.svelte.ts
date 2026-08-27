@@ -246,6 +246,7 @@ export class MessageState {
 			await this.options.api(this.sessionPath(selectedSession.sessionId, '/cancel'), {
 				method: 'POST'
 			});
+			this.options.session.delivery = 'cancelling';
 		} catch (cause) {
 			this.report(cause);
 		} finally {
