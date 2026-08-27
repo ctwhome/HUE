@@ -72,6 +72,16 @@ export class SessionState {
 		if (current) this.timeline = patch(this.timeline);
 	};
 
+	updateCachedDelivery = (
+		projectId: string | null,
+		sessionId: string,
+		activeMessageId: string,
+		delivery: string
+	) => {
+		const cached = this.views.get(this.capturedViewKey(projectId, sessionId));
+		if (cached) Object.assign(cached, { activeMessageId, delivery });
+	};
+
 	cache = (session: Session | null) => {
 		if (!session) return;
 		this.views.set(this.viewKey(session.sessionId), {

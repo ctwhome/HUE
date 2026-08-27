@@ -35,6 +35,7 @@
 	import { isImageIcon, ProjectManagement } from './workspace/project-management.svelte';
 	import ProjectRail from './workspace/ProjectRail.svelte';
 	import SessionHeader from './workspace/SessionHeader.svelte';
+	import SessionFinder from './workspace/SessionFinder.svelte';
 	import SessionManagerOverlay from './workspace/SessionManagerOverlay.svelte';
 	import SessionPaneGrid from './workspace/SessionPaneGrid.svelte';
 	import ShellResizer from './workspace/ShellResizer.svelte';
@@ -45,7 +46,13 @@
 	import { RuntimeState } from './workspace/runtime-state.svelte';
 	import { SessionState } from './workspace/session-state.svelte';
 	import { TranscriptFollow } from './workspace/transcript-follow.svelte';
-	import type { Project, Session, SessionLoad, WorkspaceProps } from './workspace/types';
+	import type {
+		Project,
+		Session,
+		SessionFinderResult,
+		SessionLoad,
+		WorkspaceProps
+	} from './workspace/types';
 	let {
 		projects: initialProjects,
 		projectsCapability = 'available',
@@ -55,7 +62,8 @@
 	let loading = $state(false),
 		error = $state('');
 	let globalView = $state<GlobalView | null>(null),
-		unreadNotifications = $state(0);
+		unreadNotifications = $state(0),
+		finderOpen = $state(false);
 	let now = $state(Date.now());
 	let dirtyGuardOpen = $state(false),
 		dirtyGuardDirty = $state(false);
@@ -303,6 +311,16 @@
 				? 'waiting-answer'
 				: null;
 	});
+	let pendingInteraction = $derived.by(() => {
+		const interaction = timeline.findLast(
+			(item) => (item.kind === 'permission' || item.kind === 'clarify') && item.status === 'pending'
+		);
+		return interaction?.kind === 'permission'
+			? `Permission: ${interaction.toolCall?.title ?? 'Hermes tool'}`
+			: interaction?.kind === 'clarify'
+				? `Question: ${interaction.message ?? 'Hermes needs input'}`
+				: undefined;
+	});
 	let composer = $derived(messageState.composer);
 	let editingQueuedMessageId = $derived(messageState.editingQueuedMessageId);
 	let workModeChanging = $state(false);
@@ -372,6 +390,38 @@
 		messageState.updateDraft(event);
 		if (pendingSessionDraft && !navigation.selectedSession) void ensureDraftSession();
 	}
+	async function navigateFromFinder(result: SessionFinderResult) {
+		const project = result.projectId
+			? (projectManagement.projects.find(({ id }) => id === result.projectId) ?? null)
+			: null;
+		if (result.projectId && !project) {
+			error = 'Project is no longer available';
+			return;
+		}
+		globalView = null;
+		await navigation.openFinderSession(project, result.sessionId);
+	}
+	function openFinderResult(result: SessionFinderResult) {
+		guarded(() => void navigateFromFinder(result));
+	}
+	function handleGlobalKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape' && finderOpen) {
+			event.preventDefault();
+			finderOpen = false;
+			return;
+		}
+		if (
+			event.key.toLowerCase() === 'k' &&
+			(event.metaKey || event.ctrlKey) &&
+			!event.altKey &&
+			!event.shiftKey
+		) {
+			event.preventDefault();
+			finderOpen = true;
+			return;
+		}
+		if (event.key === 'Escape' && !document.querySelector('dialog[open]')) mobileShell?.close();
+	}
 	async function submitDraft(event: SubmitEvent) {
 		event.preventDefault();
 		if (!navigation.selectedSession && !(await ensureDraftSession())) return;
@@ -405,8 +455,7 @@
 
 <svelte:window
 	onpagehide={messageState.saveCurrentDraft}
-	onkeydown={(event) =>
-		event.key === 'Escape' && !document.querySelector('dialog[open]') && mobileShell?.close()}
+	onkeydown={handleGlobalKeydown}
 	onbeforeunload={(event) => {
 		if (dirtyGuardDirty) event.preventDefault();
 	}}
@@ -422,7 +471,16 @@
 	class:embedded
 	style={`--project-pane-width: ${projectPaneWidth}px; --session-pane-width: ${sessionPaneWidth}px; --project-shell-color: ${selectedProject?.color ?? 'var(--background)'}`}
 >
-	<GlobalNavigation view={globalView} unreadCount={unreadNotifications} onview={setGlobalView} />
+	<GlobalNavigation
+		view={globalView}
+		unreadCount={unreadNotifications}
+		onview={setGlobalView}
+		onfind={() => (finderOpen = true)}
+	/>
+	<SessionFinder
+		bind:open={finderOpen}
+		onnavigate={openFinderResult}
+	/>
 	<MobileNavigation
 		drawer={navigation.mobileDrawer}
 		ready={navigation.ready}
@@ -620,7 +678,10 @@
 			>
 				<SessionHeader
 					session={selectedSession}
+					project={selectedProject}
 					{runtime}
+					{delivery}
+					{pendingInteraction}
 					contextPercent={runtimeState.contextPercent}
 					onsessions={() => mobileShell?.open('sessions')}
 					onicon={(event) =>
@@ -648,12 +709,16 @@
 							compact={true}
 							onpreviewchange={(url) => (previewUrl = url)}
 							onbranch={(value) => (branch = value)}
+							onreviewcontext={messageState.addReviewContext}
 							{dirtyGuard}
 						/>
 					{/key}
 				{:else if selectedSession || (selectedProject?.rootAvailable && navigation.ready)}
 					<Conversation
 						{timeline}
+						sessionLabel={selectedSession?.title ||
+							selectedSession?.sessionId ||
+							'New Hermes Session'}
 						messageNotice={messageState.messageNotice}
 						agentLabel={compactModelLabel(
 							runtime.models?.currentModelId ?? '',
@@ -670,6 +735,7 @@
 						oninteraction={messageState.respondToInteraction}
 						onmedia={messageState.openMedia}
 						onretrylast={messageState.retryLastResponse}
+						onquote={messageState.addReviewContext}
 						bind:element={transcriptFollow.element}
 						follow={transcriptFollow.follow}
 					/>
@@ -682,6 +748,7 @@
 						bind:draggingImages={messageState.draggingImages}
 						bind:images={messageState.images}
 						bind:attachments={messageState.attachments}
+						reviewContexts={messageState.reviewContexts}
 						{delivery}
 						pendingEnvelope={messageState.pendingEnvelope}
 						{queuedMessages}
@@ -716,6 +783,8 @@
 						oninput={createSessionFromDraft}
 						onkeydown={messageState.handleComposerKeydown}
 						onimages={messageState.handleImageInput}
+						oncontextcomment={messageState.updateReviewComment}
+						onremovecontext={messageState.removeReviewContext}
 						onvoiceMessage={voice.startMessage}
 						onvoiceCall={voice.startCall}
 						onmute={voice.toggleMute}
@@ -816,6 +885,7 @@
 					onterminal={() =>
 						(terminalOpen = togglePanel(localStorage, panelProjectId, 'terminal', terminalOpen))}
 					onbranch={(value) => (branch = value)}
+					onreviewcontext={messageState.addReviewContext}
 					{dirtyGuard}
 				/>
 			{/key}

@@ -1,10 +1,11 @@
-import type { ImageAttachment, InputAttachment } from './message-content';
+import type { ImageAttachment, InputAttachment, ReviewContext } from './message-content';
 
 export type WorkspaceTranscriptMessage = {
 	role: 'user' | 'assistant';
 	text: string;
 	images?: ImageAttachment[];
 	attachments?: InputAttachment[];
+	reviewContexts?: ReviewContext[];
 	createdAt?: string;
 };
 export type WorkspaceSubagentTree = {
@@ -34,7 +35,7 @@ export type WorkspaceActivity = {
 	error?: string;
 	durationMs?: number;
 	children?: WorkspaceSubagentTree['children'];
-	toolCall?: { title?: string; args?: unknown };
+	toolCall?: { name?: string; title?: string; kind?: string; args?: unknown };
 	options?: Array<{ optionId: string; name: string; kind: string }>;
 	message?: string;
 	fields?: Array<{
@@ -251,6 +252,7 @@ export function timelineFromSession(
 		text: string;
 		images?: ImageAttachment[];
 		attachments?: InputAttachment[];
+		reviewContexts?: ReviewContext[];
 		status: string;
 		createdAt?: string;
 	}>,
@@ -306,7 +308,8 @@ export function timelineFromSession(
 					text: message.text,
 					createdAt: message.createdAt ?? event.createdAt,
 					...(message.images?.length ? { images: message.images } : {}),
-					...(message.attachments?.length ? { attachments: message.attachments } : {})
+					...(message.attachments?.length ? { attachments: message.attachments } : {}),
+					...(message.reviewContexts?.length ? { reviewContexts: message.reviewContexts } : {})
 				});
 			}
 			continue;

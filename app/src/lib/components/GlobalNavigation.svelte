@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Bell, FileText, Settings } from 'lucide-svelte';
+	import { Bell, FileText, Search, Settings } from 'lucide-svelte';
 	import BrandMark from './BrandMark.svelte';
 	import Button from './ui/Button.svelte';
 
@@ -19,11 +19,13 @@
 	let {
 		view,
 		unreadCount = 0,
-		onview
+		onview,
+		onfind
 	}: {
 		view: GlobalView | null;
 		unreadCount?: number;
 		onview: (view: GlobalView | null) => void;
+		onfind: () => void;
 	} = $props();
 
 	const action =
@@ -41,6 +43,16 @@
 		title="Workspace"
 		onclick={() => onview(null)}><BrandMark class="global-mark size-10" /></button
 	>
+	<Button
+		variant="outline"
+		size="icon"
+		class={action}
+		aria-label="Find a Session"
+		title="Find a Session (Cmd/Ctrl+K)"
+		onclick={onfind}
+	>
+		<Search aria-hidden="true" />
+	</Button>
 	<Button
 		variant="outline"
 		size="icon"

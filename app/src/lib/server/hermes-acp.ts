@@ -17,7 +17,13 @@ import {
 	type SubagentTree,
 	type ToolCall
 } from './message-dispatcher';
-import type { ImageAttachment, InputAttachment } from '$lib/message-content';
+import {
+	formatReviewContextsForPrompt,
+	stripReviewContextsFromPrompt,
+	type ImageAttachment,
+	type InputAttachment,
+	type ReviewContext
+} from '$lib/message-content';
 import {
 	buildWorkModePreamble,
 	stripHermesPreamble,
@@ -592,6 +598,7 @@ export class HermesACP implements PromptRuntime {
 		text: string;
 		images: ImageAttachment[];
 		attachments?: InputAttachment[];
+		reviewContexts?: ReviewContext[];
 		workMode: WorkMode;
 		onChunk: (text: string) => void;
 		onImage?: (image: ImageAttachment) => void;
@@ -678,6 +685,14 @@ export class HermesACP implements PromptRuntime {
 					sessionId: input.sessionId,
 					prompt: [
 						...(envelope.text.trim() ? [{ type: 'text' as const, text: envelope.text }] : []),
+						...(input.reviewContexts?.length
+							? [
+									{
+										type: 'text' as const,
+										text: formatReviewContextsForPrompt(input.reviewContexts)
+									}
+								]
+							: []),
 						...input.images.map(({ data, mimeType }) => ({
 							type: 'image' as const,
 							data,
@@ -966,11 +981,15 @@ function appendTranscriptText(
 	const last = transcript.at(-1);
 	if (last && last.role === role && !last.images) {
 		last.text += text;
-		if (stripGeneratedUserPreamble) last.text = stripHermesPreamble(last.text);
+		if (stripGeneratedUserPreamble) {
+			last.text = stripReviewContextsFromPrompt(stripHermesPreamble(last.text));
+		}
 		return;
 	}
 	transcript.push({
 		role,
-		text: stripGeneratedUserPreamble ? stripHermesPreamble(text) : text
+		text: stripGeneratedUserPreamble
+			? stripReviewContextsFromPrompt(stripHermesPreamble(text))
+			: text
 	});
 }

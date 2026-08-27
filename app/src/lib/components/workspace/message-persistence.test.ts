@@ -35,6 +35,15 @@ test('pending persistence strips generic bytes and restores explicit reattach st
 		images: [],
 		attachments: [
 			{ name: 'notes.txt', mimeType: 'text/plain', size: 5, data: 'aGVsbG8=', available: true }
+		],
+		reviewContexts: [
+			{
+				id: 'review-1',
+				source: 'assistant',
+				label: 'Hermes response',
+				content: 'Captured source',
+				comment: 'Review this.'
+			}
 		]
 	});
 	expect([...values.values()].join('')).not.toContain('aGVsbG8=');
@@ -45,6 +54,15 @@ test('pending persistence strips generic bytes and restores explicit reattach st
 			size: 5,
 			available: false,
 			reattachRequired: true
+		}
+	]);
+	expect(persistence.pending()?.reviewContexts).toEqual([
+		{
+			id: 'review-1',
+			source: 'assistant',
+			label: 'Hermes response',
+			content: 'Captured source',
+			comment: 'Review this.'
 		}
 	]);
 });
@@ -58,6 +76,15 @@ test('drafts remain scoped to their project and Session identity', () => {
 	);
 
 	persistence.draft('Project A, Session 1');
+	persistence.contexts([
+		{
+			id: 'review-1',
+			source: 'diff',
+			label: 'src/app.ts',
+			content: '+safe',
+			comment: ''
+		}
+	]);
 	sessionId = 'session-2';
 	persistence.draft('Project A, Session 2');
 	projectId = 'project-b';
@@ -68,4 +95,7 @@ test('drafts remain scoped to their project and Session identity', () => {
 	expect(persistence.draft()).toBe('Project A, Session 2');
 	sessionId = 'session-1';
 	expect(persistence.draft()).toBe('Project A, Session 1');
+	expect(persistence.contexts()).toEqual([
+		expect.objectContaining({ id: 'review-1', source: 'diff', content: '+safe' })
+	]);
 });

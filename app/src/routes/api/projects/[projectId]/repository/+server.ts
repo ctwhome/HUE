@@ -2,12 +2,14 @@ import { json } from '@sveltejs/kit';
 import {
 	projectRepository,
 	projectRepositoryAction,
+	projectRepositoryDiff,
 	projectRepositories,
 	resolveProjectRepository,
 	projectGitHubItems,
 	projectStagedDiff,
 	authoritativeProject,
-	type ProjectRepositoryAction
+	type ProjectRepositoryAction,
+	type ProjectRepositoryDiffScope
 } from '$lib/server/services';
 import { generateHermesCommitMessage } from '$lib/server/hermes-cli';
 import { realpathSync } from 'node:fs';
@@ -50,9 +52,27 @@ export function _repositoryMutationAllowed(request: Request, clientAddress: stri
 
 export function _selectedRepositoryPath(
 	repositories: Array<{ path: string }>,
-	selected?: string
+	selected?: string,
+	strict = false
 ): string | undefined {
+	if (strict && selected && !repositories.some(({ path }) => path === selected)) {
+		throw new Error('Repository is not part of this project');
+	}
 	return repositories.some(({ path }) => path === selected) ? selected : repositories[0]?.path;
+}
+
+export function _repositoryDiffOptions(searchParams: URLSearchParams): {
+	scope: ProjectRepositoryDiffScope;
+	base?: string;
+	file?: string;
+} {
+	const scope = searchParams.get('scope') ?? 'unstaged';
+	if (!['staged', 'unstaged', 'branch'].includes(scope)) throw new Error('Invalid diff scope');
+	return {
+		scope: scope as ProjectRepositoryDiffScope,
+		...(searchParams.get('base') ? { base: searchParams.get('base')! } : {}),
+		...(searchParams.get('file') ? { file: searchParams.get('file')! } : {})
+	};
 }
 
 export function _projectFolderRepositories(
@@ -80,15 +100,18 @@ export const GET: RequestHandler = async ({ params, url }) => {
 			project.primary_path,
 			project.folders.map(({ path }) => path)
 		);
+		const view = url.searchParams.get('view');
 		const selected = _selectedRepositoryPath(
 			repositories,
-			url.searchParams.get('repository') ?? undefined
+			url.searchParams.get('repository') ?? undefined,
+			view === 'diff'
 		);
 		const repositoryPath = selected ?? '.';
 		const repositoryRoot = resolveProjectRepository(project.primary_path, selected, repositories);
-		if (url.searchParams.get('view') === 'github') {
+		if (view === 'github') {
 			return json(projectGitHubItems(repositoryRoot));
 		}
+		if (view === 'diff') return json(projectRepositoryDiff(repositoryRoot, _repositoryDiffOptions(url.searchParams)));
 		return json(repositoryResponse(repositoryRoot, repositoryPath, repositories));
 	} catch (error) {
 		return json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });

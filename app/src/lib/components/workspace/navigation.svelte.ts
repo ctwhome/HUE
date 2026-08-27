@@ -160,6 +160,21 @@ export class WorkspaceNavigation {
 		await this.loadActiveTab();
 		if (this.effects.isMobile()) this.setMobileDrawer('sessions', 'push');
 	};
+	openFinderSession = async (project: Project | null, sessionId: string) => {
+		const generation = this.sessionRequestGeneration + 1;
+		const projectId = project?.id ?? null;
+		const isCurrent = () =>
+			generation === this.sessionRequestGeneration &&
+			projectId === (this.selectedProject?.id ?? null);
+		await this.chooseProject(project, 'none');
+		if (!isCurrent()) return;
+		if (!this.sessions.some((session) => session.sessionId === sessionId)) {
+			await this.loadActiveTab(sessionId);
+			if (!isCurrent()) return;
+		}
+		const session = this.sessions.find((candidate) => candidate.sessionId === sessionId);
+		if (session) await this.openSession(session, 'push');
+	};
 	createProjectlessSession = async () => {
 		if (this.effects.guard(() => void this.createProjectlessSession())) return;
 		await this.chooseProject(null, 'none');
@@ -707,9 +722,20 @@ export class WorkspaceNavigation {
 		this.selectedProject = project;
 	}
 
-	setSessionBusySince(sessionId: string, busySince: string | null) {
-		this.sessions = this.sessions.map((session) =>
+	setSessionBusySince(
+		sessionId: string,
+		busySince: string | null,
+		projectId: string | null = this.selectedProject?.id ?? null
+	) {
+		const key = projectId ?? 'none';
+		const sessions = (this.sessionLists.get(key) ?? []).map((session) =>
 			session.sessionId === sessionId ? { ...session, busySince } : session
 		);
+		if (this.sessionLists.has(key)) this.sessionLists.set(key, sessions);
+		if ((this.selectedProject?.id ?? null) === projectId) {
+			this.sessions = this.sessions.map((session) =>
+				session.sessionId === sessionId ? { ...session, busySince } : session
+			);
+		}
 	}
 }
