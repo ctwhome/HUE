@@ -209,6 +209,11 @@
 								{#each mediaOutputs(message.text) as path}<article
 										class="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"
 									>
+										{#if /\.(?:png|jpe?g|gif|webp)$/i.test(path)}<img
+												class="col-span-2 block max-h-[70vh] w-full max-w-full rounded-md object-contain"
+												src={`${mediaPath}?path=${encodeURIComponent(path)}`}
+												alt={path.split('/').at(-1) ?? path}
+											/>{/if}
 										<div class="min-w-0">
 											<strong class="block truncate">{path.split('/').at(-1)}</strong><small
 												title={`Hermes MEDIA: ${path}`}>Hermes MEDIA output · {path}</small

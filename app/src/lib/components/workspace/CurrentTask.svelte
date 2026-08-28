@@ -1,16 +1,16 @@
 <script lang="ts">
-	import ChevronDown from '~icons/lucide/chevron-down';
+	import ArrowDown from '~icons/lucide/arrow-down';
 	import ListTodo from '~icons/lucide/list-todo';
-	import X from '~icons/lucide/x';
-	import { onMount, tick } from 'svelte';
 	import { selectTaskSummary, type WorkspacePlanEntry } from '$lib';
+	import { LatestFollow } from './latest-follow.svelte';
 
-	let { plan }: { plan: WorkspacePlanEntry[] } = $props();
-	let tasksExpanded = $state(false);
-	let mobile = $state(false);
-	let dialog = $state<HTMLDialogElement>();
-	let trigger = $state<HTMLButtonElement>();
-	const storageKey = 'hue:current-task:open';
+	let {
+		plan,
+		open = $bindable(false),
+		onopen = () => {}
+	}: { plan: WorkspacePlanEntry[]; open?: boolean; onopen?: () => void } = $props();
+	const latest = new LatestFollow();
+	const followLatest = latest.followLatest;
 	let summary = $derived(selectTaskSummary(plan));
 	let status = $derived(
 		summary?.entry.status === 'in_progress'
@@ -20,97 +20,60 @@
 				: 'Pending'
 	);
 
-	onMount(() => {
-		const media = matchMedia('(max-width: 700px)');
-		const update = () => {
-			if (mobile !== media.matches) {
-				dialog?.close();
-			}
-			mobile = media.matches;
-			tasksExpanded = mobile ? false : localStorage.getItem(storageKey) === 'true';
-		};
-		update();
-		media.addEventListener('change', update);
-		return () => media.removeEventListener('change', update);
+	function toggle() {
+		if (!open) onopen();
+		open = !open;
+	}
+	$effect(() => {
+		if (!summary) open = false;
 	});
-
-	async function toggle() {
-		if (!mobile) {
-			tasksExpanded = !tasksExpanded;
-			localStorage.setItem(storageKey, String(tasksExpanded));
-			return;
-		}
-		tasksExpanded = true;
-		await tick();
-		dialog?.showModal();
-	}
-
-	async function close() {
-		dialog?.close();
-		tasksExpanded = false;
-		await tick();
-		trigger?.focus();
-	}
 </script>
 
 {#snippet entries()}
-	<div class="current-task-entries">
-		<strong>{summary!.entry.content}</strong>
-		<progress value={summary!.completed} max={summary!.total}
-			>{summary!.completed} of {summary!.total}</progress
-		>
-		<ul>
-			{#each plan as entry}<li class:completed={entry.status === 'completed'}>
-					<span aria-hidden="true"
-						>{entry.status === 'completed' ? '✓' : entry.status === 'in_progress' ? '◉' : '○'}</span
-					>
-					<span>{entry.content}</span><small>{entry.status.replace('_', ' ')}</small>
-				</li>{/each}
-		</ul>
+	<div class="latest-follow-shell">
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+		<div class="current-task-entries" tabindex="0" use:followLatest>
+			<div class="latest-follow-content">
+				<strong>{summary!.entry.content}</strong>
+				<progress value={summary!.completed} max={summary!.total}
+					>{summary!.completed} of {summary!.total}</progress
+				>
+				<ul>
+					{#each plan as entry}<li class:completed={entry.status === 'completed'}>
+							<span aria-hidden="true"
+								>{entry.status === 'completed'
+									? '✓'
+									: entry.status === 'in_progress'
+										? '◉'
+										: '○'}</span
+							>
+							<span>{entry.content}</span><small>{entry.status.replace('_', ' ')}</small>
+						</li>{/each}
+				</ul>
+			</div>
+		</div>
+		{#if latest.showLatest}<button
+				type="button"
+				class="panel-scroll-latest"
+				aria-label="Scroll to latest task"
+				title="Scroll to latest task"
+				onclick={() => latest.scrollToLatest()}
+				><ArrowDown width={16} height={16} aria-hidden="true" /></button
+			>{/if}
 	</div>
 {/snippet}
 
 {#if summary}<section class="current-task" aria-label="Current task plan">
 		<button
-			bind:this={trigger}
 			type="button"
 			class="task-trigger"
 			aria-label="Tasks"
-			aria-haspopup={mobile ? 'dialog' : undefined}
-			aria-expanded={tasksExpanded}
+			aria-expanded={open}
+			title={`Tasks · ${status} · ${summary.completed}/${summary.total}`}
 			onclick={toggle}
 		>
 			<ListTodo width={16} height={16} aria-hidden="true" />
-			<span>Tasks</span><small>{status} · {summary.completed}/{summary.total}</small>
-			<ChevronDown
-				class={tasksExpanded ? 'expanded' : ''}
-				width={15}
-				height={15}
-				aria-hidden="true"
-			/>
+			<span class="sr-only">Tasks</span>
 		</button>
-		{#if tasksExpanded && !mobile}{@render entries()}{/if}
-	</section>{/if}
-
-{#if summary && tasksExpanded && mobile}<dialog
-		bind:this={dialog}
-		class="task-dialog"
-		aria-label="Tasks"
-		oncancel={(event) => {
-			event.preventDefault();
-			void close();
-		}}
-		onclick={(event) => event.target === dialog && void close()}
-	>
-		<header>
-			<div>
-				<ListTodo width={18} height={18} aria-hidden="true" /><strong>Tasks</strong><small
-					>{status}</small
-				>
-			</div>
-			<button type="button" aria-label="Close Tasks" title="Close Tasks" onclick={close}
-				><X width={18} height={18} aria-hidden="true" /></button
-			>
-		</header>
-		{@render entries()}
-	</dialog>{/if}
+	</section>
+	{#if open}{@render entries()}{/if}{/if}

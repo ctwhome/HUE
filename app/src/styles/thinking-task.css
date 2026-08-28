@@ -1,77 +1,61 @@
 .composer-activity {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-	margin: -2px 0 4px;
-	border-bottom: 1px solid var(--border);
-}
-.composer-activity > :only-child {
-	grid-column: 1 / -1;
-}
-.thinking-activity {
-	min-width: 0;
-	border-right: 1px solid var(--border);
-}
-.thinking-trigger {
 	display: flex;
-	width: 100%;
-	min-height: 36px;
+	flex: 0 0 auto;
 	align-items: center;
-	gap: 7px;
-	border-radius: var(--radius-control);
-	background: transparent;
-	padding: 5px 8px;
-	color: var(--muted-foreground);
-	font-size: var(--font-size-ui);
-	font-weight: 700;
+	gap: 4px;
+	pointer-events: none;
 }
+.composer-activity:empty {
+	display: none;
+}
+.thinking-activity,
+.current-task {
+	position: static;
+	width: 44px;
+	height: 44px;
+	flex: 0 0 44px;
+}
+.thinking-trigger,
 .task-trigger {
 	display: flex;
-	width: 100%;
-	min-height: 36px;
+	width: 44px;
+	height: 44px;
 	align-items: center;
+	justify-content: center;
 	gap: 7px;
+	border: 1px solid var(--border);
 	border-radius: var(--radius-control);
-	padding: 5px 8px;
+	background: color-mix(in srgb, var(--card) 88%, transparent);
+	padding: 0;
 	color: var(--muted-foreground);
-	font-size: var(--font-size-ui);
-	font-weight: 700;
+	pointer-events: auto;
 }
-.task-trigger:hover {
+.task-trigger:hover,
+.thinking-trigger:hover,
+.task-trigger[aria-expanded='true'],
+.thinking-trigger[aria-expanded='true'] {
 	background: var(--accent);
 	color: var(--foreground);
 }
-.task-trigger small {
-	margin-left: auto;
-	font-weight: 500;
-}
-.thinking-trigger:hover {
-	background: var(--accent);
-	color: var(--foreground);
-}
-.thinking-trigger small {
-	min-width: 0;
-	margin-left: auto;
-	overflow: hidden;
-	font-weight: 500;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-.task-trigger small {
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-.thinking-trigger > svg:last-child {
-	transition: transform 160ms ease;
-}
-.thinking-trigger > svg:last-child.expanded {
-	transform: rotate(180deg);
-}
-.thinking-panel {
+.composer-activity > .thinking-panel,
+.composer-activity > .latest-follow-shell {
+	position: absolute;
+	right: 0;
+	bottom: calc(100% + 8px);
+	left: 0;
+	z-index: 12;
+	width: 100%;
 	max-height: min(420px, 45dvh);
 	overflow: hidden;
-	border-top: 1px solid var(--border);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-panel);
+	background: var(--card);
+	box-shadow: 0 18px 48px #000a;
+	pointer-events: auto;
+}
+.composer:has(.thinking-panel),
+.composer:has(.composer-activity > .latest-follow-shell) {
+	overflow: visible;
 }
 .thinking-event-meta,
 .subagent-detail > header {
@@ -83,6 +67,28 @@
 	overflow-y: auto;
 	overscroll-behavior: contain;
 	padding: 14px;
+}
+.latest-follow-shell {
+	position: relative;
+}
+.latest-follow-content {
+	display: grid;
+	gap: inherit;
+}
+.panel-scroll-latest {
+	position: absolute;
+	right: 12px;
+	bottom: 12px;
+	z-index: 2;
+	display: grid;
+	width: 36px;
+	height: 36px;
+	place-items: center;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--card);
+	color: var(--foreground);
+	box-shadow: 0 6px 20px #0008;
 }
 .thinking-panel .thinking-event {
 	position: relative;
@@ -162,47 +168,23 @@
 	margin: 0;
 	white-space: pre-wrap;
 }
-.current-task {
-	min-width: 0;
-}
-.task-dialog > header,
-.task-dialog > header > div {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-}
-.task-dialog > header {
-	justify-content: space-between;
-	border-bottom: 1px solid var(--border);
-	padding: 10px 12px;
-}
-.task-dialog > header small,
 .current-task-entries small {
 	color: var(--muted-foreground);
 	font-size: var(--font-size-meta);
-}
-.task-dialog > header button {
-	display: grid;
-	width: 44px;
-	height: 44px;
-	place-items: center;
-	border-radius: var(--radius-panel);
-}
-.current-task svg.expanded {
-	transform: rotate(180deg);
 }
 .current-task-entries {
 	display: grid;
 	max-height: min(420px, 45dvh);
 	overflow-y: auto;
-	gap: 7px;
-	border-top: 1px solid var(--border);
 	padding: 12px;
 }
-.current-task-entries > strong {
+.current-task-entries .latest-follow-content {
+	gap: 7px;
+}
+.current-task-entries .latest-follow-content > strong {
 	font-size: var(--font-size-ui);
 }
-.current-task-entries progress {
+.current-task-entries .latest-follow-content > progress {
 	width: 100%;
 	height: 5px;
 	accent-color: var(--primary);
@@ -226,30 +208,12 @@
 	text-decoration: line-through;
 }
 @media (max-width: 700px) {
-	.thinking-trigger,
-	.task-trigger {
+	.panel-scroll-latest {
 		min-height: 44px;
 	}
-	.task-dialog {
-		width: min(420px, calc(100vw - 16px));
-		max-width: none;
-		max-height: calc(100dvh - 16px);
-		margin: auto;
-		overflow: hidden;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-panel);
-		background: var(--card);
-		padding: 0;
-		color: var(--foreground);
-		box-shadow: 0 24px 80px #000b;
-	}
-	.task-dialog::backdrop {
-		background: #050507b8;
-		backdrop-filter: blur(3px);
-	}
-	.task-dialog .current-task-entries {
-		max-height: calc(100dvh - 80px);
-		border-top: 0;
+	.panel-scroll-latest {
+		width: 44px;
+		height: 44px;
 	}
 	.thinking-panel {
 		max-height: min(360px, 42dvh);

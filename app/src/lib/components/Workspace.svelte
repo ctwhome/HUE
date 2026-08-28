@@ -28,7 +28,6 @@
 	import ContextPanel from './workspace/ContextPanel.svelte';
 	import Conversation from './workspace/Conversation.svelte';
 	import { MessageState } from './workspace/message-state.svelte';
-	import MobileNavigation from './workspace/MobileNavigation.svelte';
 	import { MobileShellController } from './workspace/mobile-shell';
 	import { compactModelLabel, type MobileGesture } from './workspace/mobile-navigation';
 	import { readProjectPanels, togglePanelState as togglePanel } from './workspace/panel-state';
@@ -519,19 +518,6 @@
 		onfind={() => (finderOpen = true)}
 	/>
 	<SessionFinder bind:open={finderOpen} onnavigate={openFinderResult} />
-	<MobileNavigation
-		drawer={navigation.mobileDrawer}
-		ready={navigation.ready}
-		backdrop={Boolean(navigation.mobileDrawer || gestureActive)}
-		unreadCount={unreadNotifications}
-		project={selectedProject}
-		session={selectedSession}
-		view={globalView}
-		ontoggle={(pane, trigger) => mobileShell?.toggle(pane, trigger)}
-		onclose={() => mobileShell?.close()}
-		onnotifications={() => setGlobalView('notifications')}
-		onsettings={() => setGlobalView('app-settings')}
-	/>
 	<AttentionCenter
 		open={globalView === 'notifications'}
 		projectId={selectedProject?.id ?? null}
@@ -557,6 +543,7 @@
 		{mobile}
 		projects={projectManagement.projects}
 		{selectedProject}
+		{unreadNotifications}
 		sessionsOpen={sessionsPanelOpen}
 		{projectsCapability}
 		{projectsError}
@@ -607,8 +594,9 @@
 		onlabel={projectManagement.setFolderLabel}
 		onarchiveRequest={projectManagement.requestRemoveProject}
 		onarchive={projectManagement.removeProject}
+		onnotifications={() => setGlobalView('notifications')}
+		onsettings={() => setGlobalView('app-settings')}
 		oncollapse={() => setShellPaneOpen('projects', false)}
-		onclose={() => mobileShell?.close()}
 		isImage={isImageIcon}
 	/>
 	<ContextPanel
@@ -632,7 +620,6 @@
 		onarchive={navigation.archiveSession}
 		onsearch={navigation.searchSessionList}
 		oncollapse={() => setShellPaneOpen('sessions', false)}
-		onclose={() => mobileShell?.close()}
 		isImage={isImageIcon}
 		automaticIcon={automaticSessionIcon}
 		elapsed={formatElapsed}
@@ -948,7 +935,7 @@
 			{/key}
 		{/if}
 	</div>
-	{#if selectedProject && navigation.ready}
+	{#if selectedProject && navigation.ready && !mobile}
 		{#key selectedProject.id}
 			<HealthStrip
 				projectId={selectedProject.id}

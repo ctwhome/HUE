@@ -202,6 +202,8 @@
 		)
 	);
 	let thinkingTimeline = $derived(selectThinkingTimeline(timeline));
+	let thinkingOpen = $state(false);
+	let tasksOpen = $state(false);
 	let imagePrompts = $derived(runtime.capabilities?.promptImage === true);
 	let promptLibraryDialog = $state<HTMLDialogElement>();
 	let promptLibraryLoading = $state(false);
@@ -456,25 +458,18 @@
 				{/if}
 			</div>
 		</section>{/if}
-	<div class="composer-activity">
-		<ThinkingDialog
-			id={`${instanceId}-thinking`}
-			items={thinkingTimeline}
-			{renderMarkdown}
-			{busy}
-		/>
-		<CurrentTask {plan} />
+	<div class="composer-input">
+		<textarea
+			bind:this={composerElement}
+			value={composer}
+			oninput={handleComposerInput}
+			{onkeydown}
+			{onpaste}
+			placeholder={busy
+				? 'Type a follow-up and press Enter to queue…'
+				: 'Message Hermes… / for commands'}
+			aria-label="Message Hermes"></textarea>
 	</div>
-	<textarea
-		bind:this={composerElement}
-		value={composer}
-		oninput={handleComposerInput}
-		{onkeydown}
-		{onpaste}
-		placeholder={busy
-			? 'Type a follow-up and press Enter to queue…'
-			: 'Message Hermes… / for commands'}
-		aria-label="Message Hermes"></textarea>
 	<div class="composer-toolbar flex min-w-0 items-center gap-2 pt-1">
 		<button
 			bind:this={optionsButton}
@@ -488,6 +483,17 @@
 		>
 			<Ellipsis width={20} height={20} aria-hidden="true" />
 		</button>
+		<div class="composer-activity">
+			<ThinkingDialog
+				id={`${instanceId}-thinking`}
+				items={thinkingTimeline}
+				{renderMarkdown}
+				{busy}
+				bind:open={thinkingOpen}
+				onopen={() => (tasksOpen = false)}
+			/>
+			<CurrentTask {plan} bind:open={tasksOpen} onopen={() => (thinkingOpen = false)} />
+		</div>
 		<div
 			bind:this={optionsMenu}
 			id={`${instanceId}-composer-options`}

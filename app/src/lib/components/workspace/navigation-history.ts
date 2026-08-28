@@ -2,6 +2,7 @@ import { pushState, replaceState } from '$app/navigation';
 import { page } from '$app/state';
 import {
 	NAVIGATION_MEMORY_KEY,
+	resolveInitialMobilePane,
 	resolveLaunchDestination,
 	type LaunchDestination,
 	type MobilePane
@@ -87,6 +88,7 @@ export async function restoreNavigationSelection(
 		effects.getProjects().map(({ id }) => id)
 	);
 	const notificationTarget = url.searchParams.has('event');
+	const mobilePane = effects.isMobile() ? resolveInitialMobilePane(destination) : null;
 	const sameWorkspace =
 		!notificationTarget &&
 		navigation.ready &&
@@ -94,7 +96,7 @@ export async function restoreNavigationSelection(
 		destination.sessionId === (navigation.selectedSession?.sessionId ?? null);
 	if (navigation.ready && !sameWorkspace && guard?.()) return null;
 	if (sameWorkspace) {
-		navigation.mobileDrawer = effects.isMobile() ? destination.pane : null;
+		navigation.mobileDrawer = mobilePane;
 		navigation.persistSelection(
 			'replace',
 			false,
@@ -132,7 +134,7 @@ export async function restoreNavigationSelection(
 	if (destination.sessionId) await navigation.loadActiveTab(null);
 	navigation.mobileDrawer =
 		effects.isMobile() && (!destination.sessionId || sessionRestored)
-			? destination.pane
+			? mobilePane
 			: destination.sessionId && !sessionRestored
 				? 'sessions'
 				: null;

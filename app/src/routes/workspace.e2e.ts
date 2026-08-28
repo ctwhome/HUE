@@ -110,10 +110,17 @@ function sessionButton(page: import('@playwright/test').Page, title: string) {
 }
 
 async function openMobileProjects(page: import('@playwright/test').Page) {
-	const button = page.locator('.mobile-navigation').getByRole('button', { name: 'Projects' });
-	if (!(await button.isVisible())) return;
-	await expect(button).toBeEnabled();
-	if ((await button.getAttribute('aria-expanded')) !== 'true') await button.click();
+	if (await page.locator('#project-drawer').isVisible()) return;
+	const sessionsBack = page.getByRole('button', { name: 'Back to Sessions' });
+	if (await sessionsBack.isVisible()) await sessionsBack.click();
+	const projectsBack = page.getByRole('button', { name: 'Back to Projects' });
+	if (await projectsBack.isVisible()) await projectsBack.click();
+}
+
+async function openMobileSessions(page: import('@playwright/test').Page) {
+	if (await page.locator('#session-drawer').isVisible()) return;
+	const back = page.getByRole('button', { name: 'Back to Sessions' });
+	if (await back.isVisible()) await back.click();
 }
 
 async function mockProjectWorkbenchRequests(page: import('@playwright/test').Page) {
@@ -526,14 +533,17 @@ test('reorders Session rows live while dragging', async ({ page }) => {
 	await first.dispatchEvent('dragend', { dataTransfer });
 	await expect
 		.poll(() =>
-			page.evaluate(() =>
-				Object.entries(localStorage).find(([key]) => key.startsWith('hue:session-order:'))?.[1]
+			page.evaluate(
+				() =>
+					Object.entries(localStorage).find(([key]) => key.startsWith('hue:session-order:'))?.[1]
 			)
 		)
 		.toBe('["second-row","first-row"]');
 });
 
-test('discards stale persisted Session panes after loading the Project Sessions', async ({ page }) => {
+test('discards stale persisted Session panes after loading the Project Sessions', async ({
+	page
+}) => {
 	let staleRequests = 0;
 	await page.route('**/api/projects/*/sessions', (route) =>
 		route.fulfill({
@@ -569,7 +579,10 @@ test('discards stale persisted Session panes after loading the Project Sessions'
 	);
 	await expect
 		.poll(() =>
-			page.evaluate((id) => JSON.parse(localStorage.getItem(`hue:session-panes:${id}`) ?? '{}'), projectId)
+			page.evaluate(
+				(id) => JSON.parse(localStorage.getItem(`hue:session-panes:${id}`) ?? '{}'),
+				projectId
+			)
 		)
 		.toMatchObject({ sessions: [], primary: null });
 	expect(staleRequests).toBe(0);
@@ -3021,9 +3034,7 @@ test('follows new chat content until the reader scrolls up', async ({ page }) =>
 			.toBeLessThan(2);
 		await scroller.hover();
 		await page.mouse.wheel(0, -300);
-		if (viewport.width <= 700) {
-			await page.locator('.mobile-navigation').getByRole('button', { name: 'Sessions' }).click();
-		}
+		if (viewport.width <= 700) await openMobileSessions(page);
 		await sessionButton(page, 'Other').click();
 		await expect
 			.poll(async () =>
@@ -3032,16 +3043,12 @@ test('follows new chat content until the reader scrolls up', async ({ page }) =>
 				)
 			)
 			.toBeLessThan(2);
-		if (viewport.width <= 700) {
-			await page.locator('.mobile-navigation').getByRole('button', { name: 'Sessions' }).click();
-		}
+		if (viewport.width <= 700) await openMobileSessions(page);
 		await sessionButton(page, 'Sticky').click();
 		await scroller.hover();
 		await page.mouse.wheel(0, -300);
 		failOtherRefresh = true;
-		if (viewport.width <= 700) {
-			await page.locator('.mobile-navigation').getByRole('button', { name: 'Sessions' }).click();
-		}
+		if (viewport.width <= 700) await openMobileSessions(page);
 		await sessionButton(page, 'Other').click();
 		await expect
 			.poll(async () =>
@@ -3105,7 +3112,18 @@ test('copies and edits messages while selected-message fork stays honestly unava
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
 		);
-		if (viewport.width <= 390) await expectMinimumTouchTargets(userMessage.locator('button'));
+		if (viewport.width <= 390) {
+			await expectMinimumTouchTargets(userMessage.locator('button'));
+			expect(
+				await userMessage.locator('.message-actions').evaluate((element) => ({
+					background: getComputedStyle(element).backgroundColor,
+					backdrop: getComputedStyle(element).backdropFilter
+				}))
+			).toEqual({ background: 'rgba(0, 0, 0, 0)', backdrop: 'none' });
+			expect((await userMessage.locator('.message-actions svg').first().boundingBox())!.width).toBe(
+				13
+			);
+		}
 	}
 	await userMessage.getByRole('button', { name: 'Copy message' }).click();
 	expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
@@ -3598,7 +3616,10 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 				? {
 						transcript: [
 							{ role: 'user', text: 'Review notes' },
-							{ role: 'assistant', text: 'Reviewed.\nMEDIA: output/report.pdf' }
+							{
+								role: 'assistant',
+								text: 'Reviewed.\nMEDIA: output/report.pdf\nMEDIA: output/screenshot.png'
+							}
 						],
 						messages: [
 							{
@@ -3633,7 +3654,10 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 							{
 								sequence: 3,
 								type: 'agent.chunk',
-								payload: { messageId: 'file-message', text: 'Reviewed.\nMEDIA: output/report.pdf' },
+								payload: {
+									messageId: 'file-message',
+									text: 'Reviewed.\nMEDIA: output/report.pdf\nMEDIA: output/screenshot.png'
+								},
 								createdAt: '2026-08-22T10:00:02Z'
 							},
 							{
@@ -3679,7 +3703,7 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 
 	await addProject(page);
 	await sessionButton(page, 'Files').click();
-	await page.getByLabel('Attach images and files').setInputFiles({
+	await page.locator('.composer input[type="file"]').setInputFiles({
 		name: 'notes.txt',
 		mimeType: 'text/plain',
 		buffer: Buffer.from('hello')
@@ -3704,6 +3728,12 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 
 	const preview = page.getByRole('link', { name: 'Preview output/report.pdf' });
 	const download = page.getByRole('link', { name: 'Download output/report.pdf' });
+	const image = page.getByRole('img', { name: 'screenshot.png' });
+	await expect(image).toBeVisible();
+	await expect(image).toHaveAttribute(
+		'src',
+		/\/sessions\/files\/media\?path=output%2Fscreenshot\.png$/
+	);
 	await expect(preview).toHaveAttribute('target', '_blank');
 	await expect(download).toHaveAttribute('href', /download=true/);
 	const ranged = await preview.evaluate(async (link) => {
@@ -4109,7 +4139,19 @@ test('keeps chat clean while Thinking dialog and current task preserve ACP activ
 			)
 	).toEqual([1, 2, 5, 7, 8, 9]);
 	await expect(page.getByRole('button', { name: 'Thinking' })).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Tasks' })).toContainText('1/2');
+	await expect(page.getByRole('button', { name: 'Tasks' })).toHaveAttribute('title', /1\/2/);
+	const composerInput = page.locator('.composer-input');
+	for (const trigger of [
+		page.getByRole('button', { name: 'Thinking' }),
+		page.getByRole('button', { name: 'Tasks' })
+	]) {
+		const triggerBox = (await trigger.boundingBox())!;
+		const inputBox = (await composerInput.boundingBox())!;
+		expect(triggerBox.x).toBeGreaterThanOrEqual(inputBox.x);
+		expect(triggerBox.y).toBeGreaterThanOrEqual(inputBox.y);
+		expect(triggerBox.x + triggerBox.width).toBeLessThanOrEqual(inputBox.x + inputBox.width);
+		expect(triggerBox.y + triggerBox.height).toBeLessThanOrEqual(inputBox.y + inputBox.height);
+	}
 	const conversationTimes = page.locator('.transcript article time');
 	await expect(conversationTimes).toHaveCount(2);
 	await expect(conversationTimes.first()).toHaveAttribute('datetime', '2026-08-22T09:59:59.000Z');
@@ -4138,6 +4180,40 @@ test('keeps chat clean while Thinking dialog and current task preserve ACP activ
 	).toEqual([3, 10, 11, 12]);
 	await expect(thinking.getByText('Inspect fixtures')).toBeVisible();
 	await expect(thinking.getByText('Work mode changed to Live')).toBeVisible();
+	await thinking.evaluate((element) => {
+		const growth = document.createElement('div');
+		growth.style.height = '500px';
+		element.firstElementChild?.append(growth);
+	});
+	await expect
+		.poll(() =>
+			thinking.evaluate(
+				(element) => element.scrollHeight - element.scrollTop - element.clientHeight
+			)
+		)
+		.toBeLessThan(2);
+	await thinking.evaluate((element) => {
+		element.dispatchEvent(new WheelEvent('wheel', { deltaY: -300 }));
+		element.scrollTop = 0;
+		element.dispatchEvent(new Event('scroll'));
+	});
+	await expect(page.getByRole('button', { name: 'Scroll to latest progress' })).toBeVisible();
+	const releasedProgressTop = await thinking.evaluate((element) => element.scrollTop);
+	await thinking.evaluate((element) => {
+		const growth = document.createElement('div');
+		growth.style.height = '200px';
+		element.firstElementChild?.append(growth);
+	});
+	await page.waitForTimeout(50);
+	expect(await thinking.evaluate((element) => element.scrollTop)).toBe(releasedProgressTop);
+	await page.getByRole('button', { name: 'Scroll to latest progress' }).click();
+	await expect
+		.poll(() =>
+			thinking.evaluate(
+				(element) => element.scrollHeight - element.scrollTop - element.clientHeight
+			)
+		)
+		.toBeLessThan(2);
 	const toolGroup = thinking.getByRole('group', { name: 'Read configuration' });
 	const toolSummary = toolGroup.locator('summary');
 	await toolSummary.focus();
@@ -4150,6 +4226,30 @@ test('keeps chat clean while Thinking dialog and current task preserve ACP activ
 	await expect(page.getByRole('region', { name: 'Current task plan' })).toContainText(
 		'Inspect files'
 	);
+	const taskList = page.locator('.current-task-entries');
+	await taskList.evaluate((element) => {
+		const growth = document.createElement('div');
+		growth.style.height = '500px';
+		element.firstElementChild?.append(growth);
+	});
+	await expect
+		.poll(() =>
+			taskList.evaluate(
+				(element) => element.scrollHeight - element.scrollTop - element.clientHeight
+			)
+		)
+		.toBeLessThan(2);
+	await taskList.evaluate((element) => {
+		element.dispatchEvent(new WheelEvent('wheel', { deltaY: -300 }));
+		element.scrollTop = 0;
+		element.dispatchEvent(new Event('scroll'));
+	});
+	await expect(page.getByRole('button', { name: 'Scroll to latest task' })).toBeVisible();
+	await taskList.evaluate((element) => {
+		element.scrollTop = element.scrollHeight;
+		element.dispatchEvent(new Event('scroll'));
+	});
+	await expect(page.getByRole('button', { name: 'Scroll to latest task' })).toBeHidden();
 	await taskTrigger.click();
 	await expect(
 		page.getByRole('group', { name: 'Permission required: Execute test suite' })
@@ -4180,27 +4280,22 @@ test('keeps chat clean while Thinking dialog and current task preserve ACP activ
 		);
 		if (viewport.width <= 390)
 			await expectMinimumTouchTargets(page.locator('.composer button, .code-block button'));
-		await taskTrigger.click();
-		if (viewport.width <= 700) {
-			const tasks = page.getByRole('dialog', { name: 'Tasks' });
-			await expect(tasks).toBeVisible();
-			expect((await tasks.boundingBox())!.width).toBeLessThanOrEqual(viewport.width);
-			await expectMinimumTouchTargets(tasks.locator('button'));
-			await testInfo.attach(`tasks-${viewport.width}x${viewport.height}`, {
-				body: await page.screenshot(),
-				contentType: 'image/png'
-			});
-			await tasks.getByRole('button', { name: 'Close Tasks' }).click();
-		} else {
-			await expect(page.getByRole('region', { name: 'Current task plan' })).toContainText(
-				'Run checks'
-			);
-			await testInfo.attach(`tasks-${viewport.width}x${viewport.height}`, {
-				body: await page.screenshot(),
-				contentType: 'image/png'
-			});
-			await taskTrigger.click();
+		if (viewport.width <= 390) {
+			const moreBox = (await page.getByRole('button', { name: 'More session options' }).boundingBox())!;
+			for (const activity of [thinkingTrigger, taskTrigger]) {
+				const activityBox = (await activity.boundingBox())!;
+				expect(Math.abs(activityBox.y - moreBox.y)).toBeLessThanOrEqual(1);
+			}
 		}
+		await taskTrigger.click();
+		await expect(taskList).toBeVisible();
+		const taskBox = (await taskList.boundingBox())!;
+		expect(taskBox.width).toBeLessThanOrEqual((await composerInput.boundingBox())!.width);
+		await testInfo.attach(`tasks-${viewport.width}x${viewport.height}`, {
+			body: await page.screenshot(),
+			contentType: 'image/png'
+		});
+		await taskTrigger.click();
 	}
 	expect(browserErrors).toEqual([]);
 });
@@ -4353,7 +4448,7 @@ test('shows loading without shifting the session list action or rows', async ({ 
 		if (viewport.width <= 700) {
 			await expect(page).toHaveURL(/session=session-loading/);
 			await expect(page.locator('#session-drawer')).toBeHidden();
-			await page.locator('.mobile-navigation').getByRole('button', { name: 'Sessions' }).click();
+			await openMobileSessions(page);
 			await expect
 				.poll(async () => (await page.locator('#session-drawer').boundingBox())?.x)
 				.toBe(0);
@@ -4983,21 +5078,16 @@ test('safe-area and 200% text keep mobile chrome and sheets reachable', async ({
 				document.documentElement.style.setProperty('--safe-area-left', '12px');
 				document.documentElement.style.setProperty('--safe-area-right', '12px');
 			});
-			const navigation = page.locator('.mobile-navigation');
-			await expect(navigation).toBeVisible();
-			await expectMinimumTouchTargets(navigation.getByRole('button'));
+			await expect(page.locator('.mobile-navigation')).toHaveCount(0);
+			await expectMinimumTouchTargets(page.locator('.session-header button'));
 			await expect(page.getByLabel('Message Hermes')).toBeVisible();
 			await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
-			await page.getByRole('button', { name: /Notifications/ }).click();
-			const notifications = page.getByRole('region', { name: 'Notifications' });
-			await expect(notifications).toBeVisible();
-			await expectMinimumTouchTargets(notifications.getByRole('button'));
 			expect(
 				await page.evaluate(
 					() => document.documentElement.scrollWidth <= document.documentElement.clientWidth
 				)
 			).toBe(true);
-			for (const selector of ['.mobile-navigation', '.composer', 'dialog.global-panel']) {
+			for (const selector of ['.session-header', '.composer']) {
 				const locator = page.locator(selector);
 				const box = await locator.boundingBox();
 				const geometry = await locator.evaluate((element) => {
@@ -5017,7 +5107,6 @@ test('safe-area and 200% text keep mobile chrome and sheets reachable', async ({
 					viewport.height
 				);
 			}
-			await page.getByRole('button', { name: 'Back to workspace' }).click();
 			await page.getByRole('button', { name: 'Prompt library' }).click();
 			const promptLibrary = page.getByRole('dialog', { name: 'Prompt library' });
 			const promptLibraryBox = await promptLibrary.boundingBox();
@@ -5025,6 +5114,14 @@ test('safe-area and 200% text keep mobile chrome and sheets reachable', async ({
 			expect(promptLibraryBox!.y).toBeGreaterThanOrEqual(0);
 			expect(promptLibraryBox!.y + promptLibraryBox!.height).toBeLessThanOrEqual(viewport.height);
 			await promptLibrary.getByRole('button', { name: 'Close prompt library' }).click();
+			await openMobileProjects(page);
+			await page.getByRole('button', { name: 'Notifications', exact: true }).click();
+			const notifications = page.getByRole('region', { name: 'Notifications' });
+			await expect(notifications).toBeVisible();
+			await expectMinimumTouchTargets(notifications.getByRole('button'));
+			await page.getByRole('button', { name: 'Back to workspace' }).click();
+			await page.locator('#project-drawer .project-select').filter({ hasText: 'HUE' }).click();
+			await sessionButton(page, 'Zoom').click();
 		}
 	} finally {
 		await context.close();
@@ -5055,10 +5152,7 @@ test('starts and revisits a session without a project', async ({ page }) => {
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await page.goto('/');
-		const projectsMenu = page
-			.locator('.mobile-navigation')
-			.getByRole('button', { name: 'Projects' });
-		if (await projectsMenu.isVisible()) await projectsMenu.click();
+		await openMobileProjects(page);
 		const expectedCreations = creations + 1;
 		await page.getByRole('button', { name: 'New General session' }).click();
 		await expect.poll(() => creations).toBe(expectedCreations);
@@ -5319,42 +5413,38 @@ test('per-session work mode selector persists across natural text, slash alias, 
 	expect(patchBodies).toEqual([{ workMode: 'live' }]);
 });
 
-test('mobile uses explicit exclusive Projects and Sessions drawers', async ({ page }) => {
+test('mobile uses a full-screen Projects to Sessions hierarchy without global top navigation', async ({
+	page
+}) => {
 	await page.route('**/api/projects/*/sessions', async (route) =>
 		route.fulfill({ json: { sessions: [] } })
 	);
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await addProject(page);
-
-	const mobileNavigation = page.locator('.mobile-navigation');
-	const projects = mobileNavigation.getByRole('button', { name: 'Projects' });
-	const sessions = mobileNavigation.getByRole('button', { name: 'Sessions' });
 	expect(await page.locator('#project-drawer').count()).toBe(1);
-	await expect(projects).toBeHidden();
-	await expect(sessions).toBeHidden();
 	for (const width of [390, 360, 320]) {
 		await page.setViewportSize({ width, height: 844 });
+		await page.goto('/');
+		await expect(page.locator('.mobile-navigation')).toHaveCount(0);
+		const projects = page.locator('#project-drawer');
 		await expect(projects).toBeVisible();
+		expect((await projects.boundingBox())?.width).toBeCloseTo(width, 3);
+		await expectMinimumTouchTargets(
+			projects.locator(
+				':scope > .section-heading button, :scope > nav > button, :scope > nav > div > button'
+			)
+		);
+		await projects.locator('.project-select').filter({ hasText: 'HUE' }).click();
+		const sessions = page.locator('#session-drawer');
+		await expect(projects).toBeHidden();
 		await expect(sessions).toBeVisible();
-		expect((await projects.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+		expect((await sessions.boundingBox())?.width).toBeCloseTo(width, 3);
+		await expect(page.getByRole('button', { name: 'Back to Projects' })).toBeVisible();
+		await expectMinimumTouchTargets(sessions.locator('button'));
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			width
 		);
 	}
-	await expect(projects).toBeVisible();
-	await expect(sessions).toBeVisible();
-	await expectMinimumTouchTargets(mobileNavigation.getByRole('button'));
-	await projects.click();
-	await expect(projects).toHaveAttribute('aria-expanded', 'true');
-	await expect(page.locator('#project-drawer')).toBeVisible();
-	await expect(page.locator('#session-drawer')).toBeHidden();
-	await expectMinimumTouchTargets(page.locator('#project-drawer input, #project-drawer button'));
-	await sessions.click();
-	await expect(projects).toHaveAttribute('aria-expanded', 'false');
-	await expect(sessions).toHaveAttribute('aria-expanded', 'true');
-	await expect(page.locator('#project-drawer')).toBeHidden();
-	await expect(page.locator('#session-drawer')).toBeVisible();
-	await expectMinimumTouchTargets(page.locator('#session-drawer button'));
 });
 
 test('short mobile chat contains hostile content and keeps core controls reachable', async ({
@@ -5462,11 +5552,12 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 	expect(closeBox.y + closeBox.height).toBeLessThanOrEqual(844);
 	await close.click();
 
-	await page.getByRole('button', { name: 'Settings', exact: true }).click();
+	await openMobileProjects(page);
+	await page.getByRole('button', { name: 'App settings', exact: true }).click();
 	const section = page.getByLabel('Settings section');
 	await expect(section).toBeVisible();
 	expect(await section.locator('option').count()).toBe(9);
-	await expectMinimumTouchTargets(page.locator('.mobile-navigation button, .composer button'));
+	await expectMinimumTouchTargets(page.locator('.composer button'));
 	expect(errors).toEqual([]);
 });
 
@@ -5493,7 +5584,7 @@ test('touch landscape keeps compact navigation and one active Project tool', asy
 			projects: Array<{ id: string; name: string }>;
 		};
 		await page.goto(`/?project=${projects.projects.find(({ name }) => name === 'HUE')!.id}`);
-		await expect(page.locator('.mobile-navigation')).toBeVisible();
+		await expect(page.locator('.mobile-navigation')).toHaveCount(0);
 		await expect(
 			page.getByRole('region', { name: 'Choose Session or Project tools' })
 		).toBeVisible();
@@ -5512,7 +5603,7 @@ test('touch landscape keeps compact navigation and one active Project tool', asy
 	}
 });
 
-test('mobile swipe hierarchy tracks, snaps back, excludes native interactions, and dismisses drawers', async ({
+test('mobile swipe-back moves chat to Sessions to Projects from anywhere in the content', async ({
 	page
 }) => {
 	await page.route(/\/api\/(?:projects\/[^/]+\/)?sessions(?:\?.*)?$/, (route) =>
@@ -5525,10 +5616,7 @@ test('mobile swipe hierarchy tracks, snaps back, excludes native interactions, a
 	await page.route(/\/sessions\/gesture-session$/, (route) =>
 		route.fulfill({
 			json: {
-				transcript: [
-					{ role: 'user', text: 'Keep vertical scrolling and text selection native.' },
-					{ role: 'assistant', text: 'Gesture fixture ready.' }
-				],
+				transcript: [{ role: 'assistant', text: 'Swipe anywhere on this message.' }],
 				messages: [],
 				events: [],
 				cursor: 0,
@@ -5539,116 +5627,33 @@ test('mobile swipe hierarchy tracks, snaps back, excludes native interactions, a
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await addProject(page);
 	await sessionButton(page, 'Gesture session').click();
+	await page.setViewportSize({ width: 390, height: 844 });
+	const composer = await page.getByLabel('Message Hermes').boundingBox();
+	await touchDrag(
+		page,
+		{ x: composer!.x + composer!.width / 2, y: composer!.y + composer!.height / 2 },
+		{ x: composer!.x + composer!.width - 4, y: composer!.y + composer!.height / 2 }
+	);
+	await expect(page.locator('#session-drawer')).toBeHidden();
 
-	for (const viewport of [
-		{ width: 320, height: 700 },
-		{ width: 390, height: 844 }
-	]) {
-		await page.setViewportSize(viewport);
-		await page.emulateMedia({ reducedMotion: viewport.width === 320 ? 'reduce' : 'no-preference' });
-		const projectsButton = page
-			.locator('.mobile-navigation')
-			.getByRole('button', { name: 'Projects' });
-		const sessionsButton = page
-			.locator('.mobile-navigation')
-			.getByRole('button', { name: 'Sessions' });
-
-		await touchDrag(page, { x: 32, y: 300 }, { x: 72, y: 302 });
-		await expect(page.locator('#session-drawer')).toBeHidden();
-		await touchDrag(page, { x: 32, y: 300 }, { x: 38, y: 410 });
-		await expect(page.locator('#session-drawer')).toBeHidden();
-		await touchDrag(page, { x: 8, y: 300 }, { x: 180, y: 302 });
-		await expect(page.locator('#session-drawer')).toBeHidden();
-
-		const composerBox = (await page.getByLabel('Message Hermes').boundingBox())!;
-		await touchDrag(
-			page,
-			{ x: Math.max(32, composerBox.x + 2), y: composerBox.y + composerBox.height / 2 },
-			{ x: 180, y: composerBox.y + composerBox.height / 2 }
-		);
-		await expect(page.locator('#session-drawer')).toBeHidden();
-
-		await page
-			.getByText('Keep vertical scrolling and text selection native.')
-			.evaluate((element) => {
-				const range = document.createRange();
-				range.selectNodeContents(element);
-				const selection = window.getSelection();
-				selection?.removeAllRanges();
-				selection?.addRange(range);
-			});
-		await touchDrag(page, { x: 32, y: 300 }, { x: 180, y: 302 });
-		await expect(page.locator('#session-drawer')).toBeHidden();
-		await page.evaluate(() => window.getSelection()?.removeAllRanges());
-
-		await touchDrag(page, { x: 32, y: 300 }, { x: viewport.width * 0.48, y: 302 }, async () => {
-			await expect(page.locator('#session-drawer')).toBeVisible();
-			await expect(page.locator('.drawer-backdrop')).toBeVisible();
-			const transform = await page
-				.locator('#session-drawer')
-				.evaluate((element) => getComputedStyle(element).transform);
-			expect(transform).not.toBe('none');
-			expect(transform).not.toBe('matrix(1, 0, 0, 1, 0, 0)');
-		});
+	await touchDrag(page, { x: 180, y: 300 }, { x: 220, y: 302 });
+	await expect(page.locator('#session-drawer')).toBeHidden();
+	await touchDrag(page, { x: 180, y: 300 }, { x: 320, y: 302 }, async () => {
 		await expect(page.locator('#session-drawer')).toBeVisible();
-		await expect(page.getByRole('button', { name: 'Back to Projects' })).toBeVisible();
 		expect(
-			(await page.getByRole('button', { name: 'Back to Projects' }).boundingBox())!.height
-		).toBeGreaterThanOrEqual(44);
-		await expect(page.locator('#session-drawer')).toHaveAttribute('aria-hidden', 'false');
-		await expect(page.locator('#project-drawer')).toHaveAttribute('inert', '');
-		await expect(page.locator('.drawer-backdrop')).toBeVisible();
-		await expectMinimumTouchTargets(page.locator('#session-drawer button'));
-
-		await touchDrag(
-			page,
-			{ x: 92, y: viewport.height - 110 },
-			{ x: 245, y: viewport.height - 108 }
-		);
-		await expect(page.locator('#project-drawer')).toBeVisible();
-		await expect(page.locator('#session-drawer')).toBeHidden();
-		await expect(projectsButton).toHaveAttribute('aria-expanded', 'true');
-		await expect(sessionsButton).toHaveAttribute('aria-expanded', 'false');
-
-		await touchDrag(
-			page,
-			{ x: 230, y: viewport.height - 110 },
-			{ x: 65, y: viewport.height - 108 }
-		);
-		await expect(page.locator('#project-drawer')).toBeHidden();
-		await expect(page.locator('#session-drawer')).toBeVisible();
-		await touchDrag(
-			page,
-			{ x: 230, y: viewport.height - 110 },
-			{ x: 65, y: viewport.height - 108 }
-		);
-		await expect(page.locator('#session-drawer')).toBeHidden();
-		await expect(page.locator('.drawer-backdrop')).toHaveCount(0);
-
-		await sessionsButton.click();
-		await expect(page.locator('#session-drawer')).toBeVisible();
-		await page.locator('.drawer-backdrop').click({ position: { x: viewport.width - 2, y: 100 } });
-		await expect(page.locator('#session-drawer')).toBeHidden();
-		await expect(sessionsButton).toBeFocused();
-		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
-			viewport.width
-		);
-	}
-
-	const sessionsButton = page
-		.locator('.mobile-navigation')
-		.getByRole('button', { name: 'Sessions' });
-	await sessionsButton.click();
-	await page.getByRole('button', { name: 'Edit Gesture session' }).click();
-	const sessionDialog = page.getByRole('dialog', { name: 'Session options' });
-	await expect(sessionDialog).toBeVisible();
-	await touchDrag(page, { x: 32, y: 300 }, { x: 180, y: 302 });
-	await expect(sessionDialog).toBeVisible();
-	await expect(page.locator('#project-drawer')).toBeHidden();
-	await page.keyboard.press('Escape');
-	await expect(sessionDialog).toBeHidden();
+			await page
+				.locator('#session-drawer')
+				.evaluate((element) => getComputedStyle(element).transform)
+		).not.toBe('none');
+	});
 	await expect(page.locator('#session-drawer')).toBeVisible();
-	await page.locator('.drawer-backdrop').click({ position: { x: 388, y: 100 } });
+	await expect(page.locator('#session-drawer')).toHaveAttribute('aria-hidden', 'false');
+
+	await touchDrag(page, { x: 120, y: 300 }, { x: 300, y: 302 });
+	await expect(page.locator('#project-drawer')).toBeVisible();
+	await expect(page.locator('#session-drawer')).toBeHidden();
+	await expect(page.locator('.mobile-navigation')).toHaveCount(0);
+	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
 test('reduced motion suppresses synthesized click after touch gesture', async ({ page }) => {

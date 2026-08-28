@@ -131,7 +131,7 @@ export function resolveLaunchDestination(
 		return {
 			projectId: _projectIds[0] ?? null,
 			sessionId: null,
-			pane: null,
+			pane: 'projects',
 			explicit: false,
 			intent: null,
 			token: null,
@@ -180,6 +180,14 @@ export function resolveNavigationDestination(
 	return destination;
 }
 
+export function resolveInitialMobilePane(
+	destination: Pick<LaunchDestination, 'pane' | 'source'>
+): MobilePane {
+	return destination.source === 'default' || destination.source === 'remembered'
+		? 'projects'
+		: destination.pane;
+}
+
 export function beginMobileGesture(_options: {
 	pane: MobilePane;
 	hasSession: boolean;
@@ -193,11 +201,7 @@ export function beginMobileGesture(_options: {
 	if (_options.excluded || _options.dialogOpen) return null;
 	if (_options.pane) {
 		if (!_options.startedOnDrawer) return null;
-	} else if (
-		!_options.hasSession ||
-		_options.startX < 24 ||
-		_options.startX > Math.min(56, _options.viewportWidth - 24)
-	) {
+	} else if (!_options.hasSession) {
 		return null;
 	}
 	return {

@@ -171,50 +171,13 @@
 	.workspace {
 		display: block;
 		background: var(--background);
-		padding-top: calc(56px + var(--safe-area-top));
+		padding-top: 0;
 	}
 	.shell-resizer {
 		display: none;
 	}
 	.global-rail {
 		display: none;
-	}
-	.mobile-navigation {
-		position: fixed;
-		z-index: 40;
-		inset: 0 0 auto;
-		display: grid;
-		height: calc(56px + var(--safe-area-top));
-		grid-template-columns: minmax(0, 1.6fr) minmax(72px, 1fr) 48px 48px;
-		gap: 4px;
-		border-bottom: 1px solid var(--border);
-		background: color-mix(in srgb, var(--surface-raised) 94%, transparent);
-		padding: calc(6px + var(--safe-area-top)) calc(10px + var(--safe-area-right)) 6px
-			calc(10px + var(--safe-area-left));
-		backdrop-filter: blur(16px);
-	}
-	.mobile-navigation button {
-		position: relative;
-		display: flex;
-		min-height: 44px;
-		min-width: 0;
-		align-items: center;
-		justify-content: center;
-		gap: 6px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-control);
-		background: var(--secondary);
-	}
-	.mobile-navigation button[aria-current='page'],
-	.mobile-navigation button[aria-expanded='true'] {
-		border-color: var(--ring);
-		background: var(--selection);
-	}
-	.mobile-navigation .project-switcher span {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 	.notification-badge {
 		position: absolute;
@@ -228,25 +191,15 @@
 		font-size: 10px;
 		line-height: 15px;
 	}
-	.drawer-backdrop {
-		position: fixed;
-		z-index: 20;
-		inset: calc(56px + var(--safe-area-top)) 0 0;
-		display: block;
-		width: 100%;
-		border: 0;
-		background: #0009;
-		opacity: var(--drawer-gesture-opacity, 1);
-		transition: opacity 160ms ease;
-	}
 	.project-rail,
 	.context-panel {
 		position: fixed;
 		z-index: 30;
-		inset: calc(56px + var(--safe-area-top)) auto
-			calc(var(--project-status-height) + var(--safe-area-bottom)) var(--safe-area-left);
-		width: min(88vw, 320px);
+		inset: 0;
+		width: 100%;
 		min-height: 0;
+		border-right: 0;
+		background: var(--background);
 		visibility: hidden;
 		transform: translateX(-102%);
 		transition:
@@ -256,16 +209,14 @@
 		overscroll-behavior: contain;
 		will-change: transform;
 	}
-	.drawer-close {
-		display: grid;
-		position: absolute;
-		top: 8px;
-		right: 8px;
-		z-index: 3;
-		background: var(--secondary);
+	.project-rail {
+		padding-top: calc(12px + var(--safe-area-top));
+		padding-right: max(8px, var(--safe-area-right));
+		padding-bottom: max(12px, var(--safe-area-bottom));
+		padding-left: max(8px, var(--safe-area-left));
 	}
-	.project-rail > header {
-		padding-right: 48px;
+	.mobile-project-global-action {
+		position: relative;
 	}
 	.workspace.drawer-gesture-active .gesture-drawer,
 	.workspace.drawer-gesture-active .gesture-revealed-drawer {
@@ -279,9 +230,7 @@
 	.workspace.gesture-reveal-projects .context-panel {
 		z-index: 31;
 	}
-	.workspace.drawer-gesture-active .drawer-backdrop {
-		transition: none;
-	}
+
 	.project-rail.open,
 	.context-panel.open {
 		visibility: visible;
@@ -321,9 +270,10 @@
 	}
 	.context-panel > .project-context-header {
 		display: flex;
-		min-height: 56px;
+		min-height: calc(56px + var(--safe-area-top));
 		gap: 4px;
-		padding: 6px 8px;
+		padding: calc(6px + var(--safe-area-top)) max(8px, var(--safe-area-right)) 6px
+			max(8px, var(--safe-area-left));
 	}
 	.workflow-card button,
 	.workflow-form input,
@@ -347,6 +297,13 @@
 	.composer-more {
 		display: grid;
 		grid-column: 1;
+	}
+	.composer-activity {
+		grid-column: 2;
+		grid-row: 1;
+	}
+	.composer-toolbar:has(.thinking-activity, .current-task) {
+		grid-template-columns: 44px auto minmax(0, 1fr) 44px;
 	}
 	.composer-options-menu {
 		display: none;
@@ -406,6 +363,9 @@
 		margin-left: 0;
 		justify-content: flex-start;
 	}
+	.composer-toolbar:has(.thinking-activity, .current-task) .composer-context {
+		grid-column: 3;
+	}
 	.composer-context .desktop-context-option {
 		display: none;
 	}
@@ -429,6 +389,9 @@
 		grid-row: 1;
 		width: 44px;
 		height: 44px;
+	}
+	.composer-toolbar:has(.thinking-activity, .current-task) > .composer-send {
+		grid-column: 4;
 	}
 	.composer-toolbar > .retry-message {
 		grid-column: 1 / -1;
@@ -463,8 +426,16 @@
 		grid-template-columns: 44px 18px minmax(0, 1fr);
 	}
 	.session-header {
-		min-height: 58px;
-		padding: 7px 10px;
+		position: relative;
+		z-index: 10;
+		min-height: calc(58px + var(--safe-area-top));
+		border-bottom-color: color-mix(in srgb, var(--border) 72%, transparent);
+		background: color-mix(in srgb, var(--background) 72%, transparent);
+		padding: calc(7px + var(--safe-area-top)) max(10px, var(--safe-area-right)) 7px
+			max(10px, var(--safe-area-left));
+		-webkit-backdrop-filter: blur(18px) saturate(140%);
+		backdrop-filter: blur(18px) saturate(140%);
+		box-shadow: 0 1px 0 color-mix(in srgb, var(--foreground) 6%, transparent);
 	}
 	.session-project-tools {
 		display: grid;

@@ -54,7 +54,7 @@ export class MobileGestureController {
 		if (document.querySelector('dialog[open]') || window.getSelection()?.toString()) return true;
 		const selector = startedOnDrawer
 			? 'input, textarea, select, label, form, dialog, [contenteditable="true"]'
-			: 'input, textarea, select, button, a, label, form, dialog, [role="dialog"], [contenteditable="true"], .composer, .message-stack, pre, code, .project-workbench, .files-panel, .file-preview, .terminal-panel, .xterm, canvas, iframe, object, embed';
+			: 'input, textarea, select, button, a, label, form, dialog, [role="dialog"], [contenteditable="true"], .composer, pre, code, .project-workbench, .files-panel, .file-preview, .terminal-panel, .xterm, canvas, iframe, object, embed';
 		return Boolean(target.closest(selector));
 	}
 

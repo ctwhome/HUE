@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import Archive from '~icons/lucide/archive';
 	import ArrowUp from '~icons/lucide/arrow-up';
+	import Bell from '~icons/lucide/bell';
 	import Check from '~icons/lucide/check';
 	import ChevronRight from '~icons/lucide/chevron-right';
 	import EllipsisVertical from '~icons/lucide/ellipsis-vertical';
@@ -9,6 +10,7 @@
 	import FolderPlus from '~icons/lucide/folder-plus';
 	import GripVertical from '~icons/lucide/grip-vertical';
 	import MessageSquare from '~icons/lucide/message-square';
+	import Menu from '~icons/lucide/menu';
 	import PanelLeftClose from '~icons/lucide/panel-left-close';
 	import Plus from '~icons/lucide/plus';
 	import X from '~icons/lucide/x';
@@ -23,6 +25,7 @@
 		mobile,
 		projects,
 		selectedProject,
+		unreadNotifications,
 		sessionsOpen,
 		projectsCapability,
 		projectsError,
@@ -73,8 +76,9 @@
 		onlabel,
 		onarchiveRequest,
 		onarchive,
+		onnotifications,
+		onsettings,
 		oncollapse,
-		onclose,
 		isImage
 	}: {
 		element?: HTMLElement;
@@ -82,6 +86,7 @@
 		mobile: boolean;
 		projects: Project[];
 		selectedProject: Project | null;
+		unreadNotifications: number;
 		sessionsOpen: boolean;
 		projectsCapability: 'available' | 'unavailable' | 'outage';
 		projectsError: string;
@@ -132,8 +137,9 @@
 		onlabel: (project: Project, path: string, label: string) => void;
 		onarchiveRequest: () => void;
 		onarchive: () => void;
+		onnotifications: () => void;
+		onsettings: () => void;
 		oncollapse: () => void;
-		onclose: () => void;
 		isImage: (icon: string | null) => boolean;
 	} = $props();
 
@@ -269,18 +275,29 @@
 	aria-hidden={mobile ? !open : undefined}
 	aria-label="Projects"
 >
-	{#if mobile}<button
-			class="drawer-close grid size-11 place-items-center rounded-md"
-			aria-label="Close Projects"
-			title="Close Projects"
-			onclick={onclose}><X width={20} height={20} aria-hidden="true" /></button
-		>{/if}
 	<div class="section-heading flex items-center justify-between">
 		<span
 			class="section-label px-2 text-xs font-medium tracking-wider text-muted-foreground uppercase"
 			>Projects</span
 		>
 		<div class="project-panel-actions flex gap-1">
+			{#if mobile}<button
+					class="icon-button mobile-project-global-action grid size-11 shrink-0 place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+					aria-label="Notifications"
+					title="Notifications"
+					onclick={onnotifications}
+				>
+					<Bell width={20} height={20} aria-hidden="true" />
+					{#if unreadNotifications}<span class="notification-badge"
+							>{unreadNotifications > 99 ? '99+' : unreadNotifications}</span
+						>{/if}
+				</button>
+				<button
+					class="icon-button mobile-project-global-action grid size-11 shrink-0 place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+					aria-label="App settings"
+					title="App settings"
+					onclick={onsettings}><Menu width={20} height={20} aria-hidden="true" /></button
+				>{/if}
 			<button
 				class="icon-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border bg-secondary hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
 				aria-label="Add Hermes Project"

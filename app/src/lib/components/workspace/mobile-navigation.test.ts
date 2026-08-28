@@ -4,6 +4,7 @@ import {
 	compactModelLabel,
 	finishMobileGesture,
 	parseNavigationMemory,
+	resolveInitialMobilePane,
 	resolveLaunchDestination,
 	resolveNavigationDestination,
 	updateMobileGesture
@@ -67,11 +68,11 @@ describe('durable mobile navigation', () => {
 			resolveLaunchDestination(new URL('http://hue.local/?quick-capture=1'), null, projects)
 		).toMatchObject({ intent: 'capture', projectId: null, sessionId: null, source: 'intent' });
 	});
-	test('clean first launch uses first valid Project without opening a drawer', () => {
+	test('clean first launch starts at Projects with the first valid Project ready', () => {
 		expect(resolveNavigationDestination(new URL('http://hue.local/'), null, projects)).toEqual({
 			projectId: 'project-1',
 			sessionId: null,
-			pane: null,
+			pane: 'projects',
 			explicit: false
 		});
 	});
@@ -183,6 +184,13 @@ describe('durable mobile navigation', () => {
 		});
 	});
 
+	test('ordinary mobile launches return to Projects without overriding explicit destinations', () => {
+		expect(resolveInitialMobilePane({ pane: null, source: 'remembered' })).toBe('projects');
+		expect(resolveInitialMobilePane({ pane: null, source: 'default' })).toBe('projects');
+		expect(resolveInitialMobilePane({ pane: null, source: 'explicit' })).toBeNull();
+		expect(resolveInitialMobilePane({ pane: null, source: 'notification' })).toBeNull();
+	});
+
 	test('stale remembered project falls back to Projects without a stale session', () => {
 		const remembered = JSON.stringify({
 			version: 1,
@@ -203,12 +211,12 @@ describe('durable mobile navigation', () => {
 });
 
 describe('mobile gesture state', () => {
-	test('uses safe edge band and rejects reserved edge, excluded targets, and dialogs', () => {
+	test('starts a back gesture anywhere on chat while rejecting excluded targets and dialogs', () => {
 		expect(
 			beginMobileGesture({
 				pane: null,
 				hasSession: true,
-				startX: 32,
+				startX: 180,
 				startY: 240,
 				viewportWidth: 390,
 				startedOnDrawer: false,
@@ -217,16 +225,15 @@ describe('mobile gesture state', () => {
 			})
 		).not.toBeNull();
 		for (const override of [
-			{ startX: 8 },
-			{ startX: 120 },
 			{ excluded: true },
-			{ dialogOpen: true }
+			{ dialogOpen: true },
+			{ hasSession: false }
 		]) {
 			expect(
 				beginMobileGesture({
 					pane: null,
 					hasSession: true,
-					startX: 32,
+					startX: 180,
 					startY: 240,
 					viewportWidth: 390,
 					startedOnDrawer: false,
