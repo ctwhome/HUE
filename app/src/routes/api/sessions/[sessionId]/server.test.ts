@@ -1,6 +1,8 @@
 import { expect, mock, test } from 'bun:test';
 
 let workModeCalls: Array<{ sessionId: string; workMode: string; source: string }> = [];
+let lightweightTranscriptCalls = 0;
+let runtimeTranscriptCalls = 0;
 
 mock.module('$lib/server/services', () => ({
 	services: () => ({
@@ -33,8 +35,17 @@ mock.module('$lib/server/services', () => ({
 				return { session: { sessionId, workMode }, event: null };
 			}
 		},
+		admin: {
+			loadTranscript: async () => {
+				lightweightTranscriptCalls += 1;
+				return [{ role: 'assistant', text: 'Loaded without ACP' }];
+			}
+		},
 		runtime: {
-			loadTranscript: async () => [],
+			loadTranscript: async () => {
+				runtimeTranscriptCalls += 1;
+				return [];
+			},
 			getAvailableCommands: () => [],
 			getSessionState: () => ({ profile: 'default' })
 		},
@@ -43,6 +54,23 @@ mock.module('$lib/server/services', () => ({
 		}
 	})
 }));
+
+test('GET reads one projectless transcript without loading the ACP Session', async () => {
+	lightweightTranscriptCalls = 0;
+	runtimeTranscriptCalls = 0;
+	const { GET } = await import('./+server');
+	const response = await GET({
+		params: { sessionId: 'session-1' },
+		url: new URL('http://hue.test/api/sessions/session-1')
+	} as never);
+
+	expect(response.status).toBe(200);
+	expect((await response.json()).transcript).toEqual([
+		{ role: 'assistant', text: 'Loaded without ACP' }
+	]);
+	expect(lightweightTranscriptCalls).toBe(1);
+	expect(runtimeTranscriptCalls).toBe(0);
+});
 
 test('PATCH updates projectless HUE work mode while a turn is running', async () => {
 	workModeCalls = [];

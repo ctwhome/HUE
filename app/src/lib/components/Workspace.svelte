@@ -45,6 +45,7 @@
 	import { DirtyGuard } from './workspace/dirty-guard';
 	import { installDirtyNavigation } from './workspace/dirty-navigation';
 	import { RuntimeState } from './workspace/runtime-state.svelte';
+	import { preloadSessionViews } from './workspace/session-preload';
 	import { SessionState } from './workspace/session-state.svelte';
 	import { TranscriptFollow } from './workspace/transcript-follow.svelte';
 	import {
@@ -461,6 +462,20 @@
 		await messageState.submit(event);
 	}
 	onMount(() => {
+		const preloadAbort = new AbortController();
+		const preload = () => {
+			void preloadSessionViews(
+				projectManagement.projects,
+				workspaceApi,
+				sessionState.preload,
+				preloadAbort.signal
+			);
+		};
+		let preloadIdleHandle: number | undefined;
+		let preloadTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
+		if ('requestIdleCallback' in window) {
+			preloadIdleHandle = window.requestIdleCallback(preload, { timeout: 1_000 });
+		} else preloadTimeoutHandle = globalThis.setTimeout(preload, 250);
 		const refreshChatBackground = () => (chatBackgroundRevision += 1);
 		window.addEventListener(CHAT_BACKGROUND_EVENT, refreshChatBackground);
 		applyPreferences(document.documentElement, readPreferences(localStorage));
@@ -481,6 +496,9 @@
 		});
 		mobileShell.start();
 		return () => {
+			preloadAbort.abort();
+			if (preloadIdleHandle !== undefined) window.cancelIdleCallback(preloadIdleHandle);
+			if (preloadTimeoutHandle !== undefined) globalThis.clearTimeout(preloadTimeoutHandle);
 			window.removeEventListener(CHAT_BACKGROUND_EVENT, refreshChatBackground);
 			mobileShell?.destroy();
 			mobileShell = null;
@@ -694,6 +712,7 @@
 			{workflows}
 			primarySession={selectedSession}
 			allowDocking={!embedded}
+			restorePrimarySession={!mobile}
 			onpanecount={(count) => {
 				sessionPaneCount = count;
 				if (count > 1 && innerWidth < 1600) browserOpen = false;

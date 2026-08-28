@@ -43,6 +43,7 @@ export type HermesTranscriptMessage = {
 	role: 'user' | 'assistant';
 	text: string;
 	images?: ImageAttachment[];
+	createdAt?: string;
 };
 
 type HermesModelState = {

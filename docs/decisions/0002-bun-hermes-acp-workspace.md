@@ -39,11 +39,12 @@ Use:
 - SvelteKit 5 and Svelte 5 for UI and HTTP routes;
 - Bun as package manager, test runner, server runtime, and SQLite host;
 - `bun:sqlite` for HUE-owned Project, Workflow, idempotency, delivery-state, and event-cursor data;
-- Hermes ACP v1 as the only execution adapter;
+- Hermes ACP v1 as the only Session execution and mutation adapter;
+- the authenticated, loopback-only `hermes serve` messages endpoint for bounded read-only transcript pages without agent, provider, tool, or MCP initialization;
 - complete HTTP message envelopes with client-generated IDs and durable acknowledgement;
 - cursor-based event replay, initially via polling and later optionally SSE.
 
-HUE owns Project and Workflow metadata plus message-delivery truth. Hermes owns model/tool execution and Hermes conversation persistence. HUE reads and resumes Hermes Sessions through ACP; it does not write `~/.hermes/state.db` directly.
+HUE owns Project and Workflow metadata plus message-delivery truth. Hermes owns model/tool execution and Hermes conversation persistence. HUE resumes and mutates Hermes Sessions through ACP. It reads transcript pages through the supervised Hermes server's authenticated read-only API so Hermes retains profile routing, compaction handling, pagination, and schema ownership; HUE never opens or writes `~/.hermes/state.db` directly.
 
 HUE also persists each discovered or created Hermes Session's Project association and working directory. Session routes and delivery records require that association and use the composite Project/Session boundary. On startup, accepted queued turns resume their associated Hermes Session before dispatch; interrupted running turns become `unknown` with a durable event and are never retried automatically.
 

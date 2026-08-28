@@ -109,7 +109,8 @@ async function browserTouchDrag(
 	page: import('@playwright/test').Page,
 	from: { x: number; y: number },
 	to: { x: number; y: number },
-	during?: () => Promise<void>
+	during?: () => Promise<void>,
+	hold = 0
 ) {
 	const client = await page.context().newCDPSession(page);
 	await client.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
@@ -117,6 +118,7 @@ async function browserTouchDrag(
 		type: 'touchStart',
 		touchPoints: [{ ...from, id: 1 }]
 	});
+	if (hold) await page.waitForTimeout(hold);
 	for (let step = 1; step <= 4; step += 1) {
 		const point = {
 			x: from.x + ((to.x - from.x) * step) / 4,
@@ -599,15 +601,38 @@ test('reorders Project rows with touch dragging', async ({ page }) => {
 		await browserTouchDrag(
 			page,
 			{ x: firstBox.x + firstBox.width / 2, y: firstBox.y + firstBox.height / 2 },
+			{ x: secondBox.x + secondBox.width / 2, y: secondBox.y + secondBox.height - 2 }
+		);
+		expect(await page.evaluate(() => localStorage.getItem('hue:project-order'))).toBeNull();
+		await browserTouchDrag(
+			page,
+			{ x: firstBox.x + firstBox.width / 2, y: firstBox.y + firstBox.height / 2 },
+			{ x: firstBox.x + firstBox.width / 2, y: 820 },
+			undefined,
+			300
+		);
+		expect(await page.evaluate(() => localStorage.getItem('hue:project-order'))).toBeNull();
+
+		await browserTouchDrag(
+			page,
+			{ x: firstBox.x + firstBox.width / 2, y: firstBox.y + firstBox.height / 2 },
 			{
 				x: secondBox.x + secondBox.width / 2,
-				y: secondBox.y + secondBox.height + firstBox.height - 2
-			}
+				y: secondBox.y + secondBox.height - 2
+			},
+			undefined,
+			300
 		);
 
 		await expect
 			.poll(() => page.evaluate(() => localStorage.getItem('hue:project-order')))
 			.toBe(JSON.stringify(projectIds.reverse()));
+
+		const reordered = (await first.boundingBox())!;
+		const tap = { x: reordered.x + reordered.width / 2, y: reordered.y + reordered.height / 2 };
+		await browserTouchDrag(page, tap, tap);
+		await expect(page.locator('#project-drawer')).toBeHidden();
+		await expect(page.locator('#session-drawer')).toBeVisible();
 	} finally {
 		await removeProjects(page);
 		rmSync(firstRoot, { recursive: true, force: true });
@@ -5535,6 +5560,52 @@ test('mobile uses a full-screen Projects to Sessions hierarchy without global to
 	}
 });
 
+test('mobile Project taps do not restore the previous desktop pane Session', async ({ page }) => {
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) =>
+		route.fulfill({
+			json: {
+				sessions: [
+					{ sessionId: 'desktop-primary', cwd: '/work/hue', title: 'Desktop primary' }
+				]
+			}
+		})
+	);
+	await page.route(/\/sessions\/desktop-primary$/, (route) =>
+		route.fulfill({
+			json: { transcript: [], messages: [], events: [], cursor: 0, activeTurn: null }
+		})
+	);
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await addProject(page);
+	await sessionButton(page, 'Desktop primary').click();
+	const projectId = new URL(page.url()).searchParams.get('project')!;
+	await expect
+		.poll(() =>
+			page.evaluate(
+				(key) => JSON.parse(localStorage.getItem(key) ?? 'null')?.primary?.sessionId,
+				`hue:session-panes:${projectId}`
+			)
+		)
+		.toBe('desktop-primary');
+
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.getByRole('button', { name: 'Back to Sessions' }).click();
+	await expect(page.locator('#session-drawer')).toHaveAttribute('aria-hidden', 'false');
+	await page.getByRole('button', { name: 'Back to Projects' }).click();
+	const projects = page.locator('#project-drawer');
+	await expect(projects).toHaveAttribute('aria-hidden', 'false');
+	const project = projects.locator('.project-select').filter({ hasText: 'HUE' });
+	const box = (await project.boundingBox())!;
+	const tap = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+	await browserTouchDrag(page, tap, tap);
+	await page.waitForTimeout(400);
+
+	await expect(page.locator('#session-drawer')).toBeVisible();
+	await expect(page.locator('#session-drawer')).toHaveAttribute('aria-hidden', 'false');
+	await expect(page.locator('.workspace')).toHaveClass(/mobile-sessions/);
+	await expect(page.getByRole('heading', { name: 'Desktop primary' })).toBeHidden();
+});
+
 test('short mobile chat contains hostile content and keeps core controls reachable', async ({
 	page
 }) => {
@@ -5738,6 +5809,7 @@ test('mobile swipe-back moves chat to Sessions to Projects from anywhere in the 
 		expect((await page.locator('#session-drawer').boundingBox())!.x).toBeGreaterThan(0);
 	});
 	await expect(page.locator('#project-drawer')).toBeVisible();
+	await expect(page.locator('#project-drawer')).toHaveAttribute('aria-hidden', 'false');
 	await expect(page.locator('#session-drawer')).toBeHidden();
 	await expect(page.locator('.mobile-navigation')).toHaveCount(0);
 	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);

@@ -11,6 +11,7 @@ let associated = true;
 const forked = { sessionId: 'forked-session', cwd: '/work/hue' };
 let storedFork: typeof forked | null = null;
 let transcriptCwd = '';
+let runtimeTranscriptCalls = 0;
 let sourceTitle = 'Source';
 let forkCalls = 0;
 let canFork = true;
@@ -86,10 +87,16 @@ mock.module('$lib/server/route-services', () => ({
 			getBusySessionStarts: () => ({}),
 			getSessionIndicators: () => ({})
 		},
+		admin: {
+			loadTranscript: async () => {
+				throw new Error('Hermes transcript read unavailable');
+			}
+		},
 		runtime: {
 			loadTranscript: async (cwd: string) => {
 				transcriptCwd = cwd;
-				throw new Error('Hermes ACP reconnecting');
+				runtimeTranscriptCalls += 1;
+				return [];
 			},
 			forkSession: async () => {
 				forkCalls += 1;
@@ -117,19 +124,21 @@ mock.module('$lib/server/route-services', () => ({
 	})
 }));
 
-test('returns stored turn state while Hermes transcript reconnects', async () => {
+test('returns stored turn state when the lightweight Hermes transcript read is unavailable', async () => {
 	associated = true;
 	transcriptCwd = '';
+	runtimeTranscriptCalls = 0;
 	const { GET } = await import('./+server');
 	const response = await GET({
 		params: { projectId: 'project-1', sessionId: 'session-1' }
 	} as never);
 
 	expect(response.status).toBe(200);
-	expect(transcriptCwd).toBe('/work/hue-old');
+	expect(transcriptCwd).toBe('');
+	expect(runtimeTranscriptCalls).toBe(0);
 	expect(await response.json()).toEqual({
 		transcript: [],
-		transcriptError: 'Hermes ACP reconnecting',
+		transcriptError: 'Hermes transcript read unavailable',
 		workMode: 'autonomous',
 		...snapshot
 	});

@@ -14,6 +14,7 @@ const project = {
 };
 const listRoots: string[] = [];
 const createdRoots: string[] = [];
+let authoritativeCalls = 0;
 const stored: Array<{
 	projectId: string;
 	sessionId: string;
@@ -24,12 +25,16 @@ const stored: Array<{
 mock.module('node:fs', () => ({ statSync: () => ({ isDirectory: () => true }) }));
 mock.module('$lib/server/route-services', () => ({
 	...serviceExportStubs,
-	authoritativeProject: async () => project,
+	authoritativeProject: async () => {
+		authoritativeCalls += 1;
+		return project;
+	},
 	projectBranch: () => 'feat/test',
 	sessionMatchesProjectFolders: (folders: string[], cwd: string) =>
 		folders.some((folder) => cwd === folder || cwd.startsWith(`${folder}/`)),
 	services: () => ({
 		store: {
+			hasProjectMetadata: (id: string) => id === project.id,
 			getSession: (projectId: string, sessionId: string) => {
 				const session = stored.find(
 					(candidate) => candidate.projectId === projectId && candidate.sessionId === sessionId
@@ -93,12 +98,13 @@ beforeEach(() => {
 	listRoots.length = 0;
 	createdRoots.length = 0;
 	stored.length = 0;
+	authoritativeCalls = 0;
 });
 
 test('discovers Sessions under every Project folder and preserves actual cwd', async () => {
 	const { GET } = await import('./+server');
 	const response = await GET({
-		params: { projectId: 'project-slug' },
+		params: { projectId: 'p_1' },
 		url: new URL('http://localhost/api/projects/p_1/sessions')
 	} as never);
 	const body = await response.json();
@@ -110,6 +116,22 @@ test('discovers Sessions under every Project folder and preserves actual cwd', a
 		'/work/docs/site'
 	]);
 	expect(stored.map(({ projectId }) => projectId)).toEqual(['p_1', 'p_1']);
+});
+
+test('returns cached Session titles without listing Hermes Sessions', async () => {
+	stored.push({ projectId: 'p_1', sessionId: 'cached-session', cwd: '/work/app' });
+	const { GET } = await import('./+server');
+	const response = await GET({
+		params: { projectId: 'p_1' },
+		url: new URL('http://localhost/api/projects/p_1/sessions?cached=true')
+	} as never);
+
+	expect(response.status).toBe(200);
+	expect((await response.json()).sessions).toEqual([
+		expect.objectContaining({ sessionId: 'cached-session' })
+	]);
+	expect(listRoots).toEqual([]);
+	expect(authoritativeCalls).toBe(0);
 });
 
 test('creates new Hermes Session in primary folder', async () => {

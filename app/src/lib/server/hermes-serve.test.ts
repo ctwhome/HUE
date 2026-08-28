@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { buildWorkModePromptEnvelope } from './hermes-acp';
 import { HermesServe } from './hermes-serve';
 
 const cleanups: Array<() => void | Promise<void>> = [];
@@ -83,6 +84,105 @@ describe('HermesServe', () => {
 			Response.json({ detail: 'MCP config is invalid' }, { status: 400 });
 
 		await expect(internals.json('/api/mcp/servers')).rejects.toThrow('MCP config is invalid');
+	});
+
+	it('loads one Session transcript through bounded read-only message pages', async () => {
+		const hermes = new HermesServe();
+		const paths: string[] = [];
+		const filler = Array.from({ length: 496 }, (_, index) => ({
+			id: index + 3,
+			role: 'tool',
+			content: 'ignored'
+		}));
+		const internals = hermes as unknown as {
+			json: (path: string) => Promise<unknown>;
+		};
+		internals.json = async (path) => {
+			paths.push(path);
+			if (path.includes('offset=500')) {
+				return {
+					session_id: 'resolved-session',
+					messages: [
+						{
+							id: 501,
+							role: 'user',
+							content: 'Final question',
+							timestamp: '2026-08-28T12:00:02Z'
+						}
+					],
+					pagination: { returned: 1 }
+				};
+			}
+			return {
+				session_id: 'resolved-session',
+				messages: [
+					{
+						id: 1,
+						role: 'user',
+						content: buildWorkModePromptEnvelope('live', 'First question').text,
+						timestamp: '2026-08-28T12:00:00Z'
+					},
+					{
+						id: 2,
+						role: 'assistant',
+						content: [
+							{ type: 'text', text: 'Answer' },
+							{ type: 'image_url', image_url: { url: 'data:image/png;base64,AQID' } }
+						],
+						timestamp: '2026-08-28T12:00:01Z'
+					},
+					...filler,
+					{ id: 499, role: 'user', content: 'Internal marker', display_kind: 'model_switch' },
+					{ id: 500, role: 'user', content: '[CONTEXT SUMMARY]: old task' }
+				],
+				pagination: { returned: 500 }
+			};
+		};
+
+		await expect(hermes.loadTranscript('session/one')).resolves.toEqual([
+			{ role: 'user', text: 'First question', createdAt: '2026-08-28T12:00:00Z' },
+			{
+				role: 'assistant',
+				text: 'Answer',
+				images: [{ name: 'Hermes image', mimeType: 'image/png', data: 'AQID' }],
+				createdAt: '2026-08-28T12:00:01Z'
+			},
+			{ role: 'user', text: 'Final question', createdAt: '2026-08-28T12:00:02Z' }
+		]);
+		expect(paths).toEqual([
+			'/api/sessions/session%2Fone/messages?limit=500&offset=0&order=oldest&include_compacted=true',
+			'/api/sessions/session%2Fone/messages?limit=500&offset=500&order=oldest&include_compacted=true'
+		]);
+	});
+
+	it('rejects transcript pages that change resolved Session identity', async () => {
+		const hermes = new HermesServe();
+		const messages = Array.from({ length: 500 }, (_, id) => ({ id, role: 'tool', content: '' }));
+		const internals = hermes as unknown as { json: (path: string) => Promise<unknown> };
+		internals.json = async (path) => ({
+			session_id: path.includes('offset=0') ? 'resolved-one' : 'resolved-two',
+			messages: path.includes('offset=0') ? messages : [],
+			pagination: { returned: path.includes('offset=0') ? 500 : 0 }
+		});
+
+		await expect(hermes.loadTranscript('session-1')).rejects.toThrow(
+			'Hermes changed resolved Session during transcript pagination'
+		);
+	});
+
+	it('rejects transcript pages without forward progress', async () => {
+		const hermes = new HermesServe();
+		const messages = Array.from({ length: 500 }, (_, id) => ({ id, role: 'tool', content: '' }));
+		const internals = hermes as unknown as { json: () => Promise<unknown> };
+		internals.json = async () => ({
+			session_id: 'resolved-one',
+			messages,
+			pagination: { returned: 500 }
+		});
+
+		await expect(hermes.loadTranscript('session-1')).rejects.toThrow(
+			'Hermes repeated a Session transcript message'
+		);
 	});
 
 	it('removes MCP credentials before returning servers to HUE routes', async () => {

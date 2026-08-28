@@ -1,6 +1,9 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createInterface } from 'node:readline';
+import { stripReviewContextsFromPrompt, type ImageAttachment } from '$lib/message-content';
+import { stripHermesPreamble } from '$lib/work-mode';
+import type { HermesTranscriptMessage } from './hermes-acp';
 import { HermesProjectsRpc } from './hermes-projects-rpc';
 
 type HermesServeOptions = {
@@ -17,6 +20,36 @@ export type HermesMcpServer = {
 	command: string | null;
 	enabled: boolean;
 };
+
+const TRANSCRIPT_PAGE_SIZE = 500;
+const MAX_TRANSCRIPT_MESSAGES = 100_000;
+
+function isCompactionSummary(text: string): boolean {
+	return (
+		text.startsWith('[CONTEXT COMPACTION — REFERENCE ONLY]') ||
+		text.startsWith('[CONTEXT SUMMARY]:')
+	);
+}
+
+function transcriptContent(content: unknown): { text: string; images: ImageAttachment[] } {
+	if (typeof content === 'string') return { text: content, images: [] };
+	if (!Array.isArray(content)) return { text: '', images: [] };
+	const text: string[] = [];
+	const images: ImageAttachment[] = [];
+	for (const part of content) {
+		if (!part || typeof part !== 'object') continue;
+		const value = part as Record<string, unknown>;
+		if (typeof value.text === 'string') text.push(value.text);
+		const imageUrl =
+			value.image_url && typeof value.image_url === 'object'
+				? (value.image_url as Record<string, unknown>).url
+				: value.image_url;
+		if (typeof imageUrl !== 'string') continue;
+		const match = imageUrl.match(/^data:(image\/[a-z0-9.+-]+);base64,([a-z0-9+/=]+)$/i);
+		if (match) images.push({ name: 'Hermes image', mimeType: match[1], data: match[2] });
+	}
+	return { text: text.join(''), images };
+}
 
 export class HermesServe {
 	private readonly command: string;
@@ -175,6 +208,64 @@ export class HermesServe {
 		url.protocol = 'ws:';
 		url.searchParams.set('token', this.token!);
 		return this.projectsRpc.request<T>(url.toString(), method, params);
+	}
+
+	async loadTranscript(sessionId: string): Promise<HermesTranscriptMessage[]> {
+		const transcript: HermesTranscriptMessage[] = [];
+		const messageIds = new Set<string>();
+		let resolvedSessionId = '';
+		for (let offset = 0; ; offset += TRANSCRIPT_PAGE_SIZE) {
+			if (offset >= MAX_TRANSCRIPT_MESSAGES) {
+				throw new Error(`Hermes Session transcript exceeds ${MAX_TRANSCRIPT_MESSAGES} messages`);
+			}
+			const path = `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=${TRANSCRIPT_PAGE_SIZE}&offset=${offset}&order=oldest&include_compacted=true`;
+			const page = await this.json<{
+				session_id?: unknown;
+				messages?: unknown;
+				pagination?: { returned?: unknown };
+			}>(path);
+			if (!Array.isArray(page.messages)) throw new Error('Hermes returned invalid Session messages');
+			if (typeof page.session_id !== 'string' || !page.session_id) {
+				throw new Error('Hermes returned invalid resolved Session identity');
+			}
+			if (resolvedSessionId && resolvedSessionId !== page.session_id) {
+				throw new Error('Hermes changed resolved Session during transcript pagination');
+			}
+			resolvedSessionId = page.session_id;
+			if (page.pagination?.returned !== page.messages.length) {
+				throw new Error('Hermes returned invalid Session transcript pagination');
+			}
+			if (offset + page.messages.length > MAX_TRANSCRIPT_MESSAGES) {
+				throw new Error(`Hermes Session transcript exceeds ${MAX_TRANSCRIPT_MESSAGES} messages`);
+			}
+			for (const value of page.messages) {
+				if (!value || typeof value !== 'object') {
+					throw new Error('Hermes returned invalid Session message');
+				}
+				const message = value as Record<string, unknown>;
+				if (typeof message.id !== 'number' && typeof message.id !== 'string') {
+					throw new Error('Hermes returned invalid Session message id');
+				}
+				const messageId = String(message.id);
+				if (messageIds.has(messageId)) {
+					throw new Error('Hermes repeated a Session transcript message');
+				}
+				messageIds.add(messageId);
+				if (message.role !== 'user' && message.role !== 'assistant') continue;
+				const content = transcriptContent(message.content);
+				if (message.display_kind || isCompactionSummary(content.text)) continue;
+				transcript.push({
+					role: message.role,
+					text:
+						message.role === 'user'
+							? stripReviewContextsFromPrompt(stripHermesPreamble(content.text))
+							: content.text,
+					...(content.images.length ? { images: content.images } : {}),
+					...(typeof message.timestamp === 'string' ? { createdAt: message.timestamp } : {})
+				});
+			}
+			if (page.messages.length < TRANSCRIPT_PAGE_SIZE) return transcript;
+		}
 	}
 
 	async mcpServers(): Promise<{ servers: HermesMcpServer[] }> {

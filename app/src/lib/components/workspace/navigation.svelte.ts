@@ -198,29 +198,48 @@ export class WorkspaceNavigation {
 			projectId: this.selectedProject?.id ?? '',
 			tab: this.activeTab
 		};
+		const sessionPath = request.projectId
+			? `/api/projects/${request.projectId}/sessions`
+			: '/api/sessions';
 		this.effects.setLoading(true);
 		this.effects.setError('');
 		try {
 			if (request.tab === 'sessions') {
-				const sessions: Session[] = [];
-				let offset = 0;
-				for (;;) {
-					const query = new URLSearchParams();
-					if (targetSessionId) query.set('sessionId', targetSessionId);
-					if (offset) {
-						query.set('limit', '100');
-						query.set('offset', String(offset));
+				const fetchSessions = async (cached = false) => {
+					const sessions: Session[] = [];
+					let offset = 0;
+					for (;;) {
+						const query = new URLSearchParams();
+						if (targetSessionId) query.set('sessionId', targetSessionId);
+						if (cached) query.set('cached', 'true');
+						if (offset) {
+							query.set('limit', '100');
+							query.set('offset', String(offset));
+						}
+						if (this.sessionSearch.trim()) query.set('q', this.sessionSearch.trim());
+						if (this.showArchived) query.set('archived', 'true');
+						const body = await this.effects.api<{ sessions: Session[]; hasMore?: boolean }>(
+							`${sessionPath}${query.size ? `?${query}` : ''}`
+						);
+						if (!isCurrentTabRequest(request, this.currentTabRequest())) return null;
+						sessions.push(...body.sessions);
+						if (targetSessionId || !body.hasMore || !body.sessions.length) return sessions;
+						offset += body.sessions.length;
 					}
-					if (this.sessionSearch.trim()) query.set('q', this.sessionSearch.trim());
-					if (this.showArchived) query.set('archived', 'true');
-					const body = await this.effects.api<{ sessions: Session[]; hasMore?: boolean }>(
-						`${this.sessionApiPath()}${query.size ? `?${query}` : ''}`
-					);
-					if (!isCurrentTabRequest(request, this.currentTabRequest())) return;
-					sessions.push(...body.sessions);
-					if (targetSessionId || !body.hasMore || !body.sessions.length) break;
-					offset += body.sessions.length;
+				};
+				if (!targetSessionId && this.selectedProject) {
+					try {
+						const cached = await fetchSessions(true);
+						if (!cached) return;
+						this.sessions = cached;
+						this.sessionLists.set(request.projectId, cached);
+						this.loadedSessionListProjectId = request.projectId;
+					} catch {
+						// An authoritative refresh still follows a missing local cache.
+					}
 				}
+				const sessions = await fetchSessions();
+				if (!sessions) return;
 				if (!isCurrentTabRequest(request, this.currentTabRequest())) return;
 				this.sessions = sessions;
 				this.sessionLists.set(request.projectId || 'none', sessions);
@@ -326,6 +345,15 @@ export class WorkspaceNavigation {
 		this.effects.showCachedSession(session);
 		this.effects.beginTranscriptEntryStick();
 		await this.effects.scrollToLatest();
+		if (
+			!this.selectedSession ||
+			!isCurrentSessionRequest(request, {
+				generation: this.sessionRequestGeneration,
+				projectId: this.selectedProject?.id ?? '',
+				sessionId: this.selectedSession.sessionId
+			})
+		)
+			return false;
 		this.mobileDrawer = null;
 		if (historyMode !== 'none') this.persistSelection(historyMode);
 		this.effects.setLoading(true);

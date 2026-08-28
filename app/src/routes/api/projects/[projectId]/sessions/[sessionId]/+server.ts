@@ -18,7 +18,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 	const session = services().store.getSession(project.id, params.sessionId)!;
 	const snapshot = services().store.getSessionSnapshot(project.id, params.sessionId);
 	try {
-		const transcript = await services().runtime.loadTranscript(session.cwd, params.sessionId);
+		const transcript = await services().admin.loadTranscript(params.sessionId);
 		const format = url.searchParams.get('format');
 		if (format === 'json' || format === 'markdown') {
 			const exported = exportSession(format, {
