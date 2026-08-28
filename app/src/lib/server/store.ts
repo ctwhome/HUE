@@ -975,6 +975,14 @@ export class HUEStore {
 		).map(({ cwd }) => cwd);
 	}
 
+	countSessions(projectId: string | null): number {
+		return (
+			this.database
+				.query('SELECT COUNT(*) AS count FROM project_sessions WHERE project_id IS ? AND archived = 0')
+				.get(projectId) as { count: number }
+		).count;
+	}
+
 	listSessionPage(
 		projectId: string | null,
 		options: { includeArchived: boolean; query: string; limit: number; offset: number }

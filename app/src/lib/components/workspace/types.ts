@@ -16,6 +16,7 @@ export type Project = {
 	primaryPath: string;
 	folders: Array<{ path: string; label: string | null; isPrimary: boolean; available: boolean }>;
 	rootAvailable: boolean;
+	sessionCount: number;
 };
 
 export type WorkspaceProps = {

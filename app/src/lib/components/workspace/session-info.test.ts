@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'bun:test';
-import type { Api, Session, SessionEvent } from './types';
+import type { Api, Project, Session, SessionEvent } from './types';
 
 Object.assign(globalThis, { $state: <T>(value?: T) => value });
 mock.module('$app/navigation', () => ({ pushState() {}, replaceState() {} }));
@@ -78,6 +78,21 @@ test('saving other session metadata only includes a title when it changed', asyn
 	await state.saveSession();
 
 	expect(JSON.parse(String(request?.body))).not.toContainKey('title');
+});
+
+test('Session creation and archiving keep the selected Project count current', async () => {
+	const project = { id: 'hue', rootAvailable: true, sessionCount: 1 } as Project;
+	const state = new WorkspaceNavigation(project, {
+		api: async () => ({ session: { sessionId: 'existing', cwd: '/work', archived: true } }),
+		setError() {}
+	} as never);
+	const existing = { sessionId: 'existing', cwd: '/work' } as Session;
+	state.sessions = [existing];
+
+	state.prependSession({ sessionId: 'new', cwd: '/work' });
+	expect(project.sessionCount).toBe(2);
+	await state.archiveSession({ stopPropagation() {} } as MouseEvent, existing);
+	expect(project.sessionCount).toBe(1);
 });
 
 test('workflow mutations remain scoped to the selected project', async () => {

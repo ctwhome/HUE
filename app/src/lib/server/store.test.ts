@@ -496,6 +496,17 @@ describe('HUEStore project and workflow boundaries', () => {
 		store.close();
 	});
 
+	it('counts only non-archived Sessions for a Project', () => {
+		const store = makeStore();
+		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.upsertSession('hue', { sessionId: 'active', cwd: '/work/hue' });
+		store.upsertSession('hue', { sessionId: 'archived', cwd: '/work/hue' });
+		store.updateSessionMetadata('hue', 'archived', { archived: true });
+
+		expect(store.countSessions('hue')).toBe(1);
+		store.close();
+	});
+
 	it('previews exact Session delete impact and blocks deletion with unresolved delivery', () => {
 		const store = makeDeliveryStore();
 		store.acceptMessage({

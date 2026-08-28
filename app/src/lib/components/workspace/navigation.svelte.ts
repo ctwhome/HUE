@@ -302,8 +302,7 @@ export class WorkspaceNavigation {
 				...(workMode ? { body: JSON.stringify({ workMode }) } : {})
 			});
 			if ((this.selectedProject?.id ?? null) !== projectId) return null;
-			this.sessions = [body.session, ...this.sessions];
-			this.sessionLists.set(projectId ?? 'none', this.sessions);
+			this.prependSession(body.session);
 			this.selectedSession = body.session;
 			this.mobileDrawer = null;
 			this.persistSelection('push');
@@ -593,6 +592,7 @@ export class WorkspaceNavigation {
 				{ method: 'PATCH', body: JSON.stringify({ archived: true }) }
 			);
 			const updated = { ...session, ...body.session, archived: true };
+			if (!session.archived) this.adjustSessionCount(-1);
 			this.sessions = this.showArchived
 				? this.sessions.map((item) => (item.sessionId === session.sessionId ? updated : item))
 				: this.sessions.filter((item) => item.sessionId !== session.sessionId);
@@ -695,6 +695,9 @@ export class WorkspaceNavigation {
 				customIcon: body.icon,
 				icon: body.icon ?? automaticSessionIcon(title)
 			};
+			if (updated.archived !== editingSession.archived) {
+				this.adjustSessionCount(updated.archived ? -1 : 1);
+			}
 			this.sessions = this.sessions.map((session) =>
 				session.sessionId === updated.sessionId ? updated : session
 			);
@@ -751,6 +754,7 @@ export class WorkspaceNavigation {
 				method: 'DELETE'
 			});
 			const id = this.editingSession.sessionId;
+			if (!this.editingSession.archived) this.adjustSessionCount(-1);
 			this.sessions = this.sessions.filter((session) => session.sessionId !== id);
 			if (this.selectedSession?.sessionId === id) {
 				this.selectedSession = null;
@@ -791,6 +795,14 @@ export class WorkspaceNavigation {
 
 	prependSession(session: Session) {
 		this.sessions = [session, ...this.sessions];
+		this.sessionLists.set(this.selectedProject?.id ?? 'none', this.sessions);
+		if (!session.archived) this.adjustSessionCount(1);
+	}
+
+	private adjustSessionCount(change: number) {
+		if (this.selectedProject) {
+			this.selectedProject.sessionCount = Math.max(0, this.selectedProject.sessionCount + change);
+		}
 	}
 
 	replaceSession = (session: Session) => {
