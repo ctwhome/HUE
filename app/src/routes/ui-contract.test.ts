@@ -281,6 +281,7 @@ test('session rows expose archive on hover without redundant open tooltips', () 
 	expect(contextPanel).not.toContain('{#if session.available !== false && !session.archived}');
 	expect(contextPanel).not.toContain('{#if session.available !== false}<button');
 	expect(contextPanel).not.toContain("`Open ${session.title || 'Untitled session'}`");
+	expect(contextPanel).not.toContain('title={session.available === false ? session.recovery : undefined}');
 	expect(styles).toMatch(
 		/@media \(max-width: 700px\)[\s\S]*\.session-archive[\s\S]*width: 44px;[\s\S]*height: 44px;/
 	);
@@ -331,12 +332,13 @@ test('session filters use one search field and a compact archive toggle', () => 
 	expect(contextPanel).toContain('<ArchiveRestore width={17} height={17}');
 });
 
-test('Session sections group assigned Sessions and are reusable from Session options', () => {
+test('Session sections stay editable without categorizing the manually ordered list', () => {
 	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
 	const sessionManager = read('../lib/components/workspace/SessionManagerDialog.svelte');
 	const sessionOverlay = read('../lib/components/workspace/SessionManagerOverlay.svelte');
-	expect(contextPanel).toContain('if (session.folder) return `section:${session.folder}`;');
-	expect(contextPanel).toContain('{groupLabel(group(session))}');
+	expect(contextPanel).not.toContain('groupLabel');
+	expect(contextPanel).not.toContain("'time:Today'");
+	expect(contextPanel).toContain('prependNew(');
 	expect(sessionOverlay).toContain('sections={navigation.sessionSections}');
 	expect(sessionManager).toContain('Move to section');
 	expect(sessionManager).toContain('list="session-sections"');
@@ -371,6 +373,9 @@ test('tooltips use the app-level collision-aware provider', () => {
 	const tooltip = read('../lib/components/TooltipProvider.svelte');
 	expect(tooltip).toContain("trigger.closest('.global-rail')");
 	expect(tooltip).toContain('target.right + gap');
+	expect(tooltip).toContain(
+		"matchMedia('(max-width: 700px), (pointer: coarse) and (max-height: 500px)').matches"
+	);
 });
 
 test('global navigation exposes workspace and Hermes administration', () => {
@@ -835,7 +840,8 @@ test('Project groups expose editable, persistent, accessible collapsible heading
 	expect(projectRail).toContain('draggable="true"');
 	expect(projectRail).toContain('ondrop={(event) => dropOnGroup(event, group.label!)}');
 	expect(projectRail).toContain('Move to ungrouped');
-	expect(projectRail).toContain('<GripVertical');
+	expect(projectRail).toContain('ondragstart={(event) => startProjectDrag(event, project.id)}');
+	expect(projectRail).not.toContain('<GripVertical');
 	expect(projectRail).toContain('<EllipsisVertical');
 	expect(contextPanel).toContain('hue:session-order:');
 	expect(contextPanel).toContain('ondrop={(event) => dropSession(event, session)}');

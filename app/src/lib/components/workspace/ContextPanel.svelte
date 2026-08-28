@@ -15,7 +15,7 @@
 	import Plus from '~icons/lucide/plus';
 	import Search from '~icons/lucide/search';
 	import WifiOff from '~icons/lucide/wifi-off';
-	import { moveBefore, sortByOrder } from '$lib/drag-order';
+	import { moveBefore, prependNew, sortByOrder } from '$lib/drag-order';
 	import { sessionRowState } from './session-row-state';
 	type Project = {
 		id: string;
@@ -102,42 +102,25 @@
 	} = $props();
 	let sessionOrder = $state<string[]>([]);
 	let draggedSessionId = $state<string | null>(null);
-	const orderedSessions = $derived.by(() => {
-		const groups = new Map<string, Session[]>();
-		for (const session of sessions) {
-			const label = group(session);
-			groups.set(label, [...(groups.get(label) ?? []), session]);
-		}
-		return [...groups.values()].flatMap((items) =>
-			sortByOrder(items, sessionOrder, ({ sessionId }) => sessionId)
-		);
-	});
+	const orderedSessions = $derived(
+		sortByOrder(sessions, sessionOrder, ({ sessionId }) => sessionId)
+	);
 
 	$effect(() => {
+		const key = `hue:session-order:${selectedProject?.id ?? 'general'}`;
+		let next: string[];
 		try {
-			sessionOrder = JSON.parse(
-				localStorage.getItem(`hue:session-order:${selectedProject?.id ?? 'general'}`) ?? '[]'
+			next = prependNew(
+				JSON.parse(localStorage.getItem(key) ?? '[]'),
+				sessions.map(({ sessionId }) => sessionId)
 			);
 		} catch {
-			sessionOrder = [];
+			next = sessions.map(({ sessionId }) => sessionId);
 		}
+		sessionOrder = next;
+		localStorage.setItem(key, JSON.stringify(next));
 	});
 
-	function group(session: Session): string {
-		if (session.pinned) return 'status:Pinned';
-		if (session.archived) return 'status:Archived';
-		if (session.folder) return `section:${session.folder}`;
-		if (!session.updatedAt) return 'time:Older';
-		const days = Math.floor((Date.now() - new Date(session.updatedAt).getTime()) / 86_400_000);
-		return days <= 0
-			? 'time:Today'
-			: days === 1
-				? 'time:Yesterday'
-				: days < 7
-					? 'time:This week'
-					: 'time:Older';
-	}
-	const groupLabel = (value: string) => value.slice(value.indexOf(':') + 1);
 	function dragSession(event: DragEvent, session: Session) {
 		if (!event.dataTransfer) return;
 		if (!sessionOrder.length) sessionOrder = orderedSessions.map(({ sessionId }) => sessionId);
@@ -148,7 +131,7 @@
 
 	function allowSessionDrop(event: DragEvent, session: Session) {
 		const dragged = sessions.find(({ sessionId }) => sessionId === draggedSessionId);
-		if (!dragged || group(dragged) !== group(session)) return;
+		if (!dragged) return;
 		event.preventDefault();
 		if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
 		if (dragged.sessionId === session.sessionId) return;
@@ -279,13 +262,8 @@
 			disabled={selectedProject?.rootAvailable === false}
 			><Plus width={18} height={18} aria-hidden="true" /> Add new session</button
 		>
-		{#each orderedSessions as session, index (session.sessionId)}
+		{#each orderedSessions as session (session.sessionId)}
 			{@const state = rowState(session)}
-			{#if index === 0 || group(orderedSessions[index - 1]) !== group(session)}<h2
-					class="px-2 pt-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-				>
-					{groupLabel(group(session))}
-				</h2>{/if}
 			<div
 				class="session-row relative w-full min-w-0"
 				role="group"
@@ -313,7 +291,6 @@
 					class="session-select flex min-h-(--control-height) w-full cursor-grab items-center gap-2 rounded-md border border-transparent bg-transparent px-2 py-1 pr-16 pl-8 text-left hover:border-border hover:bg-accent active:cursor-grabbing [&.active]:border-border [&.active]:bg-accent"
 					class:active={selectedSession?.sessionId === session.sessionId}
 					aria-current={selectedSession?.sessionId === session.sessionId ? 'page' : undefined}
-					title={session.available === false ? session.recovery : undefined}
 					draggable={session.available !== false}
 					ondragstart={(event) => dragSession(event, session)}
 					ondragend={finishSessionDrag}

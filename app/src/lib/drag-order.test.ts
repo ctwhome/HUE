@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { moveBefore, sortByOrder } from './drag-order';
+import { moveBefore, prependNew, sortByOrder } from './drag-order';
 
 test('moves an item before another item', () => {
 	expect(moveBefore(['a', 'b', 'c'], 'c', 'a')).toEqual(['c', 'a', 'b']);
@@ -12,4 +12,8 @@ test('orders known items first and preserves unknown item order', () => {
 		{ id: 'a' },
 		{ id: 'b' }
 	]);
+});
+
+test('prepends new items without disturbing the saved order', () => {
+	expect(prependNew(['b', 'a'], ['c', 'a', 'b'])).toEqual(['c', 'b', 'a']);
 });
