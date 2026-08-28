@@ -61,6 +61,8 @@
 	}
 
 	function show(trigger: HTMLElement, delay: number) {
+		if (matchMedia('(max-width: 700px), (pointer: coarse) and (max-height: 500px)').matches)
+			return;
 		const label = trigger.dataset.tooltip ?? trigger.title;
 		if (!label || trigger === active) return;
 

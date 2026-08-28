@@ -6,6 +6,11 @@ export function moveBefore(order: string[], moved: string, before: string | null
 	return next;
 }
 
+export function prependNew(order: string[], ids: string[]): string[] {
+	const known = new Set(order);
+	return [...ids.filter((id) => !known.has(id)), ...order];
+}
+
 export function sortByOrder<T>(items: T[], order: string[], key: (item: T) => string): T[] {
 	const positions = new Map(order.map((id, index) => [id, index]));
 	return items

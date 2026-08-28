@@ -8,7 +8,6 @@
 	import EllipsisVertical from '~icons/lucide/ellipsis-vertical';
 	import Folder from '~icons/lucide/folder';
 	import FolderPlus from '~icons/lucide/folder-plus';
-	import GripVertical from '~icons/lucide/grip-vertical';
 	import MessageSquare from '~icons/lucide/message-square';
 	import Menu from '~icons/lucide/menu';
 	import PanelLeftClose from '~icons/lucide/panel-left-close';
@@ -415,42 +414,45 @@
 								aria-hidden="true"
 							></span>{/if}
 						<button
-							class="project-icon-trigger absolute top-1/2 left-0 z-1 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md hover:bg-accent"
+							class="project-icon-trigger absolute top-1/2 left-0 z-1 grid size-11 -translate-y-1/2 place-items-center rounded-md hover:bg-accent"
 							aria-label={`Change ${project.name} icon`}
 							title={`Change ${project.name} icon`}
 							onclick={(event) => onicon(event, project)}
 						>
 							{#if isImage(project.icon)}<img
-									class="project-icon project-icon-image size-(--navigation-icon-size) rounded-md object-cover"
+									class="project-icon project-icon-image size-8 rounded-md object-cover"
 									src={project.icon ?? ''}
 									alt=""
 								/>{:else if project.icon}<span
-									class="project-icon grid size-(--navigation-icon-size) place-items-center rounded-md"
+									class="project-icon grid size-8 place-items-center rounded-md text-xl"
 									>{project.icon}</span
 								>{:else}<Folder
-									class="project-icon project-icon-default size-(--navigation-icon-size) text-muted-foreground"
+									class="project-icon project-icon-default size-8 text-muted-foreground"
 									width={18}
 									height={18}
 									aria-hidden="true"
 								/>{/if}
 						</button>
 						<button
-							class="project-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md bg-transparent py-1 pr-16 pl-8 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
+							class="project-select flex min-h-11 w-full cursor-grab items-center gap-2 rounded-md bg-transparent py-1 pr-8 pl-11 text-left text-muted-foreground hover:bg-accent hover:text-foreground active:cursor-grabbing [&.active]:bg-accent [&.active]:text-foreground"
 							class:active={selectedProject?.id === project.id}
 							aria-current={selectedProject?.id === project.id ? 'page' : undefined}
 							aria-controls={selectedProject?.id === project.id ? 'session-drawer' : undefined}
 							aria-expanded={selectedProject?.id === project.id ? sessionsOpen : undefined}
+							draggable="true"
+							ondragstart={(event) => startProjectDrag(event, project.id)}
+							ondragend={finishProjectDrag}
 							onclick={() => onchoose(project)}
 						>
 							{#if isImage(project.icon)}<img
-									class="project-icon-inline project-icon-image size-(--navigation-icon-size) rounded-md object-cover"
+									class="project-icon-inline project-icon-image size-8 rounded-md object-cover"
 									src={project.icon ?? ''}
 									alt=""
 								/>{:else if project.icon}<span
-									class="project-icon-inline size-(--navigation-icon-size) place-items-center rounded-md"
+									class="project-icon-inline size-8 place-items-center rounded-md text-xl"
 									>{project.icon}</span
 								>{:else}<Folder
-									class="project-icon-inline project-icon-default size-(--navigation-icon-size) text-muted-foreground"
+									class="project-icon-inline project-icon-default size-8 text-muted-foreground"
 									width={18}
 									height={18}
 									aria-hidden="true"
@@ -458,17 +460,6 @@
 							<span class="min-w-0 truncate">{project.name}</span>
 							{#if !project.rootAvailable}<small class="text-amber-400">Missing</small>{/if}
 						</button>
-						<button
-							class="project-drag absolute top-1/2 right-8 hidden h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 cursor-grab place-items-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent focus:opacity-100 active:cursor-grabbing sm:grid"
-							class:opacity-100={selectedProject?.id === project.id}
-							draggable="true"
-							aria-label={`Reorder ${project.name}`}
-							title={`Drag ${project.name} to reorder`}
-							ondragstart={(event) => startProjectDrag(event, project.id)}
-							ondragend={finishProjectDrag}
-							onclick={(event) => event.preventDefault()}
-							><GripVertical width={15} height={15} aria-hidden="true" /></button
-						>
 						<button
 							class="project-edit absolute top-1/2 right-0 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent focus:opacity-100"
 							aria-label={`Edit ${project.name}`}

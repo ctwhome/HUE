@@ -208,7 +208,7 @@ test.beforeEach(async ({ page }) => {
 	await mockDefaultSessionRequests(page);
 });
 
-test('opens an unavailable Session from its recovery tooltip as read-only', async ({ page }) => {
+test('opens an unavailable Session without a row tooltip as read-only', async ({ page }) => {
 	const recovery = 'Restore the Session folder at /work/missing to resume it.';
 	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) =>
 		route.fulfill({
@@ -245,12 +245,12 @@ test('opens an unavailable Session from its recovery tooltip as read-only', asyn
 		await page.setViewportSize(viewport);
 		await page.goto(workspaceUrl);
 		if (viewport.width <= 700)
-			await page.getByRole('button', { name: 'Sessions', exact: true }).click();
+			await page.getByRole('button', { name: /^(Back to )?Sessions$/ }).click();
 		const row = sessionButton(page, 'Missing Session');
 		await expect(row).toBeVisible();
 		await expect(row).toBeEnabled();
 		await row.hover();
-		await expect(page.getByRole('tooltip')).toHaveText(recovery);
+		await expect(page.getByRole('tooltip')).toHaveCount(0);
 		await row.click();
 		await expect(page.getByText('Persisted recovery message')).toBeVisible();
 		await expect(page.getByRole('status').filter({ hasText: recovery })).toBeVisible();
