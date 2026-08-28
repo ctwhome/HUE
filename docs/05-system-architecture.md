@@ -9,7 +9,7 @@ HUE separates a stable **personal workspace and product control plane** from rep
 
 ## Focused implementation boundary — accepted
 
-The active product is smaller than the historical target architecture below. It contains only Projects, reusable Workflows, and Hermes Sessions. SvelteKit HTTP routes run under Bun; `bun:sqlite` stores Project/Workflow metadata plus message idempotency and cursor events; a supervised Hermes ACP process owns execution and Hermes conversation history. The browser sends complete acknowledged message envelopes and never PTY keystrokes.
+The active product is smaller than the historical target architecture below. It contains only Projects, reusable Workflows, and Hermes Sessions. SvelteKit HTTP routes run under Bun; `bun:sqlite` stores Project/Workflow metadata plus message idempotency and cursor events; a supervised Hermes ACP process owns execution and Hermes conversation history. Bounded transcript display reads use the supervised Hermes server's authenticated loopback API and never access Hermes storage directly. The browser sends complete acknowledged message envelopes and never PTY keystrokes.
 
 The remaining sections are retained as historical design context, not an active implementation backlog. Capabilities outside ADR-0002 require a new product decision.
 

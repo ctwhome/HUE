@@ -12,6 +12,50 @@ import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ params, url }) => {
 	try {
+		const query = url.searchParams.get('q')?.trim() ?? '';
+		const includeArchived = url.searchParams.get('archived') === 'true';
+		const limit = Math.max(1, Math.min(Number(url.searchParams.get('limit') ?? 100) || 100, 100));
+		const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0) || 0);
+		if (url.searchParams.get('cached') === 'true') {
+			if (!services().store.hasProjectMetadata(params.projectId)) {
+				return json({ error: 'Project not found' }, { status: 404 });
+			}
+			const busyStarts = services().store.getBusySessionStarts(params.projectId);
+			const indicators = services().store.getSessionIndicators(params.projectId);
+			const page = services().store.listSessionPage(params.projectId, {
+				includeArchived,
+				query,
+				limit,
+				offset
+			});
+			return json({
+				sessions: page.sessions.map((stored) => {
+					let available = false;
+					try {
+						available = statSync(stored.cwd).isDirectory();
+					} catch {
+						// Cached unavailable Sessions remain visible for recovery.
+					}
+					const title =
+						stored.title ??
+						(available ? 'Untitled Hermes Session' : 'Unavailable Hermes Session');
+					return {
+						...stored,
+						title,
+						icon: stored.icon ?? automaticSessionIcon(title),
+						customIcon: stored.icon,
+						available,
+						recovery: available ? null : `Restore the Session folder at ${stored.cwd} to resume it.`,
+						busySince: busyStarts[stored.sessionId] ?? null,
+						attention: indicators[stored.sessionId]?.attention ?? false,
+						error: indicators[stored.sessionId]?.error ?? false,
+						status: indicators[stored.sessionId]?.status ?? null,
+						unreadAttention: indicators[stored.sessionId]?.unreadAttention ?? false
+					};
+				}),
+				hasMore: page.hasMore
+			});
+		}
 		const project = await authoritativeProject(params.projectId);
 		const folders = project.folders.map(({ path }) => path);
 		const requestedSessionId = url.searchParams.get('sessionId');
@@ -80,10 +124,6 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		const busyStarts = services().store.getBusySessionStarts(project.id);
 		const indicators = services().store.getSessionIndicators(project.id);
 		const runtimeById = new Map(sessions.map((session) => [session.sessionId, session]));
-		const query = url.searchParams.get('q')?.trim() ?? '';
-		const includeArchived = url.searchParams.get('archived') === 'true';
-		const limit = Math.max(1, Math.min(Number(url.searchParams.get('limit') ?? 100) || 100, 100));
-		const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0) || 0);
 		const page = services().store.listSessionPage(project.id, {
 			includeArchived,
 			query,

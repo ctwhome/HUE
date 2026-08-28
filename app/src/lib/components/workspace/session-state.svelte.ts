@@ -55,6 +55,40 @@ export class SessionState {
 		return `${projectId ?? 'none'}:${sessionId}`;
 	}
 
+	private loadedView(body: SessionLoad): CachedSessionView {
+		return {
+			timeline: timelineFromSession(body.transcript, body.messages, body.events ?? []),
+			transcript: body.transcript,
+			subagents: subagentTreesFromEvents(body.events ?? []),
+			activity: activityFromEvents(body.events ?? []),
+			plan: planFromEvents(body.events ?? []),
+			commands: body.commands ?? [],
+			runtime: body.runtime ?? { profile: 'default' },
+			branch: body.branch ?? null,
+			queuedMessages: body.messages.filter(
+				(message): message is QueuedMessage =>
+					message.status === 'queued' && message.id !== body.activeTurn?.messageId
+			),
+			eventCursor: body.cursor,
+			activeMessageId: body.activeTurn?.messageId ?? '',
+			pendingAssistant: body.activeTurn?.output ?? '',
+			pendingImages: body.activeTurn?.images ?? [],
+			pendingThought: body.activeTurn?.thought ?? '',
+			delivery: body.activeTurn
+				? body.activeTurn.status === 'queued'
+					? 'accepted'
+					: body.activeTurn.status === 'unknown'
+						? 'delivery unknown'
+						: 'running'
+				: ''
+		};
+	}
+
+	preload = (projectId: string | null, sessionId: string, body: SessionLoad) => {
+		const key = this.capturedViewKey(projectId, sessionId);
+		if (!this.views.has(key)) this.views.set(key, this.loadedView(body));
+	};
+
 	resolveInteraction = (
 		projectId: string | null,
 		sessionId: string,
@@ -152,30 +186,22 @@ export class SessionState {
 	};
 
 	applyLoaded = (body: SessionLoad) => {
-		this.timeline = timelineFromSession(body.transcript, body.messages, body.events ?? []);
-		this.transcript = body.transcript;
-		this.subagents = subagentTreesFromEvents(body.events ?? []);
-		this.activity = activityFromEvents(body.events ?? []);
-		this.plan = planFromEvents(body.events ?? []);
-		this.commands = body.commands ?? [];
-		this.runtime = body.runtime ?? { profile: 'default' };
-		this.branch = body.branch ?? null;
-		this.queuedMessages = body.messages.filter(
-			(message): message is QueuedMessage =>
-				message.status === 'queued' && message.id !== body.activeTurn?.messageId
-		);
-		this.eventCursor = body.cursor;
-		this.activeMessageId = body.activeTurn?.messageId ?? '';
-		this.pendingAssistant = body.activeTurn?.output ?? '';
-		this.pendingImages = body.activeTurn?.images ?? [];
-		this.pendingThought = body.activeTurn?.thought ?? '';
-		this.delivery = body.activeTurn
-			? body.activeTurn.status === 'queued'
-				? 'accepted'
-				: body.activeTurn.status === 'unknown'
-					? 'delivery unknown'
-					: 'running'
-			: '';
+		const view = this.loadedView(body);
+		this.timeline = view.timeline;
+		this.transcript = view.transcript;
+		this.subagents = view.subagents;
+		this.activity = view.activity;
+		this.plan = view.plan;
+		this.commands = view.commands;
+		this.runtime = view.runtime;
+		this.branch = view.branch;
+		this.queuedMessages = view.queuedMessages;
+		this.eventCursor = view.eventCursor;
+		this.activeMessageId = view.activeMessageId;
+		this.pendingAssistant = view.pendingAssistant;
+		this.pendingImages = view.pendingImages;
+		this.pendingThought = view.pendingThought;
+		this.delivery = view.delivery;
 		this.setError(body.transcriptError ?? '');
 	};
 

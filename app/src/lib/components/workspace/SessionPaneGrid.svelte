@@ -12,6 +12,7 @@
 		workflows,
 		primarySession,
 		allowDocking = true,
+		restorePrimarySession = true,
 		onpanecount = () => {},
 		onprimaryclose,
 		onsessionupdate,
@@ -25,6 +26,7 @@
 		workflows: Workflow[];
 		primarySession: Session | null;
 		allowDocking?: boolean;
+		restorePrimarySession?: boolean;
 		onpanecount?: (count: number) => void;
 		onprimaryclose: (session: Session) => void;
 		onsessionupdate: (session: Session) => void;
@@ -137,7 +139,8 @@
 				return current ? [paneSession(current)] : [];
 			})
 		);
-		if (!primarySession && restoredPrimary) onprimaryclose(restoredPrimary);
+		if (restorePrimarySession && !primarySession && restoredPrimary)
+			onprimaryclose(restoredPrimary);
 	});
 	$effect(() => {
 		if (!allowDocking || reconciledProjectId !== projectId) return;
@@ -150,7 +153,7 @@
 			saveLayout();
 			return;
 		}
-		if (restoredPrimary) onprimaryclose(restoredPrimary);
+		if (restorePrimarySession && restoredPrimary) onprimaryclose(restoredPrimary);
 	});
 	$effect(() => onpanecount(paneCount));
 

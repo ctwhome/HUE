@@ -32,16 +32,12 @@ The real ACP test creates and resumes a Hermes Session but uses the local `/vers
 ## Production
 
 ```bash
-bun run build
-HOST=127.0.0.1 \
-PORT=4173 \
-ORIGIN=http://127.0.0.1:4173 \
-HUE_DATABASE_PATH="$HOME/.hue/hue.db" \
-HUE_HERMES_PROFILE=default \
-bun run start
+make build
 ```
 
-`bun run start` derives a local `ORIGIN` from `HOST` and `PORT` when omitted. Set the public `ORIGIN` explicitly behind a reverse proxy so SvelteKit can retain multipart CSRF protection for the Web Share Target.
+`make build` rebuilds the docs and production app, then serves HUE on `127.0.0.1:4174`. The configured Tailscale Serve route exposes it at `https://m3-max.tail33436f.ts.net:4173`. Set `HUE_ACCESS_SECRET`, `HUE_DATABASE_PATH`, and optionally `HUE_HERMES_PROFILE` in `app/.env`.
+
+Development and production can run together. `make dev` uses `http://127.0.0.1:4010` and the isolated `~/.hue/hue-dev.db`; its Tailscale URL is `https://m3-max.tail33436f.ts.net:4010`. Restarting either target leaves the other running. `make stop` stops both.
 
 ### Authenticated LAN or tailnet access
 

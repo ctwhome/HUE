@@ -10,7 +10,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 	if (!session) return json({ error: 'Session not found' }, { status: 404 });
 	const snapshot = services().store.getSessionSnapshot(null, params.sessionId);
 	try {
-		const transcript = await services().runtime.loadTranscript(session.cwd, params.sessionId);
+		const transcript = await services().admin.loadTranscript(params.sessionId);
 		const format = url.searchParams.get('format');
 		if (format === 'json' || format === 'markdown') {
 			const exported = exportSession(format, {

@@ -65,6 +65,42 @@ export type SessionEvent = {
 	createdAt: string;
 };
 
+function compactInitialEvents(events: SessionEvent[]): SessionEvent[] {
+	const compacted: SessionEvent[] = [];
+	const patches = new Map<string, number>();
+	for (const event of events) {
+		const messageId = String(event.payload.messageId ?? '');
+		const last = compacted.at(-1);
+		if (
+			(event.type === 'agent.chunk' || event.type === 'agent.thought') &&
+			last?.type === event.type &&
+			String(last.payload.messageId ?? '') === messageId
+		) {
+			last.payload = {
+				...last.payload,
+				text: String(last.payload.text ?? '') + String(event.payload.text ?? '')
+			};
+			continue;
+		}
+
+		const id = String(event.payload.id ?? '');
+		const key =
+			event.type === 'agent.plan' && messageId
+				? `${event.type}\0${messageId}`
+				: ['agent.tool', 'agent.subagents'].includes(event.type) && id
+					? `${event.type}\0${messageId}\0${id}`
+					: '';
+		const index = key ? patches.get(key) : undefined;
+		if (index !== undefined) {
+			compacted[index].payload = { ...compacted[index].payload, ...event.payload };
+			continue;
+		}
+		if (key) patches.set(key, compacted.length);
+		compacted.push({ ...event, payload: { ...event.payload } });
+	}
+	return compacted;
+}
+
 export type NotificationKind = 'completed' | 'permission' | 'clarify' | 'failed' | 'unknown';
 
 export type StoredNotification = {
@@ -2301,7 +2337,7 @@ export class HUEStore {
 			: null;
 		return {
 			messages,
-			events,
+			events: compactInitialEvents(events),
 			cursor: events.at(-1)?.sequence ?? 0,
 			activeTurn
 		};

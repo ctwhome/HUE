@@ -171,10 +171,14 @@
 	let dropGroup = $state<string | null>(null);
 	let dropProjectId = $state<string | null>(null);
 	let projectDropPosition = $state<'before' | 'after'>('before');
+	const touchDragDelay = 250;
 	let touchProjectId: string | null = null;
-	let touchPointerId: number | null = null;
+	let touchIdentifier: number | null = null;
+	let touchStartX = 0;
 	let touchStartY = 0;
-	let suppressProjectClickUntil = 0;
+	let touchX = 0;
+	let touchY = 0;
+	let touchDragTimer: ReturnType<typeof setTimeout> | null = null;
 
 	onMount(() => {
 		try {
@@ -188,6 +192,15 @@
 			projectOrder = [];
 			groupOrder = [];
 		}
+		window.addEventListener('touchmove', moveProjectTouch, { passive: false });
+		window.addEventListener('touchend', finishProjectTouch, { passive: false });
+		window.addEventListener('touchcancel', cancelProjectTouch);
+		return () => {
+			cancelProjectTouch();
+			window.removeEventListener('touchmove', moveProjectTouch);
+			window.removeEventListener('touchend', finishProjectTouch);
+			window.removeEventListener('touchcancel', cancelProjectTouch);
+		};
 	});
 
 	function toggleGroup(label: string) {
@@ -292,25 +305,31 @@
 		dropProjectId = null;
 	}
 
-	function startProjectTouch(event: PointerEvent, projectId: string) {
-		if (event.pointerType === 'mouse' || !event.isPrimary) return;
+	function startProjectTouch(event: TouchEvent, projectId: string) {
+		if (event.touches.length !== 1) {
+			cancelProjectTouch();
+			return;
+		}
+		const touch = event.changedTouches[0];
 		touchProjectId = projectId;
-		touchPointerId = event.pointerId;
-		touchStartY = event.clientY;
+		touchIdentifier = touch.identifier;
+		touchStartX = touchX = touch.clientX;
+		touchStartY = touchY = touch.clientY;
+		touchDragTimer = setTimeout(() => {
+			if (!touchProjectId) return;
+			draggedProjectId = touchProjectId;
+			updateProjectTouch(touchX, touchY);
+		}, touchDragDelay);
 	}
 
-	function moveProjectTouch(event: PointerEvent) {
-		if (event.pointerId !== touchPointerId || !touchProjectId) return;
-		if (!draggedProjectId && Math.abs(event.clientY - touchStartY) < 8) return;
-		draggedProjectId = touchProjectId;
-		event.preventDefault();
+	function updateProjectTouch(clientX: number, clientY: number) {
 		const containsPointer = (node: Element) => {
 			const bounds = node.getBoundingClientRect();
 			return (
-				event.clientX >= bounds.left &&
-				event.clientX <= bounds.right &&
-				event.clientY >= bounds.top &&
-				event.clientY <= bounds.bottom
+				clientX >= bounds.left &&
+				clientX <= bounds.right &&
+				clientY >= bounds.top &&
+				clientY <= bounds.bottom
 			);
 		};
 		const row = [...document.querySelectorAll<HTMLElement>('[data-project-id]')].find(containsPointer);
@@ -320,7 +339,7 @@
 			dropGroup = project.group ?? '';
 			dropProjectId = project.id;
 			const bounds = row.getBoundingClientRect();
-			projectDropPosition = event.clientY > bounds.top + bounds.height / 2 ? 'after' : 'before';
+			projectDropPosition = clientY > bounds.top + bounds.height / 2 ? 'after' : 'before';
 			return;
 		}
 		const group = [...document.querySelectorAll<HTMLElement>('[data-project-group]')].find(
@@ -329,38 +348,60 @@
 		if (group) {
 			dropGroup = group.dataset.projectGroup ?? '';
 			dropProjectId = null;
+			return;
 		}
+		dropGroup = null;
+		dropProjectId = null;
 	}
 
-	function finishProjectTouch(event: PointerEvent, cancelled = false) {
-		if (event.pointerId !== touchPointerId || !touchProjectId) return;
-		if (!cancelled && draggedProjectId && (dropProjectId || dropGroup !== null)) {
-			const order = projectOrder.length ? projectOrder : projects.map(({ id }) => id);
-			const before = dropProjectId
-				? dropBefore(order, touchProjectId, dropProjectId, projectDropPosition === 'after')
-				: null;
-			moveProject(touchProjectId, dropGroup || null, before);
-			suppressProjectClickUntil = performance.now() + 400;
-		}
+	function clearProjectTouch() {
+		if (touchDragTimer) clearTimeout(touchDragTimer);
+		touchDragTimer = null;
 		touchProjectId = null;
-		touchPointerId = null;
+		touchIdentifier = null;
+	}
+
+	function moveProjectTouch(event: TouchEvent) {
+		if (touchIdentifier === null || !touchProjectId) return;
+		const touch = [...event.touches].find(({ identifier }) => identifier === touchIdentifier);
+		if (!touch) return;
+		touchX = touch.clientX;
+		touchY = touch.clientY;
+		if (!draggedProjectId) {
+			if (Math.hypot(touchX - touchStartX, touchY - touchStartY) < 8) return;
+			clearProjectTouch();
+			return;
+		}
+		event.preventDefault();
+		updateProjectTouch(touchX, touchY);
+	}
+
+	function finishProjectTouch(event: TouchEvent) {
+		if (
+			touchIdentifier === null ||
+			!touchProjectId ||
+			![...event.changedTouches].some(({ identifier }) => identifier === touchIdentifier)
+		)
+			return;
+		if (draggedProjectId) {
+			event.preventDefault();
+			if (dropProjectId || dropGroup !== null) {
+				const order = projectOrder.length ? projectOrder : projects.map(({ id }) => id);
+				const before = dropProjectId
+					? dropBefore(order, touchProjectId, dropProjectId, projectDropPosition === 'after')
+					: null;
+				moveProject(touchProjectId, dropGroup || null, before);
+			}
+		}
+		clearProjectTouch();
 		finishProjectDrag();
 	}
 
-	function chooseProject(event: MouseEvent, project: Project) {
-		if (performance.now() < suppressProjectClickUntil) {
-			event.preventDefault();
-			return;
-		}
-		onchoose(project);
+	function cancelProjectTouch() {
+		clearProjectTouch();
+		finishProjectDrag();
 	}
 </script>
-
-<svelte:window
-	onpointermove={moveProjectTouch}
-	onpointerup={finishProjectTouch}
-	onpointercancel={(event) => finishProjectTouch(event, true)}
-/>
 
 <aside
 	bind:this={element}
@@ -466,7 +507,7 @@
 			onclick={openSectionDialog}
 			><FolderPlus width={15} height={15} aria-hidden="true" /> Add section</button
 		>
-		{#if draggedProjectId}<div
+		{#if draggedProjectId && projects.find(({ id }) => id === draggedProjectId)?.group}<div
 				class={`mt-1 flex min-h-11 items-center rounded-md border border-dashed px-2 text-xs sm:min-h-8 ${dropGroup === '' ? 'border-ring bg-accent text-foreground ring-2 ring-ring' : 'border-border text-muted-foreground'}`}
 				data-project-group=""
 				role="group"
@@ -542,7 +583,7 @@
 								/>{/if}
 						</button>
 						<button
-							class="project-select flex min-h-11 w-full cursor-grab touch-none items-center gap-2 rounded-md bg-transparent py-1 pr-8 pl-11 text-left text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:cursor-grabbing [&.active]:bg-accent [&.active]:text-foreground"
+							class="project-select flex min-h-11 w-full cursor-grab items-center gap-2 rounded-md bg-transparent py-1 pr-8 pl-11 text-left text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:cursor-grabbing [&.active]:bg-accent [&.active]:text-foreground"
 							class:active={selectedProject?.id === project.id}
 							class:bg-accent={dropProjectId === project.id && draggedProjectId !== project.id}
 							aria-current={selectedProject?.id === project.id ? 'page' : undefined}
@@ -551,8 +592,8 @@
 							draggable="true"
 							ondragstart={(event) => startProjectDrag(event, project.id)}
 							ondragend={finishProjectDrag}
-							onpointerdown={(event) => startProjectTouch(event, project.id)}
-							onclick={(event) => chooseProject(event, project)}
+							ontouchstart={(event) => startProjectTouch(event, project.id)}
+							onclick={() => onchoose(project)}
 						>
 							{#if isImage(project.icon)}<img
 									class="project-icon-inline project-icon-image size-8 rounded-md object-cover"
