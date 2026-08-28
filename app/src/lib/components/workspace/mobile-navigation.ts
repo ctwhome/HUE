@@ -18,7 +18,7 @@ export type LaunchDestination = NavigationDestination & {
 
 export type MobileGesture = {
 	status: 'pending' | 'active' | 'cancelled';
-	action: 'open-sessions' | 'show-projects' | 'close-projects' | 'close-sessions' | null;
+	action: 'open-sessions' | 'show-projects' | null;
 	startX: number;
 	startY: number;
 	deltaX: number;
@@ -198,7 +198,7 @@ export function beginMobileGesture(_options: {
 	excluded: boolean;
 	dialogOpen: boolean;
 }): MobileGesture | null {
-	if (_options.excluded || _options.dialogOpen) return null;
+	if (_options.excluded || _options.dialogOpen || _options.pane === 'projects') return null;
 	if (_options.pane) {
 		if (!_options.startedOnDrawer) return null;
 	} else if (!_options.hasSession) {
@@ -228,14 +228,10 @@ export function updateMobileGesture(gesture: MobileGesture, _x: number, _y: numb
 		pane === 'sessions'
 			? deltaX > 0
 				? 'show-projects'
-				: 'close-sessions'
-			: pane === 'projects'
-				? deltaX < 0
-					? 'close-projects'
-					: null
-				: deltaX > 0
-					? 'open-sessions'
-					: null;
+				: null
+			: deltaX > 0
+				? 'open-sessions'
+				: null;
 	return { ...gesture, deltaX, deltaY, status: action ? 'active' : 'cancelled', action };
 }
 
@@ -246,17 +242,13 @@ export function finishMobileGesture(
 ): { commit: boolean; action: MobileGesture['action']; destination: MobilePane } {
 	if (gesture.status !== 'active' || !gesture.action)
 		return { commit: false, action: gesture.action, destination: null };
-	const direction =
-		gesture.action === 'close-projects' || gesture.action === 'close-sessions' ? -1 : 1;
 	const commit =
-		Math.abs(gesture.deltaX) / Math.max(1, _width) >= 0.28 || _velocityX * direction >= 0.5;
+		gesture.deltaX / Math.max(1, _width) >= 0.28 || _velocityX >= 0.5;
 	const destination = !commit
 		? null
 		: gesture.action === 'open-sessions'
 			? 'sessions'
-			: gesture.action === 'show-projects'
-				? 'projects'
-				: null;
+			: 'projects';
 	return { commit, action: gesture.action, destination };
 }
 

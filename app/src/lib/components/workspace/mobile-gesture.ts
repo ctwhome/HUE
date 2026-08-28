@@ -7,18 +7,16 @@ import {
 } from './mobile-navigation';
 
 type Drawer = Exclude<MobilePane, null>;
-type CloseAction = 'close-projects' | 'close-sessions';
 const POST_GESTURE_CLICK_SUPPRESSION_MS = 400;
 
 type MobileGestureOptions = {
 	isMobile: () => boolean;
 	pane: () => MobilePane;
 	hasSession: () => boolean;
-	workspace: () => HTMLElement;
 	drawer: (pane: Drawer) => HTMLElement;
+	chat: () => HTMLElement;
 	open: (pane: Drawer) => void;
-	close: (action: CloseAction) => void;
-	onVisual: (active: boolean, action: MobileGesture['action']) => void;
+	onVisual: (active: boolean) => void;
 };
 
 export class MobileGestureController {
@@ -79,32 +77,21 @@ export class MobileGestureController {
 	};
 
 	private startVisual(gesture: MobileGesture) {
-		this.options.onVisual(true, gesture.action);
+		this.options.onVisual(true);
 		this.gestureDrawer =
-			gesture.action === 'open-sessions' || gesture.action === 'show-projects'
-				? this.options.drawer('sessions')
-				: this.options.drawer(gesture.pane!);
+			gesture.action === 'open-sessions' ? this.options.chat() : this.options.drawer('sessions');
 		this.gestureDrawer.classList.add('gesture-drawer');
-		if (gesture.action === 'show-projects')
-			this.options.drawer('projects').classList.add('gesture-revealed-drawer');
+		this.options
+			.drawer(gesture.action === 'show-projects' ? 'projects' : 'sessions')
+			.classList.add('gesture-revealed-drawer');
 	}
 
 	private updateVisual(gesture: MobileGesture) {
 		if (!this.gestureDrawer) return;
 		const width = this.gestureDrawer.getBoundingClientRect().width;
 		let translate = 0;
-		let progress = 1;
-		if (gesture.action === 'open-sessions') {
-			translate = Math.min(0, Math.max(-width, -width + Math.max(0, gesture.deltaX)));
-			progress = 1 + translate / width;
-		} else if (gesture.action === 'show-projects') {
-			translate = Math.min(width, Math.max(0, gesture.deltaX));
-		} else {
-			translate = Math.min(0, Math.max(-width, gesture.deltaX));
-			progress = 1 + translate / width;
-		}
+		translate = Math.min(width, Math.max(0, gesture.deltaX));
 		this.gestureDrawer.style.transform = `translate3d(${translate}px, 0, 0)`;
-		this.options.workspace().style.setProperty('--drawer-gesture-opacity', String(progress));
 	}
 
 	private move = (event: PointerEvent) => {
@@ -129,9 +116,9 @@ export class MobileGestureController {
 		this.gestureDrawer?.style.removeProperty('transform');
 		this.gestureDrawer?.style.removeProperty('transition');
 		this.options.drawer('projects').classList.remove('gesture-revealed-drawer');
-		this.options.workspace().style.removeProperty('--drawer-gesture-opacity');
+		this.options.drawer('sessions').classList.remove('gesture-revealed-drawer');
 		this.gestureDrawer = null;
-		this.options.onVisual(false, null);
+		this.options.onVisual(false);
 	}
 
 	private finish = (event: PointerEvent, cancelled = false) => {
@@ -144,32 +131,16 @@ export class MobileGestureController {
 			? { commit: false, action: gesture.action, destination: null }
 			: finishMobileGesture(gesture, width, this.velocityX);
 		const duration = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180;
-		const target = result.commit
-			? result.action === 'show-projects'
-				? width
-				: result.action?.startsWith('close-')
-					? -width
-					: 0
-			: result.action === 'open-sessions'
-				? -width
-				: 0;
+		const target = result.commit ? width : 0;
 		this.gestureDrawer.style.transition = duration
 			? 'transform 180ms cubic-bezier(.2,.78,.2,1)'
 			: 'none';
 		this.gestureDrawer.style.transform = `translate3d(${target}px, 0, 0)`;
-		this.options
-			.workspace()
-			.style.setProperty(
-				'--drawer-gesture-opacity',
-				String(result.commit && !result.action?.startsWith('close-') ? 1 : result.commit ? 0 : 1)
-			);
 		this.suppressClickUntil = performance.now() + POST_GESTURE_CLICK_SUPPRESSION_MS;
 		this.suppressClickX = event.clientX;
 		this.suppressClickY = event.clientY;
 		window.setTimeout(() => {
 			if (result.commit && result.destination) this.options.open(result.destination);
-			else if (result.commit && result.action?.startsWith('close-'))
-				this.options.close(result.action as CloseAction);
 			this.clearVisual();
 		}, duration);
 	};

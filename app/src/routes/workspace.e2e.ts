@@ -164,7 +164,10 @@ async function addProject(page: import('@playwright/test').Page) {
 	await openMobileProjects(page);
 	const existing = page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' });
 	if (await existing.count()) {
-		if ((await existing.getAttribute('aria-current')) !== 'page')
+		if (
+			(await existing.getAttribute('aria-current')) !== 'page' ||
+			(page.viewportSize()!.width <= 700 && (await page.locator('#project-drawer').isVisible()))
+		)
 			await existing.click({ position: { x: 80, y: 22 } });
 		return;
 	}
@@ -5640,16 +5643,15 @@ test('mobile swipe-back moves chat to Sessions to Projects from anywhere in the 
 	await expect(page.locator('#session-drawer')).toBeHidden();
 	await touchDrag(page, { x: 180, y: 300 }, { x: 320, y: 302 }, async () => {
 		await expect(page.locator('#session-drawer')).toBeVisible();
-		expect(
-			await page
-				.locator('#session-drawer')
-				.evaluate((element) => getComputedStyle(element).transform)
-		).not.toBe('none');
+		expect((await page.locator('.session-workspace').boundingBox())!.x).toBeGreaterThan(0);
 	});
 	await expect(page.locator('#session-drawer')).toBeVisible();
 	await expect(page.locator('#session-drawer')).toHaveAttribute('aria-hidden', 'false');
 
-	await touchDrag(page, { x: 120, y: 300 }, { x: 300, y: 302 });
+	await touchDrag(page, { x: 120, y: 300 }, { x: 300, y: 302 }, async () => {
+		await expect(page.locator('#project-drawer')).toBeVisible();
+		expect((await page.locator('#session-drawer').boundingBox())!.x).toBeGreaterThan(0);
+	});
 	await expect(page.locator('#project-drawer')).toBeVisible();
 	await expect(page.locator('#session-drawer')).toBeHidden();
 	await expect(page.locator('.mobile-navigation')).toHaveCount(0);

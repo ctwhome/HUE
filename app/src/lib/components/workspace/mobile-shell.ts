@@ -1,5 +1,5 @@
 import { MobileGestureController } from './mobile-gesture';
-import type { MobileGesture, MobilePane } from './mobile-navigation';
+import type { MobilePane } from './mobile-navigation';
 import { isDrawerHistoryEntry } from './navigation-history';
 
 type Drawer = Exclude<MobilePane, null>;
@@ -12,11 +12,11 @@ type Navigation = {
 };
 
 type MobileShellOptions = {
-	workspace: () => HTMLElement;
 	drawer: (pane: Drawer) => HTMLElement;
+	chat: () => HTMLElement;
 	navigation: Navigation;
 	onMobile: (mobile: boolean) => void;
-	onVisual: (active: boolean, action: MobileGesture['action']) => void;
+	onVisual: (active: boolean) => void;
 };
 
 export class MobileShellController {
@@ -29,13 +29,9 @@ export class MobileShellController {
 			isMobile: () => this.query.matches,
 			pane: () => options.navigation.mobileDrawer,
 			hasSession: () => Boolean(options.navigation.selectedSession),
-			workspace: options.workspace,
 			drawer: options.drawer,
+			chat: options.chat,
 			open: (pane) => this.open(pane),
-			close: (action) => {
-				if (action === 'close-sessions') this.returnFocus = this.trigger('sessions');
-				this.close();
-			},
 			onVisual: options.onVisual
 		});
 	}

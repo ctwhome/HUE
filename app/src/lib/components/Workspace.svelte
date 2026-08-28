@@ -29,7 +29,7 @@
 	import Conversation from './workspace/Conversation.svelte';
 	import { MessageState } from './workspace/message-state.svelte';
 	import { MobileShellController } from './workspace/mobile-shell';
-	import { compactModelLabel, type MobileGesture } from './workspace/mobile-navigation';
+	import { compactModelLabel } from './workspace/mobile-navigation';
 	import { readProjectPanels, togglePanelState as togglePanel } from './workspace/panel-state';
 	import { workspaceApi } from './workspace/api';
 	import { WorkspaceNavigation } from './workspace/navigation.svelte';
@@ -83,11 +83,10 @@
 	let projectPaneWidth = $state(220),
 		sessionPaneWidth = $state(320);
 	let shellResize: { pane: ShellPane; x: number; width: number } | null = null;
-	let workspaceElement: HTMLElement;
+	let chatPaneElement = $state<HTMLElement>();
 	let projectDrawerElement = $state<HTMLElement>();
 	let sessionDrawerElement = $state<HTMLElement>();
-	let gestureActive = $state(false),
-		gestureAction = $state<MobileGesture['action']>(null);
+	let gestureActive = $state(false);
 	let mobileShell: MobileShellController | null = null;
 	let quickCapture: { open: (intent: 'capture' | 'share', token: string | null) => Promise<void> };
 	const dirtyGuard = new DirtyGuard((guard) => {
@@ -474,11 +473,11 @@
 		}
 		elapsedTimer = setInterval(() => (now = Date.now()), 1000);
 		mobileShell = new MobileShellController({
-			workspace: () => workspaceElement,
 			drawer: (pane) => (pane === 'projects' ? projectDrawerElement : sessionDrawerElement)!,
+			chat: () => chatPaneElement!,
 			navigation,
 			onMobile: (value) => (mobile = value),
-			onVisual: (active, action) => ((gestureActive = active), (gestureAction = action))
+			onVisual: (active) => (gestureActive = active)
 		});
 		mobileShell.start();
 		return () => {
@@ -501,11 +500,11 @@
 	}}
 />
 <div
-	bind:this={workspaceElement}
 	class="workspace grid h-dvh overflow-hidden bg-background text-foreground"
 	class:ready={navigation.ready}
 	class:drawer-gesture-active={gestureActive}
-	class:gesture-reveal-projects={gestureAction === 'show-projects'}
+	class:mobile-projects={navigation.mobileDrawer === 'projects'}
+	class:mobile-sessions={navigation.mobileDrawer === 'sessions'}
 	class:projects-panel-closed={!projectsPanelOpen}
 	class:sessions-panel-closed={!sessionsPanelOpen}
 	class:embedded
@@ -680,6 +679,7 @@
 		onkeydown={resizeShellPaneWithKeyboard}
 	/>
 	<div
+		bind:this={chatPaneElement}
 		class="session-workspace flex h-full min-h-0 min-w-0 overflow-hidden"
 		class:terminal-open={terminalOpen && !mobile}
 		style={`--terminal-panel-height: ${terminalHeight}px`}
