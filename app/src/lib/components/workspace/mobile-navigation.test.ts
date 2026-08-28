@@ -308,7 +308,7 @@ describe('mobile gesture state', () => {
 		});
 	});
 
-	test('Session list swipes back to Projects and both drawers dismiss left', () => {
+	test('Session list swipes back to Projects but Projects never drags', () => {
 		const sessionGesture = beginMobileGesture({
 			pane: 'sessions',
 			hasSession: true,
@@ -323,9 +323,9 @@ describe('mobile gesture state', () => {
 			finishMobileGesture(updateMobileGesture(sessionGesture, 300, 242), 320, 0.2)
 		).toMatchObject({ commit: true, action: 'show-projects', destination: 'projects' });
 
-		for (const pane of ['sessions', 'projects'] as const) {
-			const gesture = beginMobileGesture({
-				pane,
+		expect(
+			beginMobileGesture({
+				pane: 'projects',
 				hasSession: true,
 				startX: 180,
 				startY: 240,
@@ -333,12 +333,23 @@ describe('mobile gesture state', () => {
 				startedOnDrawer: true,
 				excluded: false,
 				dialogOpen: false
+			})
+		).toBeNull();
+	});
+
+	test('leftward drags do not navigate forward or dismiss a pane', () => {
+		for (const pane of ['sessions', null] as const) {
+			const gesture = beginMobileGesture({
+				pane,
+				hasSession: true,
+				startX: 180,
+				startY: 240,
+				viewportWidth: 390,
+				startedOnDrawer: pane === 'sessions',
+				excluded: false,
+				dialogOpen: false
 			})!;
-			expect(finishMobileGesture(updateMobileGesture(gesture, 70, 242), 320, -0.2)).toMatchObject({
-				commit: true,
-				action: `close-${pane}`,
-				destination: null
-			});
+			expect(updateMobileGesture(gesture, 70, 242)).toMatchObject({ status: 'cancelled' });
 		}
 	});
 });
