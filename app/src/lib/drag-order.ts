@@ -6,6 +6,17 @@ export function moveBefore(order: string[], moved: string, before: string | null
 	return next;
 }
 
+export function dropBefore(
+	order: string[],
+	moved: string,
+	target: string,
+	after: boolean
+): string | null {
+	if (!after) return target;
+	const remaining = order.filter((id) => id !== moved);
+	return remaining[remaining.indexOf(target) + 1] ?? null;
+}
+
 export function prependNew(order: string[], ids: string[]): string[] {
 	const known = new Set(order);
 	return [...ids.filter((id) => !known.has(id)), ...order];

@@ -841,6 +841,11 @@ test('Project groups expose editable, persistent, accessible collapsible heading
 	expect(projectRail).toContain('ondrop={(event) => dropOnGroup(event, group.label!)}');
 	expect(projectRail).toContain('Move to ungrouped');
 	expect(projectRail).toContain('ondragstart={(event) => startProjectDrag(event, project.id)}');
+	expect(projectRail).toContain('dropProjectId === project.id');
+	expect(projectRail).toContain("projectDropPosition === 'before'");
+	expect(projectRail).toContain('Move Project to ${group.label}');
+	expect((projectRail.match(/focus-visible:outline-2/g) ?? []).length).toBeGreaterThanOrEqual(2);
+	expect(projectRail).toContain('focus-visible:outline-offset-2 focus-visible:outline-ring');
 	expect(projectRail).not.toContain('<GripVertical');
 	expect(projectRail).toContain('<EllipsisVertical');
 	expect(contextPanel).toContain('hue:session-order:');
