@@ -118,6 +118,7 @@ export type ProjectView = {
 	primaryPath: string;
 	folders: Array<{ path: string; label: string | null; isPrimary: boolean; available: boolean }>;
 	rootAvailable: boolean;
+	sessionCount: number;
 };
 
 function directoryAvailable(path: string) {
@@ -131,7 +132,8 @@ function directoryAvailable(path: string) {
 export function projectView(
 	project: HermesProject,
 	color: string | null = null,
-	group: string | null = null
+	group: string | null = null,
+	sessionCount = 0
 ): ProjectView {
 	return {
 		id: project.id,
@@ -146,7 +148,8 @@ export function projectView(
 			isPrimary: folder.is_primary,
 			available: directoryAvailable(folder.path)
 		})),
-		rootAvailable: directoryAvailable(project.primary_path)
+		rootAvailable: directoryAvailable(project.primary_path),
+		sessionCount
 	};
 }
 
@@ -160,7 +163,8 @@ export async function loadProjectViews() {
 				projectView(
 					project,
 					state.store.getProjectColor(project.id),
-					state.store.getProjectGroup(project.id)
+					state.store.getProjectGroup(project.id),
+					state.store.countSessions(project.id)
 				)
 			),
 		reconciliationIssues: reconciled.issues

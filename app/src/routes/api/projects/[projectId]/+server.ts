@@ -36,7 +36,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			state.store.ensureProjectMetadata(current.id);
 			state.store.updateProjectColor(current.id, color);
 			return json({
-				project: projectView(current, color, state.store.getProjectGroup(current.id))
+				project: projectView(
+					current,
+					color,
+					state.store.getProjectGroup(current.id),
+					state.store.countSessions(current.id)
+				)
 			});
 		}
 		if (body.action === 'set_group') {
@@ -52,7 +57,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			state.store.ensureProjectMetadata(current.id);
 			state.store.updateProjectGroup(current.id, group);
 			return json({
-				project: projectView(current, state.store.getProjectColor(current.id), group)
+				project: projectView(
+					current,
+					state.store.getProjectColor(current.id),
+					group,
+					state.store.countSessions(current.id)
+				)
 			});
 		}
 		let project;
@@ -112,7 +122,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			project: projectView(
 				project,
 				services().store.getProjectColor(project.id),
-				services().store.getProjectGroup(project.id)
+				services().store.getProjectGroup(project.id),
+				services().store.countSessions(project.id)
 			)
 		});
 	} catch (cause) {
@@ -121,7 +132,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				? projectView(
 						cause.project,
 						services().store.getProjectColor(cause.project.id),
-						services().store.getProjectGroup(cause.project.id)
+						services().store.getProjectGroup(cause.project.id),
+						services().store.countSessions(cause.project.id)
 					)
 				: null;
 		if (attempted && !project) {
@@ -130,7 +142,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				project = projectView(
 					current,
 					services().store.getProjectColor(current.id),
-					services().store.getProjectGroup(current.id)
+					services().store.getProjectGroup(current.id),
+					services().store.countSessions(current.id)
 				);
 			} catch {
 				// Original mutation failure remains authoritative.

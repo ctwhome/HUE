@@ -608,8 +608,13 @@
 									height={18}
 									aria-hidden="true"
 								/>{/if}
-							<span class="min-w-0 truncate">{project.name}</span>
+							<span class="project-name min-w-0 flex-1 truncate">{project.name}</span>
 							{#if !project.rootAvailable}<small class="text-amber-400">Missing</small>{/if}
+							{#if project.sessionCount}<span
+								class="project-session-count shrink-0 text-xs tabular-nums text-muted-foreground"
+								aria-label={`${project.sessionCount} non-archived Sessions`}
+								>{project.sessionCount}</span
+							>{/if}
 						</button>
 						<button
 							class="project-edit absolute top-1/2 right-0 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent focus:opacity-100"

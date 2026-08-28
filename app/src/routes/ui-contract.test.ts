@@ -307,6 +307,16 @@ test('Project rows do not show redundant open tooltips', () => {
 	expect(projectRail).toContain('title={`Edit ${project.name}`}');
 });
 
+test('Project rows show their non-archived Session count before the trailing action', () => {
+	const projectRail = read('../lib/components/workspace/ProjectRail.svelte');
+	const count = projectRail.indexOf('class="project-session-count');
+	const action = projectRail.indexOf('class="project-edit');
+	expect(count).toBeGreaterThan(-1);
+	expect(action).toBeGreaterThan(count);
+	expect(projectRail).toContain('{#if project.sessionCount}<span');
+	expect(projectRail).toContain('aria-label={`${project.sessionCount} non-archived Sessions`}');
+});
+
 test('standalone Sessions are presented as Chats with a chat icon', () => {
 	const workspace = read('../lib/components/Workspace.svelte');
 	const projectRail = read('../lib/components/workspace/ProjectRail.svelte');

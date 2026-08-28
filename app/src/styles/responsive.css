@@ -77,7 +77,8 @@
 		padding-inline: 10px;
 	}
 	.section-label,
-	.project-select > span:last-child {
+	.project-select > .project-name,
+	.project-session-count {
 		display: none;
 	}
 	.projectless-row {
@@ -249,7 +250,8 @@
 		transition-delay: 0s;
 	}
 	.project-rail .section-label,
-	.project-rail .project-select > span:last-child {
+	.project-rail .project-select > .project-name,
+	.project-rail .project-session-count {
 		display: initial;
 	}
 	.project-select {

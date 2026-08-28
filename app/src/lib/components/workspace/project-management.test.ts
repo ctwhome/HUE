@@ -12,6 +12,7 @@ const original: Project = {
 	group: null,
 	primaryPath: '/work/app',
 	rootAvailable: true,
+	sessionCount: 0,
 	folders: [
 		{ path: '/work/app', label: null, isPrimary: true, available: true },
 		{ path: '/work/docs', label: 'Docs', isPrimary: false, available: true }

@@ -28,7 +28,12 @@ let projectRoot = '/work/old';
 
 mock.module('$lib/server/route-services', () => ({
 	...serviceExportStubs,
-	projectView: (project: typeof original, color: string | null = null, group: string | null = null) => ({
+	projectView: (
+		project: typeof original,
+		color: string | null = null,
+		group: string | null = null,
+		sessionCount = 0
+	) => ({
 		id: project.id,
 		name: project.name,
 		icon: project.icon,
@@ -36,7 +41,8 @@ mock.module('$lib/server/route-services', () => ({
 		group,
 		primaryPath: project.primary_path,
 		folders: project.folders,
-		rootAvailable: true
+		rootAvailable: true,
+		sessionCount
 	}),
 	trustedProjectRoot: (rootPath: string) => {
 		if (!rootPath.startsWith('/work/')) throw new Error('Project root is outside boundary');
@@ -79,6 +85,7 @@ mock.module('$lib/server/route-services', () => ({
 				getProjectColor: () => colorUpdates.at(-1)?.color ?? null,
 				updateProjectColor: (id: string, color: string) => colorUpdates.push({ id, color }),
 				getProjectGroup: () => groupUpdates.at(-1)?.group ?? null,
+				countSessions: () => 4,
 				updateProjectGroup: (id: string, group: string | null) => groupUpdates.push({ id, group }),
 				hasActiveProjectDeliveries: () => activeDelivery,
 				deleteProject: () => {
