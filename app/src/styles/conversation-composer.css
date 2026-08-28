@@ -41,8 +41,7 @@
 	backdrop-filter: blur(20px) saturate(135%);
 }
 .session-view.personal-background .welcome,
-.session-view.personal-background .message-identity,
-.session-view.personal-background .message-actions {
+.session-view.personal-background .message-identity {
 	border-radius: var(--radius-panel);
 	background: color-mix(in srgb, var(--card) 62%, transparent);
 	backdrop-filter: blur(12px) saturate(125%);
@@ -50,8 +49,7 @@
 .session-view.personal-background .welcome {
 	padding: 20px 24px;
 }
-.session-view.personal-background .message-identity,
-.session-view.personal-background .message-actions {
+.session-view.personal-background .message-identity {
 	padding: 3px 6px;
 }
 .transcript.empty {
@@ -148,6 +146,10 @@
 .message-actions button:hover {
 	background: var(--accent);
 	color: var(--foreground);
+}
+.message-actions svg {
+	width: 13px;
+	height: 13px;
 }
 .user-message p {
 	margin: 0;
@@ -426,7 +428,11 @@
 .composer {
 	container-type: inline-size;
 }
-.composer > textarea {
+.composer-input {
+	position: relative;
+	width: 100%;
+}
+.composer-input > textarea {
 	width: 100%;
 	min-height: 44px;
 	max-height: 160px;

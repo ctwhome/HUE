@@ -15,7 +15,6 @@
 	import Plus from '~icons/lucide/plus';
 	import Search from '~icons/lucide/search';
 	import WifiOff from '~icons/lucide/wifi-off';
-	import X from '~icons/lucide/x';
 	import { moveBefore, sortByOrder } from '$lib/drag-order';
 	import { sessionRowState } from './session-row-state';
 	type Project = {
@@ -73,7 +72,6 @@
 		onarchive,
 		onsearch,
 		oncollapse,
-		onclose,
 		isImage,
 		automaticIcon,
 		elapsed
@@ -98,7 +96,6 @@
 		onarchive: (event: MouseEvent, session: Session) => void;
 		onsearch: (event?: SubmitEvent) => void;
 		oncollapse: () => void;
-		onclose: () => void;
 		isImage: (icon: string | null) => boolean;
 		automaticIcon: (title?: string | null) => string;
 		elapsed: (startedAt: string, now: number) => string;
@@ -229,12 +226,6 @@
 					aria-hidden="true"
 				/>{/if}<span class="truncate">{selectedProject?.name ?? 'Chats'}</span>
 		</h1>
-		{#if mobile}<button
-				class="drawer-close grid size-11 shrink-0 place-items-center rounded-md"
-				aria-label="Close Sessions"
-				title="Close Sessions"
-				onclick={onclose}><X width={20} height={20} aria-hidden="true" /></button
-			>{/if}
 	</header>
 	<form class="flex gap-2 border-b border-border p-2" role="search" onsubmit={onsearch}>
 		<label

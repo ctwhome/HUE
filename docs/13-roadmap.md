@@ -40,7 +40,7 @@ Project → Workflow or new Session → complete acknowledged message → Hermes
 - complete-message composer with accepted status;
 - streamed/polled event projection and reconnect recovery;
 - explicit empty, loading, failure, and unknown-delivery states;
-- desktop rail/sidebar/work layout plus mobile Project and Session drawers.
+- desktop rail/sidebar/work layout plus the mobile Projects → Sessions → chat hierarchy.
 
 **Exit:** a user can create or edit a multi-folder Hermes Project, create or resume a Session from its primary folder, send a full message, disconnect/reload, and recover the acknowledged result without truncation.
 

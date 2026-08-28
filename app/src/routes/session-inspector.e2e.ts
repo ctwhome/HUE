@@ -53,7 +53,7 @@ test('permission consequences and the Session inspector fit the browser matrix',
 			json: {
 				transcript: [],
 				messages: [],
-				cursor: 1,
+				cursor: 2,
 				activeTurn: {
 					messageId: 'message-1',
 					status: 'running',
@@ -93,12 +93,23 @@ test('permission consequences and the Session inspector fit the browser matrix',
 								{ optionId: 'deny', name: 'Deny', kind: 'reject_once' }
 							]
 						}
+					},
+					{
+						sequence: 2,
+						type: 'agent.plan',
+						payload: {
+							messageId: 'message-1',
+							entries: [
+								{ content: 'Inspect changes', priority: 'high', status: 'completed' },
+								{ content: 'Run checks', priority: 'medium', status: 'in_progress' }
+							]
+						}
 					}
 				]
 			}
 		})
 	);
-	await page.route(/\/sessions\/session-review\/events\?after=1$/, (route) =>
+	await page.route(/\/sessions\/session-review\/events\?after=2$/, (route) =>
 		route.fulfill({ json: { events: [] } })
 	);
 	await page.route('**/api/projects/*/repository', (route) =>
@@ -155,6 +166,13 @@ test('permission consequences and the Session inspector fit the browser matrix',
 				const controlBox = (await control.boundingBox())!;
 				expect(controlBox.width).toBeGreaterThanOrEqual(44);
 				expect(controlBox.height).toBeGreaterThanOrEqual(44);
+			}
+			const moreBox = (await page
+				.getByRole('button', { name: 'More session options' })
+				.boundingBox())!;
+			for (const activity of ['Thinking', 'Tasks']) {
+				const activityBox = (await page.getByRole('button', { name: activity }).boundingBox())!;
+				expect(Math.abs(activityBox.y - moreBox.y)).toBeLessThanOrEqual(1);
 			}
 			if (viewport.width === 390) {
 				await tools.click();

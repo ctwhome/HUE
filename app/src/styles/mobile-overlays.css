@@ -107,12 +107,10 @@
 @media (max-width: 700px), (pointer: coarse) and (max-height: 500px) {
 	.composer {
 		box-sizing: border-box;
-		bottom: calc(var(--project-status-height) + var(--safe-area-bottom));
-		margin: 0 max(8px, var(--safe-area-right)) max(8px, var(--safe-area-bottom))
-			max(8px, var(--safe-area-left));
+		bottom: 0;
+		margin: 0 max(8px, var(--safe-area-right)) 8px max(8px, var(--safe-area-left));
 		max-height: calc(
-			100dvh - 56px - var(--safe-area-top) - var(--project-status-height) -
-				var(--safe-area-bottom) - 16px
+			100dvh - var(--safe-area-top) - var(--project-status-height) - var(--safe-area-bottom) - 16px
 		);
 		overflow-y: auto;
 		padding: 6px;
@@ -126,9 +124,9 @@
 	.session-view.empty-session .composer {
 		position: sticky;
 		margin-top: 8px;
-		margin-bottom: max(8px, var(--safe-area-bottom));
+		margin-bottom: 8px;
 	}
-	.composer > textarea {
+	.composer-input > textarea {
 		min-height: 44px;
 		max-height: min(160px, 28dvh);
 	}

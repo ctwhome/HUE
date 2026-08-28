@@ -13,7 +13,6 @@ const workspacePaths = [
 	'../lib/components/workspace/Conversation.svelte',
 	'../lib/components/workspace/DirtyGuardDialog.svelte',
 	'../lib/components/IconEditorPopover.svelte',
-	'../lib/components/workspace/MobileNavigation.svelte',
 	'../lib/components/workspace/mobile-gesture.ts',
 	'../lib/components/workspace/mobile-navigation.ts',
 	'../lib/components/workspace/mobile-shell.ts',
@@ -311,15 +310,13 @@ test('standalone Sessions are presented as Chats with a chat icon', () => {
 	const workspace = read('../lib/components/Workspace.svelte');
 	const projectRail = read('../lib/components/workspace/ProjectRail.svelte');
 	const contextPanel = read('../lib/components/workspace/ContextPanel.svelte');
-	const mobileNavigation = read('../lib/components/workspace/MobileNavigation.svelte');
 	const welcome = read('../lib/components/workspace/WorkspaceWelcome.svelte');
-	for (const component of [workspace, projectRail, contextPanel, mobileNavigation, welcome]) {
+	for (const component of [workspace, projectRail, contextPanel, welcome]) {
 		expect(component).not.toContain('No project');
 	}
 	expect(projectRail).toContain('<MessageSquare');
 	expect(projectRail).toContain('<span>Chats</span>');
 	expect(contextPanel).toContain("selectedProject?.name ?? 'Chats'");
-	expect(mobileNavigation).toContain("project?.name ?? 'Chats'");
 	expect(welcome).toContain('Start a chat');
 });
 
@@ -715,15 +712,24 @@ test('Project files expose bounded accessible tree, previews, evidence, and guar
 	expect(styles).toContain('.file-preview .markdown');
 });
 
-test('mobile shell keeps drawers and 44px targets', () => {
+test('mobile shell is a full-screen Projects to Sessions to chat hierarchy', () => {
 	expect(styles).toMatch(/@media \(max-width: 700px\)/);
 	expect(styles).toContain('min-height: 44px');
 	expect(styles).toContain('.project-rail.open');
 	expect(styles).toContain('.context-panel.open');
-	expect(page).toContain("aria-current={drawer === 'projects' ? 'page' : undefined}");
-	expect(page).toContain("aria-current={drawer === 'sessions' ? 'page' : undefined}");
-	expect(page).toContain('aria-label="Close Projects"');
-	expect(page).toContain('aria-label="Close Sessions"');
+	expect(workspace).not.toContain('<MobileNavigation');
+	expect(projectRail).not.toContain('aria-label="Close Projects"');
+	expect(contextPanel).not.toContain('aria-label="Close Sessions"');
+	expect(projectRail).toContain('aria-label="Notifications"');
+	expect(projectRail).toContain('aria-label="App settings"');
+	expect(styles).toMatch(
+		/@media \(max-width: 700px\)[\s\S]*\.workspace\s*{[^}]*padding-top: 0;[\s\S]*\.project-rail,[\s\S]*\.context-panel\s*{[^}]*inset: 0;[^}]*width: 100%;/s
+	);
+	expect(styles).toMatch(
+		/@media \(max-width: 700px\)[\s\S]*\.project-rail,[\s\S]*\.context-panel\s*{[^}]*background: var\(--background\);/s
+	);
+	expect(page).not.toContain('.message-stack, pre, code');
+	expect(workspace).toContain('selectedProject && navigation.ready && !mobile');
 	expect(styles).toContain('(pointer: coarse) and (max-height: 500px)');
 });
 
@@ -755,8 +761,10 @@ test('mobile session header groups Project tools, settings, and context percenta
 	expect(sessionHeader).toContain("projectTools ? 'Back to chat' : 'Open Project tools'");
 	expect(sessionHeader).toContain('class="session-settings-trigger');
 	expect(sessionInspector).toContain("contextPercent === null ? '--' : `${contextPercent}%`");
-	expect(sessionInspector).toContain("`Inspect Session context, ${contextPercent}% used`");
-	expect(sessionInspector).toContain('class="session-inspector-trigger session-context-ring context-usage"');
+	expect(sessionInspector).toContain('`Inspect Session context, ${contextPercent}% used`');
+	expect(sessionInspector).toContain(
+		'class="session-inspector-trigger session-context-ring context-usage"'
+	);
 	expect(sessionInspector).not.toContain('emerald');
 	expect(styles).toContain('conic-gradient(');
 	expect(sessionHeader).toContain('title="Change session icon"');
@@ -766,7 +774,18 @@ test('mobile session header groups Project tools, settings, and context percenta
 	expect(sessionHeader.indexOf('class="session-settings-trigger')).toBeLessThan(
 		sessionHeader.lastIndexOf('<SessionInspector')
 	);
+	expect(styles).toMatch(
+		/@media \(max-width: 700px\)[\s\S]*\.session-header\s*{[^}]*background: color-mix\([^}]*backdrop-filter: blur\(18px\) saturate\(140%\);/s
+	);
 	expect(workspace).toContain('selectedProject?.rootAvailable && mobile && !selectedSession');
+});
+
+test('mobile composer and message actions use compact transparent spacing', () => {
+	expect(styles).toMatch(
+		/@media \(max-width: 700px\)[\s\S]*\.composer\s*{[^}]*bottom: 0;[^}]*margin: 0 max\(8px, var\(--safe-area-right\)\) 8px/s
+	);
+	expect(styles).not.toContain('.session-view.personal-background .message-actions');
+	expect(styles).toMatch(/\.message-actions svg\s*{[^}]*width: 13px;[^}]*height: 13px;/s);
 });
 
 test('mobile composer keeps model, work mode, and send visible beside a secondary-options menu', () => {
@@ -921,18 +940,40 @@ test('clean chat keeps thinking and tasks in responsive composer panels', () => 
 	expect(conversation).not.toContain("item.kind === 'plan'");
 	expect(composer).toContain('<ThinkingDialog');
 	expect(composer).toContain('class="composer-activity"');
+	expect(composer).toMatch(
+		/<div class="composer-toolbar[^>]*>[\s\S]*aria-label="More session options"[\s\S]*<div class="composer-activity">[\s\S]*<div[\s\S]*class="composer-context/
+	);
+	expect(composer).not.toContain('class:has-activity');
+	expect(styles).toMatch(/\.composer-input\s*{[^}]*position: relative;[^}]*width: 100%;/s);
+	expect(styles).not.toContain('.composer-input.has-activity');
 	expect(dialog).toContain('aria-label="Thinking activity"');
 	expect(dialog).toContain('{#if busy}<section class="thinking-activity"');
 	expect(dialog).toContain('aria-expanded={open}');
 	expect(dialog).toContain('animate-spin');
-	expect(composer).toContain('<CurrentTask {plan}');
-	expect(task).toContain('>Tasks</span>');
-	expect(task).toContain('aria-expanded={tasksExpanded}');
-	expect(task).toContain('showModal()');
+	expect(dialog).toMatch(/<\/button>\s*<\/section>\s*\{#if open\}<div/);
+	expect(composer).toContain('<CurrentTask');
+	expect(task).toContain('class="sr-only">Tasks</span>');
+	expect(task).toContain('aria-expanded={open}');
 	expect(task).toContain('aria-label="Tasks"');
-	expect(task).toContain('hue:current-task:open');
-	expect(styles).toContain('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)');
-	expect(styles).toMatch(/@media \(max-width: 700px\)[\s\S]*\.task-dialog/);
+	expect(task).not.toContain('showModal()');
+	expect(task).not.toContain('hue:current-task:open');
+	expect(task).toMatch(/<\/section>\s*\{#if open\}\{@render entries\(\)\}\{\/if\}\{\/if\}/);
+	expect(styles).toMatch(/\.composer-activity\s*{[^}]*display: flex;[^}]*flex: 0 0 auto;/s);
+	expect(styles).toMatch(
+		/\.thinking-activity,[\s\S]*\.current-task\s*{[^}]*position: static;[^}]*flex: 0 0 44px;/s
+	);
+	expect(styles).toMatch(/\.thinking-trigger,[\s\S]*\.task-trigger\s*{[^}]*width: 44px;/s);
+	expect(styles).toMatch(
+		/\.composer-activity > \.thinking-panel,[\s\S]*\.composer-activity > \.latest-follow-shell\s*{[^}]*position: absolute;[^}]*bottom: calc\(100% \+ 8px\);[^}]*width: 100%;/s
+	);
+	expect(styles).toMatch(
+		/\.composer:has\(\.thinking-panel\),[\s\S]*\.composer:has\(\.composer-activity > \.latest-follow-shell\)\s*{[^}]*overflow: visible;/s
+	);
+	expect(dialog).toContain('aria-label="Scroll to latest progress"');
+	expect(task).toContain('aria-label="Scroll to latest task"');
+	expect(dialog).toContain('use:followLatest');
+	expect(task).toContain('use:followLatest');
+	expect(styles).not.toContain('.task-dialog');
 	expect(orb).toContain('Hermes reasoning');
 	expect(orb).toContain("import('./liquid-orb-renderer')");
 	expect(orb).toContain("canvas.getContext('webgpu')");

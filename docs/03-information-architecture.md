@@ -116,10 +116,10 @@ The primary application is an **Operate + Command/Inspect** surface—not a mark
 - Selecting a Session changes the **main work window**. The selected Space and Session remain visible while the user discusses, runs, reviews or inspects work.
 - Global Home, Inbox and Notifications can use the same main window while preserving the selected Space and its Sessions.
 - The main window may contain a contextual inspector or split view, but that inspector does not replace the stable Space → Session hierarchy.
-- Below narrow-desktop width the Session sidebar becomes a drawer; on mobile both navigation panes become drawers with direct **Spaces** and **Sessions** controls.
-- On touch devices, a rightward drag from the left edge reveals the selected Space’s Sessions and tracks the finger; either drawer can be dismissed with a leftward drag or backdrop tap.
-- The Session drawer provides a visible Back affordance to the all-Spaces menu. Selecting a Space drills forward into only that Space’s Sessions.
-- Android/system Back and browser Back close the topmost dialog or drawer before navigating to the previous main-window state; gesture navigation must not replace explicit buttons or trap vertical scrolling.
+- Below narrow-desktop width the Session sidebar becomes a drawer. On mobile the shell becomes a full-screen **Projects → Sessions → chat** hierarchy without a persistent global navigation bar: launch opens Projects, selecting a Project drills into only its Sessions, and selecting a Session opens the chat.
+- On touch devices, a rightward drag from non-interactive chat content reveals Sessions and tracks the finger; the same gesture in Sessions returns to Projects. Text selection, links, form controls, the composer, and vertical scrolling retain native behavior.
+- Sessions and chat provide visible Back affordances for the same hierarchy, so gestures are never the only navigation path.
+- Android/system Back and browser Back close the topmost dialog or transient hierarchy layer before navigating to the previous main-window state.
 - A compact activity rail may appear only while work is active, waiting or blocked.
 
 ## Mobile composition

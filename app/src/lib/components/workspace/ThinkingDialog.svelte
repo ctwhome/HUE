@@ -1,21 +1,34 @@
 <script lang="ts">
-	import ChevronDown from '~icons/lucide/chevron-down';
 	import ChevronRight from '~icons/lucide/chevron-right';
 	import LoaderCircle from '~icons/lucide/loader-circle';
+	import ArrowDown from '~icons/lucide/arrow-down';
 	import type { WorkspaceTimelineItem } from '$lib';
+	import { LatestFollow } from './latest-follow.svelte';
 
 	let {
 		id,
 		items,
 		renderMarkdown,
-		busy
+		busy,
+		open = $bindable(false),
+		onopen = () => {}
 	}: {
 		id: string;
 		items: WorkspaceTimelineItem[];
 		renderMarkdown: (text: string) => string;
 		busy: boolean;
+		open?: boolean;
+		onopen?: () => void;
 	} = $props();
-	let open = $state(false);
+	const latest = new LatestFollow();
+	const followLatest = latest.followLatest;
+	function toggle() {
+		if (!open) onopen();
+		open = !open;
+	}
+	$effect(() => {
+		if (!busy) open = false;
+	});
 
 	const serialized = (value: unknown) =>
 		typeof value === 'string' ? value : JSON.stringify(value, null, 2);
@@ -46,14 +59,17 @@
 			class="thinking-trigger"
 			aria-controls={id}
 			aria-expanded={open}
-			onclick={() => (open = !open)}
+			title="Thinking · In progress"
+			onclick={toggle}
 		>
 			<LoaderCircle class="animate-spin" width={16} height={16} aria-hidden="true" />
-			<span>Thinking</span><small>In progress</small>
-			<ChevronDown class={open ? 'expanded' : ''} width={16} height={16} aria-hidden="true" />
+			<span class="sr-only">Thinking</span>
 		</button>
-		{#if open}<div {id} class="thinking-panel">
-				<div class="thinking-timeline" aria-label="Thinking timeline">
+	</section>
+	{#if open}<div {id} class="thinking-panel latest-follow-shell">
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+			<div class="thinking-timeline" aria-label="Thinking timeline" tabindex="0" use:followLatest>
+				<div class="latest-follow-content">
 					{#each items as item (item.kind + ':' + item.sequence)}<article
 							class="thinking-event"
 							data-thinking-sequence={item.sequence}
@@ -114,5 +130,13 @@
 								</div>{/if}
 						</article>{/each}
 				</div>
-			</div>{/if}
-	</section>{/if}
+			</div>
+			{#if latest.showLatest}<button
+					type="button"
+					class="panel-scroll-latest"
+					aria-label="Scroll to latest progress"
+					title="Scroll to latest progress"
+					onclick={() => latest.scrollToLatest()}
+					><ArrowDown width={16} height={16} aria-hidden="true" /></button
+				>{/if}
+		</div>{/if}{/if}

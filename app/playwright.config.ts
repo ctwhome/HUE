@@ -13,6 +13,7 @@ export default defineConfig({
 	webServer: {
 		command: 'bun run build && bun run start',
 		port,
+		timeout: 180_000,
 		env: {
 			HUE_DATABASE_PATH: ':memory:',
 			HERMES_HOME: hermesHome,
