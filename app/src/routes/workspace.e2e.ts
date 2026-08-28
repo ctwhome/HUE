@@ -105,6 +105,34 @@ async function touchDrag(
 	}, to);
 }
 
+async function browserTouchDrag(
+	page: import('@playwright/test').Page,
+	from: { x: number; y: number },
+	to: { x: number; y: number },
+	during?: () => Promise<void>
+) {
+	const client = await page.context().newCDPSession(page);
+	await client.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+	await client.send('Input.dispatchTouchEvent', {
+		type: 'touchStart',
+		touchPoints: [{ ...from, id: 1 }]
+	});
+	for (let step = 1; step <= 4; step += 1) {
+		const point = {
+			x: from.x + ((to.x - from.x) * step) / 4,
+			y: from.y + ((to.y - from.y) * step) / 4
+		};
+		await page.waitForTimeout(24);
+		await client.send('Input.dispatchTouchEvent', {
+			type: 'touchMove',
+			touchPoints: [{ ...point, id: 1 }]
+		});
+		if (step === 2) await during?.();
+	}
+	await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+	await client.detach();
+}
+
 function sessionButton(page: import('@playwright/test').Page, title: string) {
 	return page.locator('.session-select').filter({ hasText: title });
 }
@@ -542,6 +570,49 @@ test('reorders Session rows live while dragging', async ({ page }) => {
 			)
 		)
 		.toBe('["second-row","first-row"]');
+});
+
+test('reorders Project rows with touch dragging', async ({ page }) => {
+	await removeProjects(page);
+	const firstRoot = mkdtempSync(join(tmpdir(), 'hue-touch-project-first-'));
+	const secondRoot = mkdtempSync(join(tmpdir(), 'hue-touch-project-second-'));
+	try {
+		const projectIds: string[] = [];
+		for (const [name, root] of [
+			['Touch first', firstRoot],
+			['Touch second', secondRoot]
+		]) {
+			const response = await page.request.post('/api/projects', {
+				data: { name, folders: [root], primaryPath: root }
+			});
+			expect(response.ok()).toBe(true);
+			projectIds.push(((await response.json()) as { project: { id: string } }).project.id);
+		}
+
+		await page.setViewportSize(viewports[2]);
+		await page.goto('/');
+		await openMobileProjects(page);
+		const first = page.locator('.project-select').filter({ hasText: 'Touch first' });
+		const second = page.locator('.project-select').filter({ hasText: 'Touch second' });
+		const firstBox = (await first.boundingBox())!;
+		const secondBox = (await second.boundingBox())!;
+		await browserTouchDrag(
+			page,
+			{ x: firstBox.x + firstBox.width / 2, y: firstBox.y + firstBox.height / 2 },
+			{
+				x: secondBox.x + secondBox.width / 2,
+				y: secondBox.y + secondBox.height + firstBox.height - 2
+			}
+		);
+
+		await expect
+			.poll(() => page.evaluate(() => localStorage.getItem('hue:project-order')))
+			.toBe(JSON.stringify(projectIds.reverse()));
+	} finally {
+		await removeProjects(page);
+		rmSync(firstRoot, { recursive: true, force: true });
+		rmSync(secondRoot, { recursive: true, force: true });
+	}
 });
 
 test('discards stale persisted Session panes after loading the Project Sessions', async ({
@@ -5442,6 +5513,20 @@ test('mobile uses a full-screen Projects to Sessions hierarchy without global to
 		await expect(projects).toBeHidden();
 		await expect(sessions).toBeVisible();
 		expect((await sessions.boundingBox())?.width).toBeCloseTo(width, 3);
+		expect(await sessions.evaluate((element) => getComputedStyle(element).boxShadow)).toBe('none');
+		expect(await sessions.evaluate((element) => getComputedStyle(element).borderLeftWidth)).toBe(
+			'1px'
+		);
+		expect(
+			await page
+				.locator('.session-workspace')
+				.evaluate((element) => getComputedStyle(element).boxShadow)
+		).toBe('none');
+		expect(
+			await page
+				.locator('.session-workspace')
+				.evaluate((element) => getComputedStyle(element).borderLeftWidth)
+		).toBe('1px');
 		await expect(page.getByRole('button', { name: 'Back to Projects' })).toBeVisible();
 		await expectMinimumTouchTargets(sessions.locator('button'));
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
@@ -5641,7 +5726,7 @@ test('mobile swipe-back moves chat to Sessions to Projects from anywhere in the 
 
 	await touchDrag(page, { x: 180, y: 300 }, { x: 220, y: 302 });
 	await expect(page.locator('#session-drawer')).toBeHidden();
-	await touchDrag(page, { x: 180, y: 300 }, { x: 320, y: 302 }, async () => {
+	await browserTouchDrag(page, { x: 180, y: 300 }, { x: 320, y: 302 }, async () => {
 		await expect(page.locator('#session-drawer')).toBeVisible();
 		expect((await page.locator('.session-workspace').boundingBox())!.x).toBeGreaterThan(0);
 	});

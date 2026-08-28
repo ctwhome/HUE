@@ -217,17 +217,17 @@
 	}
 	.context-panel {
 		z-index: 31;
+		border-left: 1px solid var(--border);
 		transform: translate3d(0, 0, 0);
-		box-shadow: -18px 0 36px rgb(0 0 0 / 0.18);
 	}
 	.session-workspace {
 		position: fixed;
 		z-index: 32;
 		inset: 0;
 		width: 100%;
+		border-left: 1px solid var(--border);
 		transform: translate3d(0, 0, 0);
 		transition: transform 260ms cubic-bezier(0.32, 0.72, 0, 1);
-		box-shadow: -18px 0 36px rgb(0 0 0 / 0.18);
 		will-change: transform;
 	}
 	.workspace.mobile-projects .context-panel,
@@ -500,6 +500,7 @@
 	}
 	.transcript {
 		padding: 24px 14px 0;
+		touch-action: pan-y;
 	}
 	.message-actions button {
 		min-width: 44px;

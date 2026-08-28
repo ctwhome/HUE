@@ -13,7 +13,7 @@
 	import PanelLeftClose from '~icons/lucide/panel-left-close';
 	import Plus from '~icons/lucide/plus';
 	import X from '~icons/lucide/x';
-	import { moveBefore, sortByOrder } from '$lib/drag-order';
+	import { dropBefore, moveBefore, sortByOrder } from '$lib/drag-order';
 	import IconEditorPopover from '$lib/components/IconEditorPopover.svelte';
 	import ProjectFoldersEditor from './ProjectFoldersEditor.svelte';
 	import type { Directory, Project } from './types';
@@ -169,6 +169,12 @@
 	let draggedProjectId = $state<string | null>(null);
 	let draggedGroup = $state<string | null>(null);
 	let dropGroup = $state<string | null>(null);
+	let dropProjectId = $state<string | null>(null);
+	let projectDropPosition = $state<'before' | 'after'>('before');
+	let touchProjectId: string | null = null;
+	let touchPointerId: number | null = null;
+	let touchStartY = 0;
+	let suppressProjectClickUntil = 0;
 
 	onMount(() => {
 		try {
@@ -223,10 +229,25 @@
 		if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
 	}
 
-	function allowProjectDrop(event: DragEvent, group: string | null) {
+	function allowProjectDrop(event: DragEvent, group: string | null, projectId: string | null = null) {
 		event.preventDefault();
 		dropGroup = group ?? '';
+		dropProjectId = projectId;
+		if (projectId) {
+			const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+			projectDropPosition = event.clientY > bounds.top + bounds.height / 2 ? 'after' : 'before';
+		}
 		if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+	}
+
+	function moveProject(projectId: string, group: string | null, before: string | null) {
+		projectOrder = moveBefore(
+			projectOrder.length ? projectOrder : projects.map(({ id }) => id),
+			projectId,
+			before
+		);
+		localStorage.setItem('hue:project-order', JSON.stringify(projectOrder));
+		if (projects.find(({ id }) => id === projectId)?.group !== group) void onmove(projectId, group);
 	}
 
 	function dropProject(event: DragEvent, group: string | null, before: string | null = null) {
@@ -235,16 +256,21 @@
 			event.dataTransfer?.getData('application/x-hue-project-id') || draggedProjectId;
 		draggedProjectId = null;
 		dropGroup = null;
-		if (projectId) {
-			projectOrder = moveBefore(
-				projectOrder.length ? projectOrder : projects.map(({ id }) => id),
-				projectId,
-				before
-			);
-			localStorage.setItem('hue:project-order', JSON.stringify(projectOrder));
-			if (projects.find(({ id }) => id === projectId)?.group !== group)
-				void onmove(projectId, group);
-		}
+		dropProjectId = null;
+		if (projectId) moveProject(projectId, group, before);
+	}
+
+	function dropOnProject(event: DragEvent, project: Project) {
+		const projectId =
+			event.dataTransfer?.getData('application/x-hue-project-id') || draggedProjectId;
+		const order = projectOrder.length ? projectOrder : projects.map(({ id }) => id);
+		dropProject(
+			event,
+			project.group,
+			projectId
+				? dropBefore(order, projectId, project.id, projectDropPosition === 'after')
+				: project.id
+		);
 	}
 
 	function dropOnGroup(event: DragEvent, group: string) {
@@ -256,14 +282,85 @@
 		localStorage.setItem('hue:project-group-order', JSON.stringify(groupOrder));
 		draggedGroup = null;
 		dropGroup = null;
+		dropProjectId = null;
 	}
 
 	function finishProjectDrag() {
 		draggedProjectId = null;
 		draggedGroup = null;
 		dropGroup = null;
+		dropProjectId = null;
+	}
+
+	function startProjectTouch(event: PointerEvent, projectId: string) {
+		if (event.pointerType === 'mouse' || !event.isPrimary) return;
+		touchProjectId = projectId;
+		touchPointerId = event.pointerId;
+		touchStartY = event.clientY;
+	}
+
+	function moveProjectTouch(event: PointerEvent) {
+		if (event.pointerId !== touchPointerId || !touchProjectId) return;
+		if (!draggedProjectId && Math.abs(event.clientY - touchStartY) < 8) return;
+		draggedProjectId = touchProjectId;
+		event.preventDefault();
+		const containsPointer = (node: Element) => {
+			const bounds = node.getBoundingClientRect();
+			return (
+				event.clientX >= bounds.left &&
+				event.clientX <= bounds.right &&
+				event.clientY >= bounds.top &&
+				event.clientY <= bounds.bottom
+			);
+		};
+		const row = [...document.querySelectorAll<HTMLElement>('[data-project-id]')].find(containsPointer);
+		if (row?.dataset.projectId) {
+			const project = projects.find(({ id }) => id === row.dataset.projectId);
+			if (!project) return;
+			dropGroup = project.group ?? '';
+			dropProjectId = project.id;
+			const bounds = row.getBoundingClientRect();
+			projectDropPosition = event.clientY > bounds.top + bounds.height / 2 ? 'after' : 'before';
+			return;
+		}
+		const group = [...document.querySelectorAll<HTMLElement>('[data-project-group]')].find(
+			containsPointer
+		);
+		if (group) {
+			dropGroup = group.dataset.projectGroup ?? '';
+			dropProjectId = null;
+		}
+	}
+
+	function finishProjectTouch(event: PointerEvent, cancelled = false) {
+		if (event.pointerId !== touchPointerId || !touchProjectId) return;
+		if (!cancelled && draggedProjectId && (dropProjectId || dropGroup !== null)) {
+			const order = projectOrder.length ? projectOrder : projects.map(({ id }) => id);
+			const before = dropProjectId
+				? dropBefore(order, touchProjectId, dropProjectId, projectDropPosition === 'after')
+				: null;
+			moveProject(touchProjectId, dropGroup || null, before);
+			suppressProjectClickUntil = performance.now() + 400;
+		}
+		touchProjectId = null;
+		touchPointerId = null;
+		finishProjectDrag();
+	}
+
+	function chooseProject(event: MouseEvent, project: Project) {
+		if (performance.now() < suppressProjectClickUntil) {
+			event.preventDefault();
+			return;
+		}
+		onchoose(project);
 	}
 </script>
+
+<svelte:window
+	onpointermove={moveProjectTouch}
+	onpointerup={finishProjectTouch}
+	onpointercancel={(event) => finishProjectTouch(event, true)}
+/>
 
 <aside
 	bind:this={element}
@@ -370,7 +467,8 @@
 			><FolderPlus width={15} height={15} aria-hidden="true" /> Add section</button
 		>
 		{#if draggedProjectId}<div
-				class={`mt-1 flex min-h-11 items-center rounded-md border border-dashed px-2 text-xs sm:min-h-8 ${dropGroup === '' ? 'border-ring bg-accent text-foreground' : 'border-border text-muted-foreground'}`}
+				class={`mt-1 flex min-h-11 items-center rounded-md border border-dashed px-2 text-xs sm:min-h-8 ${dropGroup === '' ? 'border-ring bg-accent text-foreground ring-2 ring-ring' : 'border-border text-muted-foreground'}`}
+				data-project-group=""
 				role="group"
 				aria-label="Move Project to ungrouped"
 				ondragover={(event) => allowProjectDrop(event, null)}
@@ -380,8 +478,10 @@
 			</div>{/if}
 		{#each projectGroups as group (group.label ?? '')}
 			{#if group.label}<button
-					class={`mt-2 flex min-h-11 w-full items-center gap-1 rounded-md px-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8 ${dropGroup === group.label ? 'bg-accent ring-2 ring-ring' : ''}`}
+					class={`mt-2 flex min-h-11 w-full items-center gap-1 rounded-md px-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:min-h-8 ${dropGroup === group.label ? 'bg-accent text-foreground ring-2 ring-ring shadow-sm' : ''}`}
 					draggable="true"
+					data-project-group={group.label}
+					aria-label={draggedProjectId ? `Move Project to ${group.label}` : group.label}
 					aria-expanded={!collapsedGroups.has(group.label)}
 					title={group.label}
 					ondragstart={(event) => startGroupDrag(event, group.label!)}
@@ -397,17 +497,25 @@
 						aria-hidden="true"
 					/>
 					<span class="min-w-0 flex-1 truncate">{group.label}</span>
-					<span aria-label={`${group.projects.length} projects`}>{group.projects.length}</span>
+					{#if draggedProjectId && dropGroup === group.label}<span>Drop here</span>{:else}<span
+							aria-label={`${group.projects.length} projects`}>{group.projects.length}</span
+						>{/if}
 				</button>{/if}
 			{#if !group.label || !collapsedGroups.has(group.label)}
 				{#each group.projects as project (project.id)}
 					<div
-						class="project-row group relative"
+						class="project-row group relative select-none"
+						data-project-id={project.id}
+						class:opacity-40={draggedProjectId === project.id}
 						role="group"
 						aria-label={`Project ${project.name}`}
-						ondragover={(event) => allowProjectDrop(event, project.group)}
-						ondrop={(event) => dropProject(event, project.group, project.id)}
+						ondragover={(event) => allowProjectDrop(event, project.group, project.id)}
+						ondrop={(event) => dropOnProject(event, project)}
 					>
+						{#if dropProjectId === project.id && draggedProjectId !== project.id}<span
+								class={`pointer-events-none absolute inset-x-1 z-10 h-0.5 rounded-full bg-ring ring-2 ring-background ${projectDropPosition === 'before' ? '-top-px' : '-bottom-px'}`}
+								aria-hidden="true"
+							></span>{/if}
 						{#if project.color}<span
 								class="project-color-indicator pointer-events-none absolute inset-y-1 -left-1 w-1 rounded-full"
 								style={`background-color: ${project.color}`}
@@ -424,7 +532,7 @@
 									src={project.icon ?? ''}
 									alt=""
 								/>{:else if project.icon}<span
-									class="project-icon grid size-8 place-items-center rounded-md text-xl"
+									class="project-icon grid size-8 place-items-center rounded-md text-2xl"
 									>{project.icon}</span
 								>{:else}<Folder
 									class="project-icon project-icon-default size-8 text-muted-foreground"
@@ -434,22 +542,24 @@
 								/>{/if}
 						</button>
 						<button
-							class="project-select flex min-h-11 w-full cursor-grab items-center gap-2 rounded-md bg-transparent py-1 pr-8 pl-11 text-left text-muted-foreground hover:bg-accent hover:text-foreground active:cursor-grabbing [&.active]:bg-accent [&.active]:text-foreground"
+							class="project-select flex min-h-11 w-full cursor-grab touch-none items-center gap-2 rounded-md bg-transparent py-1 pr-8 pl-11 text-left text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:cursor-grabbing [&.active]:bg-accent [&.active]:text-foreground"
 							class:active={selectedProject?.id === project.id}
+							class:bg-accent={dropProjectId === project.id && draggedProjectId !== project.id}
 							aria-current={selectedProject?.id === project.id ? 'page' : undefined}
 							aria-controls={selectedProject?.id === project.id ? 'session-drawer' : undefined}
 							aria-expanded={selectedProject?.id === project.id ? sessionsOpen : undefined}
 							draggable="true"
 							ondragstart={(event) => startProjectDrag(event, project.id)}
 							ondragend={finishProjectDrag}
-							onclick={() => onchoose(project)}
+							onpointerdown={(event) => startProjectTouch(event, project.id)}
+							onclick={(event) => chooseProject(event, project)}
 						>
 							{#if isImage(project.icon)}<img
 									class="project-icon-inline project-icon-image size-8 rounded-md object-cover"
 									src={project.icon ?? ''}
 									alt=""
 								/>{:else if project.icon}<span
-									class="project-icon-inline size-8 place-items-center rounded-md text-xl"
+									class="project-icon-inline size-8 place-items-center rounded-md text-2xl"
 									>{project.icon}</span
 								>{:else}<Folder
 									class="project-icon-inline project-icon-default size-8 text-muted-foreground"
