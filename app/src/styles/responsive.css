@@ -508,13 +508,13 @@
 		z-index: 10;
 		min-height: calc(58px + var(--safe-area-top));
 		border-bottom-color: color-mix(in srgb, var(--border) 72%, transparent);
-		background: color-mix(in srgb, var(--background) 72%, transparent);
+		background: color-mix(in srgb, var(--background) 52%, transparent);
 		gap: 6px;
 		min-width: 0;
 		padding: calc(7px + var(--safe-area-top)) max(10px, var(--safe-area-right)) 7px
 			max(10px, var(--safe-area-left));
-		-webkit-backdrop-filter: blur(18px) saturate(140%);
-		backdrop-filter: blur(18px) saturate(140%);
+		-webkit-backdrop-filter: blur(10px) saturate(130%);
+		backdrop-filter: blur(10px) saturate(130%);
 		box-shadow: 0 1px 0 color-mix(in srgb, var(--foreground) 6%, transparent);
 	}
 	.session-header button {
@@ -575,7 +575,7 @@
 		display: none;
 	}
 	.transcript {
-		padding: 24px 14px 0;
+		padding: calc(82px + var(--safe-area-top)) 14px 0;
 		touch-action: pan-y;
 	}
 	.message-actions button {

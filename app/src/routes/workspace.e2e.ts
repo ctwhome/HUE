@@ -829,6 +829,68 @@ test('Session header keeps search controls hidden until requested', async ({ pag
 	expect(errors).toEqual([]);
 });
 
+test('conversation scrolls behind the translucent Session header', async ({ page }) => {
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({
+			json: {
+				sessions: [{ sessionId: 'session-frosted', cwd: '/work/hue', title: 'Frosted header' }]
+			}
+		})
+	);
+	await page.route(/\/sessions\/session-frosted$/, (route) =>
+		route.fulfill({
+			json: {
+				transcript: Array.from({ length: 12 }, (_, index) => ({
+					role: 'assistant',
+					text: `Conversation line ${index} `.repeat(20)
+				})),
+				messages: [],
+				events: [],
+				cursor: 0,
+				activeTurn: null
+			}
+		})
+	);
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await addProject(page);
+	await sessionButton(page, 'Frosted header').click();
+
+	const header = page.locator('.session-header');
+	const transcript = page.locator('.transcript');
+	await expect(header).toHaveCSS('position', 'absolute');
+	await expect.poll(async () => (await transcript.boundingBox())?.y).toBe(
+		(await header.boundingBox())?.y
+	);
+	expect(await header.evaluate((element) => getComputedStyle(element).backdropFilter)).not.toBe(
+		'none'
+	);
+	await page.setViewportSize({ width: 1024, height: 768 });
+	await expect(header).toHaveCSS('position', 'absolute');
+	await expect.poll(async () => (await transcript.boundingBox())?.y).toBe(
+		(await header.boundingBox())?.y
+	);
+
+	await page.setViewportSize({ width: 390, height: 844 });
+	await expect(header).toHaveCSS('position', 'absolute');
+	await transcript.evaluate((element) => element.scrollTo({ top: 160 }));
+	expect(await transcript.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+	const headerBox = (await header.boundingBox())!;
+	expect(
+		await transcript.locator('article').evaluateAll(
+			(articles, bounds) =>
+				articles.some((article) => {
+					const box = article.getBoundingClientRect();
+					return box.top < bounds.bottom && box.bottom > bounds.top;
+				}),
+			{ top: headerBox.y, bottom: headerBox.y + headerBox.height }
+		)
+	).toBe(true);
+
+	await page.setViewportSize({ width: 320, height: 844 });
+	await expect(header).toHaveCSS('position', 'absolute');
+	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+});
+
 test('mobile Session list uses Telegram-scale rows and spacing', async ({ page }, testInfo) => {
 	const browserErrors: string[] = [];
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
@@ -3361,11 +3423,15 @@ test('follows new chat content until the reader scrolls up', async ({ page }) =>
 				)
 			)
 			.toBeLessThan(2);
+		const composerHeight = await page.locator('.composer').evaluate((element) => element.clientHeight);
 
 		await scroller.hover();
 		await page.mouse.wheel(0, -300);
 		await expect(page.getByRole('button', { name: 'Scroll to latest message' })).toHaveClass(
 			/visible/
+		);
+		expect(await page.locator('.composer').evaluate((element) => element.clientHeight)).toBe(
+			composerHeight
 		);
 		const releasedTop = await scroller.evaluate((element) => element.scrollTop);
 		await scroller.evaluate((element) => {
@@ -3376,7 +3442,8 @@ test('follows new chat content until the reader scrolls up', async ({ page }) =>
 		});
 		await page.waitForTimeout(50);
 		expect(await scroller.evaluate((element) => element.scrollTop)).toBeCloseTo(releasedTop, 0);
-		await page.getByRole('button', { name: 'Scroll to latest message' }).click();
+		const scrollButton = page.getByRole('button', { name: 'Scroll to latest message' });
+		await scrollButton.evaluate((element) => element.click());
 		await expect
 			.poll(async () =>
 				scroller.evaluate(
@@ -6006,6 +6073,7 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 	await expect(page.getByRole('img', { name: 'Pixel' })).toBeVisible();
 
 	const textarea = page.getByLabel('Message Hermes');
+	expect((await textarea.boundingBox())!.height).toBe(44);
 	await textarea.fill(
 		Array.from({ length: 18 }, (_, index) => `Unsent draft line ${index}`).join('\n')
 	);
