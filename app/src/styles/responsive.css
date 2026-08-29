@@ -575,7 +575,7 @@
 		display: none;
 	}
 	.transcript {
-		padding: calc(82px + var(--safe-area-top)) 14px 0;
+		padding: calc(82px + var(--safe-area-top)) 14px var(--composer-height, 160px);
 		touch-action: pan-y;
 	}
 	.message-actions button {
