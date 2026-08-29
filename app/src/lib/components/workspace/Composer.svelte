@@ -108,6 +108,7 @@
 		matchingCommands,
 		contextPercent,
 		showContextUsage = true,
+		ready = true,
 		busy
 	}: {
 		composer: string;
@@ -148,6 +149,7 @@
 		stopping: boolean;
 		showScrollToLatest: boolean;
 		busy: boolean;
+		ready?: boolean;
 		onsubmit: (event: SubmitEvent) => void;
 		ondrop: (event: DragEvent) => void;
 		onpaste: (event: ClipboardEvent) => void;
@@ -513,6 +515,7 @@
 			aria-expanded={optionsOpen}
 			aria-controls={`${instanceId}-composer-options`}
 			title="More session options"
+			disabled={!ready}
 			onclick={() => (optionsOpen = !optionsOpen)}
 		>
 			<Ellipsis width={20} height={20} aria-hidden="true" />
@@ -532,9 +535,9 @@
 			bind:this={optionsMenu}
 			id={`${instanceId}-composer-options`}
 			class="composer-options-menu"
-			class:open={optionsOpen}
-			inert={!optionsOpen}
-			aria-hidden={!optionsOpen ? 'true' : undefined}
+			class:open={optionsOpen && ready}
+			inert={!optionsOpen || !ready}
+			aria-hidden={!optionsOpen || !ready ? 'true' : undefined}
 			role="group"
 			aria-label="Secondary session options"
 		>
@@ -613,7 +616,7 @@
 					ariaLabel="Edit approvals"
 					kind="mode"
 					showLabel={true}
-					disabled={runtimeChanging || busy}
+					disabled={runtimeChanging || busy || !ready}
 					onselect={(value) => onruntime('modeId', value)}
 				/>{:else}<button
 					type="button"
@@ -632,7 +635,7 @@
 						ariaLabel="Reasoning"
 						kind="reasoning"
 						showLabel={true}
-						disabled={runtimeChanging || busy}
+						disabled={runtimeChanging || busy || !ready}
 						onselect={(value) => onconfig(reasoning!.id, value)}
 					/>
 				</div>{/if}
@@ -653,14 +656,14 @@
 						ariaLabel="Reasoning"
 						kind="reasoning"
 						showLabel={true}
-						disabled={runtimeChanging || busy}
+						disabled={runtimeChanging || busy || !ready}
 						onselect={(value) => onconfig(reasoning!.id, value)}
 					/>
 				</div>{/if}
 			{#if runtime.models}<ModelPicker
 					models={runtime.models.availableModels}
 					value={runtime.models.currentModelId}
-					disabled={runtimeChanging || busy}
+					disabled={runtimeChanging || busy || !ready}
 					onselect={onmodel}
 				/>{/if}
 			<SessionOptionPicker
@@ -669,7 +672,7 @@
 				ariaLabel="Work mode"
 				kind="work"
 				showLabel={true}
-				disabled={workModeChanging}
+				disabled={workModeChanging || !ready}
 				onselect={(value) => onworkmode(value as WorkMode)}
 			/>
 			{#if showContextUsage && contextPercent() !== null}<span
@@ -709,10 +712,8 @@
 				class="composer-send grid size-9 place-items-center rounded-lg hover:bg-accent disabled:opacity-40"
 				aria-label="Send"
 				title="Send message"
-				disabled={!composer.trim() &&
-					!images.length &&
-					!attachments.length &&
-					!reviewContexts.length}
+				disabled={!ready ||
+					(!composer.trim() && !images.length && !attachments.length && !reviewContexts.length)}
 			>
 				<Send width={20} height={20} aria-hidden="true" /></button
 			>{/if}

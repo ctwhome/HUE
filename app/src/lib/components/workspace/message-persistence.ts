@@ -8,7 +8,9 @@ export class MessagePersistence {
 	) {}
 	private key(kind: 'draft' | 'pending' | 'contexts') {
 		const session = this.getSession();
-		return session ? `hue:${kind}:${this.getProject()?.id ?? 'none'}:${session.sessionId}` : '';
+		return session && !session.pending
+			? `hue:${kind}:${this.getProject()?.id ?? 'none'}:${session.sessionId}`
+			: '';
 	}
 	contexts(value?: ReviewContext[]): ReviewContext[] {
 		const key = this.key('contexts');

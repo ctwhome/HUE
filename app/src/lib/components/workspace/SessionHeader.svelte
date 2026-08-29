@@ -55,6 +55,7 @@
 				class="session-icon-trigger grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md hover:bg-accent"
 				aria-label={`Change icon for ${session.title || 'Untitled session'}`}
 				title="Change session icon"
+				disabled={session.pending}
 				onclick={onicon}
 			>
 				{#if isImageIcon(session.icon ?? null)}<img
@@ -93,6 +94,7 @@
 				class="session-settings-trigger grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md hover:bg-accent"
 				aria-label={`Session settings for ${session.title || 'Untitled session'}`}
 				title="Session settings"
+				disabled={session.pending}
 				onclick={onmanage}><Settings2 width={18} height={18} aria-hidden="true" /></button
 			>
 			<SessionInspector

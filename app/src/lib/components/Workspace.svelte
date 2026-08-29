@@ -182,7 +182,6 @@
 			adjustChatSessionCount: (change) =>
 				(chatSessionCount = Math.max(0, chatSessionCount + change)),
 			applyCreatedSession: async (body, preserveWorkMode = false) => {
-				messageState.clear();
 				const selectedSession = navigation.selectedSession;
 				if (!selectedSession) {
 					sessionState.applyCreated(body);
@@ -380,6 +379,7 @@
 	}
 	async function submitDraft(event: SubmitEvent) {
 		event.preventDefault();
+		if (navigation.selectedSession?.pending) return;
 		if (!navigation.selectedSession && !(await ensureDraftSession())) return;
 		await messageState.submit(event);
 	}
@@ -459,7 +459,7 @@
 	<AttentionCenter
 		open={globalView === 'notifications'}
 		projectId={selectedProject?.id ?? null}
-		sessionId={selectedSession?.sessionId ?? null}
+		sessionId={selectedSession?.pending ? null : (selectedSession?.sessionId ?? null)}
 		onclose={() => setGlobalView(null)}
 		oncounts={(count) => (unreadNotifications = count)}
 	/>
@@ -595,9 +595,9 @@
 			projectId={selectedProject?.id ?? null}
 			sessionListLoaded={navigation.loadedSessionListProjectId === (selectedProject?.id ?? null)}
 			{workflows}
-			primarySession={selectedSession}
+			primarySession={selectedSession?.pending ? null : selectedSession}
 			allowDocking={!embedded}
-			restorePrimarySession={!mobile}
+			restorePrimarySession={!mobile && !selectedSession?.pending}
 			onpanecount={(count) => {
 				sessionPaneCount = count;
 				if (count > 1 && innerWidth < 1600) browserOpen = false;
@@ -625,10 +625,14 @@
 					onsessions={(trigger) => mobileShell?.open('sessions', trigger)}
 					onnotifications={() => setGlobalView('notifications')}
 					onprojecttools={(open) => (projectTools = open)}
-					onicon={(event) =>
-						selectedSession && navigation.openSessionIconEditor(event, selectedSession)}
-					onmanage={(event) =>
-						selectedSession && navigation.openEditSession(event, selectedSession)}
+					onicon={(event) => {
+						if (selectedSession && !selectedSession.pending)
+							navigation.openSessionIconEditor(event, selectedSession);
+					}}
+					onmanage={(event) => {
+						if (selectedSession && !selectedSession.pending)
+							navigation.openEditSession(event, selectedSession);
+					}}
 				/>
 				{#if error}<div
 						class="error mx-5 mt-3 rounded-lg border border-destructive/40 bg-destructive/15 px-3 py-2.5 text-sm text-destructive"
@@ -674,6 +678,7 @@
 							? (selectedSession.recovery ?? 'Hermes Session is unavailable.')
 							: null}
 						showContextUsage={false}
+						ready={!selectedSession?.pending}
 					/>
 				{:else if selectedProject && !selectedProject.rootAvailable}
 					<section

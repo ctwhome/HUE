@@ -202,6 +202,8 @@ test('workflow launch applies its work mode before sending the saved prompt', as
 			endVoice() {},
 			saveDraft() {},
 			cacheSession() {},
+			clearSession() {},
+			clearSessionState() {},
 			setLoading() {},
 			persistSelection() {},
 			applyCreatedSession() {},

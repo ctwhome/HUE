@@ -1259,23 +1259,27 @@ test('restores Git panel sizes and collapsed sections', async ({ page }) => {
 test('typing in an empty Project chat creates a Session without losing the draft', async ({
 	page
 }) => {
-	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) =>
-		route.request().method() === 'POST'
-			? route.fulfill({
-					status: 201,
-					json: {
-						session: { sessionId: 'draft-session', cwd: '/work/hue', title: 'New Session' },
-						commands: []
-					}
-				})
-			: route.fulfill({ json: { sessions: [] } })
-	);
+	let completeSessionCreation!: () => void;
+	const sessionCreation = new Promise<void>((resolve) => (completeSessionCreation = resolve));
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, async (route) => {
+		if (route.request().method() !== 'POST') return route.fulfill({ json: { sessions: [] } });
+		await sessionCreation;
+		return route.fulfill({
+			status: 201,
+			json: {
+				session: { sessionId: 'draft-session', cwd: '/work/hue', title: 'New Session' },
+				commands: []
+			}
+		});
+	});
 	await page.setViewportSize(viewports[0]);
 	await addProject(page);
 	const composer = page.getByLabel('Message Hermes');
 	await expect(composer).toBeVisible();
 	await expect(page.getByRole('navigation', { name: 'Project tools' })).toBeVisible();
 	await composer.fill('Plan the release');
+	await expect(composer).toHaveValue('Plan the release');
+	completeSessionCreation();
 	await expect(page).toHaveURL(/session=draft-session/);
 	await expect(composer).toHaveValue('Plan the release');
 });
@@ -5257,6 +5261,66 @@ test('disables image and duplicate controls when Hermes omits optional capabilit
 		await expect(duplicate).toHaveAttribute('title', 'Hermes does not support Session duplication');
 		await page.getByRole('button', { name: 'Close session options' }).click();
 	}
+});
+
+test('opens and focuses a new Session while Hermes starts', async ({ page }) => {
+	const browserErrors: string[] = [];
+	let completeSessionCreation!: () => void;
+	const sessionCreation = new Promise<void>((resolve) => (completeSessionCreation = resolve));
+	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
+	page.on('pageerror', (error) => browserErrors.push(error.message));
+	await page.route('**/api/projects/*/sessions', async (route) => {
+		if (route.request().method() === 'POST') {
+			await sessionCreation;
+			return route.fulfill({
+				status: 201,
+				json: { session: { sessionId: 'session-new', cwd: '/work/hue' }, commands: [] }
+			});
+		}
+		return route.fulfill({ json: { sessions: [] } });
+	});
+
+	await addProject(page);
+	await page.getByRole('button', { name: 'Add new session', exact: true }).click();
+	await expect(page.getByRole('heading', { name: 'Start this Hermes Session' })).toBeVisible();
+	await expect(page.getByLabel('Message Hermes')).toBeFocused();
+	await expect(page.locator('.session-row')).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'More session options' })).toBeDisabled();
+	await page.getByLabel('Message Hermes').fill('Draft while Hermes starts');
+	expect(
+		await page.evaluate(() => Object.keys(localStorage).some((key) => key.includes(':pending-')))
+	).toBe(false);
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		await expect(page.getByLabel('Message Hermes')).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+	}
+	completeSessionCreation();
+	await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
+	await expect(page.getByLabel('Message Hermes')).toHaveValue('Draft while Hermes starts');
+	expect(browserErrors).toEqual([]);
+});
+
+test('keeps a failed Session draft ready to retry without a placeholder row', async ({ page }) => {
+	let failSessionCreation!: () => void;
+	const sessionCreation = new Promise<void>((resolve) => (failSessionCreation = resolve));
+	await page.route('**/api/projects/*/sessions', async (route) => {
+		if (route.request().method() !== 'POST') return route.fulfill({ json: { sessions: [] } });
+		await sessionCreation;
+		return route.fulfill({ status: 503, json: { message: 'Hermes is unavailable' } });
+	});
+
+	await addProject(page);
+	await page.getByRole('button', { name: 'Add new session', exact: true }).click();
+	await page.getByLabel('Message Hermes').fill('Keep this draft');
+	failSessionCreation();
+	await expect(page.getByRole('alert')).toContainText('Request failed (503)');
+	await expect(page.locator('.session-row')).toHaveCount(0);
+	await expect(page.getByLabel('Message Hermes')).toHaveValue('Keep this draft');
+	await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
 });
 
 test('starts a new session without the previous session output', async ({ page }) => {
