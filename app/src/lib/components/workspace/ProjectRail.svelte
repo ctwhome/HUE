@@ -6,12 +6,12 @@
 	import Bell from '~icons/lucide/bell';
 	import Check from '~icons/lucide/check';
 	import ChevronRight from '~icons/lucide/chevron-right';
+	import Ellipsis from '~icons/lucide/ellipsis';
 	import EllipsisVertical from '~icons/lucide/ellipsis-vertical';
 	import Folder from '~icons/lucide/folder';
 	import FolderPlus from '~icons/lucide/folder-plus';
 	import MessageSquare from '~icons/lucide/message-square';
 	import Menu from '~icons/lucide/menu';
-	import PanelLeftClose from '~icons/lucide/panel-left-close';
 	import Plus from '~icons/lucide/plus';
 	import X from '~icons/lucide/x';
 	import { dropBefore, moveBefore, moveBy, readStringArray, sortByOrder } from '$lib/drag-order';
@@ -79,7 +79,6 @@
 		onarchive,
 		onnotifications,
 		onsettings,
-		oncollapse,
 		isImage
 	}: {
 		element?: HTMLElement;
@@ -141,7 +140,6 @@
 		onarchive: () => void;
 		onnotifications: () => void;
 		onsettings: () => void;
-		oncollapse: () => void;
 		isImage: (icon: string | null) => boolean;
 	} = $props();
 
@@ -166,6 +164,8 @@
 	);
 	let collapsedGroups = $state(new Set<string>());
 	let addSectionDialog = $state<HTMLDialogElement>();
+	let sectionMenu = $state<HTMLElement>();
+	let sectionMenuOpen = $state(false);
 	let sectionName = $state('');
 	let sectionProjectIds = $state<string[]>([]);
 	let sectionSubmitted = $state(false);
@@ -448,18 +448,22 @@
 					onclick={onsettings}><Menu width={20} height={20} aria-hidden="true" /></button
 				>{/if}
 			<button
+				class="icon-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+				aria-label="Project options"
+				aria-haspopup="menu"
+				aria-expanded={sectionMenuOpen}
+				popovertarget="project-section-menu"
+				title="Project options"
+				disabled={addDisabled || projects.length === 0}
+				><Ellipsis width={18} height={18} aria-hidden="true" /></button
+			>
+			<button
 				class="icon-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border bg-secondary hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
 				aria-label="Add Hermes Project"
 				title={addDisabled ? projectsError : 'Add Hermes Project'}
 				disabled={addDisabled}
 				onclick={onaddopen}><Plus width={18} height={18} aria-hidden="true" /></button
 			>
-			{#if !mobile}<button
-					class="icon-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border bg-secondary hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-					aria-label="Hide Projects panel"
-					title="Hide Projects panel"
-					onclick={oncollapse}><PanelLeftClose width={17} height={17} aria-hidden="true" /></button
-				>{/if}
 		</div>
 	</div>
 
@@ -515,14 +519,6 @@
 				onclick={onprojectless}><Plus width={18} height={18} aria-hidden="true" /></button
 			>
 		</div>
-		<button
-			class="mt-1 flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-			aria-label="Add Project section"
-			title="Add section"
-			disabled={addDisabled || projects.length === 0}
-			onclick={openSectionDialog}
-			><FolderPlus width={15} height={15} aria-hidden="true" /> Add section</button
-		>
 		{#if draggedProjectId && projects.find(({ id }) => id === draggedProjectId)?.group}<div
 				class={`mt-1 flex min-h-11 items-center rounded-md border border-dashed px-2 text-xs sm:min-h-8 ${dropGroup === '' ? 'border-ring bg-accent text-foreground ring-2 ring-ring' : 'border-border text-muted-foreground'}`}
 				data-project-group=""
@@ -535,7 +531,7 @@
 			</div>{/if}
 		{#each projectGroups as group (group.label ?? '')}
 			{#if group.label}<button
-					class={`mt-2 flex min-h-11 w-full items-center gap-1 rounded-md px-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:min-h-8 ${dropGroup === group.label ? 'bg-accent text-foreground shadow-sm ring-2 ring-ring' : ''}`}
+					class={`mt-4 flex min-h-11 w-full items-center gap-1 rounded-md border border-border/60 bg-muted/80 px-1.5 text-left text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:min-h-6 ${dropGroup === group.label ? 'bg-accent text-foreground shadow-sm ring-2 ring-ring' : ''}`}
 					draggable="true"
 					data-project-group={group.label}
 					aria-label={draggedProjectId ? `Move Project to ${group.label}` : group.label}
@@ -549,14 +545,12 @@
 				>
 					<ChevronRight
 						class={`shrink-0 transition-transform ${collapsedGroups.has(group.label) ? '' : 'rotate-90'}`}
-						width={14}
-						height={14}
+						width={11}
+						height={11}
 						aria-hidden="true"
 					/>
-					<span class="min-w-0 flex-1 truncate">{group.label}</span>
-					{#if draggedProjectId && dropGroup === group.label}<span>Drop here</span>{:else}<span
-							aria-label={`${group.projects.length} projects`}>{group.projects.length}</span
-						>{/if}
+					<span class="min-w-0 flex-1 truncate text-xs font-bold">{group.label}</span>
+					{#if draggedProjectId && dropGroup === group.label}<span>Drop here</span>{/if}
 				</button>{/if}
 			{#if !group.label || !collapsedGroups.has(group.label)}
 				{#each group.projects as project (project.id)}
@@ -624,6 +618,27 @@
 			{/if}
 		{/each}
 	</nav>
+	<div
+		bind:this={sectionMenu}
+		id="project-section-menu"
+		class="project-section-menu w-44 rounded-lg border border-border bg-card p-1 text-foreground shadow-xl"
+		popover="auto"
+		role="menu"
+		aria-label="Project options"
+		ontoggle={(event) =>
+			(sectionMenuOpen = (event.currentTarget as HTMLElement).matches(':popover-open'))}
+	>
+		<button
+			class="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+			role="menuitem"
+			aria-label="Add Project section"
+			onclick={() => {
+				sectionMenu?.hidePopover();
+				openSectionDialog();
+			}}
+			><FolderPlus width={15} height={15} aria-hidden="true" /> Add section</button
+		>
+	</div>
 
 	<dialog
 		bind:this={addSectionDialog}

@@ -451,21 +451,52 @@ test('global Session finder is keyboard-first, race-safe, and navigates directly
 	await expect(page).toHaveURL(new RegExp(`project=${project.id}.*session=finder-new`));
 });
 
-test('the active Project toggles Sessions without reserving a collapsed column', async ({
+test('the navigation rail toggles both panels and Projects still toggle Sessions', async ({
 	page
 }, testInfo) => {
 	await page.setViewportSize(viewports[0]);
 	await addProject(page);
 	const project = page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' });
+	const projects = page.getByRole('complementary', { name: 'Projects' });
 	const sessions = page.getByRole('complementary', { name: 'Project contents' });
-	await page.getByRole('button', { name: 'Hide Projects panel' }).click();
+	await expect(page.getByRole('menuitem', { name: 'Add Project section' })).toBeHidden();
+	await page.getByRole('button', { name: 'Project options' }).click();
+	await page.getByRole('menuitem', { name: 'Add Project section' }).click();
+	await expect(page.getByRole('dialog', { name: 'Add Project section' })).toBeVisible();
+	await page
+		.getByRole('dialog', { name: 'Add Project section' })
+		.getByRole('button', { name: 'Cancel' })
+		.click();
+	const navigationToggle = page.getByRole('button', { name: 'Collapse navigation' });
+	const toggleBox = (await navigationToggle.boundingBox())!;
+	const globalRailBox = (await page
+		.getByRole('navigation', { name: 'Global navigation' })
+		.boundingBox())!;
+	expect(toggleBox.width).toBeLessThanOrEqual(36);
+	expect(toggleBox.height).toBeLessThanOrEqual(36);
+	expect(globalRailBox.y + globalRailBox.height - (toggleBox.y + toggleBox.height)).toBeLessThanOrEqual(16);
+	await navigationToggle.click();
+	await expect(projects).toBeHidden();
+	await expect(sessions).toBeHidden();
 	expect(await page.evaluate(() => localStorage.getItem('hue:shell:projects:open'))).toBe('false');
+	expect(await page.evaluate(() => localStorage.getItem('hue:shell:sessions:open'))).toBe('false');
+	expect(
+		await page
+			.locator('.workspace')
+			.evaluate(
+				(element) => getComputedStyle(element).gridTemplateColumns.split(' ').filter(Boolean).length
+			)
+	).toBe(2);
 	await page.reload();
-	await expect(page.getByRole('button', { name: 'Show Projects panel' })).toBeVisible();
-	await page.getByRole('button', { name: 'Show Projects panel' }).click();
+	await expect(projects).toBeHidden();
+	await expect(sessions).toBeHidden();
+	await page.getByRole('button', { name: 'Expand navigation' }).click();
+	await expect(projects).toBeVisible();
+	await expect(sessions).toBeVisible();
 
 	for (const viewport of viewports.slice(0, 2)) {
 		await page.setViewportSize(viewport);
+		await expect(page.getByRole('button', { name: 'Project options' })).toBeVisible();
 		await expect(project).toHaveAttribute('aria-expanded', 'true');
 		await project.evaluate((button: HTMLButtonElement) => button.click());
 		await expect(project).toHaveAttribute('aria-expanded', 'false');
@@ -498,6 +529,14 @@ test('the active Project toggles Sessions without reserving a collapsed column',
 	for (const viewport of viewports.slice(2)) {
 		await page.setViewportSize(viewport);
 		await openMobileProjects(page);
+		const projectOptions = page.getByRole('button', { name: 'Project options' });
+		await expect(projectOptions).toBeVisible();
+		const optionsBox = (await projectOptions.boundingBox())!;
+		expect(optionsBox.width).toBeGreaterThanOrEqual(44);
+		expect(optionsBox.height).toBeGreaterThanOrEqual(44);
+		await projectOptions.click();
+		await expect(page.getByRole('menuitem', { name: 'Add Project section' })).toBeVisible();
+		await projectOptions.click();
 		await project.click({ position: { x: 80, y: 22 } });
 		await expect(sessions).toBeVisible();
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(

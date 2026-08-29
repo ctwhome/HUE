@@ -1,6 +1,8 @@
 <script lang="ts">
 	import Bell from '~icons/lucide/bell';
 	import FileText from '~icons/lucide/file-text';
+	import PanelLeftClose from '~icons/lucide/panel-left-close';
+	import PanelLeftOpen from '~icons/lucide/panel-left-open';
 	import Search from '~icons/lucide/search';
 	import Settings from '~icons/lucide/settings';
 	import BrandMark from './BrandMark.svelte';
@@ -22,13 +24,17 @@
 	let {
 		view,
 		unreadCount = 0,
+		navigationCollapsed,
 		onview,
-		onfind
+		onfind,
+		ontogglenavigation
 	}: {
 		view: GlobalView | null;
 		unreadCount?: number;
+		navigationCollapsed: boolean;
 		onview: (view: GlobalView | null) => void;
 		onfind: () => void;
+		ontogglenavigation: () => void;
 	} = $props();
 
 	const action =
@@ -101,4 +107,18 @@
 		aria-label="Open documentation in a new tab"
 		title="Documentation"><FileText aria-hidden="true" /></a
 	>
+	<Button
+		variant="ghost"
+		size="icon"
+		class="global-navigation-toggle size-8 text-muted-foreground"
+		aria-label={navigationCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+		aria-controls="project-drawer session-drawer"
+		aria-expanded={!navigationCollapsed}
+		title={navigationCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+		onclick={ontogglenavigation}
+	>
+		{#if navigationCollapsed}<PanelLeftOpen aria-hidden="true" />{:else}<PanelLeftClose
+				aria-hidden="true"
+			/>{/if}
+	</Button>
 </nav>

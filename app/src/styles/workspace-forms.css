@@ -320,6 +320,11 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+.session-row:hover .session-select,
+.session-row:focus-within .session-select,
+.session-select.active {
+	padding-right: 4rem;
+}
 .item-list {
 	overflow-x: hidden;
 }
