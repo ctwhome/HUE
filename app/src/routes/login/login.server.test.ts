@@ -61,6 +61,6 @@ test('login stores only a secure signed session and redirects home', async () =>
 	expect(token).not.toContain(process.env.HUE_ACCESS_SECRET);
 	expect(accessSessionValid(token, process.env.HUE_ACCESS_SECRET)).toBe(true);
 	expect(options).toEqual(
-		expect.objectContaining({ httpOnly: true, secure: true, sameSite: 'strict', path: '/' })
+		expect.objectContaining({ httpOnly: true, secure: true, sameSite: 'lax', path: '/' })
 	);
 });
