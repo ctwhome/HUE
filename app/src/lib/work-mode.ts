@@ -86,6 +86,7 @@ export function buildWorkModePreamble(workMode: WorkMode): string {
 		'This controls cadence only. It does not authorize external effects.',
 		'This is guidance, not deterministic enforcement.',
 		...cadence,
+		'When creating a file for the user, save it inside the Session working directory and end the response with `MEDIA: relative/path` for each file so HUE can attach it.',
 		'Original user message follows exactly.',
 		'---'
 	].join('\n');

@@ -77,6 +77,12 @@ describe('work-mode parser', () => {
 		expect(formatWorkModeAnnouncement('autonomous')).toContain('Autonomous');
 	});
 
+	it('tells Hermes how to attach generated files to HUE', () => {
+		const preamble = buildWorkModePreamble('autonomous');
+		expect(preamble).toContain('save it inside the Session working directory');
+		expect(preamble).toContain('MEDIA: relative/path');
+	});
+
 	it('strips only exact generated Hermes preamble', () => {
 		const body = stripHermesPreamble(`${buildWorkModePreamble('live')}\nShip it`);
 		expect(body).toBe('Ship it');
