@@ -27,7 +27,7 @@ test('logout requires same origin and securely clears the access session', async
 	expect(deleted).toEqual([
 		[
 			'hue_access',
-			expect.objectContaining({ httpOnly: true, secure: true, sameSite: 'strict', path: '/' })
+			expect.objectContaining({ httpOnly: true, secure: true, sameSite: 'lax', path: '/' })
 		]
 	]);
 });

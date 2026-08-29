@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import {
 	ACCESS_COOKIE,
+	ACCESS_SESSION_SECONDS,
 	accessSessionValid,
 	createAccessSession,
 	requestAccessAllowed,
@@ -92,10 +93,16 @@ test('malformed cookie input is treated as unauthenticated', () => {
 	expect(requestAccessAllowed(remote, new URL(remote.url), '100.64.0.2', secret, now)).toBe(false);
 });
 
-test('secret checks and cookie settings are safe for browser sessions', () => {
+test('access cookie persists across top-level PWA launches', () => {
 	expect(secretsEqual(secret, secret)).toBe(true);
 	expect(secretsEqual(`${secret}x`, secret)).toBe(false);
 	expect(sessionCookieOptions()).toEqual(
-		expect.objectContaining({ httpOnly: true, secure: true, sameSite: 'strict', path: '/' })
+		expect.objectContaining({
+			httpOnly: true,
+			secure: true,
+			sameSite: 'lax',
+			path: '/',
+			maxAge: ACCESS_SESSION_SECONDS
+		})
 	);
 });
