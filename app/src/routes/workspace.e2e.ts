@@ -4612,9 +4612,9 @@ test('keeps chat clean while Thinking dialog and current task preserve ACP activ
 	});
 
 	await addProject(page);
-	await expect(
-		sessionButton(page, 'Failed background task').getByLabel('Status: Failed')
-	).toBeVisible();
+	await expect(sessionButton(page, 'Failed background task')).toHaveAccessibleName(
+		'Failed background task, Failed'
+	);
 	await expect(sessionButton(page, 'Interactions').getByLabel(/attention/i)).toBeVisible();
 	await sessionButton(page, 'Interactions').click();
 	await page.getByRole('button', { name: /Inspect Session context/ }).click();
