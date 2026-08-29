@@ -51,6 +51,30 @@ test('session row icons are larger than navigation icons', () => {
 	expect(panel).toContain('session-icon grid size-8');
 });
 
+test('session status is a compact icon badge instead of consuming title width', () => {
+	const panel = readFileSync(new URL('./ContextPanel.svelte', import.meta.url), 'utf8');
+	expect(panel).toContain('session-state-badge');
+	expect(panel).toContain("aria-label={`${session.title || 'Untitled session'}, ${state.label}`}");
+	expect(panel).not.toContain('class="session-state shrink-0"');
+});
+
+test('session rows reserve action space only when actions are visible', () => {
+	const panel = readFileSync(new URL('./ContextPanel.svelte', import.meta.url), 'utf8');
+	const forms = readFileSync(
+		new URL('../../../styles/workspace-forms.css', import.meta.url),
+		'utf8'
+	);
+	const responsive = readFileSync(
+		new URL('../../../styles/responsive.css', import.meta.url),
+		'utf8'
+	);
+	expect(panel).toContain('py-1 pr-2 pl-8');
+	expect(forms).toContain('.session-row:hover .session-select');
+	expect(forms).toContain('padding-right: 4rem');
+	expect(responsive).toContain('.session-select.active {\n\t\tpadding-right: 88px;');
+	expect(responsive).toMatch(/\.session-edit,\s*\.session-archive\s*\{[^}]*opacity: 0;/);
+});
+
 test('hidden archived sessions use an explicit crossed archive icon', () => {
 	const panel = readFileSync(new URL('./ContextPanel.svelte', import.meta.url), 'utf8');
 	expect(panel).toContain("import ArchiveX from '~icons/lucide/archive-x';");

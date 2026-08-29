@@ -19,16 +19,25 @@
 .workspace.sessions-panel-closed > .session-workspace {
 	grid-column: 3;
 }
+.workspace.projects-panel-closed > .context-panel {
+	grid-column: 2;
+}
+.workspace.projects-panel-closed > .session-workspace {
+	grid-column: 3;
+}
+.workspace.projects-panel-closed.sessions-panel-closed > .session-workspace {
+	grid-column: 2;
+}
 
 @media (min-width: 701px) {
 	.workspace.projects-panel-closed {
-		grid-template-columns: 56px 48px var(--session-pane-width, 320px) minmax(0, 1fr);
+		grid-template-columns: 56px var(--session-pane-width, 320px) minmax(0, 1fr);
 	}
 	.workspace.sessions-panel-closed {
 		grid-template-columns: 56px var(--project-pane-width, 220px) minmax(0, 1fr);
 	}
 	.workspace.projects-panel-closed.sessions-panel-closed {
-		grid-template-columns: 56px 48px minmax(0, 1fr);
+		grid-template-columns: 56px minmax(0, 1fr);
 	}
 	.workspace.projects-panel-closed > .project-rail,
 	.workspace.projects-panel-closed > .project-pane-resizer,
@@ -65,13 +74,13 @@
 		grid-template-columns: 56px 74px 280px minmax(0, 1fr);
 	}
 	.workspace.projects-panel-closed {
-		grid-template-columns: 56px 48px 280px minmax(0, 1fr);
+		grid-template-columns: 56px 280px minmax(0, 1fr);
 	}
 	.workspace.sessions-panel-closed {
 		grid-template-columns: 56px 74px minmax(0, 1fr);
 	}
 	.workspace.projects-panel-closed.sessions-panel-closed {
-		grid-template-columns: 56px 48px minmax(0, 1fr);
+		grid-template-columns: 56px minmax(0, 1fr);
 	}
 	.project-rail {
 		padding-inline: 10px;
@@ -270,18 +279,27 @@
 		width: 32px;
 		height: 32px;
 	}
-	.project-edit,
-	.session-edit,
-	.session-archive {
+	.project-edit {
 		right: 0;
 		width: 44px;
 		height: 44px;
 		opacity: 1;
 	}
+	.session-edit,
+	.session-archive {
+		right: 0;
+		width: 44px;
+		height: 44px;
+		opacity: 0;
+	}
 	.session-archive {
 		right: 44px;
 	}
 	.session-select {
+		padding-right: 12px;
+	}
+	.session-row:focus-within .session-select,
+	.session-select.active {
 		padding-right: 88px;
 	}
 	.context-panel .icon-button,

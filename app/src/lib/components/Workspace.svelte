@@ -1,9 +1,6 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import Folder from '~icons/lucide/folder';
-	import FolderKanban from '~icons/lucide/folder-kanban';
-	import MessageSquare from '~icons/lucide/message-square';
 	import { formatElapsed, selectTranscriptTimeline } from '$lib';
 	import { automaticSessionIcon } from '$lib/icon';
 	import { applyPreferences, readPreferences } from '$lib/preferences';
@@ -114,6 +111,11 @@
 		if (pane === 'projects') projectsPanelOpen = open;
 		else sessionsPanelOpen = open;
 		if (persist) localStorage.setItem(`hue:shell:${pane}:open`, String(open));
+	}
+	function toggleShellNavigation() {
+		const open = !projectsPanelOpen && !sessionsPanelOpen;
+		setShellPaneOpen('projects', open);
+		setShellPaneOpen('sessions', open);
 	}
 	function startShellResize(event: PointerEvent) {
 		const target = event.currentTarget as HTMLElement;
@@ -448,8 +450,10 @@
 	{#if !mobile}<GlobalNavigation
 			view={globalView}
 			unreadCount={unreadNotifications}
+			navigationCollapsed={!projectsPanelOpen && !sessionsPanelOpen}
 			onview={setGlobalView}
 			onfind={() => (finderOpen = true)}
+			ontogglenavigation={toggleShellNavigation}
 		/>{/if}
 	<SessionFinder bind:open={finderOpen} onnavigate={openFinderResult} />
 	<AttentionCenter
@@ -531,7 +535,6 @@
 		onarchive={projectManagement.removeProject}
 		onnotifications={() => setGlobalView('notifications')}
 		onsettings={() => setGlobalView('app-settings')}
-		oncollapse={() => setShellPaneOpen('projects', false)}
 		isImage={isImageIcon}
 	/>
 	<ContextPanel
@@ -554,7 +557,6 @@
 		onicon={navigation.openSessionIconEditor}
 		onarchive={navigation.archiveSession}
 		onsearch={navigation.searchSessionList}
-		oncollapse={() => setShellPaneOpen('sessions', false)}
 		isImage={isImageIcon}
 		automaticIcon={automaticSessionIcon}
 		elapsed={formatElapsed}
@@ -569,41 +571,6 @@
 		onfinish={finishShellResize}
 		onkeydown={resizeShellPaneWithKeyboard}
 	/>
-	{#if !mobile && !projectsPanelOpen}<nav
-			class="collapsed-project-rail"
-			aria-label="Collapsed Projects"
-		>
-			<button
-				aria-label="Show Projects panel"
-				title="Show Projects panel"
-				onclick={() => setShellPaneOpen('projects', true)}
-				><FolderKanban width={17} height={17} aria-hidden="true" /></button
-			>
-			<button
-				class:active={!selectedProject}
-				aria-label="Chats"
-				aria-current={!selectedProject ? 'page' : undefined}
-				title="Chats"
-				onclick={() => chooseProjectFromRail(null)}
-				><MessageSquare width={18} height={18} aria-hidden="true" /></button
-			>
-			{#each projectManagement.projects as project (project.id)}<button
-					class:active={selectedProject?.id === project.id}
-					aria-label={project.name}
-					aria-current={selectedProject?.id === project.id ? 'page' : undefined}
-					title={project.name}
-					onclick={() => chooseProjectFromRail(project)}
-				>
-					{#if isImageIcon(project.icon)}<img
-							src={project.icon ?? ''}
-							alt=""
-						/>{:else if project.icon}<span>{project.icon}</span>{:else}<Folder
-							width={18}
-							height={18}
-							aria-hidden="true"
-						/>{/if}
-				</button>{/each}
-		</nav>{/if}
 	<ShellResizer
 		pane="sessions"
 		aria-label="Resize Sessions"

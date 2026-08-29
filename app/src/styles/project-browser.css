@@ -21,43 +21,9 @@ dialog.global-panel {
 dialog.global-panel::backdrop {
 	background: rgb(0 0 0 / 48%);
 }
-.collapsed-project-rail {
-	z-index: 12;
-	grid-column: 2;
-	grid-row: 1;
-	display: flex;
-	min-height: 0;
-	flex-direction: column;
-	align-items: center;
-	gap: 4px;
-	margin: var(--panel-gap) calc(var(--panel-gap) / 2) 0;
-	overflow-y: auto;
-	border: 1px solid var(--border);
-	border-radius: var(--radius-panel);
-	background: var(--card);
-	padding: 4px;
-}
-.collapsed-project-rail button {
-	display: grid;
-	width: 32px;
-	height: 32px;
-	flex: 0 0 32px;
-	place-items: center;
-	overflow: hidden;
-	border-radius: var(--radius-control);
-	color: var(--muted-foreground);
-}
-.collapsed-project-rail button:hover,
-.collapsed-project-rail button:focus-visible,
-.collapsed-project-rail button.active {
-	background: var(--accent);
-	color: var(--foreground);
-}
-.collapsed-project-rail img {
-	width: 24px;
-	height: 24px;
-	border-radius: var(--radius-control);
-	object-fit: cover;
+.project-section-menu {
+	position-area: bottom span-left;
+	margin: 6px 0 0;
 }
 @media (max-width: 1200px) and (min-width: 701px) {
 	.project-panel-actions {
@@ -82,7 +48,7 @@ dialog.global-panel::backdrop {
 		box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
 	}
 	.workspace.sessions-panel-closed > .project-rail,
-	.workspace.projects-panel-closed > .context-panel,
+	.workspace.projects-panel-closed:not(.sessions-panel-closed) > .context-panel,
 	.workspace.projects-panel-closed.sessions-panel-closed > .global-rail {
 		border-right: 1px solid var(--border);
 		border-radius: 0 var(--radius-panel) var(--radius-panel) 0;

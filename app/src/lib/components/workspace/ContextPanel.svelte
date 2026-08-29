@@ -12,7 +12,6 @@
 	import Folder from '~icons/lucide/folder';
 	import LoaderCircle from '~icons/lucide/loader-circle';
 	import MessageSquare from '~icons/lucide/message-square';
-	import PanelLeftClose from '~icons/lucide/panel-left-close';
 	import Pin from '~icons/lucide/pin';
 	import Plus from '~icons/lucide/plus';
 	import Search from '~icons/lucide/search';
@@ -73,7 +72,6 @@
 		onicon,
 		onarchive,
 		onsearch,
-		oncollapse,
 		isImage,
 		automaticIcon,
 		elapsed
@@ -97,7 +95,6 @@
 		onicon: (event: MouseEvent, session: Session) => void;
 		onarchive: (event: MouseEvent, session: Session) => void;
 		onsearch: (event?: SubmitEvent) => void;
-		oncollapse: () => void;
 		isImage: (icon: string | null) => boolean;
 		automaticIcon: (title?: string | null) => string;
 		elapsed: (startedAt: string, now: number) => string;
@@ -256,13 +253,6 @@
 				disabled={selectedProject?.rootAvailable === false}
 				><Plus width={20} height={20} aria-hidden="true" /></button
 			>
-			{#if !mobile}<button
-					class="grid size-11 place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-					type="button"
-					aria-label="Hide Sessions panel"
-					title="Hide Sessions panel"
-					onclick={oncollapse}><PanelLeftClose width={17} height={17} aria-hidden="true" /></button
-				>{/if}
 		</div>
 	</header>
 	{#if searchOpen}<form
@@ -326,11 +316,27 @@
 							class="session-icon grid size-8 place-items-center rounded-md text-2xl leading-none"
 							>{session.icon ?? automaticIcon(session.title)}</span
 						>{/if}
+					<span
+						class="session-state-badge pointer-events-none absolute right-0 bottom-0 grid size-[18px] place-items-center rounded-full border border-card bg-card"
+						title={state.label}
+						aria-hidden="true"
+					>
+						{#if state.icon === 'running'}<LoaderCircle
+								class="animate-spin"
+								width={12}
+								height={12}
+							/>{:else if state.icon === 'waiting'}<CircleHelp width={12} height={12} />
+						{:else if state.icon === 'failed'}<CircleX width={12} height={12} />
+						{:else if state.icon === 'cancelled'}<Ban width={12} height={12} />
+						{:else if state.icon === 'unknown'}<WifiOff width={12} height={12} />
+						{:else}<CircleCheck width={12} height={12} />{/if}
+					</span>
 				</button>
 				<button
-					class="session-select flex min-h-(--control-height) w-full cursor-grab items-center gap-2 rounded-md border border-transparent bg-transparent px-2 py-1 pr-16 pl-8 text-left hover:border-border hover:bg-accent active:cursor-grabbing [&.active]:border-border [&.active]:bg-accent"
+					class="session-select flex min-h-(--control-height) w-full cursor-grab items-center gap-2 rounded-md border border-transparent bg-transparent px-2 py-1 pr-2 pl-8 text-left hover:border-border hover:bg-accent active:cursor-grabbing [&.active]:border-border [&.active]:bg-accent"
 					class:active={selectedSession?.sessionId === session.sessionId}
 					aria-current={selectedSession?.sessionId === session.sessionId ? 'page' : undefined}
+					aria-label={`${session.title || 'Untitled session'}, ${state.label}`}
 					draggable={session.available !== false}
 					ondragstart={(event) => dragSession(event, session)}
 					ondragend={finishSessionDrag}
@@ -343,38 +349,7 @@
 									height={12}
 									aria-label="Pinned"
 								/>{/if}
-							<span
-								class="session-state shrink-0"
-								aria-label={`Status: ${state.label}`}
-								title={state.label}
-							>
-								{#if state.icon === 'running'}<LoaderCircle
-										class="animate-spin"
-										width={15}
-										height={15}
-										aria-hidden="true"
-									/>{:else if state.icon === 'waiting'}<CircleHelp
-										width={15}
-										height={15}
-										aria-hidden="true"
-									/>
-								{:else if state.icon === 'failed'}<CircleX
-										width={15}
-										height={15}
-										aria-hidden="true"
-									/>
-								{:else if state.icon === 'cancelled'}<Ban
-										width={15}
-										height={15}
-										aria-hidden="true"
-									/>
-								{:else if state.icon === 'unknown'}<WifiOff
-										width={15}
-										height={15}
-										aria-hidden="true"
-									/>
-								{:else}<CircleCheck width={15} height={15} aria-hidden="true" />{/if}
-							</span>{#if session.busySince}<span
+							{#if session.busySince}<span
 									class="busy-timer text-xs whitespace-nowrap text-sky-400 tabular-nums"
 									aria-label={`Busy for ${elapsed(session.busySince, now)}`}
 									>{elapsed(session.busySince, now)}</span
