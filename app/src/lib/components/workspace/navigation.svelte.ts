@@ -26,6 +26,7 @@ type NavigationEffects = {
 	cacheSession: () => void;
 	saveDraft: () => void;
 	clearSession: () => void;
+	clearSessionState: () => void;
 	showCachedSession: (session: Session) => void;
 	applyCreatedSession: (
 		body: {
@@ -63,6 +64,7 @@ export class WorkspaceNavigation {
 	activeTab = $state<'sessions' | 'workflows'>('sessions');
 	mobileDrawer = $state<MobilePane>(null);
 	ready = $state(false);
+	creatingSession = $state(false);
 	loadedSessionListProjectId = $state<string | null | undefined>();
 	workflowName = $state('');
 	workflowPrompt = $state('');
@@ -290,13 +292,30 @@ export class WorkspaceNavigation {
 	};
 	createSession = async (workMode?: 'autonomous' | 'live'): Promise<Session | null> => {
 		if (this.effects.guard(() => void this.createSession(workMode))) return null;
+		if (this.creatingSession) return null;
+		const replacingSession = this.selectedSession !== null;
 		this.effects.endVoice();
 		this.effects.saveDraft();
 		this.effects.cacheSession();
 		const projectId = this.selectedProject?.id ?? null;
+		const pendingSession: Session = {
+			sessionId: `pending-${crypto.randomUUID()}`,
+			cwd: this.selectedProject?.primaryPath ?? '',
+			title: 'New Session',
+			pending: true,
+			...(workMode ? { workMode } : {})
+		};
+		this.selectedSession = pendingSession;
+		if (replacingSession) {
+			this.effects.clearSession();
+			this.effects.restoreDraft();
+		} else this.effects.clearSessionState();
+		this.mobileDrawer = null;
+		this.effects.setError('');
+		this.creatingSession = true;
 		this.effects.setLoading(true);
 		try {
-			const body = await this.effects.api<{
+			const request = this.effects.api<{
 				session: Session;
 				commands?: HermesCommand[];
 				runtime?: HermesRuntime;
@@ -305,11 +324,16 @@ export class WorkspaceNavigation {
 				method: 'POST',
 				...(workMode ? { body: JSON.stringify({ workMode }) } : {})
 			});
+			await tick();
+			this.effects.focusComposer();
+			const body = await request;
 			if ((this.selectedProject?.id ?? null) !== projectId) return null;
 			this.prependSession(body.session);
+			if (this.selectedSession?.sessionId !== pendingSession.sessionId) return body.session;
 			this.selectedSession = body.session;
 			this.mobileDrawer = null;
 			this.persistSelection('push');
+			this.effects.saveDraft();
 			await this.effects.applyCreatedSession(body, Boolean(workMode));
 			this.effects.setError('');
 			this.effects.restoreDraft();
@@ -318,9 +342,17 @@ export class WorkspaceNavigation {
 			this.effects.focusComposer();
 			return body.session;
 		} catch (cause) {
+			if (
+				(this.selectedProject?.id ?? null) === projectId &&
+				this.selectedSession?.sessionId === pendingSession.sessionId
+			) {
+				this.selectedSession = null;
+				this.persistSelection('replace');
+			}
 			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
 			return null;
 		} finally {
+			this.creatingSession = false;
 			this.effects.setLoading(false);
 		}
 	};

@@ -30,6 +30,7 @@ export type WorkspaceProps = {
 export type Session = {
 	sessionId: string;
 	cwd: string;
+	pending?: boolean;
 	title?: string | null;
 	icon?: string | null;
 	customIcon?: string | null;

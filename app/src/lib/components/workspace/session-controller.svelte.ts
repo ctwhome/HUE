@@ -107,6 +107,7 @@ export function createSessionController(options: {
 				messageState.clear();
 				sessionState.clear();
 			},
+			clearSessionState: sessionState.clear,
 			showCachedSession: sessionState.showCached,
 			applyLoadedSession: (body: SessionLoad) => {
 				messageState.clear();

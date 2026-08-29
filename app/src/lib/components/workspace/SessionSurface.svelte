@@ -22,7 +22,8 @@
 		oninput,
 		onrunworkflow,
 		unavailableRecovery = null,
-		showContextUsage = true
+		showContextUsage = true,
+		ready = true
 	}: {
 		controller: SessionController;
 		navigation: WorkspaceNavigation;
@@ -36,6 +37,7 @@
 		onrunworkflow: (workflow: Workflow) => void;
 		unavailableRecovery?: string | null;
 		showContextUsage?: boolean;
+		ready?: boolean;
 	} = $props();
 	const sessionState = untrack(() => controller.sessionState);
 	const transcriptFollow = untrack(() => controller.transcriptFollow);
@@ -145,4 +147,5 @@
 		matchingCommands={messageState.matchingCommands}
 		contextPercent={runtimeState.contextPercent}
 		{showContextUsage}
+		{ready}
 	/>{/if}
