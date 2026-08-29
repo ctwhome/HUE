@@ -220,6 +220,22 @@
 		composerElement.style.height = `${Math.min(160, Math.max(44, composerElement.scrollHeight))}px`;
 		composerElement.style.overflowY = composerElement.scrollHeight > 160 ? 'auto' : 'hidden';
 	}
+	function reserveComposerSpace(node: HTMLFormElement) {
+		const parent = node.parentElement;
+		const observer = new ResizeObserver(() => {
+			const style = getComputedStyle(node);
+			const height =
+				node.offsetHeight + parseFloat(style.marginTop) + parseFloat(style.marginBottom);
+			parent?.style.setProperty('--composer-height', `${height}px`);
+		});
+		observer.observe(node);
+		return {
+			destroy() {
+				observer.disconnect();
+				parent?.style.removeProperty('--composer-height');
+			}
+		};
+	}
 	function handleComposerInput(event: Event) {
 		oninput(event);
 		resizeComposer();
@@ -265,6 +281,7 @@
 <form
 	class="composer sticky bottom-0 mx-[clamp(10px,2vw,40px)] mb-4 rounded-lg border border-border bg-card/95 px-2.5 py-2 shadow-lg backdrop-blur-xl"
 	class:dragging={draggingImages}
+	use:reserveComposerSpace
 	{onsubmit}
 	ondragover={(event) => {
 		event.preventDefault();

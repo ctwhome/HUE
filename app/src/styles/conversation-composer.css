@@ -36,6 +36,18 @@
 .session-view:has(> .transcript) > .transcript {
 	padding-top: 76px;
 }
+.session-view:not(.empty-session):has(> .transcript) > .transcript {
+	padding-bottom: var(--composer-height, 160px);
+}
+.session-view:not(.empty-session):has(> .transcript) > .composer {
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	background: color-mix(in srgb, var(--card) 65%, transparent);
+	-webkit-backdrop-filter: blur(10px) saturate(130%);
+	backdrop-filter: blur(10px) saturate(130%);
+}
 .session-view.personal-background {
 	position: relative;
 	isolation: isolate;

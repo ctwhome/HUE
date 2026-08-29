@@ -857,7 +857,9 @@ test('conversation scrolls behind the translucent Session header', async ({ page
 
 	const header = page.locator('.session-header');
 	const transcript = page.locator('.transcript');
+	const composer = page.locator('.composer');
 	await expect(header).toHaveCSS('position', 'absolute');
+	await expect(composer).toHaveCSS('position', 'absolute');
 	await expect.poll(async () => (await transcript.boundingBox())?.y).toBe(
 		(await header.boundingBox())?.y
 	);
@@ -883,6 +885,17 @@ test('conversation scrolls behind the translucent Session header', async ({ page
 					return box.top < bounds.bottom && box.bottom > bounds.top;
 				}),
 			{ top: headerBox.y, bottom: headerBox.y + headerBox.height }
+		)
+	).toBe(true);
+	const composerBox = (await composer.boundingBox())!;
+	expect(
+		await transcript.locator('article').evaluateAll(
+			(articles, bounds) =>
+				articles.some((article) => {
+					const box = article.getBoundingClientRect();
+					return box.top < bounds.bottom && box.bottom > bounds.top;
+				}),
+			{ top: composerBox.y, bottom: composerBox.y + composerBox.height }
 		)
 	).toBe(true);
 
@@ -3443,7 +3456,7 @@ test('follows new chat content until the reader scrolls up', async ({ page }) =>
 		await page.waitForTimeout(50);
 		expect(await scroller.evaluate((element) => element.scrollTop)).toBeCloseTo(releasedTop, 0);
 		const scrollButton = page.getByRole('button', { name: 'Scroll to latest message' });
-		await scrollButton.evaluate((element) => element.click());
+		await scrollButton.evaluate((element) => (element as HTMLButtonElement).click());
 		await expect
 			.poll(async () =>
 				scroller.evaluate(
