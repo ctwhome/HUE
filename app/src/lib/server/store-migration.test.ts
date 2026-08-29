@@ -20,7 +20,7 @@ function temporaryDatabase(name: string): { root: string; path: string } {
 
 function createHistoricalCancelledSchema(path: string): void {
 	const store = new HUEStore(path);
-	store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+	store.ensureProjectMetadata('hue', 'HUE');
 	store.createWorkflow({
 		id: 'release',
 		projectId: 'hue',
@@ -29,7 +29,7 @@ function createHistoricalCancelledSchema(path: string): void {
 		workMode: 'live'
 	});
 	store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
-	store.updateSessionMetadata('hue', 'session-1', {
+	store.updateSession('hue', 'session-1', {
 		title: 'Migration proof',
 		pinned: true,
 		folder: 'Delivery',
@@ -153,7 +153,7 @@ function createHistoricalCancelledSchema(path: string): void {
 
 function createHistoricalRequiredProjectSessionSchema(path: string): void {
 	const store = new HUEStore(path);
-	store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+	store.ensureProjectMetadata('hue', 'HUE');
 	store.close();
 
 	const database = new Database(path, { strict: true });
@@ -200,7 +200,7 @@ describe('HUEStore versioned migrations', () => {
 	it('adds Workflow favorites to version 2 databases without a backup', () => {
 		const { root, path } = temporaryDatabase('workflow-favorites-migration');
 		const initial = new HUEStore(path);
-		initial.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		initial.ensureProjectMetadata('hue', 'HUE');
 		initial.createWorkflow({ id: 'release', projectId: 'hue', name: 'Release', prompt: 'Ship.' });
 		initial.close();
 		const historical = new Database(path);
@@ -209,6 +209,42 @@ describe('HUEStore versioned migrations', () => {
 
 		const migrated = new HUEStore(path);
 		expect(migrated.listWorkflows('hue')[0]).toMatchObject({ id: 'release', favorite: false });
+		migrated.close();
+		expect(readdirSync(root)).toEqual(['hue.db']);
+	});
+
+	it('adds HUE-owned schedules to version 3 databases without rewriting existing state', () => {
+		const { root, path } = temporaryDatabase('schedule-migration');
+		const initial = new HUEStore(path);
+		initial.ensureProjectMetadata('hue', 'HUE');
+		initial.close();
+		const historical = new Database(path);
+		historical.exec('DROP TABLE schedules; PRAGMA user_version = 3;');
+		historical.close();
+
+		const migrated = new HUEStore(path);
+		expect(migrated.listSchedules()).toEqual([]);
+		expect(migrated.hasProjectMetadata('hue')).toBe(true);
+		migrated.close();
+		expect(readdirSync(root)).toEqual(['hue.db']);
+	});
+
+	it('adds commit-generation reservations to version 4 databases without a backup', () => {
+		const { root, path } = temporaryDatabase('commit-generation-migration');
+		const initial = new HUEStore(path);
+		initial.close();
+		const historical = new Database(path);
+		historical.exec('DROP TABLE commit_generations; PRAGMA user_version = 4;');
+		historical.close();
+
+		const migrated = new HUEStore(path);
+		expect(
+			migrated.database
+				.query(
+					"SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'commit_generations'"
+				)
+				.get()
+		).toEqual({ name: 'commit_generations' });
 		migrated.close();
 		expect(readdirSync(root)).toEqual(['hue.db']);
 	});

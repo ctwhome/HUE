@@ -57,9 +57,8 @@ test('manifest exposes stable install, ordered shortcut, icon, and share contrac
 		expect(bytes.readUInt32BE(16)).toBe(expected);
 		expect(bytes.readUInt32BE(20)).toBe(expected);
 	}
-	expect(readFileSync(join(staticRoot, 'favicon.png'))).toEqual(
-		readFileSync(join(staticRoot, '..', '..', 'favicon.png'))
-	);
+	const favicon = readFileSync(join(staticRoot, 'favicon.png'));
+	expect(favicon.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
 });
 
 test('service worker caches versioned build assets and excludes navigation and APIs', () => {

@@ -7,7 +7,6 @@
   "scripts": {
     "site:prepare": "python3 scripts/prepare_site.py",
     "dev": "HUE_DOCS_BASE=/docs bun run site:prepare && HUE_DOCS_BASE=/docs astro dev",
-    "dev:stop": "HUE_DOCS_BASE=/docs astro dev stop",
     "build": "bun run site:prepare && astro build",
     "preview": "astro preview",
     "check": "python3 scripts/validate_docs.py && bun run site:prepare && astro check",

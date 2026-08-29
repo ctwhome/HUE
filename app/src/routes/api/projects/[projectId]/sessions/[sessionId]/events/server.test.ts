@@ -3,7 +3,7 @@ import { serviceExportStubs } from '$lib/server/services-test-stubs';
 
 const projectIds: string[] = [];
 
-mock.module('$lib/server/services', () => ({
+mock.module('$lib/server/route-services', () => ({
 	...serviceExportStubs,
 	authoritativeProject: async () => ({ id: 'canonical-project' }),
 	services: () => ({

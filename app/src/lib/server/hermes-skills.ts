@@ -1,23 +1,25 @@
 import {
 	chmodSync,
+	closeSync,
+	openSync,
 	readdirSync,
 	readFileSync,
+	readSync,
 	realpathSync,
 	renameSync,
 	rmSync,
 	statSync,
 	writeFileSync
 } from 'node:fs';
-import { homedir } from 'node:os';
 import { basename, dirname, join, relative, sep } from 'node:path';
 
 const VALID_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
+const MAX_CONTENT_BYTES = 1_000_000;
 type Provenance = 'custom' | 'bundled' | 'hub';
 
-export function hermesSkillsRoot(profile: string, home = homedir()) {
-	return profile === 'default'
-		? join(home, '.hermes', 'skills')
-		: join(home, '.hermes', 'profiles', profile, 'skills');
+export function hermesSkillsRoot(profile: string, env: NodeJS.ProcessEnv = process.env) {
+	const home = env.HERMES_HOME ?? join(env.HOME ?? '', '.hermes');
+	return profile === 'default' ? join(home, 'skills') : join(home, 'profiles', profile, 'skills');
 }
 
 function declaredName(content: string, directory: string) {
@@ -28,31 +30,66 @@ function declaredName(content: string, directory: string) {
 }
 
 function ownership(root: string, file: string, name: string): Provenance {
+	const optional = (path: string) => {
+		try {
+			return readFileSync(path, 'utf8');
+		} catch (cause) {
+			if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return null;
+			throw new Error('Skill ownership could not be verified');
+		}
+	};
 	try {
-		const lock = JSON.parse(readFileSync(join(root, '.hub', 'lock.json'), 'utf8')) as {
+		const content = optional(join(root, '.hub', 'lock.json'));
+		const lock = (content === null ? null : JSON.parse(content)) as {
 			installed?: Record<string, { install_path?: unknown }>;
-		};
-		for (const [installedName, entry] of Object.entries(lock.installed ?? {})) {
+		} | null;
+		if (
+			lock &&
+			(typeof lock !== 'object' || !lock.installed || typeof lock.installed !== 'object')
+		) {
+			throw new Error('invalid hub lock');
+		}
+		for (const [installedName, entry] of Object.entries(lock?.installed ?? {})) {
 			if (installedName === name) return 'hub';
-			if (typeof entry.install_path !== 'string') continue;
+			if (!entry || typeof entry !== 'object' || typeof entry.install_path !== 'string') {
+				throw new Error('invalid hub lock');
+			}
 			const installPath = realpathSync(join(root, entry.install_path));
 			if (file.startsWith(`${installPath}${sep}`)) return 'hub';
 		}
 	} catch {
-		// Missing or malformed hub lock means no hub ownership declarations.
+		throw new Error('Skill ownership could not be verified');
 	}
 	try {
+		const content = optional(join(root, '.bundled_manifest'));
 		const bundled = new Set(
-			readFileSync(join(root, '.bundled_manifest'), 'utf8')
+			(content ?? '')
 				.split('\n')
-				.map((line) => line.split(':', 1)[0].trim())
+				.map((line) => line.trim())
 				.filter(Boolean)
+				.map((line) => {
+					if (!line.includes(':')) throw new Error('invalid bundled manifest');
+					return line.split(':', 1)[0].trim();
+				})
 		);
 		if (bundled.has(name)) return 'bundled';
 	} catch {
-		// Missing manifest means no bundled ownership declarations.
+		throw new Error('Skill ownership could not be verified');
 	}
 	return 'custom';
+}
+
+function boundedContent(file: string): string {
+	const size = statSync(file).size;
+	if (size > MAX_CONTENT_BYTES) throw new Error('Skill content exceeds 1 MB');
+	const descriptor = openSync(file, 'r');
+	try {
+		const buffer = Buffer.alloc(size);
+		readSync(descriptor, buffer, 0, size, 0);
+		return buffer.toString('utf8');
+	} finally {
+		closeSync(descriptor);
+	}
 }
 
 function findSkill(root: string, name: string) {
@@ -71,7 +108,7 @@ function findSkill(root: string, name: string) {
 				const found = visit(path);
 				if (found) return found;
 			} else if (entry.isFile() && entry.name === 'SKILL.md') {
-				const content = readFileSync(path, 'utf8');
+				const content = boundedContent(path);
 				if (declaredName(content.slice(0, 16_384), directory) !== name) continue;
 				const canonical = realpathSync(path);
 				if (!canonical.startsWith(`${canonicalRoot}${sep}`))
@@ -90,7 +127,7 @@ export function readHermesSkill(name: string, root = hermesSkillsRoot('default')
 	const found = findSkill(root, name);
 	return {
 		name,
-		content: readFileSync(found.file, 'utf8'),
+		content: boundedContent(found.file),
 		provenance: found.provenance,
 		editable: found.provenance === 'custom'
 	};
@@ -101,7 +138,11 @@ export function writeHermesSkill(
 	content: string,
 	root = hermesSkillsRoot('default')
 ) {
-	if (!content || content.length > 1_000_000 || content.includes('\0')) {
+	if (
+		!content ||
+		Buffer.byteLength(content, 'utf8') > MAX_CONTENT_BYTES ||
+		content.includes('\0')
+	) {
 		throw new Error('Skill content must be between 1 byte and 1 MB');
 	}
 	if (declaredName(content, name) !== name) throw new Error(`Skill name must remain ${name}`);

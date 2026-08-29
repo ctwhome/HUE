@@ -111,7 +111,7 @@
 			/>
 		</div>
 		<div class="skill-editor-actions flex items-center justify-end gap-3">
-			{#if skillSaved}<span class="text-emerald-300" role="status">Saved</span>{/if}
+			{#if skillSaved}<span class="text-[var(--success)]" role="status">Saved</span>{/if}
 			<Button title="Save skill" onclick={onsave} disabled={skillSaving || !selectedSkillEditable}
 				>{skillSaving ? 'Saving…' : 'Save skill'}</Button
 			>

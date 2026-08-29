@@ -6,6 +6,24 @@ export function moveBefore(order: string[], moved: string, before: string | null
 	return next;
 }
 
+export function moveBy(order: string[], moved: string, offset: -1 | 1): string[] {
+	const index = order.indexOf(moved);
+	const target = index + offset;
+	if (index < 0 || target < 0 || target >= order.length) return order;
+	const next = [...order];
+	[next[index], next[target]] = [next[target]!, next[index]!];
+	return next;
+}
+
+export function readStringArray(storage: Pick<Storage, 'getItem'>, key: string): string[] {
+	try {
+		const value = JSON.parse(storage.getItem(key) ?? '[]');
+		return Array.isArray(value) && value.every((item) => typeof item === 'string') ? value : [];
+	} catch {
+		return [];
+	}
+}
+
 export function dropBefore(
 	order: string[],
 	moved: string,

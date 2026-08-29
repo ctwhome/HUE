@@ -1,53 +1,8 @@
 import { expect, test } from 'bun:test';
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-	commitMessageArgs,
-	normalizeCommitMessage,
-	parseCronJobs,
-	parseProfiles,
-	parseSkills,
-	resolveHermesCommand
-} from './hermes-cli';
-
-test('uses a cheap tool-free Hermes model for commit drafts', () => {
-	expect(commitMessageArgs({})).toEqual([
-		'chat',
-		'--query-file',
-		'-',
-		'--quiet',
-		'--source',
-		'tool',
-		'--provider',
-		'openai-codex',
-		'--model',
-		'gpt-5.6-luna',
-		'--reasoning',
-		'none',
-		'--toolsets',
-		'context_engine',
-		'--ignore-rules',
-		'--max-turns',
-		'1',
-		'--run-budget',
-		'30'
-	]);
-	expect(commitMessageArgs({}, { provider: 'copilot', model: 'gpt-4o-mini' }).slice(6, 10)).toEqual(
-		['--provider', 'copilot', '--model', 'gpt-4o-mini']
-	);
-});
-
-test('normalizes Hermes commit drafts to one bounded subject line', () => {
-	expect(normalizeCommitMessage('```text\nfeat: add commit generation\n```')).toBe(
-		'feat: add commit generation'
-	);
-	expect(normalizeCommitMessage('┌─ Reasoning ─┐\nThinking aloud\nfix(ui): keep one rail')).toBe(
-		'fix(ui): keep one rail'
-	);
-	expect(normalizeCommitMessage(`fix: ${'x'.repeat(100)}`)).toHaveLength(72);
-	expect(() => normalizeCommitMessage('')).toThrow('Hermes returned an empty commit message');
-});
+import { resolveHermesCommand } from './hermes-cli';
 
 test('resolves a user-local Hermes install when it is outside PATH', () => {
 	const home = mkdtempSync(join(tmpdir(), 'hue-hermes-command-'));
@@ -59,61 +14,13 @@ test('resolves a user-local Hermes install when it is outside PATH', () => {
 	expect(resolveHermesCommand({}, home)).toBe(command);
 });
 
-test('parses installed skills from Hermes CLI output', () => {
-	expect(
-		parseSkills(`
-│ Name          │ Category │ Source  │ Trust   │ Status  │
-│ browser-use   │          │ local   │ local   │ enabled │
-│ computer-use  │ apple    │ builtin │ builtin │ enabled │
-15 hub-installed, 81 builtin — 2 enabled shown`)
-	).toEqual([
-		{ name: 'browser-use', category: '', source: 'local', trust: 'local', status: 'enabled' },
-		{
-			name: 'computer-use',
-			category: 'apple',
-			source: 'builtin',
-			trust: 'builtin',
-			status: 'enabled'
-		}
-	]);
-});
-
-test('parses scheduled jobs from Hermes CLI output', () => {
-	expect(
-		parseCronJobs(`
-  b5a9c19073c8 [active]
-    Name:      Monthly check
-    Schedule:  0 9 1 * *
-    Next run:  2026-09-01T09:00:00+02:00
-
-  87ff409f1776 [paused]
-    Name:      Daily application
-    Schedule:  30 8 * * *`)
-	).toEqual([
-		{
-			id: 'b5a9c19073c8',
-			status: 'active',
-			name: 'Monthly check',
-			schedule: '0 9 1 * *',
-			nextRun: '2026-09-01T09:00:00+02:00'
-		},
-		{
-			id: '87ff409f1776',
-			status: 'paused',
-			name: 'Daily application',
-			schedule: '30 8 * * *'
-		}
-	]);
-});
-
-test('parses Hermes profiles and active state', () => {
-	expect(
-		parseProfiles(`
- Profile          Model                        Gateway      Alias        Distribution
- ◆default         gpt-5.6-sol                  running      —            —
-  lady-danbury    gpt-5.6-sol                  running      —            —`)
-	).toEqual([
-		{ name: 'default', model: 'gpt-5.6-sol', gateway: 'running', active: true },
-		{ name: 'lady-danbury', model: 'gpt-5.6-sol', gateway: 'running', active: false }
-	]);
+test('production code has no direct hermes chat or Hermes cron API path', () => {
+	for (const path of new Bun.Glob('app/src/**/*.{ts,svelte}').scanSync('.')) {
+		if (path.endsWith('.test.ts') || path.endsWith('.e2e.ts')) continue;
+		const source = readFileSync(path, 'utf8');
+		expect(source).not.toContain('/api/cron');
+	}
+	const cli = readFileSync('app/src/lib/server/hermes-cli.ts', 'utf8');
+	expect(cli).not.toContain("'chat'");
+	expect(cli).not.toContain('Bun.spawn');
 });

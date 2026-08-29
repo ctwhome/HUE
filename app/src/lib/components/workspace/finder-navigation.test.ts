@@ -91,7 +91,9 @@ test('stale Session opening cannot skip a later Project drill-down', async () =>
 });
 
 test('shows cached Session titles while Hermes refreshes them', async () => {
-	const refresh = deferred<{ sessions: Array<{ sessionId: string; cwd: string; title: string }> }>();
+	const refresh = deferred<{
+		sessions: Array<{ sessionId: string; cwd: string; title: string }>;
+	}>();
 	const requests: string[] = [];
 	const project = { id: 'one', rootAvailable: true } as Project;
 	const state = new WorkspaceNavigation(null, {

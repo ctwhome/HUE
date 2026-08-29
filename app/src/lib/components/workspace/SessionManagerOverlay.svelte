@@ -7,6 +7,7 @@
 		type ChatBackground
 	} from './chat-background';
 	import { isImageIcon } from './project-management.svelte';
+	import { moveBy, prependNew, readStringArray } from '$lib/drag-order';
 	import IconEditorPopover from '$lib/components/IconEditorPopover.svelte';
 	import type { WorkspaceNavigation } from './navigation.svelte';
 	import SessionManagerDialog from './SessionManagerDialog.svelte';
@@ -41,6 +42,17 @@
 			navigation.sessionEditError = cause instanceof Error ? cause.message : String(cause);
 		}
 	}
+	function moveSession(offset: -1 | 1) {
+		const sessionId = navigation.editingSession?.sessionId;
+		if (!sessionId) return;
+		const key = `hue:session-order:${navigation.selectedProject?.id ?? 'general'}`;
+		const order = prependNew(
+			readStringArray(localStorage, key),
+			navigation.sessions.map(({ sessionId }) => sessionId)
+		);
+		localStorage.setItem(key, JSON.stringify(moveBy(order, sessionId, offset)));
+		window.dispatchEvent(new Event('hue:session-order'));
+	}
 </script>
 
 <SessionManagerDialog
@@ -57,6 +69,10 @@
 	onicon={navigation.openSessionIconEditor}
 	onsave={navigation.saveSession}
 	onduplicate={navigation.duplicateSession}
+	onmoveup={() => moveSession(-1)}
+	onmovedown={() => moveSession(1)}
+	canMoveUp={navigation.sessions.length > 1}
+	canMoveDown={navigation.sessions.length > 1}
 	ondelete={navigation.deleteSession}
 	onexport={navigation.exportSession}
 	isImage={isImageIcon}

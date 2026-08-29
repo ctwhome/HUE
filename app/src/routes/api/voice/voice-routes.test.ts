@@ -30,6 +30,16 @@ describe('voice API boundaries', () => {
 		expect(response.status).toBe(400);
 	});
 
+	it('rejects audio whose decoded signature contradicts its declared type', async () => {
+		const response = await transcribe(
+			event({
+				dataUrl: `data:audio/wav;base64,${Buffer.from('<html>').toString('base64')}`,
+				mimeType: 'audio/wav'
+			})
+		);
+		expect(response.status).toBe(400);
+	});
+
 	it('rejects unbounded speech text', async () => {
 		const response = await speak(event({ text: 'x'.repeat(20_001) }));
 		expect(response.status).toBe(413);

@@ -73,27 +73,27 @@
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions (ARIA separator is keyboard-operable.) -->
 	{#if open}<div
-		class="project-browser-resizer"
-		role="separator"
-		aria-label="Resize project browser"
-		aria-orientation="vertical"
-		aria-valuemin="240"
-		aria-valuemax={maxWidth}
-		aria-valuenow={Math.round(width)}
-		tabindex="0"
-		onpointerdown={startResize}
-		onpointermove={resize}
-		onpointerup={finishResize}
-		onpointercancel={finishResize}
-		onkeydown={resizeWithKeyboard}
-	></div>{/if}
+			class="project-browser-resizer"
+			role="separator"
+			aria-label="Resize project browser"
+			aria-orientation="vertical"
+			aria-valuemin="240"
+			aria-valuemax={maxWidth}
+			aria-valuenow={Math.round(width)}
+			tabindex="0"
+			onpointerdown={startResize}
+			onpointermove={resize}
+			onpointerup={finishResize}
+			onpointercancel={finishResize}
+			onkeydown={resizeWithKeyboard}
+		></div>{/if}
 	<section
 		class="project-browser-content flex min-h-0 flex-1 flex-col"
 		aria-hidden={!open}
 		inert={!open ? true : undefined}
 	>
 		<div class="min-h-0 flex-1 px-2.5 pt-2.5">
-			<BrowserPanel {projectId} {onpreviewchange} />
+			{#key projectId}<BrowserPanel {projectId} {onpreviewchange} />{/key}
 		</div>
 	</section>
 </aside>

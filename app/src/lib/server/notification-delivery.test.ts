@@ -13,7 +13,7 @@ import { HUEStore } from './store';
 
 function setup() {
 	const store = new HUEStore(':memory:');
-	store.createProject({ id: 'project-1', name: 'Secret project', rootPath: '/secret/path' });
+	store.ensureProjectMetadata('project-1', 'Secret project');
 	store.upsertSession('project-1', {
 		sessionId: 'session-1',
 		cwd: '/secret/path',
@@ -347,6 +347,28 @@ describe('notification delivery boundary', () => {
 		store.close();
 	});
 
+	it('waits for active delivery persistence when closing', async () => {
+		const store = setup();
+		let release!: () => void;
+		const blocked = new Promise<void>((resolve) => (release = resolve));
+		const service = new NotificationService(store, {
+			vapid: { publicKey: 'public', privateKey: 'private', subject: 'mailto:hue@example.test' },
+			transport: { send: async () => blocked }
+		});
+		service.upsertEndpoint(subscription);
+		store.appendEvent('project-1', 'session-1', 'message.completed', {});
+		const delivery = service.deliverPending();
+		await Promise.resolve();
+		let closed = false;
+		const closing = service.close().then(() => (closed = true));
+		await Promise.resolve();
+		expect(closed).toBe(false);
+		release();
+		await Promise.all([delivery, closing]);
+		expect(service.listAttempts()[0]?.status).toBe('accepted');
+		store.close();
+	});
+
 	it('owns retry timing and wakes without polling or new events', async () => {
 		const store = setup();
 		let calls = 0;
@@ -505,7 +527,7 @@ describe('notification delivery boundary', () => {
 
 function setupFileStore(path: string) {
 	const store = new HUEStore(path);
-	store.createProject({ id: 'project-1', name: 'Secret project', rootPath: '/secret/path' });
+	store.ensureProjectMetadata('project-1', 'Secret project');
 	store.upsertSession('project-1', {
 		sessionId: 'session-1',
 		cwd: '/secret/path',

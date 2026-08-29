@@ -1,84 +1,33 @@
 # Decision register
 
-> **Register status:** `SPEC`
-> Every unresolved item below is explicitly `TBD`. Implementations must reference an accepted ADR rather than choose by accident.
+> **Status:** `CURRENT`
+> This register lists every accepted architecture decision in `docs/decisions` and the remaining concrete open boundaries.
 
 ## Accepted decisions
 
-| ID                                          | Decision                                                                        | Accepted direction                                                                                                                                    | ADR                                                          | Status                  |
-| ------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------- |
-| TBD-020                                     | Frontend and component system                                                   | SvelteKit + Svelte 5 + shadcn-svelte beneath HUE-owned tokens and wrapper components; static HTML prototype retained until functional flows stabilize | [ADR-0001](decisions/0001-sveltekit-shadcn-svelte.md)        | Accepted                |
-| TBD-001, TBD-002, TBD-004, TBD-007, TBD-012 | Focused product boundary, shell, control plane, runtime, storage, and transport | Browser workspace on SvelteKit/Bun; `bun:sqlite`; Hermes ACP external-process adapter; acknowledged HTTP envelopes and cursor replay                  | [ADR-0002](decisions/0002-bun-hermes-acp-workspace.md)       | Accepted                |
-| TBD-014 (Android proof boundary only)       | Mobile attention surface                                                        | Capacitor shell over canonical HUE server with bounded Android links, widget, shortcuts, and generic notifications; production access remains TBD     | [ADR-0008](decisions/0008-capacitor-android-native-shell.md) | Accepted proof boundary |
+| ADR | Decision | Effect |
+| --- | --- | --- |
+| [ADR-0001](decisions/0001-sveltekit-shadcn-svelte.md) | SvelteKit 5, Svelte 5, and HUE-owned component conventions | Canonical production frontend; static prototype retired. |
+| [ADR-0002](decisions/0002-bun-hermes-acp-workspace.md) | Focused Bun/Hermes ACP workspace | Baseline Projects, Workflows, Sessions boundary and reliable delivery contract. |
+| [ADR-0003](decisions/0003-optional-session-project.md) | Optional Session Project | Sessions may be explicitly projectless. |
+| [ADR-0004](decisions/0004-project-development-panels.md) | Project development panels | Bounded terminal, Git, file, browser, and evidence tools are supporting surfaces. |
+| [ADR-0005](decisions/0005-hermes-administration.md) | Hermes administration | Authenticated loopback `hermes serve` may support bounded administration. |
+| [ADR-0006](decisions/0006-hermes-projects-authority.md) | Hermes Projects authority | Hermes owns Project identity and folders. |
+| [ADR-0007](decisions/0007-portable-pwa-cache-and-share-boundary.md) | Portable PWA boundary | Defines installation, cache, launch, and share behavior. |
+| [ADR-0008](decisions/0008-capacitor-android-native-shell.md) | Bounded Android shell proof | Retains the proven Android transport boundary without selecting production distribution. |
+| [ADR-0009](decisions/0009-focused-notifications.md) | Focused notifications | Retains durable local attention and optional privacy-minimized Web Push. |
+| [ADR-0010](decisions/0010-hermes-schedules-and-dedicated-sessions.md) | HUE-owned schedules and dedicated Sessions | Implemented: HUE owns cron state and dispatches every run through one dedicated projectless Session. |
+| [ADR-0011](decisions/0011-retain-project-excalidraw.md) | Retain Project Excalidraw | Keeps the proven Project-scoped canvas as a workbench surface. |
+| [ADR-0012](decisions/0012-custom-skill-filesystem-exception.md) | Custom skill filesystem exception | Permits narrowly hardened direct `SKILL.md` mutation where Hermes lacks an API. |
 
-## Alpha-blocking decisions
+## Open boundaries
 
-| ID      | Decision                     | Options to evaluate                                                                                   | Decision criteria                                                                      | Status |
-| ------- | ---------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------ |
-| TBD-003 | Orchestration foundation     | custom state machine; Magentic/Agent Framework concepts; LangGraph; Mastra; Google ADK; hybrid        | durable execution, dynamic plans, observability, adapter neutrality, complexity        | TBD    |
-| TBD-005 | Default task topology policy | rules + LLM; planner-first; direct-first adaptive; learned policy                                     | predictability, cost, quality, avoid agent bureaucracy                                 | TBD    |
-| TBD-006 | Knowledge/memory engine      | portable files + relational graph; relational curated records; vector DB; hybrid; adapt Hermes memory | human readability, backlinks, provenance, correction, namespaces, privacy, portability | TBD    |
-
-| TBD-008 | Routing evaluation and optimization | static policy; local benchmarks; opt-in federated metrics; manual ranking | privacy, measurable quality, provider churn, simplicity | TBD |
-| TBD-009 | Worker catalog format | built-in typed manifests; YAML/Markdown; plugin-provided; skills as manifests | discoverability, safety, versioning, authoring UX | TBD |
-| TBD-010 | Computer-use backend | cua-driver; OS-specific native adapters; browser-only first; pluggable contract | background operation, accessibility, safety, cross-platform, recordings | TBD |
-| TBD-011 | Worker/code isolation | git worktrees; OS sandbox; containers; lightweight VM; policy mix | security, performance, filesystem fidelity, cross-platform | TBD |
-
-## Pre-alpha decisions
-
-| ID      | Decision                                        | Options/criteria                                                                                                                                            | Status |
-| ------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| TBD-013 | Notification gateways and delivery architecture | local OS/sound, native or PWA push, self-hosted/E2E relay, Telegram, email, webhooks; delivery receipts, offline queue, privacy, deep links, operating cost | TBD    |
-| TBD-014 | Mobile attention surface                        | responsive web/PWA; native shell; companion app; notification-only first; secure monitor/approval depth                                                     | TBD    |
-| TBD-015 | Plugin/tool protocol                            | MCP-first; native SDK; both through capability adapter                                                                                                      | TBD    |
-| TBD-016 | Cross-Space retrieval                           | deny by default; explicitly linked Resources; shared collections; policy-mediated query                                                                     | TBD    |
-| TBD-017 | Sync and remote access                          | no sync initially; direct tailnet; E2E relay; hosted account optional                                                                                       | TBD    |
-| TBD-018 | Credential vault                                | OS keychain abstraction; external secret manager integrations                                                                                               | TBD    |
-| TBD-019 | Open-source license/governance                  | Apache-2.0; AGPL-3.0; MPL-2.0; dual/community license                                                                                                       | TBD    |
-| TBD-021 | Telemetry/evaluation sharing                    | local only; opt-in anonymous aggregates; opt-in trace upload                                                                                                | TBD    |
-| TBD-022 | Portable context-pack format and location       | Markdown role files; frontmatter; sidecar manifest; database projection and checkout rules                                                                  | TBD    |
-| TBD-023 | Authoritative-source synchronization            | GitHub/Calendar/email connector ownership, polling/webhooks, writeback and conflict semantics                                                               | TBD    |
-| TBD-024 | OpenCode adapter mode                           | official server/API; managed CLI subprocess; SDK; compatibility bridge                                                                                      | TBD    |
+| Decision | Current constraint | Revisit trigger |
+| --- | --- | --- |
+| Production Android distribution and remote access | ADR-0008 is a proof boundary only. | A release channel and threat model are selected. |
+| Clarify over Hermes ACP | Unsupported until Hermes exposes and proves ACP elicitation. | An installed Hermes version advertises and passes the required bridge tests. |
+| Additional runtimes or product objects | Outside the focused product. | Repeated real use justifies a focused ADR. |
 
 ## ADR workflow
 
-Each decision gets `docs/decisions/NNNN-title.md` using the template. An accepted ADR includes:
-
-- context and decision question;
-- constraints/non-negotiables from the vision;
-- options and evidence;
-- disposable spike results if needed;
-- decision;
-- consequences and risks;
-- migration/revisit trigger;
-- affected docs/issues.
-
-## Recommended investigation order
-
-1. **Accepted ADR-0002:** implement and harden the focused Project/Workflow/Session slice.
-2. **Accepted ADR-0006:** use first-class Hermes Projects as Project identity and folder authority.
-3. **TBD-003 + TBD-005:** only revisit orchestration if the focused product produces a concrete need.
-4. **TBD-006 + TBD-016 + TBD-022:** context pack, knowledge and memory semantics.
-5. **TBD-009 + TBD-011:** worker and isolation contracts.
-6. **TBD-008:** route policy/evaluation.
-7. **TBD-010:** computer use after permission engine foundations.
-8. **TBD-023 + TBD-024:** source ownership and the first replaceable execution adapter.
-9. Remaining production packaging, access, and distribution decisions after ADR-0008 Android proof.
-
-## Strong current hypotheses (not decisions)
-
-These are recommendations to test, still `TBD`:
-
-- Keep HUE's Project/Workflow metadata and delivery journal independent while treating Hermes ACP as the sole Session execution/runtime boundary.
-- Keep SvelteKit + Svelte 5 canonical UI; ADR-0008 proves bounded Capacitor Android transport without selecting production access or distribution.
-- Do not fork or embed the existing Hermes Python WebUI; use ACP and complete semantic message envelopes instead of PTY input.
-- Use SQLite as canonical local transactional storage with an append-only event journal and rebuildable indexes.
-- Build a small custom durable orchestration state machine while borrowing proven supervisor patterns; avoid importing a large framework before requirements are proven.
-- Use capability manifests and runtime adapters; do not encode providers directly in product features.
-- Use OpenCode as the first primary software execution backend while HUE owns Session continuity, context injection, permissions, task state and normalization; validate the exact adapter mode under `TBD-024`.
-- Keep Space context packs human-readable and file-based at the product boundary even if SQLite, FTS or vectors provide derived indexes.
-- Keep GitHub, Calendar, email and user files authoritative for native objects; HUE stores bindings/projections plus its own Session/run state.
-- Use `cua-driver` as the first computer-use spike because it already offers cross-platform, accessibility-first, background-capable control, while preserving a replaceable backend interface.
-- Default coding work to managed git worktrees plus stricter sandboxing for untrusted execution.
-
-Hypotheses become architecture only through accepted ADRs and evidence.
+Create `docs/decisions/NNNN-title.md` from the template. Record context, evidence, decision, ownership, consequences, hardening requirements, and revisit triggers. The docs site derives ADR pages and routes from that directory; no second navigation list is required in the site generator.

@@ -126,13 +126,16 @@
 		>
 			{error}
 		</p>{/if}
-	{#if status}<p class="m-2 text-xs text-emerald-400" role="status">{status}</p>{/if}
-	{#if movedDeleted}<div class="m-2 rounded border border-amber-400/40 p-2 text-xs" role="alert">
+	{#if status}<p class="m-2 text-xs text-[var(--success)]" role="status">{status}</p>{/if}
+	{#if movedDeleted}<div
+			class="m-2 rounded border border-[var(--warning)] p-2 text-xs"
+			role="alert"
+		>
 			<strong>File moved or deleted</strong>
 			<p>Refresh tree, then choose current path. Unsaved text remains here.</p>
 		</div>{/if}
 	{#if externalChange}<div
-			class="m-2 flex items-center gap-2 rounded border border-amber-400/40 p-2 text-xs"
+			class="m-2 flex items-center gap-2 rounded border border-[var(--warning)] p-2 text-xs"
 			role="alert"
 		>
 			<span><strong>File changed outside HUE</strong> — saving is blocked.</span><Button
@@ -143,7 +146,7 @@
 		</div>{/if}
 	{#if preview}
 		<div class="flex min-h-0 flex-1 flex-col overflow-auto p-3">
-			{#if !preview.version}<p class="mb-2 text-xs text-amber-300" role="status">
+			{#if !preview.version}<p class="mb-2 text-xs text-[var(--warning)]" role="status">
 					Concurrency-protected editing and moving unavailable: file exceeds hash limit.
 				</p>{/if}
 			<div class="file-preview-title mb-2 flex items-center gap-2">

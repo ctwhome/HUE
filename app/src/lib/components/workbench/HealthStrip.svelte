@@ -17,7 +17,8 @@
 		projectName,
 		color,
 		previewUrl
-	}: { projectId: string; projectName: string; color: string | null; previewUrl: string } = $props();
+	}: { projectId: string; projectName: string; color: string | null; previewUrl: string } =
+		$props();
 	let checks = $state<Check[]>(
 		['Project', 'Git', 'Terminal', 'Preview', 'Hermes ACP', 'Hermes admin'].map((label) => ({
 			id: label.toLowerCase().replaceAll(' ', '-'),
@@ -85,8 +86,8 @@
 			<span
 				class="size-1.5 rounded-full"
 				aria-hidden="true"
-				class:bg-emerald-400={check.status === 'ready'}
-				class:bg-amber-400={check.status === 'idle'}
+				class:bg-[var(--success)]={check.status === 'ready'}
+				class:bg-[var(--warning)]={check.status === 'idle'}
 				class:bg-destructive={check.status === 'blocked' || check.status === 'unavailable'}
 			></span>
 			<strong>{check.label}</strong><span class="opacity-75">{check.summary}</span>

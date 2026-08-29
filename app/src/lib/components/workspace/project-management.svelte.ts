@@ -138,7 +138,10 @@ export class ProjectManagement {
 					primaryPath: this.primaryFolder
 				})
 			});
-			this.projects = [...this.projects, body.project];
+			this.projects = [
+				...this.projects.filter((project) => project.id !== body.project.id),
+				body.project
+			];
 			this.addProjectDialog?.close();
 			await this.options.chooseProject(body.project);
 		} catch (cause) {

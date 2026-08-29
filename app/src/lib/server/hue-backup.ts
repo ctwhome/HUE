@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import type { Database as BunDatabase } from 'bun:sqlite';
 
 const runtimeRequire = createRequire(import.meta.url);
-export const HUE_SCHEMA_VERSION = 3;
+export const HUE_SCHEMA_VERSION = 5;
 
 const HUE_REQUIRED_COLUMNS = {
 	projects: ['id', 'name', 'root_path', 'icon', 'group_name', 'legacy', 'created_at', 'color'],
@@ -89,7 +89,30 @@ const HUE_REQUIRED_COLUMNS = {
 		'updated_at',
 		'accepted_at'
 	],
-	notification_presence: ['endpoint_id', 'project_id', 'session_id', 'visible', 'expires_at']
+	notification_presence: ['endpoint_id', 'project_id', 'session_id', 'visible', 'expires_at'],
+	schedules: [
+		'id',
+		'name',
+		'prompt',
+		'cron',
+		'enabled',
+		'next_run_at',
+		'session_id',
+		'created_at',
+		'updated_at'
+	],
+	commit_generations: [
+		'operation_id',
+		'project_id',
+		'repository_root',
+		'prompt_hash',
+		'model_id',
+		'session_id',
+		'status',
+		'error',
+		'created_at',
+		'updated_at'
+	]
 } as const;
 
 type SchemaManifest = { version: number; tables: Record<string, string[]> };

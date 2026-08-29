@@ -12,7 +12,7 @@ afterEach(() => {
 
 function seededStore(filename = ':memory:') {
 	const store = new HUEStore(filename);
-	store.createProject({ id: 'project-1', name: 'Private project', rootPath: '/private/work' });
+	store.ensureProjectMetadata('project-1', 'Private project');
 	store.upsertSession('project-1', {
 		sessionId: 'session-1',
 		cwd: '/private/work',
@@ -22,6 +22,55 @@ function seededStore(filename = ':memory:') {
 }
 
 describe('durable notification projection', () => {
+	it('enriches notification copy from authoritative Hermes Project metadata', () => {
+		const store = new HUEStore(':memory:');
+		store.ensureProjectMetadata('project-1');
+		store.ensureProjectMetadata('project-1', 'Authoritative name');
+		store.upsertSession('project-1', { sessionId: 'session-1', cwd: '/work', title: 'Build' });
+		store.appendEvent('project-1', 'session-1', 'message.completed', { messageId: 'message-1' });
+
+		expect(store.listNotifications({ limit: 1 }).items[0]?.body).toBe(
+			'Build in Authoritative name completed.'
+		);
+		store.close();
+	});
+
+	it('owns endpoint, presence, attempt, baseline, and due delivery persistence', () => {
+		const store = seededStore();
+		const now = '2026-08-28T12:00:00.000Z';
+		store.upsertNotificationEndpoint({
+			id: 'endpoint-1',
+			deviceId: 'device-1',
+			name: 'Phone',
+			endpoint: 'encrypted-endpoint',
+			p256dh: 'encrypted-p256dh',
+			auth: 'encrypted-auth',
+			now,
+			baseline: store.notificationBaseline()
+		});
+		store.reportNotificationPresence('endpoint-1', {
+			projectId: 'project-1',
+			sessionId: 'session-1',
+			visible: true,
+			expiresAt: '2026-08-28T12:01:30.000Z'
+		});
+		store.appendEvent('project-1', 'session-1', 'message.completed', {});
+		store.queueNotificationAttempts(now);
+
+		expect(store.listDueNotificationAttempts(now)).toEqual([
+			expect.objectContaining({
+				endpoint_id: 'endpoint-1',
+				visible_project_id: 'project-1',
+				visible_session_id: 'session-1'
+			})
+		]);
+		store.finishNotificationAttempt('attempt:notification:1:endpoint-1', 'accepted', 1, null, now);
+		expect(store.listNotificationAttempts()).toEqual([
+			expect.objectContaining({ status: 'accepted', attemptCount: 1 })
+		]);
+		store.close();
+	});
+
 	it('projects exactly five semantic kinds once and ignores routine events', () => {
 		const store = seededStore();
 		for (const [type, payload] of [
@@ -82,9 +131,6 @@ describe('durable notification projection', () => {
 		store.close();
 
 		const restarted = new HUEStore(path);
-		restarted.projectPendingNotifications();
-		restarted.projectPendingNotifications();
-
 		expect(restarted.listNotifications({ limit: 10 }).items).toEqual([first]);
 		expect(first.sourceEventId).toBe(String(event.sequence));
 		restarted.close();

@@ -18,12 +18,22 @@ describe('HUE runtime reliability', () => {
 		const source = join(root, 'hue.db');
 		paths.push(root);
 		const store = new HUEStore(source);
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.ensureProjectMetadata('hue', 'HUE');
 		store.createWorkflow({
 			id: 'release',
 			projectId: 'hue',
 			name: 'Release',
 			prompt: 'Run checks.'
+		});
+		store.upsertSession(null, { sessionId: 'schedule-session', cwd: '/work/sessions' });
+		store.createSchedule({
+			id: 'daily',
+			name: 'Daily review',
+			prompt: 'Review HUE.',
+			cron: '0 9 * * *',
+			enabled: true,
+			nextRunAt: '2026-08-29T09:00:00.000Z',
+			sessionId: 'schedule-session'
 		});
 
 		const backup = createHueBackup(store, join(root, 'backups'));
@@ -37,6 +47,12 @@ describe('HUE runtime reliability', () => {
 		});
 		expect(restored.query('SELECT name FROM workflows WHERE id = ?').get('release')).toEqual({
 			name: 'Release'
+		});
+		expect(
+			restored.query('SELECT name, session_id FROM schedules WHERE id = ?').get('daily')
+		).toEqual({
+			name: 'Daily review',
+			session_id: 'schedule-session'
 		});
 		restored.close();
 		store.close();

@@ -13,6 +13,7 @@ describe('HUE preferences', () => {
 				sendKey: 'mod-enter',
 				theme: 'oled',
 				density: 'compact',
+				chatFontSize: 18,
 				language: 'nl-NL',
 				voice: 'system',
 				showUsage: false,
@@ -23,6 +24,7 @@ describe('HUE preferences', () => {
 			sendKey: 'mod-enter',
 			theme: 'oled',
 			density: 'compact',
+			chatFontSize: 18,
 			language: 'nl-NL',
 			voice: 'system',
 			showUsage: false,
@@ -35,11 +37,18 @@ describe('HUE preferences', () => {
 			sendKey: 'enter',
 			theme: 'system',
 			density: 'comfortable',
+			chatFontSize: 14,
 			language: 'en',
 			voice: 'hermes',
 			showUsage: true,
 			hiddenFilePatterns: '.DS_Store'
 		});
+	});
+
+	it('clamps persisted chat font sizes to the supported range', () => {
+		expect(normalizePreferences({ chatFontSize: 8 }).chatFontSize).toBe(12);
+		expect(normalizePreferences({ chatFontSize: 24 }).chatFontSize).toBe(20);
+		expect(normalizePreferences({ chatFontSize: '18' }).chatFontSize).toBe(14);
 	});
 
 	it('applies Enter or modifier+Enter send behavior without stealing Shift+Enter', () => {

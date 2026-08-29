@@ -26,10 +26,6 @@
 		if (!open) onopen();
 		open = !open;
 	}
-	$effect(() => {
-		if (!busy) open = false;
-	});
-
 	const serialized = (value: unknown) =>
 		typeof value === 'string' ? value : JSON.stringify(value, null, 2);
 	const validTimestamp = (value?: string): value is string =>
@@ -53,13 +49,13 @@
 	};
 </script>
 
-{#if busy}<section class="thinking-activity" aria-label="Thinking activity">
+{#if busy || items.length}<section class="thinking-activity" aria-label="Thinking activity">
 		<button
 			type="button"
 			class="thinking-trigger"
 			aria-controls={id}
 			aria-expanded={open}
-			title="Thinking · In progress"
+			title={busy ? 'Thinking · In progress' : 'Thinking activity'}
 			onclick={toggle}
 		>
 			<LoaderCircle class="animate-spin" width={16} height={16} aria-hidden="true" />

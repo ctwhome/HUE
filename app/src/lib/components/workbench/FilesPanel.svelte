@@ -12,6 +12,7 @@
 	import Upload from '~icons/lucide/upload';
 	import X from '~icons/lucide/x';
 	import { isFilePathHidden } from '$lib/hidden-file-patterns';
+	import { readStringArray } from '$lib/drag-order';
 	import { defaultPreferences, readPreferences, type HUEPreferences } from '$lib/preferences';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
@@ -271,11 +272,19 @@
 		if (!selectedPath) return;
 		guarded(() => {
 			void (async () => {
-				deleteImpact = await api(
-					`/api/projects/${projectId}/files?mode=impact&path=${encodeURIComponent(selectedPath)}`
-				);
-				deleteConfirmation = '';
-				deleteOpen = true;
+				busy = true;
+				error = '';
+				try {
+					deleteImpact = await api(
+						`/api/projects/${projectId}/files?mode=impact&path=${encodeURIComponent(selectedPath)}`
+					);
+					deleteConfirmation = '';
+					deleteOpen = true;
+				} catch (cause) {
+					error = cause instanceof Error ? cause.message : String(cause);
+				} finally {
+					busy = false;
+				}
 			})();
 		});
 	}
@@ -332,13 +341,7 @@
 			applyHiddenFilePatterns((event as CustomEvent<HUEPreferences>).detail.hiddenFilePatterns);
 		};
 		window.addEventListener('hue:preferences', updatePreferences);
-		try {
-			const saved = JSON.parse(localStorage.getItem(expandedStorageKey()) ?? '[]');
-			if (Array.isArray(saved))
-				expanded = new Set(saved.filter((path) => typeof path === 'string'));
-		} catch {
-			expanded = new Set();
-		}
+		expanded = new Set(readStringArray(localStorage, expandedStorageKey()));
 		void loadTree();
 		return () => {
 			window.removeEventListener('hue:preferences', updatePreferences);
@@ -515,7 +518,7 @@
 						>
 					</button>
 				{/each}
-				{#if truncated}<p class="p-2 text-xs text-amber-300" role="status">
+				{#if truncated}<p class="p-2 text-xs text-[var(--warning)]" role="status">
 						Results truncated at safe index limit.
 					</p>{/if}
 			</div>

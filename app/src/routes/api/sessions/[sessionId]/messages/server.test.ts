@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'bun:test';
+import { serviceExportStubs } from '$lib/server/services-test-stubs';
 
 let submitResult: Record<string, unknown> = {
 	duplicate: false,
@@ -8,9 +9,15 @@ let submitResult: Record<string, unknown> = {
 let submitted = false;
 let runtimeStarted = false;
 
-mock.module('$lib/server/services', () => ({
+mock.module('$lib/server/route-services', () => ({
+	...serviceExportStubs,
 	services: () => ({
 		store: {
+			database: { transaction: (operation: () => unknown) => operation },
+			acceptMessage: () => ({
+				duplicate: Boolean(submitResult.duplicate),
+				status: String(submitResult.status ?? 'queued')
+			}),
 			hasSession: () => true,
 			getSession: () => ({ workMode: 'autonomous' }),
 			updateSessionWorkMode: (_projectId: null, _sessionId: string, workMode: string) => ({
@@ -24,6 +31,10 @@ mock.module('$lib/server/services', () => ({
 		},
 		dispatcher: {
 			submit: () => {
+				submitted = true;
+				return submitResult;
+			},
+			submitAccepted: () => {
 				submitted = true;
 				return submitResult;
 			}

@@ -61,7 +61,7 @@
 	type="button"
 	class="context-chip session-option-trigger inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-lg px-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground sm:min-h-8 sm:min-w-8"
 	aria-label={ariaLabel}
-	aria-haspopup="menu"
+	aria-haspopup="dialog"
 	aria-expanded={open}
 	popovertarget={menuId}
 	title={`${ariaLabel}: ${selected?.name ?? value}`}
@@ -76,7 +76,7 @@
 	id={menuId}
 	class="session-option-menu w-[min(300px,calc(100vw-24px))] rounded-xl border border-border bg-card p-1.5 text-foreground shadow-2xl"
 	popover="auto"
-	role="menu"
+	role="dialog"
 	aria-label={`Choose ${ariaLabel.toLowerCase()}`}
 	ontoggle={(event) => (open = (event.currentTarget as HTMLElement).matches(':popover-open'))}
 >
@@ -84,8 +84,7 @@
 		{@const Icon = iconFor(option)}
 		<button
 			type="button"
-			role="menuitemradio"
-			aria-checked={option.value === value}
+			aria-pressed={option.value === value}
 			class="flex min-h-11 w-full items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-accent"
 			onclick={() => select(option.value)}
 		>

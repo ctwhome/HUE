@@ -68,6 +68,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		let project;
 		if (body.action === 'auto_icon') {
 			const current = await services().projects.get(params.projectId);
+			services().store.ensureProjectMetadata(current.id, current.name);
 			attempted = true;
 			project = await services().projects.update(current.id, {
 				icon: findProjectFavicon(current.primary_path)
@@ -82,17 +83,21 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			const name = typeof body.name === 'string' ? body.name.trim() : undefined;
 			if (body.name !== undefined && !name) throw new Error('Project name is required');
 			const icon = body.icon !== undefined ? validateIcon(body.icon) : undefined;
+			const current = await services().projects.get(params.projectId);
+			services().store.ensureProjectMetadata(current.id, current.name);
 			attempted = true;
-			project = await services().projects.update(params.projectId, { name, icon });
+			project = await services().projects.update(current.id, { name, icon });
 		} else if (body.action === 'add_folder') {
 			if (typeof body.path !== 'string') throw new Error('Project folder must be a path');
 			if (body.isPrimary !== undefined && typeof body.isPrimary !== 'boolean') {
 				throw new Error('Primary choice must be true or false');
 			}
 			const path = trustedProjectRoot(body.path);
+			const current = await services().projects.get(params.projectId);
+			services().store.ensureProjectMetadata(current.id, current.name);
 			attempted = true;
 			closeTerminals = body.isPrimary === true;
-			project = await services().projects.addFolder(params.projectId, path, {
+			project = await services().projects.addFolder(current.id, path, {
 				label: optionalLabel(body.label),
 				isPrimary: body.isPrimary === true
 			});
@@ -105,15 +110,19 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				typeof body.replacementPrimary === 'string'
 					? trustedProjectRoot(body.replacementPrimary)
 					: undefined;
+			const current = await services().projects.get(params.projectId);
+			services().store.ensureProjectMetadata(current.id, current.name);
 			attempted = true;
 			closeTerminals = true;
-			project = await services().projects.removeFolder(params.projectId, body.path, replacement);
+			project = await services().projects.removeFolder(current.id, body.path, replacement);
 		} else if (body.action === 'set_primary') {
 			if (typeof body.path !== 'string') throw new Error('Primary folder must be a path');
 			const path = trustedProjectRoot(body.path);
+			const current = await services().projects.get(params.projectId);
+			services().store.ensureProjectMetadata(current.id, current.name);
 			attempted = true;
 			closeTerminals = true;
-			project = await services().projects.setPrimary(params.projectId, path);
+			project = await services().projects.setPrimary(current.id, path);
 		} else {
 			throw new Error('Unknown Project update');
 		}

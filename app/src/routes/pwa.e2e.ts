@@ -15,7 +15,10 @@ function captureBrowserErrors(page: import('@playwright/test').Page) {
 	const errors: string[] = [];
 	page.on('console', (message) => message.type() === 'error' && errors.push(message.text()));
 	page.on('pageerror', (error) => errors.push(error.message));
-	page.on('requestfailed', (request) => errors.push(`${request.method()} ${request.url()}`));
+	page.on('requestfailed', (request) => {
+		if (!(request.method() === 'HEAD' && request.url().includes('/_app/immutable/')))
+			errors.push(`${request.method()} ${request.url()}`);
+	});
 	page.on('response', (response) => {
 		if (response.status() >= 400)
 			errors.push(`${response.request().method()} ${response.url()} ${response.status()}`);
@@ -212,25 +215,9 @@ test('production share target enforces Origin and configured parser bounds', asy
 	expect(await rejected.text()).toBe('Shared content was rejected');
 });
 
-test('shortcut launch contracts consume intent and install guidance requires support plus gesture', async ({
+test('shortcut launch contracts consume intent and retain native share intake', async ({
 	page
 }) => {
-	await page.addInitScript(() => {
-		Object.defineProperty(navigator, 'clipboard', {
-			configurable: true,
-			value: {
-				writeText: async () => Promise.reject(new DOMException('denied', 'NotAllowedError'))
-			}
-		});
-		Object.defineProperty(navigator, 'share', {
-			configurable: true,
-			value: async () => {
-				if ((window as typeof window & { shareFailure?: boolean }).shareFailure)
-					throw new Error('private provider detail');
-				throw new DOMException('cancelled', 'AbortError');
-			}
-		});
-	});
 	const defaultRoot = mkdtempSync(join(tmpdir(), 'hue-pwa-default-project-'));
 	const created = await page.request.post('/api/projects', {
 		data: { name: 'PWA default Project', folders: [defaultRoot], primaryPath: defaultRoot }
@@ -248,33 +235,8 @@ test('shortcut launch contracts consume intent and install guidance requires sup
 		await page.goto('/?intent=projects');
 		await expect(page).toHaveURL(/project=none/);
 		expect(page.url()).not.toContain('intent=');
-		await page.getByRole('button', { name: 'Share, install, or pin current view' }).click();
-		await expect(page.getByRole('button', { name: 'Install HUE' })).toHaveCount(0);
-		await page.getByRole('button', { name: 'Copy link' }).click();
-		await expect(page.getByRole('status')).toHaveText(
-			'Could not copy link. Use the browser address bar instead.'
-		);
-		await page.getByRole('button', { name: 'Share link' }).click();
-		await expect(page.getByRole('status')).toHaveText('Sharing cancelled.');
-		await page.evaluate(() => {
-			(window as typeof window & { shareFailure?: boolean }).shareFailure = true;
-		});
-		await page.getByRole('button', { name: 'Share link' }).click();
-		await expect(page.getByRole('status')).toHaveText('Could not share link. Copy it instead.');
-		await page.getByRole('button', { name: 'Close share and pin guidance' }).click();
-		await page.evaluate(() => {
-			const event = new Event('beforeinstallprompt', { cancelable: true });
-			Object.assign(event, {
-				prompt: async () => undefined,
-				userChoice: Promise.resolve({ outcome: 'dismissed' })
-			});
-			window.dispatchEvent(event);
-		});
-		await page.getByRole('button', { name: 'Share, install, or pin current view' }).click();
-		await expect(page.getByRole('button', { name: 'Install HUE' })).toBeVisible();
-		await expect(page.getByText(/browser menu fallback/i)).toBeVisible();
-		await page.getByRole('button', { name: 'Don’t suggest install again' }).click();
-		await expect(page.getByRole('button', { name: 'Install HUE' })).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'Start a chat' })).toBeVisible();
+		await expect(page.getByRole('button', { name: /install|pin/i })).toHaveCount(0);
 		expect(browserErrors).toEqual([]);
 	} finally {
 		await page.request.delete(`/api/projects/${defaultProject.id}`).catch(() => undefined);

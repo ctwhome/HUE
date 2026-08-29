@@ -42,7 +42,7 @@
 					<Folder width={16} height={16} aria-hidden="true" />
 				{/if}
 				<code class="min-w-0 flex-1 overflow-hidden text-ellipsis">{folder.path}</code>
-				{#if !folder.available}<small class="text-amber-400">Unavailable</small>{/if}
+				{#if !folder.available}<small class="text-[var(--warning)]">Unavailable</small>{/if}
 			</div>
 			<form
 				class="flex flex-wrap gap-2"

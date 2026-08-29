@@ -1,6 +1,8 @@
 <script lang="ts">
 	import Archive from '~icons/lucide/archive';
 	import ArchiveRestore from '~icons/lucide/archive-restore';
+	import ArrowDown from '~icons/lucide/arrow-down';
+	import ArrowUp from '~icons/lucide/arrow-up';
 	import Copy from '~icons/lucide/copy';
 	import Download from '~icons/lucide/download';
 	import FileJson from '~icons/lucide/file-json';
@@ -25,6 +27,10 @@
 		onicon,
 		onsave,
 		onduplicate,
+		onmoveup,
+		onmovedown,
+		canMoveUp,
+		canMoveDown,
 		ondelete,
 		onexport,
 		isImage,
@@ -46,6 +52,10 @@
 		onicon: (event: MouseEvent) => void;
 		onsave: () => void | Promise<void>;
 		onduplicate: () => void;
+		onmoveup: () => void;
+		onmovedown: () => void;
+		canMoveUp: boolean;
+		canMoveDown: boolean;
 		ondelete: () => void;
 		onexport: (format: 'markdown' | 'json') => void;
 		isImage: (icon: string | null) => boolean;
@@ -63,7 +73,7 @@
 	aria-labelledby="session-options-title"
 	class="session-manager-popover fixed m-0 max-h-[min(680px,calc(100dvh-24px))] w-[min(380px,calc(100vw-24px))] overflow-auto rounded-xl border border-border bg-card p-2 text-foreground shadow-2xl"
 >
-	<header class="flex items-center gap-3 px-2 py-2">
+	<header class="sticky top-0 z-10 flex items-center gap-3 bg-card px-2 py-2">
 		<button
 			class="grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-accent text-xl hover:ring-2 hover:ring-ring"
 			aria-label="Change session icon"
@@ -168,6 +178,13 @@
 			<h3 id="session-actions-heading" class="px-2 py-1 text-xs font-medium text-muted-foreground">
 				Actions
 			</h3>
+			<div class="grid grid-cols-2 gap-1">
+				<button class="session-menu-action" disabled={!canMoveUp} onclick={onmoveup}
+					><ArrowUp width={16} height={16} aria-hidden="true" /> Move up</button
+				><button class="session-menu-action" disabled={!canMoveDown} onclick={onmovedown}
+					><ArrowDown width={16} height={16} aria-hidden="true" /> Move down</button
+				>
+			</div>
 			<button
 				class="session-menu-action"
 				disabled

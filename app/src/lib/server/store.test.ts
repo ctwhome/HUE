@@ -17,7 +17,7 @@ function makeStore() {
 
 function makeDeliveryStore() {
 	const store = makeStore();
-	store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+	store.ensureProjectMetadata('hue', 'HUE');
 	store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 	return store;
 }
@@ -25,19 +25,19 @@ function makeDeliveryStore() {
 describe('HUEStore project and workflow boundaries', () => {
 	it('persists a local status color without changing Project identity', () => {
 		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.ensureProjectMetadata('hue', 'HUE');
 
 		expect(store.getProjectColor('hue')).toBeNull();
 		store.updateProjectColor('hue', '#7aa2f7');
 
 		expect(store.getProjectColor('hue')).toBe('#7aa2f7');
-		expect(store.getProject('hue')).toMatchObject({ id: 'hue', name: 'HUE' });
+		expect(store.hasProjectMetadata('hue')).toBe(true);
 		store.close();
 	});
 
 	it('persists an optional local group label without changing Project identity', () => {
 		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.ensureProjectMetadata('hue', 'HUE');
 
 		expect(store.getProjectGroup('hue')).toBeNull();
 		store.updateProjectGroup('hue', 'Client work');
@@ -45,13 +45,13 @@ describe('HUEStore project and workflow boundaries', () => {
 		store.updateProjectGroup('hue', null);
 
 		expect(store.getProjectGroup('hue')).toBeNull();
-		expect(store.getProject('hue')).toMatchObject({ id: 'hue', name: 'HUE' });
+		expect(store.hasProjectMetadata('hue')).toBe(true);
 		store.close();
 	});
 
 	it('stores one independently updateable Excalidraw scene per Project', () => {
 		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.ensureProjectMetadata('hue', 'HUE');
 		expect(store.getProjectExcalidraw('hue')).toBeNull();
 
 		store.updateProjectExcalidraw('hue', { address: 'https://example.com/' });
@@ -69,7 +69,7 @@ describe('HUEStore project and workflow boundaries', () => {
 
 	it('persists Session rename pin archive folder and optional tags without changing ownership', () => {
 		const store = makeDeliveryStore();
-		store.updateSessionMetadata('hue', 'session-1', {
+		store.updateSession('hue', 'session-1', {
 			title: 'Release investigation',
 			pinned: true,
 			archived: true,
@@ -172,7 +172,7 @@ describe('HUEStore project and workflow boundaries', () => {
 
 	it('leaves project and projectless Session metadata unchanged when a combined icon is invalid', () => {
 		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.ensureProjectMetadata('hue', 'HUE');
 		store.upsertSession('hue', { sessionId: 'project-session', cwd: '/work/hue', title: 'Before' });
 		store.upsertSession(null, {
 			sessionId: 'projectless-session',
@@ -243,29 +243,25 @@ describe('HUEStore project and workflow boundaries', () => {
 			text: 'Compression completed safely'
 		});
 
-		expect(store.searchSessions('hue', 'deploy', 100).map(({ sessionId }) => sessionId)).toEqual([
-			'session-2'
-		]);
-		expect(store.searchSessions('hue', 'cursor').map(({ sessionId }) => sessionId)).toEqual([
-			'session-1'
-		]);
-		expect(store.searchSessions('hue', 'compression').map(({ sessionId }) => sessionId)).toEqual([
-			'session-2'
-		]);
-		expect(store.searchSessions('hue', '', 500)).toHaveLength(2);
+		const search = (query: string, limit = 50) =>
+			store.listSessionPage('hue', { includeArchived: true, query, limit, offset: 0 }).sessions;
+		expect(search('deploy', 100).map(({ sessionId }) => sessionId)).toEqual(['session-2']);
+		expect(search('cursor').map(({ sessionId }) => sessionId)).toEqual(['session-1']);
+		expect(search('compression').map(({ sessionId }) => sessionId)).toEqual(['session-2']);
+		expect(search('', 500)).toHaveLength(2);
 		store.close();
 	});
 
 	it('finds HUE-indexed Sessions globally with ownership metadata and authoritative status', () => {
 		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
-		store.createProject({ id: 'docs', name: 'Documentation', rootPath: '/work/docs' });
+		store.ensureProjectMetadata('hue', 'HUE');
+		store.ensureProjectMetadata('docs', 'Documentation');
 		store.upsertSession('hue', {
 			sessionId: 'running',
 			cwd: '/work/hue',
 			title: 'Release control'
 		});
-		store.updateSessionMetadata('hue', 'running', {
+		store.updateSession('hue', 'running', {
 			folder: 'Delivery',
 			tags: ['p1-review']
 		});
@@ -281,7 +277,7 @@ describe('HUEStore project and workflow boundaries', () => {
 			cwd: '/work/docs',
 			title: 'Historical finder'
 		});
-		store.updateSessionMetadata('docs', 'archived', { archived: true });
+		store.updateSession('docs', 'archived', { archived: true });
 		store.upsertSession(null, {
 			sessionId: 'loose',
 			cwd: '/work/loose',
@@ -339,6 +335,27 @@ describe('HUEStore project and workflow boundaries', () => {
 		store.close();
 	});
 
+	it('correlates indicator terminals and interactions to the latest message', () => {
+		const store = makeDeliveryStore();
+		store.acceptMessage({ id: 'old', projectId: 'hue', sessionId: 'session-1', text: 'Old' });
+		store.transitionMessage('old', 'running', { messageId: 'old' });
+		store.appendEvent('hue', 'session-1', 'agent.permission', {
+			id: 'old-permission',
+			messageId: 'old',
+			status: 'pending'
+		});
+		store.transitionCancelledMessage('old');
+		store.acceptMessage({ id: 'new', projectId: 'hue', sessionId: 'session-1', text: 'New' });
+		store.transitionMessage('new', 'running', { messageId: 'new' });
+
+		expect(store.getSessionIndicators('hue')['session-1']).toMatchObject({
+			attention: false,
+			error: false,
+			status: 'running'
+		});
+		store.close();
+	});
+
 	it('reports cancellation when it belongs to the latest turn', () => {
 		const store = makeDeliveryStore();
 		store.acceptMessage({
@@ -391,7 +408,7 @@ describe('HUEStore project and workflow boundaries', () => {
 
 	it('preserves terminal and waiting status for the latest turn', () => {
 		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.ensureProjectMetadata('hue', 'HUE');
 		for (const status of ['completed', 'failed', 'unknown'] as const) {
 			store.upsertSession('hue', { sessionId: status, cwd: '/work/hue' });
 			store.acceptMessage({
@@ -431,7 +448,7 @@ describe('HUEStore project and workflow boundaries', () => {
 
 	it('reports a terminal lifecycle after an earlier pending interaction', () => {
 		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.ensureProjectMetadata('hue', 'HUE');
 		for (const status of ['completed', 'failed', 'unknown'] as const) {
 			store.upsertSession('hue', { sessionId: status, cwd: '/work/hue' });
 			store.acceptMessage({
@@ -458,7 +475,7 @@ describe('HUEStore project and workflow boundaries', () => {
 
 	it('paginates beyond 500 Sessions and beyond 50 search matches in SQLite', () => {
 		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.ensureProjectMetadata('hue', 'HUE');
 		for (let index = 0; index < 551; index += 1) {
 			store.upsertSession('hue', {
 				sessionId: `session-${index.toString().padStart(3, '0')}`,
@@ -498,10 +515,10 @@ describe('HUEStore project and workflow boundaries', () => {
 
 	it('counts only non-archived Sessions for a Project', () => {
 		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.ensureProjectMetadata('hue', 'HUE');
 		store.upsertSession('hue', { sessionId: 'active', cwd: '/work/hue' });
 		store.upsertSession('hue', { sessionId: 'archived', cwd: '/work/hue' });
-		store.updateSessionMetadata('hue', 'archived', { archived: true });
+		store.updateSession('hue', 'archived', { archived: true });
 
 		expect(store.countSessions('hue')).toBe(1);
 		store.close();
@@ -546,7 +563,7 @@ describe('HUEStore project and workflow boundaries', () => {
 		});
 		store.transitionMessage('source-message', 'running', { messageId: 'source-message' });
 		store.transitionMessage('source-message', 'completed', { messageId: 'source-message' });
-		store.updateSessionMetadata('hue', 'session-1', {
+		store.updateSession('hue', 'session-1', {
 			title: 'Source',
 			pinned: true,
 			archived: true,
@@ -593,7 +610,7 @@ describe('HUEStore project and workflow boundaries', () => {
 
 	it('validates all duplicate metadata before a Hermes fork can be requested', () => {
 		const store = makeDeliveryStore();
-		store.updateSessionMetadata('hue', 'session-1', {
+		store.updateSession('hue', 'session-1', {
 			title: 'x'.repeat(200),
 			folder: 'Reviews',
 			tags: ['safe']
@@ -617,11 +634,14 @@ describe('HUEStore project and workflow boundaries', () => {
 
 	it('derives background attention and error indicators from durable state', () => {
 		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.ensureProjectMetadata('hue', 'HUE');
 		store.upsertSession('hue', { sessionId: 'waiting', cwd: '/work/hue' });
 		store.upsertSession('hue', { sessionId: 'failed', cwd: '/work/hue' });
+		store.acceptMessage({ id: 'msg-waiting', projectId: 'hue', sessionId: 'waiting', text: 'Run' });
+		store.transitionMessage('msg-waiting', 'running', { messageId: 'msg-waiting' });
 		store.appendEvent('hue', 'waiting', 'agent.permission', {
 			id: 'permission-1',
+			messageId: 'msg-waiting',
 			status: 'pending'
 		});
 		store.acceptMessage({ id: 'msg-failed', projectId: 'hue', sessionId: 'failed', text: 'Run' });
@@ -642,8 +662,10 @@ describe('HUEStore project and workflow boundaries', () => {
 		});
 		store.appendEvent('hue', 'waiting', 'agent.permission', {
 			id: 'permission-1',
+			messageId: 'msg-waiting',
 			status: 'resolved'
 		});
+		store.transitionMessage('msg-waiting', 'completed', { messageId: 'msg-waiting' });
 		expect(store.getSessionIndicators('hue').waiting).toEqual({
 			attention: false,
 			error: false,
@@ -703,8 +725,8 @@ describe('HUEStore project and workflow boundaries', () => {
 
 	it('lists workflows only for the selected project', () => {
 		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
-		store.createProject({ id: 'notidian', name: 'Notidian', rootPath: '/work/notidian' });
+		store.ensureProjectMetadata('hue', 'HUE');
+		store.ensureProjectMetadata('notidian', 'Notidian');
 		store.createWorkflow({
 			id: 'build',
 			projectId: 'hue',
@@ -718,7 +740,6 @@ describe('HUEStore project and workflow boundaries', () => {
 			prompt: 'Review pending notes.'
 		});
 
-		expect(store.listProjects().map((project) => project.id)).toEqual(['hue', 'notidian']);
 		expect(store.listWorkflows('hue').map((workflow) => workflow.id)).toEqual(['build']);
 		expect(store.listWorkflows('notidian').map((workflow) => workflow.id)).toEqual(['review']);
 
@@ -727,7 +748,7 @@ describe('HUEStore project and workflow boundaries', () => {
 
 	it('updates, archives, restores, and deletes workflows inside their project', () => {
 		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.ensureProjectMetadata('hue', 'HUE');
 		store.createWorkflow({
 			id: 'release',
 			projectId: 'hue',
@@ -776,8 +797,8 @@ describe('HUEStore project and workflow boundaries', () => {
 
 	it('does not mutate a workflow through another project', () => {
 		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
-		store.createProject({ id: 'other', name: 'Other', rootPath: '/work/other' });
+		store.ensureProjectMetadata('hue', 'HUE');
+		store.ensureProjectMetadata('other', 'Other');
 		store.createWorkflow({
 			id: 'release',
 			projectId: 'hue',
@@ -790,51 +811,6 @@ describe('HUEStore project and workflow boundaries', () => {
 		expect(store.listWorkflows('hue')).toEqual([
 			expect.objectContaining({ id: 'release', name: 'Prepare release' })
 		]);
-		store.close();
-	});
-
-	it('updates project names and icons, then removes projects', () => {
-		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
-		store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
-		store.acceptMessage({
-			id: 'msg-1',
-			projectId: 'hue',
-			sessionId: 'session-1',
-			text: 'Project-scoped message.'
-		});
-		store.updateMessageStatus('msg-1', 'failed');
-
-		expect(store.updateProject('hue', { name: 'Hue workspace', icon: '🚀' })).toMatchObject({
-			id: 'hue',
-			name: 'Hue workspace',
-			icon: '🚀',
-			rootPath: '/work/hue'
-		});
-		expect(store.deleteProject('hue')).toBe(true);
-		expect(store.listProjects()).toEqual([]);
-		expect(store.database.query('SELECT COUNT(*) AS count FROM messages').get()).toEqual({
-			count: 0
-		});
-		expect(store.database.query('SELECT COUNT(*) AS count FROM session_events').get()).toEqual({
-			count: 0
-		});
-		expect(store.deleteProject('hue')).toBe(false);
-		store.close();
-	});
-
-	it('refuses to remove a project with active deliveries', () => {
-		const store = makeDeliveryStore();
-		store.acceptMessage({
-			id: 'msg-1',
-			projectId: 'hue',
-			sessionId: 'session-1',
-			text: 'Do not lose this.'
-		});
-
-		expect(() => store.deleteProject('hue')).toThrow('active message deliveries');
-		expect(store.getProject('hue')).not.toBeNull();
-		expect(store.getMessage('msg-1')?.status).toBe('queued');
 		store.close();
 	});
 
@@ -854,10 +830,10 @@ describe('HUEStore project and workflow boundaries', () => {
 
 	it('stores a custom session icon without changing Hermes session data', () => {
 		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.ensureProjectMetadata('hue', 'HUE');
 		store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 
-		expect(store.updateSessionIcon('hue', 'session-1', '🐛')).toBe(true);
+		store.updateSession('hue', 'session-1', { icon: '🐛' });
 		expect(store.getSession('hue', 'session-1')).toMatchObject({
 			sessionId: 'session-1',
 			cwd: '/work/hue',
@@ -865,66 +841,13 @@ describe('HUEStore project and workflow boundaries', () => {
 		});
 		store.close();
 	});
-
-	it('relocates a Project without rewriting Hermes-owned Session cwd', () => {
-		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/HUE-bun-workspace' });
-		store.upsertSession('hue', {
-			sessionId: 'project-session',
-			cwd: '/work/HUE-bun-workspace'
-		});
-		store.upsertSession(null, { sessionId: 'projectless-session', cwd: '/private/hue/sessions' });
-
-		expect(store.relocateProject('hue', '/work/HUE')).toMatchObject({
-			id: 'hue',
-			rootPath: '/work/HUE'
-		});
-		expect(store.getSession('hue', 'project-session')?.cwd).toBe('/work/HUE-bun-workspace');
-		expect(store.getSession(null, 'projectless-session')?.cwd).toBe('/private/hue/sessions');
-		store.close();
-	});
-
-	it('refuses to relocate a Project while delivery state is active', () => {
-		const store = makeDeliveryStore();
-		store.acceptMessage({
-			id: 'msg-1',
-			projectId: 'hue',
-			sessionId: 'session-1',
-			text: 'Keep cwd stable while this is queued.'
-		});
-
-		expect(() => store.relocateProject('hue', '/work/moved-hue')).toThrow(
-			'active message deliveries'
-		);
-		expect(store.getProject('hue')?.rootPath).toBe('/work/hue');
-		store.close();
-	});
-
-	it('allows stale Project recovery without erasing unknown delivery truth', () => {
-		const store = makeDeliveryStore();
-		store.acceptMessage({
-			id: 'msg-1',
-			projectId: 'hue',
-			sessionId: 'session-1',
-			text: 'Outcome is unknown.'
-		});
-		store.updateMessageStatus('msg-1', 'running');
-		store.updateMessageStatus('msg-1', 'unknown');
-
-		expect(store.relocateProject('hue', '/work/recovered-hue')?.rootPath).toBe(
-			'/work/recovered-hue'
-		);
-		expect(store.getMessage('msg-1')?.status).toBe('unknown');
-		expect(store.getSession('hue', 'session-1')?.cwd).toBe('/work/hue');
-		store.close();
-	});
 });
 
 describe('HUEStore acknowledged message transport', () => {
 	it('binds messages and events to their associated project and session', () => {
 		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
-		store.createProject({ id: 'other', name: 'Other', rootPath: '/work/other' });
+		store.ensureProjectMetadata('hue', 'HUE');
+		store.ensureProjectMetadata('other', 'Other');
 		store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 		store.acceptMessage({
 			id: 'msg-1',
@@ -943,8 +866,8 @@ describe('HUEStore acknowledged message transport', () => {
 
 	it('rejects moving an existing session to another project', () => {
 		const store = makeStore();
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
-		store.createProject({ id: 'other', name: 'Other', rootPath: '/work/other' });
+		store.ensureProjectMetadata('hue', 'HUE');
+		store.ensureProjectMetadata('other', 'Other');
 		store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 
 		expect(() =>
@@ -1556,7 +1479,11 @@ describe('HUEStore Hermes Project identity migration', () => {
 
 	it('remaps every HUE-owned foreign key to Hermes id without losing unknown delivery state', () => {
 		const store = makeStore();
-		store.createProject({ id: 'legacy-hue', name: 'HUE', rootPath: '/work/hue' });
+		store.database
+			.query(
+				'INSERT INTO projects (id, name, root_path, legacy, created_at) VALUES (?, ?, ?, 1, ?)'
+			)
+			.run('legacy-hue', 'HUE', '/work/hue', new Date().toISOString());
 		store.updateProjectGroup('legacy-hue', 'Core');
 		store.createWorkflow({
 			id: 'workflow-1',
@@ -1581,6 +1508,34 @@ describe('HUEStore Hermes Project identity migration', () => {
 				'INSERT INTO dismissed_sessions (project_scope, session_id, dismissed_at) VALUES (?, ?, ?)'
 			)
 			.run('legacy-hue', 'dismissed-session', '2026-08-21T00:00:00.000Z');
+		store.database
+			.query(
+				`INSERT INTO notifications
+				 (id, source_event_id, project_id, session_id, kind, priority, title, body, path, created_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+			)
+			.run(
+				'notification-1',
+				'9999',
+				'legacy-hue',
+				'session-1',
+				'completed',
+				'normal',
+				'Complete',
+				'Done',
+				'/projects/legacy-hue/sessions/session-1',
+				'2026-08-21T00:00:00.000Z'
+			);
+		store.database
+			.query(
+				'INSERT INTO notification_endpoints (id, device_id, name, endpoint, p256dh, auth, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+			)
+			.run('endpoint-1', 'device-1', 'Device', 'endpoint', 'key', 'auth', 'now', 'now');
+		store.database
+			.query(
+				'INSERT INTO notification_presence (endpoint_id, project_id, session_id, visible, expires_at) VALUES (?, ?, ?, ?, ?)'
+			)
+			.run('endpoint-1', 'legacy-hue', 'session-1', 1, 'later');
 
 		store.adoptHermesProject('legacy-hue', 'p_hermes');
 
@@ -1597,6 +1552,19 @@ describe('HUEStore Hermes Project identity migration', () => {
 		expect(store.listEvents('p_hermes', 'session-1').length).toBeGreaterThan(0);
 		expect(store.getProjectExcalidraw('p_hermes')?.scene).toContain('"version":1');
 		expect(store.isSessionDismissed('p_hermes', 'dismissed-session')).toBe(true);
+		expect(
+			store.database
+				.query('SELECT project_id, path FROM notifications WHERE id = ?')
+				.get('notification-1')
+		).toEqual({
+			project_id: 'p_hermes',
+			path: '/projects/p_hermes/sessions/session-1'
+		});
+		expect(
+			store.database
+				.query('SELECT project_id FROM notification_presence WHERE endpoint_id = ?')
+				.get('endpoint-1')
+		).toEqual({ project_id: 'p_hermes' });
 		expect(store.database.query('PRAGMA foreign_key_check').all()).toEqual([]);
 		store.close();
 	});

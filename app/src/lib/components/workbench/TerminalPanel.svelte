@@ -19,6 +19,7 @@
 	};
 
 	let { projectId }: { projectId: string } = $props();
+	let scopedProjectId = '';
 	let terminalTabs = $state<TerminalTab[]>([]);
 	let activeTerminalTabId = $state('');
 	let terminalError = $state('');
@@ -27,6 +28,8 @@
 	let terminalFit: FitAddon | null = null;
 	let terminalResizeObserver: ResizeObserver | null = null;
 	let terminalPollTimer: ReturnType<typeof setTimeout> | null = null;
+	let terminalPollFlight = Promise.resolve();
+	let terminalClosing = false;
 	let terminalThemeObserver: MutationObserver | null = null;
 	let terminalThemeMedia: MediaQueryList | null = null;
 	let terminalInputFlight = Promise.resolve();
@@ -82,7 +85,7 @@
 		terminalError = '';
 		try {
 			const body = await api<{ terminalId: string; cursor: number; status: 'running' }>(
-				`/api/projects/${projectId}/terminal`,
+				`/api/projects/${scopedProjectId}/terminal`,
 				{
 					method: 'POST',
 					body: JSON.stringify({
@@ -122,7 +125,7 @@
 			activeTerminalTabId = terminalTabs[0]?.id ?? '';
 			terminalRenderer?.reset();
 		}
-		void api(`/api/projects/${projectId}/terminal`, {
+		void api(`/api/projects/${scopedProjectId}/terminal`, {
 			method: 'POST',
 			body: JSON.stringify({ action: 'close', terminalId: tab.terminalId })
 		}).catch(() => undefined);
@@ -138,7 +141,7 @@
 				if (!current || current.status !== 'running') return;
 				const sequence = current.inputSequence + 1;
 				const send = () =>
-					api(`/api/projects/${projectId}/terminal`, {
+					api(`/api/projects/${scopedProjectId}/terminal`, {
 						method: 'POST',
 						body: JSON.stringify({
 							action: 'input',
@@ -154,7 +157,7 @@
 						await send();
 					} catch {
 						const state = await api<{ inputSequence: number }>(
-							`/api/projects/${projectId}/terminal?terminalId=${encodeURIComponent(current.terminalId)}&after=0`
+							`/api/projects/${scopedProjectId}/terminal?terminalId=${encodeURIComponent(current.terminalId)}&after=0`
 						);
 						if (state.inputSequence < sequence) await send();
 					}
@@ -173,14 +176,14 @@
 	async function resizeTerminal(cols: number, rows: number) {
 		const tab = activeTerminalTab();
 		if (tab)
-			await api(`/api/projects/${projectId}/terminal`, {
+			await api(`/api/projects/${scopedProjectId}/terminal`, {
 				method: 'POST',
 				body: JSON.stringify({ action: 'resize', terminalId: tab.terminalId, cols, rows })
 			}).catch(() => undefined);
 	}
 	function startTerminalPolling() {
 		if (terminalPollTimer) clearTimeout(terminalPollTimer);
-		void pollTerminal();
+		if (!terminalClosing) terminalPollFlight = pollTerminal();
 	}
 	async function pollTerminal() {
 		const tab = activeTerminalTab();
@@ -193,7 +196,7 @@
 				reset: boolean;
 				status: 'running' | 'exited';
 			}>(
-				`/api/projects/${projectId}/terminal?terminalId=${encodeURIComponent(tab.terminalId)}&after=${tab.cursor}`
+				`/api/projects/${scopedProjectId}/terminal?terminalId=${encodeURIComponent(tab.terminalId)}&after=${tab.cursor}`
 			);
 			if (activeTerminalTabId !== tab.id) return;
 			if (body.reset) terminalRenderer?.reset();
@@ -208,16 +211,19 @@
 						}
 					: item
 			);
-			terminalPollTimer = setTimeout(pollTerminal, body.output ? 30 : 120);
+			if (!terminalClosing)
+				terminalPollTimer = setTimeout(startTerminalPolling, body.output ? 30 : 120);
 		} catch (cause) {
 			if (activeTerminalTabId === tab.id) {
 				terminalError = cause instanceof Error ? cause.message : String(cause);
-				terminalPollTimer = setTimeout(pollTerminal, 1_000);
+				if (!terminalClosing) terminalPollTimer = setTimeout(startTerminalPolling, 1_000);
 			}
 		}
 	}
 	async function closeTerminals() {
+		terminalClosing = true;
 		if (terminalPollTimer) clearTimeout(terminalPollTimer);
+		await terminalPollFlight;
 		terminalResizeObserver?.disconnect();
 		terminalThemeObserver?.disconnect();
 		terminalThemeMedia?.removeEventListener('change', applyTerminalTheme);
@@ -229,7 +235,7 @@
 		const tabs = [...terminalTabs];
 		await Promise.all(
 			tabs.map((tab) =>
-				fetch(`/api/projects/${projectId}/terminal`, {
+				fetch(`/api/projects/${scopedProjectId}/terminal`, {
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({ action: 'close', terminalId: tab.terminalId }),
@@ -240,6 +246,7 @@
 	}
 
 	onMount(() => {
+		scopedProjectId = projectId;
 		terminalThemeObserver = new MutationObserver(applyTerminalTheme);
 		terminalThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
 		terminalThemeObserver.observe(document.documentElement, {
@@ -258,7 +265,7 @@
 	>
 		<div
 			class="terminal-tabs flex min-w-0 flex-1 self-stretch overflow-x-auto"
-			role="tablist"
+			role="group"
 			aria-label="Terminal tabs"
 		>
 			{#each terminalTabs as tab}<div
@@ -267,8 +274,7 @@
 				>
 					<button
 						class="flex h-full min-w-0 flex-1 items-center gap-2 pl-2.5"
-						role="tab"
-						aria-selected={tab.id === activeTerminalTabId}
+						aria-pressed={tab.id === activeTerminalTabId}
 						title={`Open ${tab.label}`}
 						onclick={() => chooseTerminalTab(tab.id)}
 						><span class="min-w-0 flex-1 overflow-hidden text-left text-ellipsis whitespace-nowrap"
@@ -277,7 +283,7 @@
 							width={7}
 							height={7}
 							fill="currentColor"
-							class={tab.status === 'exited' ? 'exited' : 'text-emerald-400'}
+							class={tab.status === 'exited' ? 'exited' : 'text-[var(--success)]'}
 							aria-hidden="true"
 						/></button
 					>

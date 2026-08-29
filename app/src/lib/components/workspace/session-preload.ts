@@ -15,7 +15,7 @@ export async function preloadSessionViews(
 				.map(async ({ id: projectId }) => {
 					const sessions: Session[] = [];
 					try {
-						for (let offset = 0; ; ) {
+						for (let offset = 0; ;) {
 							if (signal?.aborted) return [];
 							const query = new URLSearchParams({ cached: 'true' });
 							if (offset) {

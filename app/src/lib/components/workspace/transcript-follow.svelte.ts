@@ -30,9 +30,9 @@ export class TranscriptFollow {
 		const target = resolveNotificationTarget(events, sourceEventId);
 		if (!target || !this.element) return false;
 		await tick();
-		const bySequence = [...this.element.querySelectorAll<HTMLElement>('[data-timeline-sequence]')].find(
-			(element) => element.dataset.timelineSequence === String(target.sequence)
-		);
+		const bySequence = [
+			...this.element.querySelectorAll<HTMLElement>('[data-timeline-sequence]')
+		].find((element) => element.dataset.timelineSequence === String(target.sequence));
 		const byMessage = target.messageId
 			? [...this.element.querySelectorAll<HTMLElement>('[data-message-id]')]
 					.filter((element) => element.dataset.messageId === target.messageId)
@@ -49,7 +49,9 @@ export class TranscriptFollow {
 		});
 		element.classList.add('notification-target');
 		const focusTarget = target.actionable
-			? element.querySelector<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea:not([disabled])')
+			? element.querySelector<HTMLElement>(
+					'button:not([disabled]), input:not([disabled]), textarea:not([disabled])'
+				)
 			: null;
 		(focusTarget ?? element).focus({ preventScroll: true });
 		if (this.highlightTimer) clearTimeout(this.highlightTimer);
@@ -105,6 +107,7 @@ export class TranscriptFollow {
 			updateButton();
 		};
 		const handleScroll = () => {
+			const scrollingUp = node.scrollTop < lastTop - 0.5;
 			const scrollingDown = node.scrollTop > lastTop + 0.5;
 			lastTop = node.scrollTop;
 			if (!canScroll()) {
@@ -119,7 +122,7 @@ export class TranscriptFollow {
 				return;
 			}
 			if (this.following && performance.now() < this.automaticScrollUntil) return;
-			release();
+			if (scrollingUp) release();
 		};
 		const handleWheel = (event: WheelEvent) => event.deltaY < 0 && release();
 		const handleTouchStart = (event: TouchEvent) => {
@@ -165,10 +168,10 @@ export class TranscriptFollow {
 		if (node.firstElementChild) observer.observe(node.firstElementChild);
 
 		return {
-				destroy: () => {
-					if (this.beginEntryStick === beginEntryStick) this.beginEntryStick = null;
-					if (this.endEntryStick === endEntryStick) this.endEntryStick = null;
-					if (this.highlightTimer) clearTimeout(this.highlightTimer);
+			destroy: () => {
+				if (this.beginEntryStick === beginEntryStick) this.beginEntryStick = null;
+				if (this.endEntryStick === endEntryStick) this.endEntryStick = null;
+				if (this.highlightTimer) clearTimeout(this.highlightTimer);
 				clearTimeout(quietTimer);
 				clearTimeout(capTimer);
 				observer.disconnect();

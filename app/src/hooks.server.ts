@@ -1,5 +1,21 @@
 import { json, type Handle } from '@sveltejs/kit';
 import { requestAccessAllowed } from '$lib/server/access-auth';
+import { services, shutdownServices } from '$lib/server/services';
+
+services();
+
+const lifecycle = globalThis as typeof globalThis & { __hueSignalsRegistered?: boolean };
+if (process.env.NODE_ENV === 'production' && !lifecycle.__hueSignalsRegistered) {
+	lifecycle.__hueSignalsRegistered = true;
+	for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+		process.once(signal, () => {
+			void shutdownServices().then(
+				() => process.exit(0),
+				() => process.exit(1)
+			);
+		});
+	}
+}
 
 function publicLoginPath(pathname: string): boolean {
 	return (

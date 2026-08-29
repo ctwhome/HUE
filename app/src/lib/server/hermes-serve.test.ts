@@ -74,6 +74,25 @@ describe('HermesServe', () => {
 		);
 	});
 
+	it('bounds HTTP requests while preserving caller cancellation', async () => {
+		const server = Bun.serve({ port: 0, fetch: () => new Promise<Response>(() => undefined) });
+		cleanups.push(() => server.stop(true));
+		const hermes = new HermesServe({ requestTimeoutMs: 10 });
+		Object.assign(hermes as object, {
+			child: {},
+			baseUrl: `http://127.0.0.1:${server.port}`,
+			token: 'token'
+		});
+		await expect(hermes.request('/api/hang')).rejects.toMatchObject({ name: 'TimeoutError' });
+
+		const abort = new AbortController();
+		abort.abort(new DOMException('Caller stopped', 'AbortError'));
+		await expect(hermes.request('/api/hang', { signal: abort.signal })).rejects.toMatchObject({
+			name: 'AbortError',
+			message: 'Caller stopped'
+		});
+	});
+
 	it('reports Hermes API errors without exposing an unactionable status only', async () => {
 		const hermes = new HermesServe();
 		const internals = hermes as unknown as {

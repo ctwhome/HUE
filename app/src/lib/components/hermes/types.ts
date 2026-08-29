@@ -21,17 +21,13 @@ export type Skill = {
 
 export type Job = {
 	id: string;
-	profile: string;
-	name?: string;
-	schedule?: string;
+	name: string;
+	cron: string;
+	enabled: boolean;
 	status: string;
 	nextRun?: string;
-	lastRun?: string;
-	prompt?: string;
-	deliver?: string;
-	last_status?: string;
-	last_error?: string;
-	last_delivery_error?: string;
+	prompt: string;
+	sessionId: string;
 };
 
 export type Profile = { name: string; model: string; gateway: string; active: boolean };

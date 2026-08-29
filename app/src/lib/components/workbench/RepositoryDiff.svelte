@@ -158,14 +158,14 @@
 
 	{#if error}<p class="p-2 text-xs text-destructive" role="alert">{error}</p>{/if}
 	{#if result?.truncated}<p
-			class="border-b border-border px-2 py-1.5 text-xs text-amber-300"
+			class="border-b border-border px-2 py-1.5 text-xs text-[var(--warning)]"
 			role="status"
 		>
 			Diff output was limited to {result.maxBytes.toLocaleString()} bytes. Review remaining changes in
 			Git.
 		</p>{/if}
 	{#if result && (result.untrackedPaths.length || result.untrackedPathsTruncated)}
-		<div class="border-b border-border px-2 py-2 text-xs text-amber-300" role="status">
+		<div class="border-b border-border px-2 py-2 text-xs text-[var(--warning)]" role="status">
 			<p>Untracked files are not available in Git diff:</p>
 			<ul class="mt-1 max-h-32 list-disc overflow-auto pl-5 font-mono text-[0.7rem]">
 				{#each result.untrackedPaths as path}<li>{path}</li>{/each}

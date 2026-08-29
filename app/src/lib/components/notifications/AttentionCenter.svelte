@@ -6,6 +6,7 @@
 	import Settings from '~icons/lucide/settings';
 	import Trash2 from '~icons/lucide/trash-2';
 	import X from '~icons/lucide/x';
+	import { parseApiResponse } from '$lib/api-response';
 	import {
 		acknowledgeThenNavigate,
 		attentionState,
@@ -92,8 +93,7 @@
 			...options,
 			headers: { 'content-type': 'application/json', ...(options?.headers ?? {}) }
 		});
-		const body =
-			response.status === 204 ? ({} as T) : ((await response.json()) as T & { error?: string });
+		const body = await parseApiResponse<T>(response);
 		if (!response.ok)
 			throw new Error((body as { error?: string }).error ?? `Request failed (${response.status})`);
 		return body;

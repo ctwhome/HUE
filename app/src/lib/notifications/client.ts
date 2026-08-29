@@ -14,13 +14,6 @@ export function notificationCapability(input: {
 	return input.permission === 'granted' ? 'ready' : 'permission-required';
 }
 
-export async function requestSystemPermission(
-	userGesture: boolean,
-	api: Pick<typeof Notification, 'permission' | 'requestPermission'>
-): Promise<NotificationPermission> {
-	return userGesture ? api.requestPermission() : api.permission;
-}
-
 export function shouldPresentForeground(
 	notification: { projectId: string | null; sessionId: string; kind: string },
 	context: { projectId: string | null; sessionId: string | null; visible: boolean }

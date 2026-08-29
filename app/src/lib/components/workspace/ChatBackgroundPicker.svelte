@@ -48,13 +48,11 @@
 					data-mode="light"
 					class="bg-cover bg-center"
 					style={`background-image: ${template.light}`}
-				></span
-				><span
+				></span><span
 					data-mode="dark"
 					class="bg-cover bg-center"
 					style={`background-image: ${template.dark}`}
-				></span
-			></span
+				></span></span
 			><span class="absolute right-1.5 bottom-1.5 rounded bg-black/65 px-1.5 py-0.5"
 				>{template.label}</span
 			></button
@@ -65,7 +63,8 @@
 		class:ring-ring={value?.kind === 'custom'}
 		style={value?.kind === 'custom' ? chatBackgroundStyle(value) : ''}
 	>
-		<span class={value?.kind === 'custom' ? 'rounded bg-black/55 px-1 text-white' : ''}>Upload</span>
+		<span class={value?.kind === 'custom' ? 'rounded bg-black/55 px-1 text-white' : ''}>Upload</span
+		>
 		<input
 			class="sr-only"
 			type="file"

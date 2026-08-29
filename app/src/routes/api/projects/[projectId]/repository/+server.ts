@@ -8,12 +8,13 @@ import {
 	projectGitHubItems,
 	projectStagedDiff,
 	authoritativeProject,
+	services,
 	type ProjectRepositoryAction,
 	type ProjectRepositoryDiffScope
 } from '$lib/server/services';
-import { generateHermesCommitMessage } from '$lib/server/hermes-cli';
-import { realpathSync } from 'node:fs';
-import { basename, relative, sep } from 'node:path';
+import { commitModelId, generateRepositoryCommitMessage } from '$lib/server/commit-generation';
+import { localSameOriginMutationAllowed } from '$lib/server/same-origin';
+import { basename, join } from 'node:path';
 import type { RequestHandler } from './$types';
 
 function repositoryResponse(
@@ -34,20 +35,6 @@ function repositoryResponse(
 		repositoryPath,
 		repositories
 	};
-}
-
-export function _repositoryMutationAllowed(request: Request, clientAddress: string) {
-	const address = clientAddress.replace(/^::ffff:/, '');
-	if (!['127.0.0.1', '::1'].includes(address)) return false;
-	const host = request.headers.get('host');
-	const origin = request.headers.get('origin');
-	if (!host || !origin) return false;
-	try {
-		const hostname = new URL(`http://${host}`).hostname;
-		return ['127.0.0.1', 'localhost', '[::1]'].includes(hostname) && new URL(origin).host === host;
-	} catch {
-		return false;
-	}
 }
 
 export function _selectedRepositoryPath(
@@ -76,30 +63,23 @@ export function _repositoryDiffOptions(searchParams: URLSearchParams): {
 }
 
 export function _projectFolderRepositories(
-	primaryPath: string,
-	folders: string[]
+	primaryPath: string
 ): Array<{ path: string; label: string }> {
-	const seen = new Set<string>();
-	const primary = realpathSync(primaryPath);
-	return folders.flatMap((folder) => {
-		const repositories = projectRepositories(folder);
-		return repositories.flatMap((repository) => {
-			const root = resolveProjectRepository(folder, repository.path, repositories);
-			if (seen.has(root)) return [];
-			seen.add(root);
-			const path = relative(primary, root);
-			return [{ path: path ? path.split(sep).join('/') : '.', label: basename(root) }];
-		});
-	});
+	return projectRepositories(primaryPath).map(({ path }) => ({
+		path,
+		label: basename(path === '.' ? primaryPath : join(primaryPath, path))
+	}));
+}
+
+export function _commitModelSelection(provider?: string, model?: string): string {
+	if (!provider || !model) throw new Error('Commit model is required');
+	return commitModelId(provider, model);
 }
 
 export const GET: RequestHandler = async ({ params, url }) => {
 	try {
 		const project = await authoritativeProject(params.projectId);
-		const repositories = _projectFolderRepositories(
-			project.primary_path,
-			project.folders.map(({ path }) => path)
-		);
+		const repositories = _projectFolderRepositories(project.primary_path);
 		const view = url.searchParams.get('view');
 		const selected = _selectedRepositoryPath(
 			repositories,
@@ -111,26 +91,30 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		if (view === 'github') {
 			return json(projectGitHubItems(repositoryRoot));
 		}
-		if (view === 'diff') return json(projectRepositoryDiff(repositoryRoot, _repositoryDiffOptions(url.searchParams)));
+		if (view === 'diff')
+			return json(projectRepositoryDiff(repositoryRoot, _repositoryDiffOptions(url.searchParams)));
 		return json(repositoryResponse(repositoryRoot, repositoryPath, repositories));
 	} catch (error) {
 		return json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
 	}
 };
 
-export const POST: RequestHandler = async ({ params, request, getClientAddress }) => {
-	if (!_repositoryMutationAllowed(request, getClientAddress())) {
+export const POST: RequestHandler = async ({ params, request, url, getClientAddress }) => {
+	if (!localSameOriginMutationAllowed(request, url, getClientAddress())) {
 		return json({ error: 'Repository changes are limited to this device' }, { status: 403 });
 	}
 	try {
 		const project = await authoritativeProject(params.projectId);
 		const operation = (await request.json()) as
 			| (ProjectRepositoryAction & { repository?: string })
-			| { action: 'generateCommitMessage'; provider?: string; model?: string; repository?: string };
-		const repositories = _projectFolderRepositories(
-			project.primary_path,
-			project.folders.map(({ path }) => path)
-		);
+			| {
+					action: 'generateCommitMessage';
+					provider?: string;
+					model?: string;
+					repository?: string;
+					operationId?: string;
+			  };
+		const repositories = _projectFolderRepositories(project.primary_path);
 		const repositoryRoot = resolveProjectRepository(
 			project.primary_path,
 			operation.repository,
@@ -138,16 +122,20 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 		);
 		const repositoryPath = operation.repository ?? repositories[0]?.path ?? '.';
 		if (operation.action === 'generateCommitMessage') {
-			const selection =
-				operation.provider && operation.model
-					? { provider: operation.provider, model: operation.model }
-					: undefined;
-			const message = await generateHermesCommitMessage(
-				repositoryRoot,
-				projectStagedDiff(repositoryRoot),
-				selection
+			if (!operation.operationId) throw new Error('Commit generation operation id is required');
+			const state = services();
+			return json(
+				await generateRepositoryCommitMessage(
+					{
+						projectId: project.id,
+						repositoryRoot,
+						diff: projectStagedDiff(repositoryRoot),
+						modelId: _commitModelSelection(operation.provider, operation.model),
+						operationId: operation.operationId
+					},
+					state
+				)
 			);
-			return json({ message });
 		}
 		projectRepositoryAction(repositoryRoot, operation);
 		return json(repositoryResponse(repositoryRoot, repositoryPath, repositories));

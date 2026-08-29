@@ -7,7 +7,10 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = async ({ url }) => {
 	try {
 		const view = url.searchParams.get('view');
-		if (['memory', 'schedules', 'skills', 'profiles', 'mcp', 'models'].includes(view ?? '')) {
+		if (view === 'schedules') {
+			return json({ capabilities: { schedules: true }, jobs: services().schedules.list() });
+		}
+		if (['memory', 'skills', 'profiles', 'mcp', 'models'].includes(view ?? '')) {
 			const result = await new HermesAdmin(services().admin).view(view as HermesAdminView);
 			return json(
 				view === 'profiles'

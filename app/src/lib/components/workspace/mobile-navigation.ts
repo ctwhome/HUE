@@ -7,10 +7,10 @@ export type NavigationMemory = {
 	pane: MobilePane;
 };
 
-export type NavigationDestination = Omit<NavigationMemory, 'version'> & { explicit: boolean };
 export type LaunchIntent = 'new-session' | 'capture' | 'share' | 'projects' | 'recents' | null;
 export type LaunchSource = 'explicit' | 'intent' | 'notification' | 'remembered' | 'default';
-export type LaunchDestination = NavigationDestination & {
+export type LaunchDestination = Omit<NavigationMemory, 'version'> & {
+	explicit: boolean;
 	intent: LaunchIntent;
 	token: string | null;
 	source: LaunchSource;
@@ -166,20 +166,6 @@ export function resolveLaunchDestination(
 	};
 }
 
-export function resolveNavigationDestination(
-	url: URL,
-	rawMemory: string | null,
-	projectIds: string[]
-): NavigationDestination {
-	const {
-		intent: _intent,
-		token: _token,
-		source: _source,
-		...destination
-	} = resolveLaunchDestination(url, rawMemory, projectIds);
-	return destination;
-}
-
 export function resolveInitialMobilePane(
 	destination: Pick<LaunchDestination, 'pane' | 'source'>
 ): MobilePane {
@@ -242,13 +228,8 @@ export function finishMobileGesture(
 ): { commit: boolean; action: MobileGesture['action']; destination: MobilePane } {
 	if (gesture.status !== 'active' || !gesture.action)
 		return { commit: false, action: gesture.action, destination: null };
-	const commit =
-		gesture.deltaX / Math.max(1, _width) >= 0.28 || _velocityX >= 0.5;
-	const destination = !commit
-		? null
-		: gesture.action === 'open-sessions'
-			? 'sessions'
-			: 'projects';
+	const commit = gesture.deltaX / Math.max(1, _width) >= 0.28 || _velocityX >= 0.5;
+	const destination = !commit ? null : gesture.action === 'open-sessions' ? 'sessions' : 'projects';
 	return { commit, action: gesture.action, destination };
 }
 

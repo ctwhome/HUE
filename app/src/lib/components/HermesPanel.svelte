@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
 	import X from '~icons/lucide/x';
+	import { parseApiResponse } from '$lib/api-response';
 	import type { GlobalView } from './GlobalNavigation.svelte';
 	import AdminResourceView from './hermes/AdminResourceView.svelte';
 	import InventoryView from './hermes/InventoryView.svelte';
@@ -104,7 +105,7 @@
 			...options,
 			headers: { 'content-type': 'application/json', ...(options?.headers ?? {}) }
 		});
-		const body = (await response.json()) as T & { error?: string };
+		const body = await parseApiResponse<T>(response);
 		if (!response.ok) throw new Error(body.error ?? `Request failed (${response.status})`);
 		return body;
 	}
@@ -125,13 +126,8 @@
 		if (next === 'schedules') {
 			jobs = (result.jobs ?? []).map((job: Record<string, any>) => ({
 				...job,
-				schedule:
-					typeof job.schedule === 'string'
-						? job.schedule
-						: (job.schedule_display ?? job.schedule?.display ?? job.schedule?.expr ?? ''),
-				status: job.status ?? (job.enabled ? 'active' : 'paused'),
-				nextRun: job.nextRun ?? job.next_run_at,
-				lastRun: job.lastRun ?? job.last_run_at
+				status: job.enabled ? 'active' : 'paused',
+				nextRun: job.nextRunAt
 			}));
 		}
 	}
@@ -408,7 +404,7 @@
 			{#if error}<p class="directory-error mb-3 text-sm text-destructive" role="alert">
 					{error}
 				</p>{/if}
-			{#if notice}<p class="mb-3 text-sm text-emerald-300" role="status">{notice}</p>{/if}
+			{#if notice}<p class="mb-3 text-sm text-[var(--success)]" role="status">{notice}</p>{/if}
 			{#if view === 'app-settings'}
 				<div class="grid gap-4">
 					<Button variant="outline" class="justify-self-start" onclick={() => navigate('settings')}
@@ -435,9 +431,9 @@
 					capabilities={data.capabilities ?? {}}
 				/>
 			{:else if view === 'schedules'}
-				<SchedulesView {jobs} deliveryTargets={data.deliveryTargets ?? []} onaction={action} />
+				<SchedulesView {jobs} onaction={action} />
 			{:else if view === 'commands'}
-				<InventoryView {view} {commands} profiles={[]} servers={[]} {oncommand} />
+				<InventoryView {commands} {oncommand} />
 			{:else}
 				<AdminResourceView {view} {data} onaction={action} onbackup={backup} />
 			{/if}

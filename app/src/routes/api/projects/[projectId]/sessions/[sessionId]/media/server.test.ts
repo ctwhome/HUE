@@ -14,6 +14,7 @@ mock.module('$lib/server/route-services', () => ({
 	authoritativeProject: async () => ({ id: 'canonical-project' }),
 	services: () => ({
 		store: {
+			hasSession: () => true,
 			getSession: (projectId: string) => {
 				projectIds.push(projectId);
 				return { cwd: root };
@@ -28,7 +29,7 @@ test('serves MEDIA with safe headers, HEAD, and bounded byte ranges', async () =
 	projectIds.length = 0;
 	const { GET, HEAD } = await import('./+server');
 	const url = new URL(
-		'http://hue.test/api/projects/p/sessions/s/media?path=report.pdf&download=true'
+		'http://127.0.0.1/api/projects/p/sessions/s/media?path=report.pdf&download=true'
 	);
 	const full = await GET({
 		params: { projectId: 'p', sessionId: 's' },
@@ -70,8 +71,39 @@ test('serves MEDIA with safe headers, HEAD, and bounded byte ranges', async () =
 		await import('./+server')
 	).POST({
 		params: { projectId: 'project-slug', sessionId: 's' },
-		request: new Request(url, { method: 'POST', body: JSON.stringify({ action: 'invalid' }) })
+		url,
+		getClientAddress: () => '127.0.0.1',
+		request: new Request(url, {
+			method: 'POST',
+			headers: { host: url.host, origin: url.origin },
+			body: JSON.stringify({ action: 'invalid' })
+		})
 	} as never);
 	expect(invalidAction.status).toBe(400);
 	expect(projectIds).toEqual(Array(5).fill('canonical-project'));
+});
+
+test('rejects remote MEDIA open while retaining remote GET access', async () => {
+	const { GET, POST } = await import('./+server');
+	const url = new URL('http://hue.test/api/projects/p/sessions/s/media?path=report.pdf');
+	expect(
+		(
+			await GET({
+				params: { projectId: 'p', sessionId: 's' },
+				url,
+				request: new Request(url)
+			} as never)
+		).status
+	).toBe(200);
+	const response = await POST({
+		params: { projectId: 'p', sessionId: 's' },
+		url,
+		getClientAddress: () => '203.0.113.10',
+		request: new Request(url, {
+			method: 'POST',
+			headers: { host: url.host, origin: url.origin },
+			body: JSON.stringify({ action: 'open', path: 'report.pdf' })
+		})
+	} as never);
+	expect(response.status).toBe(403);
 });

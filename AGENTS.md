@@ -11,7 +11,6 @@ HUE is a focused native Bun/SvelteKit workspace for exactly three user-facing ob
 - `docs/decisions/`: accepted architecture decisions; ADR-0002 is the baseline, and later accepted ADRs may amend, extend, or supersede it.
 - `docs/14-decision-register.md`: canonical index of accepted and unresolved decisions.
 - `docs/spikes/001-hermes-acp-bun/`: retained evidence for the validated Hermes ACP seam.
-- `prototype/`: historical interactive design context.
 
 ## Canonical commands
 

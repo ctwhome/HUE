@@ -95,6 +95,22 @@ test('Session creation and archiving keep the selected Project count current', a
 	expect(project.sessionCount).toBe(1);
 });
 
+test('Session creation and archiving keep the standalone Chats count current', async () => {
+	let count = 1;
+	const state = new WorkspaceNavigation(null, {
+		api: async () => ({ session: { sessionId: 'existing', cwd: '/work', archived: true } }),
+		adjustChatSessionCount: (change: number) => (count += change),
+		setError() {}
+	} as never);
+	const existing = { sessionId: 'existing', cwd: '/work' } as Session;
+	state.sessions = [existing];
+
+	state.prependSession({ sessionId: 'new', cwd: '/work' });
+	expect(count).toBe(2);
+	await state.archiveSession({ stopPropagation() {} } as MouseEvent, existing);
+	expect(count).toBe(1);
+});
+
 test('workflow mutations remain scoped to the selected project', async () => {
 	const requests: Array<{ path: string; method: string; body: Record<string, unknown> }> = [];
 	const state = new WorkspaceNavigation(

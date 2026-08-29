@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { services } from '$lib/server/services';
+import { attachmentMatchesDeclaredType } from '$lib/message-content';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -25,6 +26,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 		if (body.dataUrl.length > 32 * 1024 * 1024) {
 			return json({ error: 'Audio recording is too large' }, { status: 413 });
+		}
+		if (!attachmentMatchesDeclaredType(mimeType, Buffer.from(encoded, 'base64'))) {
+			return json({ error: 'Audio content does not match its MIME type' }, { status: 400 });
 		}
 		return json(
 			await services().admin.transcribeAudio(body.dataUrl, body.mimeType, request.signal)

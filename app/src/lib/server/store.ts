@@ -43,6 +43,29 @@ export type Workflow = {
 	updatedAt: string;
 };
 
+export type Schedule = {
+	id: string;
+	name: string;
+	prompt: string;
+	cron: string;
+	enabled: boolean;
+	nextRunAt: string;
+	sessionId: string;
+	createdAt: string;
+	updatedAt: string;
+};
+
+export type CommitGeneration = {
+	operationId: string;
+	projectId: string;
+	repositoryRoot: string;
+	promptHash: string;
+	modelId: string;
+	sessionId: string | null;
+	status: 'creating' | 'submitted' | 'failed';
+	error: string | null;
+};
+
 export type StoredMessage = {
 	id: string;
 	projectId: string | null;
@@ -119,6 +142,40 @@ export type StoredNotification = {
 	actedAt: string | null;
 	interactionId: string | null;
 	currentRelevant: boolean;
+};
+
+export type NotificationEndpointRow = {
+	id: string;
+	device_id: string;
+	name: string;
+	endpoint: string;
+	p256dh: string;
+	auth: string;
+	enabled: number;
+	created_at: string;
+	updated_at: string;
+	revoked_at: string | null;
+	notification_baseline: number;
+};
+
+export type NotificationDeliveryRow = {
+	id: string;
+	notification_id: string;
+	endpoint_id: string;
+	attempt_count: number;
+	endpoint: string;
+	p256dh: string;
+	auth: string;
+	project_id: string | null;
+	session_id: string;
+	kind: NotificationKind;
+	title: string;
+	body: string;
+	path: string;
+	visible_project_id: string | null;
+	visible_session_id: string | null;
+	visible: number | null;
+	expires_at: string | null;
 };
 
 export type StoredSession = {
@@ -255,6 +312,16 @@ function notificationPresentation(
 	}
 }
 
+function pendingNotificationInteractionSql(alias: string): string {
+	return `(${alias}.kind NOT IN ('permission', 'clarify') OR NOT EXISTS (
+	 SELECT 1 FROM session_events source JOIN session_events later
+	  ON later.sequence > source.sequence AND later.project_id IS source.project_id
+	  AND later.session_id = source.session_id AND later.type = source.type
+	  AND json_extract(later.payload, '$.id') = json_extract(source.payload, '$.id')
+	 WHERE source.sequence = CAST(${alias}.source_event_id AS INTEGER)
+	))`;
+}
+
 function cleanOptional(value: unknown, max: number, label: string): string | null {
 	if (value === null) return null;
 	if (typeof value !== 'string' || !value.trim() || value.trim().length > max) {
@@ -339,7 +406,13 @@ export class HUEStore {
 			this.database.query('PRAGMA user_version').get() as { user_version: number }
 		).user_version;
 		if (currentVersion === HUE_SCHEMA_VERSION) return;
-		if (currentVersion !== 0 && currentVersion !== 1 && currentVersion !== 2) {
+		if (
+			currentVersion !== 0 &&
+			currentVersion !== 1 &&
+			currentVersion !== 2 &&
+			currentVersion !== 3 &&
+			currentVersion !== 4
+		) {
 			throw new Error(
 				`HUE schema migration ${currentVersion} -> ${HUE_SCHEMA_VERSION} is unsupported. Stop HUE and use an application version that supports this database.`
 			);
@@ -531,6 +604,33 @@ export class HUEStore {
 				visible INTEGER NOT NULL,
 				expires_at TEXT NOT NULL
 			);
+
+			CREATE TABLE IF NOT EXISTS schedules (
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL,
+				prompt TEXT NOT NULL,
+				cron TEXT NOT NULL,
+				enabled INTEGER NOT NULL DEFAULT 1,
+				next_run_at TEXT NOT NULL,
+				session_id TEXT NOT NULL UNIQUE REFERENCES project_sessions(session_id),
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			);
+
+			CREATE INDEX IF NOT EXISTS schedules_due_idx ON schedules(enabled, next_run_at);
+
+			CREATE TABLE IF NOT EXISTS commit_generations (
+				operation_id TEXT PRIMARY KEY,
+				project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+				repository_root TEXT NOT NULL,
+				prompt_hash TEXT NOT NULL,
+				model_id TEXT NOT NULL,
+				session_id TEXT REFERENCES project_sessions(session_id),
+				status TEXT NOT NULL CHECK (status IN ('creating', 'submitted', 'failed')),
+				error TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			);
 		`);
 		const projectColumns = this.database.query('PRAGMA table_info(projects)').all() as Array<{
 			name: string;
@@ -718,7 +818,7 @@ export class HUEStore {
 		}
 	}
 
-	projectPendingNotifications(): number {
+	private projectPendingNotifications(): number {
 		const rows = this.database
 			.query(
 				`SELECT e.sequence, e.project_id, e.session_id, e.type, e.created_at
@@ -773,6 +873,291 @@ export class HUEStore {
 				path,
 				event.created_at
 			);
+	}
+
+	notificationBaseline(): number {
+		return Number(
+			(
+				this.database
+					.query(
+						'SELECT COALESCE(MAX(CAST(source_event_id AS INTEGER)), 0) AS baseline FROM notifications'
+					)
+					.get() as { baseline: number }
+			).baseline
+		);
+	}
+
+	getNotificationEndpoint(id: string): NotificationEndpointRow | null {
+		return this.database
+			.query(
+				`SELECT id, device_id, name, endpoint, p256dh, auth, enabled, created_at, updated_at,
+				 revoked_at, notification_baseline FROM notification_endpoints WHERE id = ?`
+			)
+			.get(id) as NotificationEndpointRow | null;
+	}
+
+	getNotificationEndpointByDevice(deviceId: string): NotificationEndpointRow | null {
+		return this.database
+			.query(
+				`SELECT id, device_id, name, endpoint, p256dh, auth, enabled, created_at, updated_at,
+				 revoked_at, notification_baseline FROM notification_endpoints WHERE device_id = ?`
+			)
+			.get(deviceId) as NotificationEndpointRow | null;
+	}
+
+	listNotificationEndpoints(): NotificationEndpointRow[] {
+		return this.database
+			.query(
+				`SELECT id, device_id, name, endpoint, p256dh, auth, enabled, created_at, updated_at,
+				 revoked_at, notification_baseline FROM notification_endpoints ORDER BY created_at, id`
+			)
+			.all() as NotificationEndpointRow[];
+	}
+
+	upsertNotificationEndpoint(input: {
+		id: string;
+		deviceId: string;
+		name: string;
+		endpoint: string;
+		p256dh: string;
+		auth: string;
+		now: string;
+		baseline: number;
+	}): NotificationEndpointRow {
+		const current = this.getNotificationEndpointByDevice(input.deviceId);
+		this.database.transaction(() => {
+			this.database
+				.query(
+					`INSERT INTO notification_endpoints
+					 (id, device_id, name, endpoint, p256dh, auth, enabled, created_at, updated_at, revoked_at,
+					  notification_baseline) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, NULL, ?)
+					 ON CONFLICT(device_id) DO UPDATE SET name = excluded.name, endpoint = excluded.endpoint,
+					 p256dh = excluded.p256dh, auth = excluded.auth, enabled = 1,
+					 updated_at = excluded.updated_at, revoked_at = NULL,
+					 notification_baseline = CASE
+					  WHEN notification_endpoints.enabled = 0 OR notification_endpoints.revoked_at IS NOT NULL
+					  THEN excluded.notification_baseline ELSE notification_endpoints.notification_baseline END`
+				)
+				.run(
+					input.id,
+					input.deviceId,
+					input.name,
+					input.endpoint,
+					input.p256dh,
+					input.auth,
+					input.now,
+					input.now,
+					input.baseline
+				);
+			if (current && (!current.enabled || current.revoked_at)) {
+				this.suppressNotificationEndpointAttempts(current.id, input.now);
+			}
+		})();
+		return this.getNotificationEndpointByDevice(input.deviceId)!;
+	}
+
+	updateNotificationEndpoint(
+		id: string,
+		input: { name: string; enabled: boolean; now: string; baseline: number }
+	): NotificationEndpointRow | null {
+		const current = this.getNotificationEndpoint(id);
+		if (!current) return null;
+		const reenabled = input.enabled && !current.enabled;
+		this.database.transaction(() => {
+			this.database
+				.query(
+					`UPDATE notification_endpoints SET name = ?, enabled = ?, updated_at = ?,
+					 notification_baseline = CASE WHEN ? THEN ? ELSE notification_baseline END WHERE id = ?`
+				)
+				.run(input.name, input.enabled ? 1 : 0, input.now, reenabled ? 1 : 0, input.baseline, id);
+			if (!input.enabled || reenabled) this.suppressNotificationEndpointAttempts(id, input.now);
+		})();
+		return this.getNotificationEndpoint(id);
+	}
+
+	revokeNotificationEndpoint(id: string, now: string): NotificationEndpointRow | null {
+		const result = this.database
+			.query(
+				'UPDATE notification_endpoints SET enabled = 0, revoked_at = COALESCE(revoked_at, ?), updated_at = ? WHERE id = ?'
+			)
+			.run(now, now, id);
+		if (!result.changes) return null;
+		this.suppressNotificationEndpointAttempts(id, now);
+		return this.getNotificationEndpoint(id);
+	}
+
+	deleteNotificationEndpoint(id: string): boolean {
+		return !!this.database.query('DELETE FROM notification_endpoints WHERE id = ?').run(id).changes;
+	}
+
+	reportNotificationPresence(
+		endpointId: string,
+		input: {
+			projectId: string | null;
+			sessionId: string | null;
+			visible: boolean;
+			expiresAt: string;
+		}
+	): boolean {
+		if (!this.getNotificationEndpoint(endpointId)) return false;
+		this.database
+			.query(
+				`INSERT INTO notification_presence (endpoint_id, project_id, session_id, visible, expires_at)
+				 VALUES (?, ?, ?, ?, ?) ON CONFLICT(endpoint_id) DO UPDATE SET
+				 project_id = excluded.project_id, session_id = excluded.session_id,
+				 visible = excluded.visible, expires_at = excluded.expires_at`
+			)
+			.run(endpointId, input.projectId, input.sessionId, input.visible ? 1 : 0, input.expiresAt);
+		return true;
+	}
+
+	queueNotificationAttempts(now: string): void {
+		this.database
+			.query(
+				`INSERT OR IGNORE INTO notification_delivery_attempts
+				 (id, notification_id, endpoint_id, status, next_attempt_at, created_at, updated_at)
+				 SELECT 'attempt:' || n.id || ':' || e.id, n.id, e.id, 'queued', ?, ?, ?
+				 FROM notifications n CROSS JOIN notification_endpoints e
+				 WHERE e.enabled = 1 AND e.revoked_at IS NULL
+				 AND CAST(n.source_event_id AS INTEGER) > e.notification_baseline
+				 AND n.read_at IS NULL AND n.dismissed_at IS NULL AND n.acted_at IS NULL
+				 AND ${pendingNotificationInteractionSql('n')}`
+			)
+			.run(now, now, now);
+	}
+
+	listDueNotificationAttempts(now: string): NotificationDeliveryRow[] {
+		return this.database
+			.query(
+				`SELECT a.id, a.notification_id, a.endpoint_id, a.attempt_count,
+				 e.endpoint, e.p256dh, e.auth, n.project_id, n.session_id, n.kind, n.title, n.body, n.path,
+				 p.project_id AS visible_project_id, p.session_id AS visible_session_id, p.visible, p.expires_at
+				 FROM notification_delivery_attempts a
+				 JOIN notification_endpoints e ON e.id = a.endpoint_id
+				 JOIN notifications n ON n.id = a.notification_id
+				 LEFT JOIN notification_presence p ON p.endpoint_id = e.id
+				 WHERE a.status IN ('queued', 'retry') AND a.next_attempt_at <= ?
+				 AND e.enabled = 1 AND e.revoked_at IS NULL
+				 AND n.read_at IS NULL AND n.dismissed_at IS NULL AND n.acted_at IS NULL
+				 AND ${pendingNotificationInteractionSql('n')} ORDER BY a.created_at, a.id`
+			)
+			.all(now) as NotificationDeliveryRow[];
+	}
+
+	listNotificationAttempts(): Array<{
+		id: string;
+		notificationId: string;
+		endpointId: string;
+		status: 'queued' | 'retry' | 'accepted' | 'expired' | 'suppressed';
+		attemptCount: number;
+		errorCategory: string | null;
+		updatedAt: string;
+	}> {
+		const rows = this.database
+			.query(
+				`SELECT id, notification_id, endpoint_id, status, attempt_count, error_category, updated_at
+				 FROM notification_delivery_attempts ORDER BY created_at, id`
+			)
+			.all() as Array<{
+			id: string;
+			notification_id: string;
+			endpoint_id: string;
+			status: 'queued' | 'retry' | 'accepted' | 'expired' | 'suppressed';
+			attempt_count: number;
+			error_category: string | null;
+			updated_at: string;
+		}>;
+		return rows.map((row) => ({
+			id: row.id,
+			notificationId: row.notification_id,
+			endpointId: row.endpoint_id,
+			status: row.status,
+			attemptCount: row.attempt_count,
+			errorCategory: row.error_category,
+			updatedAt: row.updated_at
+		}));
+	}
+
+	finishNotificationAttempt(
+		id: string,
+		status: 'accepted' | 'expired' | 'suppressed',
+		count: number,
+		error: string | null,
+		now: string
+	): void {
+		this.database
+			.query(
+				`UPDATE notification_delivery_attempts SET status = ?, attempt_count = ?, error_category = ?,
+				 updated_at = ?, accepted_at = CASE WHEN ? = 'accepted' THEN ? ELSE accepted_at END WHERE id = ?`
+			)
+			.run(status, count, error, now, status, now, id);
+	}
+
+	retryNotificationAttempt(id: string, count: number, next: string, now: string): void {
+		this.database
+			.query(
+				`UPDATE notification_delivery_attempts SET status = 'retry', attempt_count = ?,
+				 error_category = 'temporary', next_attempt_at = ?, updated_at = ? WHERE id = ?`
+			)
+			.run(count, next, now, id);
+	}
+
+	disableNotificationEndpoint(id: string, now: string): void {
+		this.database
+			.query('UPDATE notification_endpoints SET enabled = 0, updated_at = ? WHERE id = ?')
+			.run(now, id);
+	}
+
+	suppressInactiveNotificationAttempts(now: string): void {
+		this.database
+			.query(
+				`UPDATE notification_delivery_attempts AS a SET status = 'suppressed',
+				 error_category = 'canonical-inactive', updated_at = ?
+				 WHERE a.status IN ('queued', 'retry') AND EXISTS (
+				  SELECT 1 FROM notifications n WHERE n.id = a.notification_id AND (
+				   n.read_at IS NOT NULL OR n.dismissed_at IS NOT NULL OR n.acted_at IS NOT NULL OR
+				   NOT (${pendingNotificationInteractionSql('n')})
+				  )
+				 )`
+			)
+			.run(now);
+	}
+
+	nextNotificationAttemptAt(): string | null {
+		return (
+			this.database
+				.query(
+					`SELECT MIN(next_attempt_at) AS next_attempt_at FROM notification_delivery_attempts
+					 WHERE status IN ('queued', 'retry')`
+				)
+				.get() as { next_attempt_at: string | null }
+		).next_attempt_at;
+	}
+
+	listPlaintextNotificationCredentials(
+		limit = 100
+	): Array<Pick<NotificationEndpointRow, 'id' | 'endpoint' | 'p256dh' | 'auth'>> {
+		return this.database
+			.query(
+				`SELECT id, endpoint, p256dh, auth FROM notification_endpoints
+				 WHERE endpoint NOT LIKE 'v1:%' OR p256dh NOT LIKE 'v1:%' OR auth NOT LIKE 'v1:%' LIMIT ?`
+			)
+			.all(limit) as Array<Pick<NotificationEndpointRow, 'id' | 'endpoint' | 'p256dh' | 'auth'>>;
+	}
+
+	updateNotificationCredentials(id: string, endpoint: string, p256dh: string, auth: string): void {
+		this.database
+			.query('UPDATE notification_endpoints SET endpoint = ?, p256dh = ?, auth = ? WHERE id = ?')
+			.run(endpoint, p256dh, auth, id);
+	}
+
+	private suppressNotificationEndpointAttempts(endpointId: string, now: string): void {
+		this.database
+			.query(
+				`UPDATE notification_delivery_attempts SET status = 'suppressed', error_category = 'endpoint-disabled',
+				 updated_at = ? WHERE endpoint_id = ? AND status IN ('queued', 'retry')`
+			)
+			.run(now, endpointId);
 	}
 
 	listNotifications(options: { unreadOnly?: boolean; limit?: number; cursor?: string | null }): {
@@ -951,22 +1336,6 @@ export class HUEStore {
 		return row ? this.mapSession(row) : null;
 	}
 
-	listStoredSessions(
-		projectId: string | null,
-		includeArchived = true,
-		limit = 200
-	): StoredSession[] {
-		const rows = this.database
-			.query(
-				`SELECT session_id, cwd, icon, title, pinned, archived, folder, tags, updated_at
-				 , work_mode
-				 FROM project_sessions WHERE project_id IS ? AND (? OR archived = 0)
-				 ORDER BY pinned DESC, updated_at DESC, session_id LIMIT ?`
-			)
-			.all(projectId, includeArchived ? 1 : 0, Math.max(1, Math.min(limit, 500))) as SessionRow[];
-		return rows.map((row) => this.mapSession(row));
-	}
-
 	listSessionRoots(projectId: string | null): string[] {
 		return (
 			this.database
@@ -978,7 +1347,9 @@ export class HUEStore {
 	countSessions(projectId: string | null): number {
 		return (
 			this.database
-				.query('SELECT COUNT(*) AS count FROM project_sessions WHERE project_id IS ? AND archived = 0')
+				.query(
+					'SELECT COUNT(*) AS count FROM project_sessions WHERE project_id IS ? AND archived = 0'
+				)
 				.get(projectId) as { count: number }
 		).count;
 	}
@@ -1041,14 +1412,6 @@ export class HUEStore {
 			sessions: rows.slice(0, limit).map((row) => this.mapSession(row)),
 			hasMore: rows.length > limit
 		};
-	}
-
-	updateSessionMetadata(
-		projectId: string | null,
-		sessionId: string,
-		input: Partial<Pick<StoredSession, 'title' | 'pinned' | 'archived' | 'folder' | 'tags'>>
-	): StoredSession {
-		return this.updateSession(projectId, sessionId, input);
 	}
 
 	updateSession(
@@ -1123,7 +1486,7 @@ export class HUEStore {
 			typeof input === 'string'
 				? this.prepareSessionCopy(projectId, sourceSessionId, input)
 				: input;
-		const target = this.updateSessionMetadata(projectId, targetSessionId, {
+		const target = this.updateSession(projectId, targetSessionId, {
 			...metadata
 		});
 		this.database.transaction(() => {
@@ -1202,15 +1565,6 @@ export class HUEStore {
 			}
 		})();
 		return target;
-	}
-
-	searchSessions(projectId: string | null, query: string, limit = 50): StoredSession[] {
-		return this.listSessionPage(projectId, {
-			includeArchived: true,
-			query,
-			limit,
-			offset: 0
-		}).sessions;
 	}
 
 	findSessions(
@@ -1421,14 +1775,6 @@ export class HUEStore {
 		return withEvent ? result : result.session;
 	}
 
-	updateSessionIcon(projectId: string | null, sessionId: string, icon: string | null): boolean {
-		return (
-			this.database
-				.query('UPDATE project_sessions SET icon = ? WHERE project_id IS ? AND session_id = ?')
-				.run(icon, projectId, sessionId).changes > 0
-		);
-	}
-
 	recoverInterruptedMessages(
 		activeMessageIds: ReadonlySet<string> = new Set()
 	): Array<StoredMessage & { cwd: string }> {
@@ -1471,14 +1817,6 @@ export class HUEStore {
 		})();
 	}
 
-	createProject(input: { id: string; name: string; rootPath: string }): Project {
-		const createdAt = new Date().toISOString();
-		this.database
-			.query('INSERT INTO projects (id, name, root_path, created_at) VALUES (?, ?, ?, ?)')
-			.run(input.id, input.name, input.rootPath, createdAt);
-		return { ...input, icon: null, createdAt };
-	}
-
 	listLegacyProjects(): Project[] {
 		const rows = this.database
 			.query(
@@ -1500,14 +1838,15 @@ export class HUEStore {
 		}));
 	}
 
-	ensureProjectMetadata(id: string): void {
+	ensureProjectMetadata(id: string, name = ''): void {
 		if (!id.trim() || id.includes('\0')) throw new Error('Hermes Project id is invalid');
-		if (this.hasProjectMetadata(id)) return;
 		this.database
 			.query(
-				'INSERT INTO projects (id, name, root_path, icon, legacy, created_at) VALUES (?, ?, ?, NULL, 0, ?)'
+				`INSERT INTO projects (id, name, root_path, icon, legacy, created_at)
+				 VALUES (?, ?, ?, NULL, 0, ?)
+				 ON CONFLICT(id) DO UPDATE SET name = CASE WHEN excluded.name != '' THEN excluded.name ELSE projects.name END`
 			)
-			.run(id, '', `hue-hermes-project:${encodeURIComponent(id)}`, new Date().toISOString());
+			.run(id, name, `hue-hermes-project:${encodeURIComponent(id)}`, new Date().toISOString());
 	}
 
 	hasProjectMetadata(id: string): boolean {
@@ -1645,76 +1984,22 @@ export class HUEStore {
 				)
 				.run(hermesId, legacyId);
 			this.database.query('DELETE FROM dismissed_sessions WHERE project_scope = ?').run(legacyId);
+			this.database
+				.query(
+					`UPDATE notifications SET project_id = ?, path = replace(path, ?, ?)
+					 WHERE project_id = ?`
+				)
+				.run(
+					hermesId,
+					`/projects/${encodeURIComponent(legacyId)}/`,
+					`/projects/${encodeURIComponent(hermesId)}/`,
+					legacyId
+				);
+			this.database
+				.query('UPDATE notification_presence SET project_id = ? WHERE project_id = ?')
+				.run(hermesId, legacyId);
 			this.database.query('DELETE FROM projects WHERE id = ?').run(legacyId);
 		})();
-	}
-
-	listProjects(): Project[] {
-		const rows = this.database
-			.query('SELECT id, name, root_path, icon, created_at FROM projects ORDER BY created_at, id')
-			.all() as Array<{
-			id: string;
-			name: string;
-			root_path: string;
-			icon: string | null;
-			created_at: string;
-		}>;
-		return rows.map((row) => ({
-			id: row.id,
-			name: row.name,
-			rootPath: row.root_path,
-			icon: row.icon,
-			createdAt: row.created_at
-		}));
-	}
-
-	getProject(id: string): Project | null {
-		const row = this.database
-			.query('SELECT id, name, root_path, icon, created_at FROM projects WHERE id = ?')
-			.get(id) as {
-			id: string;
-			name: string;
-			root_path: string;
-			icon: string | null;
-			created_at: string;
-		} | null;
-		return row
-			? {
-					id: row.id,
-					name: row.name,
-					rootPath: row.root_path,
-					icon: row.icon,
-					createdAt: row.created_at
-				}
-			: null;
-	}
-
-	updateProject(
-		id: string,
-		input: { name: string; icon: string | null; rootPath?: string }
-	): Project | null {
-		return this.database.transaction(() => {
-			const project = this.getProject(id);
-			if (!project) return null;
-			const rootPath = input.rootPath ?? project.rootPath;
-			if (rootPath !== project.rootPath) {
-				const active = this.database
-					.query(
-						"SELECT 1 FROM messages WHERE project_id = ? AND status IN ('queued', 'running') LIMIT 1"
-					)
-					.get(id);
-				if (active) throw new Error('Project has active message deliveries');
-			}
-			this.database
-				.query('UPDATE projects SET name = ?, icon = ?, root_path = ? WHERE id = ?')
-				.run(input.name, input.icon, rootPath, id);
-			return this.getProject(id);
-		})();
-	}
-
-	relocateProject(id: string, rootPath: string): Project | null {
-		const project = this.getProject(id);
-		return project ? this.updateProject(id, { ...project, rootPath }) : null;
 	}
 
 	hasActiveProjectDeliveries(id: string): boolean {
@@ -1725,17 +2010,6 @@ export class HUEStore {
 				)
 				.get(id)
 		);
-	}
-
-	deleteProject(id: string): boolean {
-		return this.database.transaction(() => {
-			if (this.hasActiveProjectDeliveries(id)) {
-				throw new Error('Project has active message deliveries');
-			}
-			this.database.query('DELETE FROM session_events WHERE project_id = ?').run(id);
-			this.database.query('DELETE FROM messages WHERE project_id = ?').run(id);
-			return this.database.query('DELETE FROM projects WHERE id = ?').run(id).changes > 0;
-		})();
 	}
 
 	createWorkflow(input: {
@@ -1853,6 +2127,194 @@ export class HUEStore {
 				.query('DELETE FROM workflows WHERE id = ? AND project_id = ?')
 				.run(id, projectId).changes > 0
 		);
+	}
+
+	reserveCommitGeneration(input: Omit<CommitGeneration, 'sessionId' | 'status' | 'error'>): {
+		created: boolean;
+		generation: CommitGeneration;
+	} {
+		const now = new Date().toISOString();
+		const created =
+			this.database
+				.query(
+					`INSERT OR IGNORE INTO commit_generations
+					 (operation_id, project_id, repository_root, prompt_hash, model_id, status, created_at, updated_at)
+					 VALUES (?, ?, ?, ?, ?, 'creating', ?, ?)`
+				)
+				.run(
+					input.operationId,
+					input.projectId,
+					input.repositoryRoot,
+					input.promptHash,
+					input.modelId,
+					now,
+					now
+				).changes > 0;
+		return { created, generation: this.getCommitGeneration(input.operationId)! };
+	}
+
+	getCommitGeneration(operationId: string): CommitGeneration | null {
+		const row = this.database
+			.query(
+				`SELECT operation_id, project_id, repository_root, prompt_hash, model_id, session_id, status, error
+				 FROM commit_generations WHERE operation_id = ?`
+			)
+			.get(operationId) as {
+			operation_id: string;
+			project_id: string;
+			repository_root: string;
+			prompt_hash: string;
+			model_id: string;
+			session_id: string | null;
+			status: CommitGeneration['status'];
+			error: string | null;
+		} | null;
+		return row
+			? {
+					operationId: row.operation_id,
+					projectId: row.project_id,
+					repositoryRoot: row.repository_root,
+					promptHash: row.prompt_hash,
+					modelId: row.model_id,
+					sessionId: row.session_id,
+					status: row.status,
+					error: row.error
+				}
+			: null;
+	}
+
+	attachCommitGeneration(operationId: string, sessionId: string): void {
+		this.database
+			.query('UPDATE commit_generations SET session_id = ?, updated_at = ? WHERE operation_id = ?')
+			.run(sessionId, new Date().toISOString(), operationId);
+	}
+
+	completeCommitGenerationReservation(
+		operationId: string,
+		status: 'submitted' | 'failed',
+		error: string | null = null
+	): void {
+		this.database
+			.query(
+				'UPDATE commit_generations SET status = ?, error = ?, updated_at = ? WHERE operation_id = ?'
+			)
+			.run(status, error, new Date().toISOString(), operationId);
+	}
+
+	createSchedule(input: Omit<Schedule, 'createdAt' | 'updatedAt'>): Schedule {
+		const now = new Date().toISOString();
+		this.database
+			.query(
+				`INSERT INTO schedules (id, name, prompt, cron, enabled, next_run_at, session_id, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+			)
+			.run(
+				input.id,
+				input.name,
+				input.prompt,
+				input.cron,
+				input.enabled ? 1 : 0,
+				input.nextRunAt,
+				input.sessionId,
+				now,
+				now
+			);
+		return this.getSchedule(input.id)!;
+	}
+
+	getSchedule(id: string): Schedule | null {
+		const row = this.database
+			.query(
+				'SELECT id, name, prompt, cron, enabled, next_run_at, session_id, created_at, updated_at FROM schedules WHERE id = ?'
+			)
+			.get(id) as {
+			id: string;
+			name: string;
+			prompt: string;
+			cron: string;
+			enabled: number;
+			next_run_at: string;
+			session_id: string;
+			created_at: string;
+			updated_at: string;
+		} | null;
+		return row
+			? {
+					id: row.id,
+					name: row.name,
+					prompt: row.prompt,
+					cron: row.cron,
+					enabled: !!row.enabled,
+					nextRunAt: row.next_run_at,
+					sessionId: row.session_id,
+					createdAt: row.created_at,
+					updatedAt: row.updated_at
+				}
+			: null;
+	}
+
+	listSchedules(): Schedule[] {
+		return (
+			this.database.query('SELECT id FROM schedules ORDER BY name, id').all() as Array<{
+				id: string;
+			}>
+		).map(({ id }) => this.getSchedule(id)!);
+	}
+
+	listDueSchedules(now: string): Schedule[] {
+		return (
+			this.database
+				.query(
+					'SELECT id FROM schedules WHERE enabled = 1 AND next_run_at <= ? ORDER BY next_run_at, id'
+				)
+				.all(now) as Array<{ id: string }>
+		).map(({ id }) => this.getSchedule(id)!);
+	}
+
+	updateSchedule(
+		id: string,
+		patch: Partial<Pick<Schedule, 'name' | 'prompt' | 'cron' | 'enabled' | 'nextRunAt'>>
+	): Schedule {
+		const current = this.getSchedule(id);
+		if (!current) throw new Error('Schedule not found');
+		const next = { ...current, ...patch };
+		this.database
+			.query(
+				'UPDATE schedules SET name = ?, prompt = ?, cron = ?, enabled = ?, next_run_at = ?, updated_at = ? WHERE id = ?'
+			)
+			.run(
+				next.name,
+				next.prompt,
+				next.cron,
+				next.enabled ? 1 : 0,
+				next.nextRunAt,
+				new Date().toISOString(),
+				id
+			);
+		return this.getSchedule(id)!;
+	}
+
+	deleteSchedule(id: string): boolean {
+		return this.database.query('DELETE FROM schedules WHERE id = ?').run(id).changes > 0;
+	}
+
+	acceptDueSchedule(id: string, dueAt: string, nextRunAt: string) {
+		return this.database.transaction(() => {
+			const schedule = this.getSchedule(id);
+			if (!schedule || !schedule.enabled || schedule.nextRunAt !== dueAt) return null;
+			const envelope = {
+				id: `schedule:${id}:${dueAt}`,
+				projectId: null,
+				sessionId: schedule.sessionId,
+				text: schedule.prompt,
+				images: [],
+				attachments: [],
+				reviewContexts: []
+			};
+			const accepted = this.acceptMessage(envelope);
+			this.updateSchedule(id, { nextRunAt });
+			return { envelope, accepted };
+		})();
 	}
 
 	acceptMessage(input: {
@@ -2053,19 +2515,31 @@ export class HUEStore {
 		const rows = this.database
 			.query(
 				`
-			WITH latest_message AS (
-				SELECT session_id, status,
-					ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at DESC, id DESC) AS rank
-				FROM messages WHERE project_id IS ?
+			WITH message_order AS (
+				SELECT m.session_id, m.id, m.status, m.created_at, MAX(e.sequence) AS lifecycle_sequence
+				FROM messages m
+				LEFT JOIN session_events e
+					ON e.project_id IS m.project_id AND e.session_id = m.session_id
+					AND json_extract(e.payload, '$.messageId') = m.id
+					AND e.type IN ('message.accepted', 'message.running', 'message.completed', 'message.failed', 'message.unknown', 'message.cancelled')
+				WHERE m.project_id IS ?
+				GROUP BY m.id
+			), latest_message AS (
+				SELECT session_id, id, status,
+					ROW_NUMBER() OVER (
+						PARTITION BY session_id ORDER BY lifecycle_sequence DESC, created_at DESC, id DESC
+					) AS rank
+				FROM message_order
 			), latest_interaction AS (
-				SELECT session_id, type, json_extract(payload, '$.status') AS status,
+				SELECT session_id, type, json_extract(payload, '$.messageId') AS message_id,
+					json_extract(payload, '$.status') AS status,
 					ROW_NUMBER() OVER (
 						PARTITION BY session_id, type, json_extract(payload, '$.id') ORDER BY sequence DESC
 					) AS rank
 				FROM session_events
 				WHERE project_id IS ? AND type IN ('agent.permission', 'agent.clarify')
 			), latest_terminal AS (
-				SELECT session_id, type,
+				SELECT session_id, type, json_extract(payload, '$.messageId') AS message_id,
 					ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY sequence DESC) AS rank
 				FROM session_events
 				WHERE project_id IS ? AND type IN ('message.completed', 'message.failed', 'message.unknown', 'message.cancelled')
@@ -2089,8 +2563,10 @@ export class HUEStore {
 				) AS unread_attention
 			FROM project_sessions ps
 			LEFT JOIN latest_message lm ON lm.session_id = ps.session_id AND lm.rank = 1
-			LEFT JOIN latest_interaction li ON li.session_id = ps.session_id AND li.rank = 1
-			LEFT JOIN latest_terminal lt ON lt.session_id = ps.session_id AND lt.rank = 1
+			LEFT JOIN latest_interaction li
+				ON li.session_id = ps.session_id AND li.message_id = lm.id AND li.rank = 1
+			LEFT JOIN latest_terminal lt
+				ON lt.session_id = ps.session_id AND lt.message_id = lm.id AND lt.rank = 1
 			WHERE ps.project_id IS ?
 			GROUP BY ps.session_id
 		`

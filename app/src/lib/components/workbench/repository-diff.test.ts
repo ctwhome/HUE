@@ -34,7 +34,10 @@ test('parses changed files, hunks, and accessible line numbers from a unified di
 test('bounds a selected diff line range and reports when it was clipped', () => {
 	const lines = Array.from({ length: 250 }, (_, index) => `+line ${index + 1}`);
 
-	expect(boundedDiffLineRange(lines, 20, 22)).toEqual({ text: '+line 21\n+line 22\n+line 23', clipped: false });
+	expect(boundedDiffLineRange(lines, 20, 22)).toEqual({
+		text: '+line 21\n+line 22\n+line 23',
+		clipped: false
+	});
 	const bounded = boundedDiffLineRange(lines, 0, 249);
 	expect(bounded.text.split('\n')).toHaveLength(200);
 	expect(bounded.clipped).toBe(true);

@@ -40,6 +40,12 @@ function client(initial: HermesProject[]) {
 	};
 }
 
+function legacyProject(store: HUEStore, id: string, name: string, rootPath: string) {
+	store.database
+		.query('INSERT INTO projects (id, name, root_path, legacy, created_at) VALUES (?, ?, ?, 1, ?)')
+		.run(id, name, rootPath, new Date().toISOString());
+}
+
 describe('legacy HUE Project reconciliation', () => {
 	it('adopts one Hermes Project by canonical folder membership', async () => {
 		const root = mkdtempSync(join(tmpdir(), 'hue-project-real-'));
@@ -47,7 +53,7 @@ describe('legacy HUE Project reconciliation', () => {
 		symlinkSync(root, alias);
 		temporaryDirectories.push(alias, root);
 		const store = new HUEStore(':memory:');
-		store.createProject({ id: 'legacy', name: 'Legacy', rootPath: alias });
+		legacyProject(store, 'legacy', 'Legacy', alias);
 		store.createWorkflow({ id: 'workflow', projectId: 'legacy', name: 'Keep', prompt: 'Keep me' });
 		const hermes = client([folderProject('p_existing', root)]);
 
@@ -64,7 +70,7 @@ describe('legacy HUE Project reconciliation', () => {
 		const root = mkdtempSync(join(tmpdir(), 'hue-project-ambiguous-'));
 		temporaryDirectories.push(root);
 		const store = new HUEStore(':memory:');
-		store.createProject({ id: 'legacy', name: 'Legacy', rootPath: root });
+		legacyProject(store, 'legacy', 'Legacy', root);
 		const hermes = client([folderProject('p_one', root), folderProject('p_two', root)]);
 
 		const result = await reconcileLegacyProjects(store, hermes);
@@ -87,8 +93,8 @@ describe('legacy HUE Project reconciliation', () => {
 		symlinkSync(root, alias);
 		temporaryDirectories.push(alias, root);
 		const store = new HUEStore(':memory:');
-		store.createProject({ id: 'legacy-one', name: 'One', rootPath: root });
-		store.createProject({ id: 'legacy-two', name: 'Two', rootPath: alias });
+		legacyProject(store, 'legacy-one', 'One', root);
+		legacyProject(store, 'legacy-two', 'Two', alias);
 		store.createWorkflow({ id: 'one', projectId: 'legacy-one', name: 'One', prompt: 'One' });
 		store.createWorkflow({ id: 'two', projectId: 'legacy-two', name: 'Two', prompt: 'Two' });
 		const hermes = client([folderProject('p_existing', root)]);
@@ -109,7 +115,7 @@ describe('legacy HUE Project reconciliation', () => {
 		const root = mkdtempSync(join(tmpdir(), 'hue-project-create-'));
 		temporaryDirectories.push(root);
 		const store = new HUEStore(':memory:');
-		store.createProject({ id: 'legacy', name: 'Legacy', rootPath: root });
+		legacyProject(store, 'legacy', 'Legacy', root);
 		store.upsertSession('legacy', { sessionId: 'session', cwd: root });
 		const hermes = client([]);
 

@@ -38,6 +38,16 @@ test('lists bounded canonical metadata and counts', async () => {
 	expect(JSON.stringify(body)).not.toContain('private-message');
 });
 
+test('notification reads replace sentinel names with Hermes Project names', async () => {
+	const { _withAuthoritativeProjectNames } = await import('./+server');
+	expect(
+		_withAuthoritativeProjectNames(
+			[{ projectId: 'project-1', projectName: '' }],
+			[{ id: 'project-1', name: 'Current Hermes name' }]
+		)
+	).toEqual([{ projectId: 'project-1', projectName: 'Current Hermes name' }]);
+});
+
 test('notification lifecycle mutations require exact same origin', async () => {
 	const id = store.listNotifications({ limit: 1 }).items[0]!.id;
 	const { PATCH } = await import('./[notificationId]/+server');

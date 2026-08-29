@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Component } from 'svelte';
 	import { onMount } from 'svelte';
 	import ExternalLink from '~icons/lucide/external-link';
 	import Plus from '~icons/lucide/plus';
@@ -6,7 +7,6 @@
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
 	import { normalizeBrowserUrl, restoreBrowserTabId, restoreBrowserView } from './browser-canvas';
-	import ExcalidrawPanel from './ExcalidrawPanel.svelte';
 
 	type BrowserTab = { id: string; title: string; url: string; draft: string };
 	type View = 'browser' | 'excalidraw';
@@ -17,6 +17,10 @@
 	}: { projectId: string; onpreviewchange: (url: string) => void } = $props();
 	let view = $state<View>('browser');
 	let excalidrawMounted = $state(false);
+	let ExcalidrawPanel = $state<Component<{
+		projectId: string;
+		onpreviewchange: (url: string) => void;
+	}> | null>(null);
 	let browserTabs = $state<BrowserTab[]>([]);
 	let activeBrowserTabId = $state('');
 	let browserError = $state('');
@@ -58,7 +62,11 @@
 		activeBrowserTabId = restoreBrowserTabId(browserTabs, localStorage.getItem(activeStorageKey()));
 		view = restoreBrowserView(localStorage.getItem(viewStorageKey()));
 		excalidrawMounted = view === 'excalidraw';
+		if (excalidrawMounted) void loadExcalidraw();
 		onpreviewchange(view === 'browser' ? (activeBrowserTab()?.url ?? '') : '');
+	}
+	async function loadExcalidraw() {
+		ExcalidrawPanel ??= (await import('./ExcalidrawPanel.svelte')).default;
 	}
 	function saveBrowserTabs() {
 		try {
@@ -76,7 +84,10 @@
 	}
 	function selectView(next: View) {
 		view = next;
-		if (next === 'excalidraw') excalidrawMounted = true;
+		if (next === 'excalidraw') {
+			excalidrawMounted = true;
+			void loadExcalidraw();
+		}
 		try {
 			localStorage.setItem(viewStorageKey(), next);
 		} catch {
@@ -87,17 +98,6 @@
 	function updateExcalidrawPreview(url: string) {
 		excalidrawUrl = url;
 		if (view === 'excalidraw') onpreviewchange(url);
-	}
-	function handleViewKeydown(event: KeyboardEvent) {
-		if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-		event.preventDefault();
-		let next: View;
-		if (event.key === 'Home') next = 'browser';
-		else if (event.key === 'End') next = 'excalidraw';
-		else if (event.key === 'ArrowLeft') next = view === 'browser' ? 'excalidraw' : 'browser';
-		else next = view === 'excalidraw' ? 'browser' : 'excalidraw';
-		selectView(next);
-		document.getElementById(`${next}-view-tab`)?.focus();
 	}
 	function updateBrowserDraft(event: Event) {
 		const draft = (event.currentTarget as HTMLInputElement).value;
@@ -153,29 +153,23 @@
 <article class={`${panel} browser-panel`} aria-label="Project browser">
 	<div
 		class="flex min-w-0 border-b border-border bg-muted/40"
-		role="tablist"
+		role="group"
 		aria-label="Browser and Excalidraw views"
 	>
 		<button
 			id="browser-view-tab"
 			class="min-h-11 flex-1 border-r border-border px-3 text-xs"
 			class:bg-background={view === 'browser'}
-			role="tab"
-			aria-selected={view === 'browser'}
+			aria-pressed={view === 'browser'}
 			aria-controls="browser-view-panel"
-			tabindex={view === 'browser' ? 0 : -1}
-			onkeydown={handleViewKeydown}
 			onclick={() => selectView('browser')}>Browser</button
 		>
 		<button
 			id="excalidraw-view-tab"
 			class="min-h-11 flex-1 px-3 text-xs"
 			class:bg-background={view === 'excalidraw'}
-			role="tab"
-			aria-selected={view === 'excalidraw'}
+			aria-pressed={view === 'excalidraw'}
 			aria-controls="excalidraw-view-panel"
-			tabindex={view === 'excalidraw' ? 0 : -1}
-			onkeydown={handleViewKeydown}
 			onclick={() => selectView('excalidraw')}>Excalidraw</button
 		>
 	</div>
@@ -184,15 +178,14 @@
 		class="min-h-0 min-w-0 flex-1 flex-col"
 		class:flex={view === 'browser'}
 		class:hidden={view !== 'browser'}
-		role="tabpanel"
-		aria-labelledby="browser-view-tab"
+		aria-label="Browser view"
 		aria-hidden={view !== 'browser'}
 		inert={view !== 'browser'}
 	>
 		<header class="grid border-b border-border bg-muted/40 p-0">
 			<div
 				class="browser-tabs flex min-w-0 overflow-x-auto border-b border-border"
-				role="tablist"
+				role="group"
 				aria-label="Browser tabs"
 			>
 				{#each browserTabs as tab}
@@ -202,8 +195,7 @@
 					>
 						<button
 							class="h-full min-w-0 flex-1 overflow-hidden px-2 text-left text-ellipsis whitespace-nowrap"
-							role="tab"
-							aria-selected={tab.id === activeBrowserTabId}
+							aria-pressed={tab.id === activeBrowserTabId}
 							title={`Open ${tab.title}`}
 							onclick={() => selectBrowserTab(tab)}>{tab.title}</button
 						>
@@ -268,11 +260,18 @@
 			class="min-h-0 min-w-0 flex-1 flex-col"
 			class:flex={view === 'excalidraw'}
 			class:hidden={view !== 'excalidraw'}
-			role="tabpanel"
-			aria-labelledby="excalidraw-view-tab"
+			aria-label="Excalidraw view"
 			aria-hidden={view !== 'excalidraw'}
 			inert={view !== 'excalidraw'}
 		>
-			<ExcalidrawPanel {projectId} onpreviewchange={updateExcalidrawPreview} />
+			{#if ExcalidrawPanel}<ExcalidrawPanel
+					{projectId}
+					onpreviewchange={updateExcalidrawPreview}
+				/>{:else}<p
+					class="panel-empty grid flex-1 place-content-center text-xs text-muted-foreground"
+					role="status"
+				>
+					Loading Excalidraw…
+				</p>{/if}
 		</div>{/if}
 </article>

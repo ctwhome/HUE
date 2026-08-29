@@ -1,74 +1,43 @@
 ---
 title: HUE
-description: The reviewable product contract for an open-source, local-first personal agent workspace.
+description: The active product and architecture contract for HUE's focused Hermes workspace.
 template: splash
 editUrl: false
 pagefind: false
 hero:
-  title: HUE
-  tagline: A calm, local-first workspace for human-directed AI work—not one all-knowing agent.
+  title: Reliable Hermes work, organized locally.
+  tagline: Keep Projects, reusable Workflows, and durable Sessions in one focused workspace without surrendering execution or transcript ownership.
   actions:
-    - text: Read the vision
-      link: ./vision/
+    - text: Review current status
+      link: ./spec/00-status-and-review/
       icon: right-arrow
       variant: primary
-    - text: Open the prototype
-      link: ./prototype/
-      icon: external
+    - text: Inspect the architecture
+      link: ./spec/05-system-architecture/
       variant: minimal
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-<div class="hue-status-strip" aria-label="Specification status">
-  <span class="hue-status hue-status--spec">SPEC · reviewable</span>
-  <span class="hue-status hue-status--tbi">TBI · not implemented</span>
-  <span class="hue-status hue-status--tbd">24 TBD decisions</span>
-</div>
+## One active contract
 
-## One workspace. Clear boundaries. Replaceable intelligence.
-
-HUE brings finishable **Projects**, ongoing **Areas**, reusable **Resources**, independent **Sessions**, durable Tasks, user-owned knowledge and temporary specialist workers into one coherent interface. The workspace owns the context and state; Hermes, OpenCode, model providers and agent runtimes remain replaceable infrastructure.
-
-<div class="hue-principles">
-  <div><strong>9</strong><span>milestones</span></div>
-  <div><strong>54</strong><span>canonical issues</span></div>
-  <div><strong>18</strong><span>specification chapters</span></div>
-  <div><strong>15</strong><span>system diagrams</span></div>
-</div>
+HUE is an active native Bun/SvelteKit implementation for exactly three user-facing objects. Hermes owns agent execution and transcripts; HUE owns local organization and reliable delivery state.
 
 <CardGrid>
-  <Card title="Product experience">
-    Understand the frustrations HUE removes, the Project/Area/Session mental model, core journeys and every major interface state.
-
-    **[Explore the experience →](./spec/02-product-experience/)**
+  <Card title="Projects">
+    Work inside Hermes-authoritative, trusted local folder boundaries with bounded files, terminals, Git, browser, and Excalidraw tools.
   </Card>
-  <Card title="System design">
-    Review the local-first control plane, layered context, bounded orchestration, worker adapters, permissions and recovery model.
-
-    **[Inspect the architecture →](./spec/05-system-architecture/)**
+  <Card title="Workflows">
+    Save reusable Project prompts and launch settings without introducing a generic workflow engine.
   </Card>
-  <Card title="Interactive specification">
-    Walk through Home, Inbox, Notifications, Projects, Areas, Sessions, execution, approvals, knowledge and roadmap screens.
-
-    **[Open the prototype →](./prototype/)**
+  <Card title="Sessions">
+    Create or resume Project and projectless Hermes conversations with complete-envelope submission, idempotency, serialization, and replay.
   </Card>
-  <Card title="Implementation plan">
-    Follow the canonical milestone sequence, dependency graph and 54 autonomous-agent-ready implementation briefs.
-
-    **[Review the roadmap →](./roadmap/issues/)**
+  <Card title="Decisions">
+    **[Review every accepted architecture decision →](./spec/14-decision-register/)**
   </Card>
 </CardGrid>
 
-## Review without guessing
+## Current supporting surfaces
 
-Every capability is marked **TBI** until working code and evidence exist. Every unresolved material choice is marked **TBD**. The documentation is the product contract: implementation should realize it, and any intentional product change must update it visibly.
-
-<div class="hue-review-path">
-  <a href="./vision/"><span>01</span>Vision</a>
-  <a href="./spec/01-problem-and-principles/"><span>02</span>Product principles</a>
-  <a href="./spec/03-spaces-sessions-knowledge/"><span>03</span>Spaces, Sessions and knowledge</a>
-  <a href="./spec/04-ui-specification/"><span>04</span>UI specification</a>
-  <a href="./spec/05-system-architecture/"><span>05</span>Architecture</a>
-  <a href="./spec/14-decision-register/"><span>06</span>Decisions and delivery</a>
-</div>
+Focused ADRs retain notifications, Hermes-owned schedules with dedicated projectless Sessions, Project Excalidraw, and a hardened custom-skill filesystem exception. They remain supporting surfaces and do not expand the product object model.

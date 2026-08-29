@@ -6,16 +6,9 @@ export interface HermesAdminTransport {
 	json<T>(path: string, init?: RequestInit): Promise<T>;
 }
 
-export type HermesAdminView =
-	'runtime' | 'memory' | 'schedules' | 'skills' | 'profiles' | 'mcp' | 'models';
+export type HermesAdminView = 'runtime' | 'memory' | 'skills' | 'profiles' | 'mcp' | 'models';
 
 export type HermesAdminAction =
-	| 'schedule.create'
-	| 'schedule.update'
-	| 'schedule.pause'
-	| 'schedule.resume'
-	| 'schedule.run'
-	| 'schedule.delete'
 	| 'skill.create'
 	| 'skill.update'
 	| 'skill.toggle'
@@ -92,17 +85,6 @@ export class HermesAdmin {
 	constructor(private readonly transport: HermesAdminTransport) {}
 
 	async view(view: HermesAdminView): Promise<Record<string, unknown>> {
-		if (view === 'schedules') {
-			const [jobs, delivery] = await Promise.all([
-				this.transport.json<unknown[]>('/api/cron/jobs?profile=all'),
-				this.transport.json<{ targets?: unknown[] }>('/api/cron/delivery-targets')
-			]);
-			return safe({
-				capabilities: { schedules: true },
-				jobs,
-				deliveryTargets: delivery.targets ?? []
-			});
-		}
 		if (view === 'skills') {
 			return safe({
 				capabilities: { create: true, edit: true, toggle: true, delete: true, linkedFiles: false },
@@ -165,21 +147,9 @@ export class HermesAdmin {
 		});
 	}
 
-	async detail(
-		kind: 'schedule' | 'skill' | 'mcp',
-		id: string,
-		profile?: string
-	): Promise<Record<string, unknown>> {
+	async detail(kind: 'skill' | 'mcp', id: string): Promise<Record<string, unknown>> {
 		const name = encodeURIComponent(id.trim());
 		if (!name) throw new Error('id is required');
-		if (kind === 'schedule') {
-			const exactProfile = encodeURIComponent(required({ profile }, 'profile', 64));
-			const [target, runs] = await Promise.all([
-				this.transport.json(`/api/cron/jobs/${name}?profile=${exactProfile}`),
-				this.transport.json(`/api/cron/jobs/${name}/runs?profile=${exactProfile}&limit=50`)
-			]);
-			return safe({ target, runs });
-		}
 		if (kind === 'skill') {
 			const target = await this.transport.json<Record<string, unknown>>(
 				`/api/skills/content?name=${name}`
@@ -190,54 +160,10 @@ export class HermesAdmin {
 	}
 
 	async mutate(action: HermesAdminAction, input: Input): Promise<Record<string, unknown>> {
-		if (action.startsWith('schedule.')) return this.schedule(action, input);
 		if (action.startsWith('skill.')) return this.skill(action, input);
 		if (action.startsWith('profile.')) return this.profile(action, input);
 		if (action.startsWith('mcp.')) return this.mcp(action, input);
 		return this.model(input);
-	}
-
-	private async schedule(action: HermesAdminAction, input: Input) {
-		const profile = encoded(input, 'profile');
-		if (action === 'schedule.create') {
-			const mutation = {
-				name: required(input, 'name', 128),
-				prompt: required(input, 'prompt', 100_000),
-				schedule: required(input, 'schedule', 256),
-				deliver: required(input, 'deliver', 128)
-			};
-			const created = await this.transport.json<{ id: string }>(
-				`/api/cron/jobs?profile=${profile}`,
-				body(mutation)
-			);
-			return safe({ target: await this.scheduleTarget(created.id, profile) });
-		}
-		const id = required(input, 'id', 128);
-		const path = `/api/cron/jobs/${encodeURIComponent(id)}`;
-		if (action === 'schedule.delete') {
-			if (input.confirm !== id) throw new Error(`Type ${id} to confirm deletion`);
-			const deleted = await this.scheduleTarget(id, profile);
-			await this.transport.json(`${path}?profile=${profile}`, method('DELETE'));
-			const jobs = await this.transport.json<Array<{ id?: string }>>(
-				`/api/cron/jobs?profile=${profile}`
-			);
-			return safe({ deleted, verifiedAbsent: !jobs.some((job) => job.id === id) });
-		}
-		if (action === 'schedule.update') {
-			const updates = input.updates;
-			if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
-				throw new Error('updates is required');
-			}
-			await this.transport.json(`${path}?profile=${profile}`, method('PUT', { updates }));
-		} else {
-			const operation = action.split('.')[1] === 'run' ? 'trigger' : action.split('.')[1];
-			await this.transport.json(`${path}/${operation}?profile=${profile}`, body(undefined));
-		}
-		return safe({ target: await this.scheduleTarget(id, profile) });
-	}
-
-	private scheduleTarget(id: string, profile: string) {
-		return this.transport.json(`/api/cron/jobs/${encodeURIComponent(id)}?profile=${profile}`);
 	}
 
 	private async skill(action: HermesAdminAction, input: Input) {

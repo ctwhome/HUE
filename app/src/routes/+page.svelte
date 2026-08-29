@@ -12,6 +12,7 @@
 
 <Workspace
 	projects={data.projects}
+	chatSessionCount={data.chatSessionCount}
 	projectsCapability={data.projectsCapability}
 	projectsError={data.projectsError}
 	reconciliationIssues={data.reconciliationIssues}

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { groupPromptCatalog, parsePromptCatalog } from './prompt-catalog';
+import { groupPromptCatalog, loadPromptCatalog, parsePromptCatalog } from './prompt-catalog';
 
 test('parses the complete upstream CSV shape including quoted multiline prompts', () => {
 	const prompts = parsePromptCatalog(
@@ -25,4 +25,24 @@ test('search keeps matching prompts in their useful grouped sections', () => {
 		{ category: 'Engineering', items: [expect.objectContaining({ title: 'Code Reviewer' })] },
 		{ category: 'Marketing', items: [expect.objectContaining({ title: 'Marketing Strategist' })] }
 	]);
+});
+
+test('retries catalog loading after a rejected request', async () => {
+	const originalFetch = globalThis.fetch;
+	let requests = 0;
+	globalThis.fetch = (async () => {
+		requests += 1;
+		if (requests === 1) return new Response('', { status: 503 });
+		return new Response('act,prompt\nReviewer,Review this');
+	}) as unknown as typeof fetch;
+
+	try {
+		await expect(loadPromptCatalog()).rejects.toThrow('Prompt catalog is unavailable');
+		expect(await loadPromptCatalog()).toEqual([
+			expect.objectContaining({ title: 'Reviewer', prompt: 'Review this' })
+		]);
+		expect(requests).toBe(2);
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
 });

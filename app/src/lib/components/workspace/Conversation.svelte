@@ -133,7 +133,6 @@
 	class="transcript min-h-0 flex-1 overflow-auto overflow-x-hidden px-[clamp(12px,2.5vw,40px)] pt-8"
 	class:empty={transcriptTimeline.length === 0}
 	aria-label="Conversation"
-	aria-live="polite"
 	tabindex="0"
 	bind:this={element}
 	use:follow
@@ -339,7 +338,7 @@
 					data-timeline-sequence={item.sequence}
 					data-message-id={item.messageId}
 					tabindex="-1"
-					class="permission-card activity-card mx-auto mb-4 max-w-[774px] rounded-xl border border-amber-500/50 bg-card p-3"
+					class="permission-card activity-card mx-auto mb-4 max-w-[774px] rounded-xl border border-[var(--warning)] bg-card p-3"
 					role="group"
 					aria-label={`Permission required: ${item.toolCall?.title ?? 'Hermes tool'}`}
 				>

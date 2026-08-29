@@ -2,25 +2,29 @@ export const chatBackgroundTemplates = [
 	{
 		id: 'sunset',
 		label: 'Sunset',
-		light: 'radial-gradient(circle at 18% 22%, rgb(251 146 60 / 38%), transparent 36%), radial-gradient(circle at 80% 12%, rgb(244 114 182 / 30%), transparent 34%), linear-gradient(145deg, #fff7ed, #ede9fe)',
+		light:
+			'radial-gradient(circle at 18% 22%, rgb(251 146 60 / 38%), transparent 36%), radial-gradient(circle at 80% 12%, rgb(244 114 182 / 30%), transparent 34%), linear-gradient(145deg, #fff7ed, #ede9fe)',
 		dark: 'radial-gradient(circle at 18% 22%, rgb(251 191 36 / 45%), transparent 34%), radial-gradient(circle at 80% 12%, rgb(244 114 182 / 38%), transparent 32%), linear-gradient(145deg, #4c1d3d, #172554)'
 	},
 	{
 		id: 'ocean',
 		label: 'Ocean',
-		light: 'radial-gradient(circle at 20% 18%, rgb(6 182 212 / 28%), transparent 38%), radial-gradient(circle at 78% 72%, rgb(59 130 246 / 24%), transparent 42%), linear-gradient(145deg, #ecfeff, #dbeafe)',
+		light:
+			'radial-gradient(circle at 20% 18%, rgb(6 182 212 / 28%), transparent 38%), radial-gradient(circle at 78% 72%, rgb(59 130 246 / 24%), transparent 42%), linear-gradient(145deg, #ecfeff, #dbeafe)',
 		dark: 'radial-gradient(circle at 20% 18%, rgb(34 211 238 / 32%), transparent 36%), radial-gradient(circle at 78% 72%, rgb(59 130 246 / 35%), transparent 40%), linear-gradient(145deg, #083344, #172554)'
 	},
 	{
 		id: 'meadow',
 		label: 'Meadow',
-		light: 'radial-gradient(circle at 20% 25%, rgb(132 204 22 / 26%), transparent 36%), radial-gradient(circle at 82% 18%, rgb(20 184 166 / 22%), transparent 38%), linear-gradient(145deg, #f7fee7, #ccfbf1)',
+		light:
+			'radial-gradient(circle at 20% 25%, rgb(132 204 22 / 26%), transparent 36%), radial-gradient(circle at 82% 18%, rgb(20 184 166 / 22%), transparent 38%), linear-gradient(145deg, #f7fee7, #ccfbf1)',
 		dark: 'radial-gradient(circle at 20% 25%, rgb(190 242 100 / 32%), transparent 34%), radial-gradient(circle at 82% 18%, rgb(45 212 191 / 30%), transparent 36%), linear-gradient(145deg, #14532d, #134e4a)'
 	},
 	{
 		id: 'confetti',
 		label: 'Confetti',
-		light: 'radial-gradient(circle at 20% 20%, #ec4899 0 5px, transparent 6px), radial-gradient(circle at 75% 28%, #eab308 0 6px, transparent 7px), radial-gradient(circle at 42% 75%, #0891b2 0 5px, transparent 6px), linear-gradient(145deg, #fdf4ff, #fef3c7)',
+		light:
+			'radial-gradient(circle at 20% 20%, #ec4899 0 5px, transparent 6px), radial-gradient(circle at 75% 28%, #eab308 0 6px, transparent 7px), radial-gradient(circle at 42% 75%, #0891b2 0 5px, transparent 6px), linear-gradient(145deg, #fdf4ff, #fef3c7)',
 		dark: 'radial-gradient(circle at 20% 20%, #f472b6 0 5px, transparent 6px), radial-gradient(circle at 75% 28%, #facc15 0 6px, transparent 7px), radial-gradient(circle at 42% 75%, #22d3ee 0 5px, transparent 6px), linear-gradient(145deg, #312e81, #581c87)'
 	}
 ] as const;
@@ -41,12 +45,13 @@ export function readChatBackground(
 ): ChatBackground | null {
 	try {
 		const value = JSON.parse(storage.getItem(key(sessionId)) ?? 'null') as Partial<ChatBackground>;
-		if (
-			value?.kind === 'template' &&
-			chatBackgroundTemplates.some(({ id }) => id === value.id)
-		)
+		if (value?.kind === 'template' && chatBackgroundTemplates.some(({ id }) => id === value.id))
 			return value as ChatBackground;
-		if (value?.kind === 'custom' && typeof value.image === 'string' && supportedImage.test(value.image))
+		if (
+			value?.kind === 'custom' &&
+			typeof value.image === 'string' &&
+			supportedImage.test(value.image)
+		)
 			return { kind: 'custom', image: value.image };
 		if (value?.kind === 'none') return { kind: 'none' };
 	} catch {
@@ -58,10 +63,7 @@ export function readChatBackground(
 export function readGeneralChatBackground(
 	storage: Pick<Storage, 'getItem'>
 ): Exclude<ChatBackground, { kind: 'none' }> | null {
-	const background = readChatBackground(
-		{ getItem: () => storage.getItem(generalKey) },
-		'default'
-	);
+	const background = readChatBackground({ getItem: () => storage.getItem(generalKey) }, 'default');
 	return background?.kind === 'none' ? null : background;
 }
 
@@ -100,9 +102,7 @@ export function chatBackgroundStyle(background: ChatBackground | null) {
 			: null;
 	const light = background.kind === 'custom' ? `url("${background.image}")` : template?.light;
 	const dark = background.kind === 'custom' ? light : template?.dark;
-	return light && dark
-		? `--chat-background-light: ${light}; --chat-background-dark: ${dark};`
-		: '';
+	return light && dark ? `--chat-background-light: ${light}; --chat-background-dark: ${dark};` : '';
 }
 
 export async function resizeChatBackground(file: File): Promise<string> {
@@ -116,7 +116,9 @@ export async function resizeChatBackground(file: File): Promise<string> {
 		canvas.width = Math.round(source.width * scale);
 		canvas.height = Math.round(source.height * scale);
 		canvas.getContext('2d')!.drawImage(source, 0, 0, canvas.width, canvas.height);
-		const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.82));
+		const blob = await new Promise<Blob | null>((resolve) =>
+			canvas.toBlob(resolve, 'image/webp', 0.82)
+		);
 		if (!blob) throw new Error('Could not prepare that background image');
 		return await new Promise<string>((resolve, reject) => {
 			const reader = new FileReader();

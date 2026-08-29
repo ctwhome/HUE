@@ -163,10 +163,6 @@
 	font-size: var(--font-size-body);
 }
 
-.project-icon-inline {
-	display: none;
-}
-
 .compact-workbench-tabs {
 	display: flex;
 	min-height: 44px;
@@ -299,7 +295,7 @@
 	padding: 14px 18px;
 }
 .context-panel > .project-context-header {
-	display: none;
+	display: flex;
 }
 .context-panel header small,
 .session-header small,

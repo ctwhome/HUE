@@ -312,6 +312,10 @@ export function attachmentMatchesDeclaredType(mimeType: string, bytes: Uint8Arra
 			return ascii('OggS');
 		case 'audio/mp4':
 			return ascii('ftyp', 4) && ['M4A ', 'isom', 'mp42'].includes(brand());
+		case 'audio/webm':
+			return startsWith(bytes, [0x1a, 0x45, 0xdf, 0xa3]);
+		case 'audio/flac':
+			return ascii('fLaC');
 		case 'video/mp4':
 			return ascii('ftyp', 4);
 		case 'video/webm':

@@ -16,6 +16,11 @@ mock.module('$lib/server/route-services', () => ({
 	authoritativeProject: async () => ({ id: 'project' }),
 	services: () => ({
 		store: {
+			database: { transaction: (operation: () => unknown) => operation },
+			acceptMessage: () => ({
+				duplicate: Boolean(submitResult.duplicate),
+				status: String(submitResult.status ?? 'queued')
+			}),
 			ensureProjectMetadata: (id: string) => metadataIds.push(id),
 			getSession: () => ({ workMode: 'autonomous' }),
 			updateSessionWorkMode: (_projectId: string, _sessionId: string, workMode: string) => {
@@ -36,6 +41,11 @@ mock.module('$lib/server/route-services', () => ({
 		},
 		dispatcher: {
 			submit: (input: Record<string, unknown>) => {
+				submitted = true;
+				envelope = input;
+				return submitResult;
+			},
+			submitAccepted: (input: Record<string, unknown>) => {
 				submitted = true;
 				envelope = input;
 				return submitResult;

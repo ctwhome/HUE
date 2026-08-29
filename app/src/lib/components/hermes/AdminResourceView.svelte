@@ -67,7 +67,7 @@
 					?.memory ?? 0} bytes · USER.md {data.status?.builtin_files?.user ?? 0} bytes
 			</p>
 		</article>
-		{#each data.unsupported ?? [] as message}<article class={`${card} border-amber-800`}>
+		{#each data.unsupported ?? [] as message}<article class={`${card} border-[var(--warning)]`}>
 				<strong>Unavailable upstream</strong>
 				<p class="mt-1 text-sm text-muted-foreground">{message}</p>
 			</article>{/each}

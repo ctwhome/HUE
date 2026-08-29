@@ -119,6 +119,7 @@ test('permission consequences and the Session inspector fit the browser matrix',
 		route.fulfill({ json: { output: '', cursor: 0, status: 'running', exitCode: null } })
 	);
 
+	await page.setViewportSize(viewports[0]);
 	await page.goto('/');
 	const projectButton = page.locator('.project-select').filter({ hasText: 'Inspector test' });
 	if ((await projectButton.getAttribute('aria-current')) !== 'page')

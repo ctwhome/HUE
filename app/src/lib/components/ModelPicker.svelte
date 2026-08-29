@@ -64,7 +64,7 @@
 	type="button"
 	class={`context-chip context-select context-model inline-flex min-h-8 shrink-0 items-center rounded-lg text-xs hover:bg-accent ${ellipsis ? 'size-8 justify-center p-0 max-[700px]:size-11' : 'max-w-40 gap-1.5 px-2'}`}
 	aria-label={ariaLabel}
-	aria-haspopup="menu"
+	aria-haspopup="dialog"
 	aria-expanded={open}
 	popovertarget={id}
 	title={ellipsis
@@ -85,7 +85,7 @@
 	{id}
 	class="model-menu max-h-[min(520px,calc(100dvh-24px))] w-[min(360px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl border border-border bg-card p-2 text-foreground shadow-2xl open:flex"
 	popover="auto"
-	role="menu"
+	role="dialog"
 	aria-label={`Choose ${ariaLabel.toLowerCase()}`}
 	ontoggle={(event) => (open = (event.currentTarget as HTMLElement).matches(':popover-open'))}
 >
@@ -123,8 +123,7 @@
 				<div class="model-options pb-1.5">
 					{#each category.models as model}<button
 							type="button"
-							role="menuitemradio"
-							aria-checked={model.modelId === value}
+							aria-pressed={model.modelId === value}
 							title={`Use ${model.name} · ${model.modelId}`}
 							onclick={() => select(model.modelId)}
 						>
