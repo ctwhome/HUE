@@ -20,6 +20,22 @@
 	overflow-anchor: none;
 	overscroll-behavior: contain;
 }
+.session-view:has(> .transcript) {
+	position: relative;
+}
+.session-view:has(> .transcript) > .session-header {
+	position: absolute;
+	top: 0;
+	right: 0;
+	left: 0;
+	z-index: 10;
+	background: color-mix(in srgb, var(--background) 52%, transparent);
+	-webkit-backdrop-filter: blur(10px) saturate(130%);
+	backdrop-filter: blur(10px) saturate(130%);
+}
+.session-view:has(> .transcript) > .transcript {
+	padding-top: 76px;
+}
 .session-view.personal-background {
 	position: relative;
 	isolation: isolate;
@@ -423,14 +439,10 @@
 }
 
 .scroll-to-latest.visible {
-	top: 4px;
 	z-index: 3;
 	opacity: 1;
 	pointer-events: auto;
 	transform: translate(-50%, 0);
-}
-.composer:has(.scroll-to-latest.visible) {
-	padding-top: 50px;
 }
 .composer.dragging {
 	border-color: var(--ring);

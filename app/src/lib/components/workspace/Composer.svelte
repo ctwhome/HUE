@@ -216,7 +216,7 @@
 	}
 	function resizeComposer() {
 		if (!composerElement) return;
-		composerElement.style.height = 'auto';
+		composerElement.style.height = '0';
 		composerElement.style.height = `${Math.min(160, Math.max(44, composerElement.scrollHeight))}px`;
 		composerElement.style.overflowY = composerElement.scrollHeight > 160 ? 'auto' : 'hidden';
 	}
@@ -252,7 +252,7 @@
 </script>
 
 <svelte:window
-	onresize={resizeComposer}
+	onresize={() => requestAnimationFrame(resizeComposer)}
 	onclick={closeOptions}
 	onkeydown={(event) => {
 		if (event.key === 'Escape' && optionsOpen) {
@@ -470,6 +470,7 @@
 	<div class="composer-input">
 		<textarea
 			bind:this={composerElement}
+			rows="1"
 			value={composer}
 			oninput={handleComposerInput}
 			{onkeydown}
