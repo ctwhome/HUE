@@ -594,6 +594,7 @@
 	}
 	.transcript {
 		padding: calc(82px + var(--safe-area-top)) 14px var(--composer-height, 160px);
+		scroll-padding-block: calc(82px + var(--safe-area-top)) var(--composer-height, 160px);
 		touch-action: pan-y;
 	}
 	.message-actions button {

@@ -120,6 +120,7 @@
 		flex: 1 1 auto;
 		margin-top: 0;
 		overflow-y: auto;
+		padding-bottom: 0;
 	}
 	.session-view.empty-session .composer {
 		position: sticky;

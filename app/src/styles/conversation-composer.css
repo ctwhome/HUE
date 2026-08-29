@@ -19,6 +19,7 @@
 	font-size: var(--chat-font-size);
 	overflow-anchor: none;
 	overscroll-behavior: contain;
+	scroll-padding-block: 76px var(--composer-height, 160px);
 }
 .session-view:has(> .transcript) {
 	position: relative;
@@ -65,10 +66,12 @@
 	position: relative;
 	z-index: 1;
 }
-.session-view.personal-background .composer {
+.session-view.personal-background .composer,
+.session-view.personal-background:not(.empty-session):has(> .transcript) > .composer {
 	border-color: color-mix(in srgb, var(--border) 70%, white 18%);
 	background: color-mix(in srgb, var(--card) 68%, transparent);
 	box-shadow: 0 16px 42px rgb(0 0 0 / 22%);
+	-webkit-backdrop-filter: blur(20px) saturate(135%);
 	backdrop-filter: blur(20px) saturate(135%);
 }
 .session-view.personal-background .welcome,
