@@ -50,3 +50,9 @@ test('session row icons are larger than navigation icons', () => {
 	expect(panel).toContain('session-icon session-icon-image size-8');
 	expect(panel).toContain('session-icon grid size-8');
 });
+
+test('hidden archived sessions use an explicit crossed archive icon', () => {
+	const panel = readFileSync(new URL('./ContextPanel.svelte', import.meta.url), 'utf8');
+	expect(panel).toContain("import ArchiveX from '~icons/lucide/archive-x';");
+	expect(panel).toContain('<ArchiveX width={17} height={17} aria-hidden="true" />');
+});

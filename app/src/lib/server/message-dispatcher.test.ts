@@ -70,7 +70,7 @@ class RecordingRuntime implements PromptRuntime {
 
 function makeStore() {
 	const store = new HUEStore(':memory:');
-	store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+	store.ensureProjectMetadata('hue', 'HUE');
 	store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 	return store;
 }
@@ -120,7 +120,7 @@ describe('MessageDispatcher', () => {
 
 	it('recovers legacy work after its project session is discovered', async () => {
 		const store = new HUEStore(':memory:');
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.ensureProjectMetadata('hue', 'HUE');
 		const now = new Date().toISOString();
 		const insert = store.database.query(
 			'INSERT INTO messages (id, session_id, text, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
@@ -153,7 +153,7 @@ describe('MessageDispatcher', () => {
 
 	it('does not interrupt live running work during session discovery', async () => {
 		const store = new HUEStore(':memory:');
-		store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+		store.ensureProjectMetadata('hue', 'HUE');
 		store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 		let finishPrompt!: () => void;
 		const runtime = new RecordingRuntime();
@@ -899,6 +899,30 @@ describe('MessageDispatcher', () => {
 			type: 'message.unknown',
 			payload: { messageId: 'msg-1', error: 'ACP disconnected before acknowledgement' }
 		});
+		store.close();
+	});
+
+	it('stops queued work and drains an active turn during shutdown', async () => {
+		const store = makeStore();
+		let rejectActive!: (error: Error) => void;
+		const runtime: PromptRuntime = {
+			resumeSession: async () => {},
+			prompt: () => new Promise((_resolve, reject) => (rejectActive = reject))
+		};
+		const dispatcher = new MessageDispatcher(store, runtime);
+		dispatcher.submit({ id: 'active', projectId: 'hue', sessionId: 'session-1', text: 'active' });
+		dispatcher.submit({ id: 'queued', projectId: 'hue', sessionId: 'session-1', text: 'queued' });
+		await Promise.resolve();
+		const closing = dispatcher.close();
+		expect(() =>
+			dispatcher.submit({ id: 'late', projectId: 'hue', sessionId: 'session-1', text: 'late' })
+		).toThrow('shutting down');
+		rejectActive(new DeliveryUncertainError('ACP closed during shutdown'));
+		await closing;
+
+		expect(store.getMessage('active')?.status).toBe('unknown');
+		expect(store.getMessage('queued')?.status).toBe('queued');
+		expect(store.getMessage('late')).toBeNull();
 		store.close();
 	});
 });

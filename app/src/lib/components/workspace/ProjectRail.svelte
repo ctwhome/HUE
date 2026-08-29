@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Archive from '~icons/lucide/archive';
+	import ArrowDown from '~icons/lucide/arrow-down';
 	import ArrowUp from '~icons/lucide/arrow-up';
 	import Bell from '~icons/lucide/bell';
 	import Check from '~icons/lucide/check';
@@ -13,7 +14,7 @@
 	import PanelLeftClose from '~icons/lucide/panel-left-close';
 	import Plus from '~icons/lucide/plus';
 	import X from '~icons/lucide/x';
-	import { dropBefore, moveBefore, sortByOrder } from '$lib/drag-order';
+	import { dropBefore, moveBefore, moveBy, readStringArray, sortByOrder } from '$lib/drag-order';
 	import IconEditorPopover from '$lib/components/IconEditorPopover.svelte';
 	import ProjectFoldersEditor from './ProjectFoldersEditor.svelte';
 	import type { Directory, Project } from './types';
@@ -23,6 +24,7 @@
 		open,
 		mobile,
 		projects,
+		chatSessionCount,
 		selectedProject,
 		unreadNotifications,
 		sessionsOpen,
@@ -84,6 +86,7 @@
 		open: boolean;
 		mobile: boolean;
 		projects: Project[];
+		chatSessionCount: number;
 		selectedProject: Project | null;
 		unreadNotifications: number;
 		sessionsOpen: boolean;
@@ -114,7 +117,7 @@
 		primaryFolder: string;
 		onprojectless: () => void;
 		onaddopen: () => void;
-		onchoose: (project: Project | null) => void;
+		onchoose: (project: Project | null, trigger?: HTMLElement) => void;
 		onlocate: (project: Project) => void;
 		onedit: (event: MouseEvent, project: Project) => void;
 		onicon: (event: MouseEvent, project: Project) => void;
@@ -149,7 +152,7 @@
 	const projectGroups = $derived.by(() => {
 		const groups = new Map<string | null, Project[]>();
 		for (const project of sortByOrder(projects, projectOrder, ({ id }) => id)) {
-			const label = project.group;
+			const label = project.group || null;
 			groups.set(label, [...(groups.get(label) ?? []), project]);
 		}
 		return sortByOrder(
@@ -181,17 +184,9 @@
 	let touchDragTimer: ReturnType<typeof setTimeout> | null = null;
 
 	onMount(() => {
-		try {
-			collapsedGroups = new Set(
-				JSON.parse(localStorage.getItem('hue:project-groups:collapsed') ?? '[]')
-			);
-			projectOrder = JSON.parse(localStorage.getItem('hue:project-order') ?? '[]');
-			groupOrder = JSON.parse(localStorage.getItem('hue:project-group-order') ?? '[]');
-		} catch {
-			collapsedGroups = new Set();
-			projectOrder = [];
-			groupOrder = [];
-		}
+		collapsedGroups = new Set(readStringArray(localStorage, 'hue:project-groups:collapsed'));
+		projectOrder = readStringArray(localStorage, 'hue:project-order');
+		groupOrder = readStringArray(localStorage, 'hue:project-group-order');
 		window.addEventListener('touchmove', moveProjectTouch, { passive: false });
 		window.addEventListener('touchend', finishProjectTouch, { passive: false });
 		window.addEventListener('touchcancel', cancelProjectTouch);
@@ -242,7 +237,11 @@
 		if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
 	}
 
-	function allowProjectDrop(event: DragEvent, group: string | null, projectId: string | null = null) {
+	function allowProjectDrop(
+		event: DragEvent,
+		group: string | null,
+		projectId: string | null = null
+	) {
 		event.preventDefault();
 		dropGroup = group ?? '';
 		dropProjectId = projectId;
@@ -261,6 +260,17 @@
 		);
 		localStorage.setItem('hue:project-order', JSON.stringify(projectOrder));
 		if (projects.find(({ id }) => id === projectId)?.group !== group) void onmove(projectId, group);
+	}
+
+	function moveProjectBy(projectId: string, offset: -1 | 1) {
+		const order = sortByOrder(projects, projectOrder, ({ id }) => id).map(({ id }) => id);
+		projectOrder = moveBy(order, projectId, offset);
+		localStorage.setItem('hue:project-order', JSON.stringify(projectOrder));
+	}
+	function projectPosition(projectId: string) {
+		return sortByOrder(projects, projectOrder, ({ id }) => id).findIndex(
+			({ id }) => id === projectId
+		);
 	}
 
 	function dropProject(event: DragEvent, group: string | null, before: string | null = null) {
@@ -332,7 +342,9 @@
 				clientY <= bounds.bottom
 			);
 		};
-		const row = [...document.querySelectorAll<HTMLElement>('[data-project-id]')].find(containsPointer);
+		const row = [...document.querySelectorAll<HTMLElement>('[data-project-id]')].find(
+			containsPointer
+		);
 		if (row?.dataset.projectId) {
 			const project = projects.find(({ id }) => id === row.dataset.projectId);
 			if (!project) return;
@@ -453,7 +465,7 @@
 
 	{#if projectsCapability !== 'available'}
 		<p
-			class="rounded-lg border border-amber-400/40 bg-amber-400/10 p-2 text-xs text-amber-200"
+			class="rounded-lg border border-[var(--warning)] bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] p-2 text-xs text-[var(--warning)]"
 			role="status"
 		>
 			<strong
@@ -464,7 +476,7 @@
 	{/if}
 	{#if reconciliationIssues.length}
 		<div
-			class="rounded-lg border border-amber-400/40 bg-amber-400/10 p-2 text-xs text-amber-200"
+			class="rounded-lg border border-[var(--warning)] bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] p-2 text-xs text-[var(--warning)]"
 			role="alert"
 		>
 			<strong>Legacy Projects need review</strong>
@@ -482,7 +494,7 @@
 				aria-current={!selectedProject ? 'page' : undefined}
 				aria-controls={!selectedProject ? 'session-drawer' : undefined}
 				aria-expanded={!selectedProject ? sessionsOpen : undefined}
-				onclick={() => onchoose(null)}
+				onclick={(event) => onchoose(null, event.currentTarget)}
 			>
 				<MessageSquare
 					class="project-icon grid size-(--navigation-icon-size) shrink-0 place-items-center rounded-md"
@@ -490,7 +502,11 @@
 					height={18}
 					aria-hidden="true"
 				/>
-				<span>Chats</span>
+				<span class="project-name min-w-0 flex-1 truncate">Chats</span>
+				{#if chatSessionCount}<span
+						class="project-session-count shrink-0 text-xs tabular-nums text-muted-foreground"
+						aria-label={`${chatSessionCount} non-archived Chats`}>{chatSessionCount}</span
+					>{/if}
 			</button>
 			<button
 				class="icon-button workspace-session-add absolute top-1/2 right-0 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
@@ -519,7 +535,7 @@
 			</div>{/if}
 		{#each projectGroups as group (group.label ?? '')}
 			{#if group.label}<button
-					class={`mt-2 flex min-h-11 w-full items-center gap-1 rounded-md px-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:min-h-8 ${dropGroup === group.label ? 'bg-accent text-foreground ring-2 ring-ring shadow-sm' : ''}`}
+					class={`mt-2 flex min-h-11 w-full items-center gap-1 rounded-md px-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:min-h-8 ${dropGroup === group.label ? 'bg-accent text-foreground shadow-sm ring-2 ring-ring' : ''}`}
 					draggable="true"
 					data-project-group={group.label}
 					aria-label={draggedProjectId ? `Move Project to ${group.label}` : group.label}
@@ -563,10 +579,17 @@
 								aria-hidden="true"
 							></span>{/if}
 						<button
-							class="project-icon-trigger absolute top-1/2 left-0 z-1 grid size-11 -translate-y-1/2 place-items-center rounded-md hover:bg-accent"
-							aria-label={`Change ${project.name} icon`}
-							title={`Change ${project.name} icon`}
-							onclick={(event) => onicon(event, project)}
+							class="project-select flex min-h-11 w-full cursor-grab items-center gap-2 rounded-md bg-transparent py-1 pr-8 pl-2 text-left text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:cursor-grabbing [&.active]:bg-accent [&.active]:text-foreground"
+							class:active={selectedProject?.id === project.id}
+							class:bg-accent={dropProjectId === project.id && draggedProjectId !== project.id}
+							aria-current={selectedProject?.id === project.id ? 'page' : undefined}
+							aria-controls={selectedProject?.id === project.id ? 'session-drawer' : undefined}
+							aria-expanded={selectedProject?.id === project.id ? sessionsOpen : undefined}
+							draggable="true"
+							ondragstart={(event) => startProjectDrag(event, project.id)}
+							ondragend={finishProjectDrag}
+							ontouchstart={(event) => startProjectTouch(event, project.id)}
+							onclick={(event) => onchoose(project, event.currentTarget)}
 						>
 							{#if isImage(project.icon)}<img
 									class="project-icon project-icon-image size-8 rounded-md object-cover"
@@ -581,40 +604,13 @@
 									height={18}
 									aria-hidden="true"
 								/>{/if}
-						</button>
-						<button
-							class="project-select flex min-h-11 w-full cursor-grab items-center gap-2 rounded-md bg-transparent py-1 pr-8 pl-11 text-left text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:cursor-grabbing [&.active]:bg-accent [&.active]:text-foreground"
-							class:active={selectedProject?.id === project.id}
-							class:bg-accent={dropProjectId === project.id && draggedProjectId !== project.id}
-							aria-current={selectedProject?.id === project.id ? 'page' : undefined}
-							aria-controls={selectedProject?.id === project.id ? 'session-drawer' : undefined}
-							aria-expanded={selectedProject?.id === project.id ? sessionsOpen : undefined}
-							draggable="true"
-							ondragstart={(event) => startProjectDrag(event, project.id)}
-							ondragend={finishProjectDrag}
-							ontouchstart={(event) => startProjectTouch(event, project.id)}
-							onclick={() => onchoose(project)}
-						>
-							{#if isImage(project.icon)}<img
-									class="project-icon-inline project-icon-image size-8 rounded-md object-cover"
-									src={project.icon ?? ''}
-									alt=""
-								/>{:else if project.icon}<span
-									class="project-icon-inline size-8 place-items-center rounded-md text-2xl"
-									>{project.icon}</span
-								>{:else}<Folder
-									class="project-icon-inline project-icon-default size-8 text-muted-foreground"
-									width={18}
-									height={18}
-									aria-hidden="true"
-								/>{/if}
 							<span class="project-name min-w-0 flex-1 truncate">{project.name}</span>
-							{#if !project.rootAvailable}<small class="text-amber-400">Missing</small>{/if}
+							{#if !project.rootAvailable}<small class="text-[var(--warning)]">Missing</small>{/if}
 							{#if project.sessionCount}<span
-								class="project-session-count shrink-0 text-xs tabular-nums text-muted-foreground"
-								aria-label={`${project.sessionCount} non-archived Sessions`}
-								>{project.sessionCount}</span
-							>{/if}
+									class="project-session-count shrink-0 text-xs text-muted-foreground tabular-nums"
+									aria-label={`${project.sessionCount} non-archived Sessions`}
+									>{project.sessionCount}</span
+								>{/if}
 						</button>
 						<button
 							class="project-edit absolute top-1/2 right-0 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent focus:opacity-100"
@@ -905,6 +901,22 @@
 					{projectEditError}
 				</p>{/if}
 			<section class="grid gap-1 border-t border-border pt-2" aria-label="Project actions">
+				<div class="grid grid-cols-2 gap-1">
+					<button
+						type="button"
+						class="session-menu-action"
+						disabled={!editingProject || projectPosition(editingProject.id) <= 0}
+						onclick={() => editingProject && moveProjectBy(editingProject.id, -1)}
+						><ArrowUp width={16} height={16} aria-hidden="true" /> Move up</button
+					>
+					<button
+						type="button"
+						class="session-menu-action"
+						disabled={!editingProject || projectPosition(editingProject.id) >= projects.length - 1}
+						onclick={() => editingProject && moveProjectBy(editingProject.id, 1)}
+						><ArrowDown width={16} height={16} aria-hidden="true" /> Move down</button
+					>
+				</div>
 				<button
 					type="button"
 					class="session-menu-action text-destructive"

@@ -27,7 +27,11 @@ type NavigationState = {
 		remember?: boolean
 	) => void;
 	loadActiveTab: (sessionId?: string | null) => Promise<void>;
-	openSession: (session: Session, mode?: HistoryMode, launchEventId?: string | null) => Promise<boolean>;
+	openSession: (
+		session: Session,
+		mode?: HistoryMode,
+		launchEventId?: string | null
+	) => Promise<boolean>;
 };
 
 type RestoreEffects = {
@@ -116,7 +120,6 @@ export async function restoreNavigationSelection(
 	navigation.activeTab = 'sessions';
 	navigation.mobileDrawer = null;
 	if (navigation.selectedProject?.rootAvailable === false) {
-		navigation.persistSelection('replace');
 		navigation.ready = true;
 		return destination;
 	}

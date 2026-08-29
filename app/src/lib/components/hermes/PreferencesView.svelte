@@ -19,6 +19,7 @@
 	let sendKey = $state<HUEPreferences['sendKey']>(defaultPreferences.sendKey);
 	let theme = $state<HUEPreferences['theme']>(defaultPreferences.theme);
 	let density = $state<HUEPreferences['density']>(defaultPreferences.density);
+	let chatFontSize = $state(defaultPreferences.chatFontSize);
 	let language = $state(defaultPreferences.language);
 	let voice = $state(defaultPreferences.voice);
 	let showUsage = $state(defaultPreferences.showUsage);
@@ -34,6 +35,7 @@
 			sendKey,
 			theme,
 			density,
+			chatFontSize,
 			language,
 			voice,
 			showUsage,
@@ -49,6 +51,7 @@
 		sendKey = preferences.sendKey;
 		theme = preferences.theme;
 		density = preferences.density;
+		chatFontSize = preferences.chatFontSize;
 		language = preferences.language;
 		voice = preferences.voice;
 		showUsage = preferences.showUsage;
@@ -112,6 +115,20 @@
 				></select
 			></label
 		>
+		<div class="grid gap-1 text-sm">
+			<label class="flex justify-between" for="chat-font-size"
+				>Chat font size <output>{chatFontSize} px</output></label
+			><input
+				id="chat-font-size"
+				class="min-h-11 accent-primary"
+				type="range"
+				min="12"
+				max="20"
+				step="1"
+				bind:value={chatFontSize}
+				oninput={apply}
+			/>
+		</div>
 		<label class="grid gap-1 text-sm"
 			>Language<select class={selectClass} bind:value={language} onchange={apply}
 				><option value="en">English</option><option value="nl-NL">Nederlands</option></select

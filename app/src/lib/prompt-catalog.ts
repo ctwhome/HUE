@@ -124,5 +124,9 @@ export function loadPromptCatalog(): Promise<CatalogPrompt[]> {
 			if (!response.ok) throw new Error('Prompt catalog is unavailable');
 			return response.text();
 		})
-		.then(parsePromptCatalog));
+		.then(parsePromptCatalog)
+		.catch((cause) => {
+			catalogPromise = null;
+			throw cause;
+		}));
 }

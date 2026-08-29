@@ -56,7 +56,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			folders,
 			primaryPath
 		});
-		services().store.ensureProjectMetadata(project.id);
+		services().store.ensureProjectMetadata(project.id, project.name);
 		return json({ project: projectView(project, null, null) }, { status: 201 });
 	} catch (cause) {
 		return json(

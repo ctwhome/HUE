@@ -21,6 +21,7 @@ export type Project = {
 
 export type WorkspaceProps = {
 	projects: Project[];
+	chatSessionCount?: number;
 	projectsCapability?: 'available' | 'unavailable' | 'outage';
 	projectsError?: string;
 	reconciliationIssues?: Array<{ legacyProjectId: string; kind: string; message: string }>;

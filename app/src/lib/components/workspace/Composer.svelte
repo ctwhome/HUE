@@ -210,6 +210,7 @@
 	let optionsOpen = $state(false);
 	let optionsButton = $state<HTMLButtonElement>();
 	let optionsMenu = $state<HTMLDivElement>();
+	let commandMatches = $derived(matchingCommands());
 	function flattenOptions(options: SelectConfig['options']) {
 		return options.flatMap((option) => ('value' in option ? [option] : option.options));
 	}
@@ -284,12 +285,14 @@
 		onclick={() => onscrolllatest('smooth')}
 		><ArrowDown width={16} height={16} aria-hidden="true" /></button
 	>
-	{#if matchingCommands().length}<div
+	{#if commandMatches.length}<div
+			id={`${instanceId}-command-menu`}
 			class="command-menu absolute right-0 bottom-[calc(100%+8px)] left-0 max-h-[min(360px,45vh)] overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-xl"
 			role="listbox"
 			aria-label="Hermes commands"
 		>
-			{#each matchingCommands() as command, index}<button
+			{#each commandMatches as command, index}<button
+					id={`${instanceId}-command-${index}`}
 					type="button"
 					role="option"
 					aria-selected={index === commandIndex}
@@ -426,7 +429,10 @@
 						class="end-call text-destructive"
 						aria-label="Cancel voice message"
 						title="Cancel voice message"
-						onclick={onendcall}><X width={17} height={17} aria-hidden="true" /></button
+						onclick={() => {
+							onendcall();
+							queueMicrotask(() => optionsButton?.focus());
+						}}><X width={17} height={17} aria-hidden="true" /></button
 					>{:else}<button
 						bind:this={callMuteElement}
 						type="button"
@@ -453,7 +459,10 @@
 						class="end-call text-destructive"
 						aria-label="End voice call"
 						title="End voice call"
-						onclick={onendcall}><PhoneOff width={17} height={17} aria-hidden="true" /></button
+						onclick={() => {
+							onendcall();
+							queueMicrotask(() => optionsButton?.focus());
+						}}><PhoneOff width={17} height={17} aria-hidden="true" /></button
 					>
 				{/if}
 			</div>
@@ -468,7 +477,14 @@
 			placeholder={busy
 				? 'Type a follow-up and press Enter to queue…'
 				: 'Message Hermes… / for commands'}
-			aria-label="Message Hermes"></textarea>
+			aria-label="Message Hermes"
+			role="combobox"
+			aria-autocomplete="list"
+			aria-expanded={commandMatches.length > 0}
+			aria-controls={commandMatches.length ? `${instanceId}-command-menu` : undefined}
+			aria-activedescendant={commandMatches.length
+				? `${instanceId}-command-${Math.max(0, Math.min(commandIndex, commandMatches.length - 1))}`
+				: undefined}></textarea>
 	</div>
 	<div class="composer-toolbar flex min-w-0 items-center gap-2 pt-1">
 		<button
@@ -499,6 +515,8 @@
 			id={`${instanceId}-composer-options`}
 			class="composer-options-menu"
 			class:open={optionsOpen}
+			inert={!optionsOpen}
+			aria-hidden={!optionsOpen ? 'true' : undefined}
 			role="group"
 			aria-label="Secondary session options"
 		>
@@ -637,7 +655,7 @@
 				onselect={(value) => onworkmode(value as WorkMode)}
 			/>
 			{#if showContextUsage && contextPercent() !== null}<span
-					class="desktop-context-option context-chip context-usage inline-flex min-h-8 shrink-0 items-center rounded-lg border border-emerald-900 bg-emerald-950 px-2 text-xs font-bold text-emerald-300"
+					class="desktop-context-option context-chip context-usage inline-flex min-h-8 shrink-0 items-center rounded-lg border border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_15%,transparent)] px-2 text-xs font-bold text-[var(--success)]"
 					class:warning={contextPercent()! >= 80}
 					title={`${runtime.usage!.used.toLocaleString()} of ${runtime.usage!.size.toLocaleString()} context tokens used`}
 					>{contextPercent()}%</span

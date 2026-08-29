@@ -21,7 +21,7 @@ type MobileShellOptions = {
 
 export class MobileShellController {
 	private query = matchMedia('(max-width: 700px), (pointer: coarse) and (max-height: 500px)');
-	private returnFocus: HTMLElement | null = null;
+	private returnFocus: Partial<Record<Drawer, HTMLElement>> = {};
 	private gesture: MobileGestureController;
 
 	constructor(private options: MobileShellOptions) {
@@ -51,15 +51,20 @@ export class MobileShellController {
 	}
 
 	open(pane: Drawer, trigger: HTMLElement | null = this.trigger(pane)) {
-		this.returnFocus = trigger;
+		if (trigger) this.returnFocus[pane] = trigger;
 		this.options.navigation.setMobileDrawer(pane, 'push');
 		void this.focusDrawer(pane);
 	}
 
+	rememberTrigger(pane: Drawer, trigger: HTMLElement) {
+		this.returnFocus[pane] = trigger;
+	}
+
 	close() {
 		const usingHistory = isDrawerHistoryEntry();
+		const pane = this.options.navigation.mobileDrawer;
 		this.options.navigation.closeMobileDrawer();
-		if (!usingHistory) window.setTimeout(this.restoreFocus, 0);
+		if (!usingHistory && pane) window.setTimeout(() => this.restorePaneFocus(pane), 0);
 	}
 
 	toggle(pane: Drawer, trigger: HTMLElement) {
@@ -69,7 +74,7 @@ export class MobileShellController {
 
 	private trigger(pane: Drawer) {
 		return document.querySelector<HTMLElement>(
-			`.mobile-navigation [aria-controls="${pane === 'projects' ? 'project' : 'session'}-drawer"]`
+			pane === 'projects' ? '[data-drawer-focus]' : '.session-list-back'
 		);
 	}
 
@@ -83,11 +88,11 @@ export class MobileShellController {
 			?.focus({ preventScroll: true });
 	}
 
-	private restoreFocus = () => {
-		const target = this.returnFocus;
-		this.returnFocus = null;
+	private restorePaneFocus(pane: Drawer) {
+		const target = this.returnFocus[pane] ?? this.trigger(pane);
+		delete this.returnFocus[pane];
 		if (target?.isConnected) target.focus({ preventScroll: true });
-	};
+	}
 
 	private restoreHistory = async () => {
 		const focused = document.activeElement as HTMLElement | null;
@@ -96,8 +101,7 @@ export class MobileShellController {
 		const pane = this.options.navigation.mobileDrawer;
 		if (pane) return this.focusDrawer(pane);
 		if (closingPane) {
-			this.returnFocus = null;
-			this.trigger(closingPane)?.focus({ preventScroll: true });
+			this.restorePaneFocus(closingPane);
 			return;
 		}
 		const focusedPane =
@@ -106,7 +110,6 @@ export class MobileShellController {
 				this.options.drawer(item).contains(focused)
 			);
 		if (focusedPane) this.trigger(focusedPane)?.focus({ preventScroll: true });
-		else this.restoreFocus();
 	};
 
 	private syncMobile = () => this.options.onMobile(this.query.matches);

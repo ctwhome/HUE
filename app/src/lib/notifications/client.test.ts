@@ -4,7 +4,6 @@ import {
 	attentionState,
 	groupNotifications,
 	notificationCapability,
-	requestSystemPermission,
 	shouldPresentForeground,
 	shouldPlaySound
 } from './client';
@@ -35,21 +34,6 @@ describe('notification client policy', () => {
 					: ['patch-start', 'patch-done', 'focus', 'navigate']
 			);
 		}
-	});
-
-	it('requests browser permission only from an explicit user gesture', async () => {
-		let requests = 0;
-		const api = {
-			permission: 'default' as NotificationPermission,
-			requestPermission: async () => {
-				requests += 1;
-				return 'granted' as NotificationPermission;
-			}
-		};
-		expect(await requestSystemPermission(false, api)).toBe('default');
-		expect(requests).toBe(0);
-		expect(await requestSystemPermission(true, api)).toBe('granted');
-		expect(requests).toBe(1);
 	});
 
 	it('reports denied unavailable insecure and push-unavailable states honestly', () => {

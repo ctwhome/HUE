@@ -15,6 +15,7 @@ import { HUEStore } from './store';
 import { reconcileLegacyProjects } from './project-reconciliation';
 import { ProjectOperations } from './project-operations';
 import { NotificationService, notificationOptionsFromEnv } from './notifications';
+import { ScheduleService } from './schedule-service';
 
 type HUEServices = {
 	store: HUEStore;
@@ -23,12 +24,14 @@ type HUEServices = {
 	projects: HermesProjects;
 	dispatcher: MessageDispatcher;
 	notifications: NotificationService;
+	schedules: ScheduleService;
 	terminals: ProjectTerminals;
 	projectOperations: ProjectOperations<HermesProject>;
 };
 
 const globalServices = globalThis as typeof globalThis & {
 	__hueServices?: HUEServices;
+	__hueShutdown?: Promise<void>;
 };
 
 function createServices(): HUEServices {
@@ -67,23 +70,50 @@ function createServices(): HUEServices {
 		archive: (projectId) => projects.archive(projectId)
 	});
 	const notifications = new NotificationService(store, notificationOptionsFromEnv(process.env));
+	const dispatcher = new MessageDispatcher(store, runtime, () => notifications.deliverPending());
+	const schedules = new ScheduleService({
+		store,
+		runtime,
+		dispatcher,
+		root: unprojectedSessionRoot
+	});
 	return {
 		store,
 		runtime,
 		admin,
 		projects,
-		dispatcher: new MessageDispatcher(store, runtime, () => notifications.deliverPending()),
+		dispatcher,
 		notifications,
+		schedules,
 		terminals: new ProjectTerminals(),
 		projectOperations
 	};
 }
 
 export function services(): HUEServices {
-	if (!(globalServices.__hueServices?.store instanceof HUEStore)) {
+	if (
+		!(globalServices.__hueServices?.store instanceof HUEStore) ||
+		!(globalServices.__hueServices?.schedules instanceof ScheduleService)
+	) {
 		globalServices.__hueServices = createServices();
 	}
 	return globalServices.__hueServices;
+}
+
+export function shutdownServices(): Promise<void> {
+	if (globalServices.__hueShutdown) return globalServices.__hueShutdown;
+	const state = globalServices.__hueServices;
+	if (!state) return Promise.resolve();
+	globalServices.__hueShutdown = (async () => {
+		state.terminals.dispose();
+		state.schedules.close();
+		const dispatcherDrain = state.dispatcher.close();
+		const notificationDrain = state.notifications.close();
+		await Promise.all([state.runtime.close(), state.admin.close()]);
+		await Promise.all([dispatcherDrain, notificationDrain]);
+		state.store.close();
+	})();
+	return globalServices.__hueShutdown;
 }
 
 export function unprojectedSessionRoot(): string {
@@ -167,6 +197,7 @@ export async function loadProjectViews() {
 					state.store.countSessions(project.id)
 				)
 			),
+		chatSessionCount: state.store.countSessions(null),
 		reconciliationIssues: reconciled.issues
 	};
 }
@@ -174,7 +205,7 @@ export async function loadProjectViews() {
 export async function authoritativeProject(id: string): Promise<HermesProject> {
 	const project = await services().projects.get(id);
 	if (project.archived) throw new Error('Project not found');
-	services().store.ensureProjectMetadata(project.id);
+	services().store.ensureProjectMetadata(project.id, project.name);
 	return project;
 }
 
@@ -350,10 +381,27 @@ export type ProjectRepositoryAction =
 	| { action: 'stageAll' | 'unstageAll' | 'push' }
 	| { action: 'commit'; message: string };
 
-export function projectRepositories(projectRoot: string): Array<{ path: string }> {
+const GENERATED_DIRECTORIES = new Set([
+	'node_modules',
+	'build',
+	'dist',
+	'.svelte-kit',
+	'.next',
+	'coverage',
+	'target'
+]);
+
+export function projectRepositories(
+	projectRoot: string,
+	limits: { maxDepth?: number; maxDirectories?: number } = {}
+): Array<{ path: string }> {
 	const root = realpathSync(projectRoot);
 	const repositories: Array<{ path: string }> = [];
-	const visit = (directory: string) => {
+	const maxDepth = Math.max(0, Math.trunc(limits.maxDepth ?? 8));
+	const maxDirectories = Math.max(1, Math.trunc(limits.maxDirectories ?? 10_000));
+	const pending: Array<{ directory: string; depth: number }> = [{ directory: root, depth: 0 }];
+	for (let index = 0; index < pending.length && index < maxDirectories; index += 1) {
+		const { directory, depth } = pending[index]!;
 		try {
 			if (
 				statSync(join(directory, '.git')).isDirectory() ||
@@ -365,17 +413,24 @@ export function projectRepositories(projectRoot: string): Array<{ path: string }
 		} catch {
 			// Not a Git working tree.
 		}
+		if (depth >= maxDepth) continue;
 		try {
-			for (const entry of readdirSync(directory, { withFileTypes: true })) {
-				if (entry.isDirectory() && entry.name !== '.git' && entry.name !== 'node_modules') {
-					visit(join(directory, entry.name));
+			const entries = readdirSync(directory, { withFileTypes: true }).sort((left, right) =>
+				left.name.localeCompare(right.name)
+			);
+			for (const entry of entries) {
+				if (
+					entry.isDirectory() &&
+					entry.name !== '.git' &&
+					!GENERATED_DIRECTORIES.has(entry.name)
+				) {
+					pending.push({ directory: join(directory, entry.name), depth: depth + 1 });
 				}
 			}
 		} catch {
 			// Unreadable folders cannot contain a usable project repository.
 		}
-	};
-	visit(root);
+	}
 	return repositories.sort(({ path: left }, { path: right }) =>
 		left === '.' ? -1 : right === '.' ? 1 : left.localeCompare(right)
 	);

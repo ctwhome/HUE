@@ -14,6 +14,7 @@ import {
 	projectStagedDiff,
 	projectRuntimeHealth,
 	services,
+	shutdownServices,
 	sessionMatchesProjectFolders,
 	sessionMatchesProjectRoot
 } from './services';
@@ -120,12 +121,48 @@ test('replaces services retained from an older server module', async () => {
 		const current = services();
 		expect(current.store).toBeInstanceOf(HUEStore);
 		current.terminals.dispose();
+		current.schedules.close();
 		await Promise.all([current.runtime.close(), current.admin.close()]);
 		current.store.close();
 	} finally {
 		globals.__hueServices = previousServices;
 		if (previousDatabasePath === undefined) delete process.env.HUE_DATABASE_PATH;
 		else process.env.HUE_DATABASE_PATH = previousDatabasePath;
+	}
+});
+
+test('shuts down the aggregate service set only once', async () => {
+	const globals = globalThis as typeof globalThis & {
+		__hueServices?: unknown;
+		__hueShutdown?: Promise<void>;
+	};
+	const previousServices = globals.__hueServices;
+	const previousShutdown = globals.__hueShutdown;
+	const calls: string[] = [];
+	globals.__hueShutdown = undefined;
+	globals.__hueServices = {
+		store: { close: () => calls.push('store') },
+		runtime: { close: async () => calls.push('runtime') },
+		admin: { close: async () => calls.push('admin') },
+		dispatcher: { close: async () => calls.push('dispatcher') },
+		notifications: { close: async () => calls.push('notifications') },
+		schedules: { close: () => calls.push('schedules') },
+		terminals: { dispose: () => calls.push('terminals') }
+	};
+	try {
+		await Promise.all([shutdownServices(), shutdownServices()]);
+		expect(calls).toEqual([
+			'terminals',
+			'schedules',
+			'dispatcher',
+			'notifications',
+			'runtime',
+			'admin',
+			'store'
+		]);
+	} finally {
+		globals.__hueServices = previousServices;
+		globals.__hueShutdown = previousShutdown;
 	}
 });
 

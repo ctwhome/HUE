@@ -21,6 +21,7 @@ import type {
 type NavigationEffects = {
 	api: Api;
 	getProjects: () => Project[];
+	adjustChatSessionCount: (change: number) => void;
 	endVoice: () => void;
 	cacheSession: () => void;
 	saveDraft: () => void;
@@ -160,7 +161,10 @@ export class WorkspaceNavigation {
 		this.mobileDrawer = drillingFromProjects ? 'projects' : null;
 		if (historyMode !== 'none')
 			this.persistSelection(drillingFromProjects ? 'replace' : historyMode);
-		if (project && !project.rootAvailable) return;
+		if (project && !project.rootAvailable) {
+			if (this.effects.isMobile()) this.mobileDrawer = null;
+			return;
+		}
 		await this.loadActiveTab();
 		if (this.effects.isMobile()) this.setMobileDrawer('sessions', 'push');
 	};
@@ -802,7 +806,7 @@ export class WorkspaceNavigation {
 	private adjustSessionCount(change: number) {
 		if (this.selectedProject) {
 			this.selectedProject.sessionCount = Math.max(0, this.selectedProject.sessionCount + change);
-		}
+		} else this.effects.adjustChatSessionCount(change);
 	}
 
 	replaceSession = (session: Session) => {

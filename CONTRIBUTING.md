@@ -1,44 +1,31 @@
 # Contributing to HUE
 
-HUE is currently a **documentation-first product specification**, not a production application. Contributions should sharpen the product contract, resolve named decisions with evidence, or implement a scoped roadmap issue without silently changing the vision.
+HUE is an active focused implementation. Changes should improve Projects, Workflows, Hermes Sessions, or a supporting surface authorized by an accepted ADR.
 
-## Before proposing code
+## Before changing code
 
-1. Read `VISION.md` and the relevant product chapters.
-2. Find the canonical `HUE-xxx` issue in `docs/roadmap/issues.json` / GitHub.
-3. Check dependencies and named `TBD` decisions.
-4. Do not implement a blocked issue by choosing an architecture in code; resolve the ADR first.
+1. Read `docs/00-status-and-review.md`, `docs/05-system-architecture.md`, and the relevant accepted ADR.
+2. Trace the existing implementation, callers, tests, and ownership boundary.
+3. Add an ADR before changing product objects, persistence authority, permission behavior, or external delivery.
+4. Keep Hermes execution and transcripts behind ACP/Hermes APIs; never write Hermes databases or silently grant permissions.
 
 ## Pull request evidence
 
-A PR should include:
+Include the behavior changed, focused test evidence, applicable canonical gate output, migration/rollback notes when data changes, security/privacy impact, and screenshots or recordings for user-facing changes.
 
-- linked issue (`Closes #...` when complete);
-- acceptance-criterion mapping;
-- tests and actual verification output;
-- UI screenshots/recording when applicable;
-- data migration and rollback notes when applicable;
-- security/privacy impact;
-- exact documentation/status changes.
+## Documentation
 
-## Documentation changes
-
-- Use `TBI`, `TBD`, `SPEC`, `POC`, `IMPLEMENTED`, and `VERIFIED` exactly as defined.
-- Do not mark an entire chapter implemented for a partial slice.
-- Add unresolved material choices to the decision register and an ADR issue.
-- Keep `docs/roadmap/*.json` canonical; run the render script after edits.
+Canonical Markdown lives in `docs/*.md` and `docs/decisions/*.md`. The Starlight site projection is generated; do not edit `docs/src/content/docs/`. Obsolete broad roadmap and prototype sources have been removed and must not be restored as implicit backlog.
 
 ## Local validation
 
 ```bash
-python3 docs/scripts/render_roadmap.py
-python3 docs/scripts/validate_docs.py
-bun install
+bun install --frozen-lockfile
 bun run --cwd docs verify
+bun test
+bun run --cwd app check
+bun run --cwd app build
+bun run --cwd app test:e2e
 ```
 
-`bun run --cwd docs verify` regenerates the Starlight content projection, checks Astro and the canonical product contract, builds the production site, then crawls built routes, internal links, Mermaid containers, Pagefind search, roadmap data and the interactive prototype.
-
-## License
-
-Contribution terms remain `TBD-019` until the repository adopts an explicit license and governance model. Do not submit third-party code or content whose reuse terms are unclear.
+Run only the gates relevant while iterating, then run the applicable final commands after the last edit. Real-Hermes tests must use an isolated temporary `HERMES_HOME`, dummy credentials, and no provider network access.

@@ -44,84 +44,6 @@ describe('Hermes administration boundary', () => {
 		});
 	});
 
-	it('reads schedules and delivery targets from Hermes-owned APIs', async () => {
-		const transport = new FakeTransport();
-		transport.responses.set('GET /api/cron/jobs?profile=all', [
-			{ id: 'daily', name: 'Daily', enabled: true, last_error: 'API_TOKEN=secret' }
-		]);
-		transport.responses.set('GET /api/cron/delivery-targets', {
-			targets: [{ id: 'local', name: 'Local (save only)', home_target_set: true }]
-		});
-
-		expect(await new HermesAdmin(transport).view('schedules')).toEqual({
-			capabilities: { schedules: true },
-			jobs: [{ id: 'daily', name: 'Daily', enabled: true, last_error: 'API_TOKEN=[REDACTED]' }],
-			deliveryTargets: [{ id: 'local', name: 'Local (save only)', home_target_set: true }]
-		});
-	});
-
-	it('reads the exact schedule after every mutation', async () => {
-		const transport = new FakeTransport();
-		transport.responses.set('POST /api/cron/jobs?profile=work', { id: 'created' });
-		transport.responses.set('GET /api/cron/jobs/created?profile=work', {
-			id: 'created',
-			name: 'Read back',
-			enabled: true
-		});
-
-		const result = await new HermesAdmin(transport).mutate('schedule.create', {
-			profile: 'work',
-			name: 'Read back',
-			prompt: 'Run',
-			schedule: '0 9 * * *',
-			deliver: 'local'
-		});
-
-		expect(result).toEqual({ target: { id: 'created', name: 'Read back', enabled: true } });
-		expect(transport.requests.map(({ path, init }) => `${init.method ?? 'GET'} ${path}`)).toEqual([
-			'POST /api/cron/jobs?profile=work',
-			'GET /api/cron/jobs/created?profile=work'
-		]);
-	});
-
-	it('verifies destructive deletion by reading the exact collection', async () => {
-		const transport = new FakeTransport();
-		transport.responses.set('GET /api/cron/jobs/delete-me?profile=work', {
-			id: 'delete-me',
-			name: 'Delete me'
-		});
-		transport.responses.set('DELETE /api/cron/jobs/delete-me?profile=work', { ok: true });
-		transport.responses.set('GET /api/cron/jobs?profile=work', [
-			{ id: 'keep-me', profile: 'work' }
-		]);
-
-		expect(
-			await new HermesAdmin(transport).mutate('schedule.delete', {
-				id: 'delete-me',
-				profile: 'work',
-				confirm: 'delete-me'
-			})
-		).toEqual({ deleted: { id: 'delete-me', name: 'Delete me' }, verifiedAbsent: true });
-	});
-
-	it('never cross-mutates duplicate schedule IDs in another profile', async () => {
-		const transport = new FakeTransport();
-		transport.responses.set('POST /api/cron/jobs/shared/pause?profile=work', { ok: true });
-		transport.responses.set('GET /api/cron/jobs/shared?profile=work', {
-			id: 'shared',
-			profile: 'work',
-			status: 'paused'
-		});
-
-		expect(
-			await new HermesAdmin(transport).mutate('schedule.pause', {
-				id: 'shared',
-				profile: 'work'
-			})
-		).toEqual({ target: { id: 'shared', profile: 'work', status: 'paused' } });
-		expect(transport.requests.every(({ path }) => !path.includes('profile=default'))).toBe(true);
-	});
-
 	it('reports missing upstream memory editor/history and skill linked-file seams', async () => {
 		const transport = new FakeTransport();
 		transport.responses.set('GET /api/memory', {
@@ -333,9 +255,6 @@ describe('Hermes administration boundary', () => {
 
 	it('requires exact confirmation for destructive mutations', async () => {
 		const admin = new HermesAdmin(new FakeTransport());
-		await expect(
-			admin.mutate('schedule.delete', { id: 'daily', profile: 'default', confirm: 'wrong' })
-		).rejects.toThrow('Type daily to confirm deletion');
 		await expect(admin.mutate('profile.delete', { name: 'worker' })).rejects.toThrow(
 			'Type worker to confirm deletion'
 		);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { GET, POST } from './+server';
+import { _scheduleAction, GET, POST } from './+server';
 
 describe('Hermes admin API boundary', () => {
 	const event = (request: Request, clientAddress = '127.0.0.1') => ({
@@ -68,5 +68,30 @@ describe('Hermes admin API boundary', () => {
 			expect(response.status).toBe(403);
 			expect(await response.json()).toEqual({ error: 'API access is limited to this device' });
 		}
+	});
+
+	it('delegates schedule actions to the HUE-owned ScheduleService', async () => {
+		const calls: unknown[][] = [];
+		const schedules = {
+			create: async (input: unknown) => (calls.push(['create', input]), { id: 'new' }),
+			update: (id: string, input: unknown) => (calls.push(['update', id, input]), { id }),
+			pause: (id: string) => (calls.push(['pause', id]), { id }),
+			resume: (id: string) => (calls.push(['resume', id]), { id }),
+			detail: (id: string) => ({ id }),
+			runNow: (id: string, runId: string) => (calls.push(['run', id, runId]), { status: 'queued' }),
+			delete: (id: string) => (calls.push(['delete', id]), { deleted: { id } })
+		};
+
+		await _scheduleAction(schedules as never, 'schedule.create', {
+			name: 'Daily',
+			prompt: 'Review',
+			cron: '0 9 * * *'
+		});
+		await _scheduleAction(schedules as never, 'schedule.run', { id: 'daily', runId: 'client-1' });
+
+		expect(calls).toEqual([
+			['create', { name: 'Daily', prompt: 'Review', cron: '0 9 * * *' }],
+			['run', 'daily', 'client-1']
+		]);
 	});
 });

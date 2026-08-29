@@ -125,6 +125,7 @@ export class MessageDispatcher {
 			resolve: (reply: InteractionReply) => void;
 		}
 	>();
+	private closed = false;
 
 	constructor(
 		private readonly store: HUEStore,
@@ -147,7 +148,16 @@ export class MessageDispatcher {
 	}
 
 	submit(envelope: MessageEnvelope) {
+		if (this.closed) throw new Error('Message dispatcher is shutting down');
 		const accepted = this.store.acceptMessage(envelope);
+		return this.submitAccepted(envelope, accepted);
+	}
+
+	submitAccepted(
+		envelope: MessageEnvelope,
+		accepted: { duplicate: boolean; status: import('./store').MessageStatus }
+	) {
+		if (this.closed) throw new Error('Message dispatcher is shutting down');
 		const workMode = (this.store.getSession(envelope.projectId, envelope.sessionId)?.workMode ??
 			DEFAULT_WORK_MODE) as WorkMode;
 		if (accepted.duplicate) return { ...accepted, workMode };
@@ -173,9 +183,9 @@ export class MessageDispatcher {
 	private enqueue(envelope: MessageEnvelope, resumeCwd?: string) {
 		if (this.recovering.has(envelope.id)) return;
 		this.recovering.add(envelope.id);
-		const pending = this.withSessionLock(envelope.sessionId, () =>
-			this.process(envelope, resumeCwd)
-		);
+		const pending = this.withSessionLock(envelope.sessionId, () => {
+			if (!this.closed) return this.process(envelope, resumeCwd);
+		});
 		void pending.finally(() => {
 			this.recovering.delete(envelope.id);
 		});
@@ -197,6 +207,11 @@ export class MessageDispatcher {
 
 	async whenIdle(sessionId: string): Promise<void> {
 		await (this.queues.get(sessionId) ?? Promise.resolve());
+	}
+
+	async close(): Promise<void> {
+		this.closed = true;
+		await Promise.all([...this.queues.values()]);
 	}
 
 	resolveInteraction(

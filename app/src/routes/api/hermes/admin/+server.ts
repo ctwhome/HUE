@@ -6,8 +6,9 @@ import {
 } from '$lib/server/hermes-admin';
 import { redactHermesValue } from '$lib/server/redaction';
 import { services } from '$lib/server/services';
-import { localApiAllowed } from '$lib/server/local-api';
+import { requestAccessAllowed } from '$lib/server/access-auth';
 import type { RequestHandler } from './$types';
+import type { ScheduleService } from '$lib/server/schedule-service';
 
 const views = new Set(['runtime', 'memory', 'schedules', 'skills', 'profiles', 'mcp', 'models']);
 const actions = new Set([
@@ -33,6 +34,38 @@ const actions = new Set([
 	'model.set'
 ]);
 
+export async function _scheduleAction(
+	schedules: ScheduleService,
+	action: string,
+	input: Record<string, unknown>
+) {
+	const id = typeof input.id === 'string' ? input.id : '';
+	if (action === 'schedule.create') {
+		return {
+			target: await schedules.create({ name: input.name, prompt: input.prompt, cron: input.cron })
+		};
+	}
+	if (action === 'schedule.update') {
+		if (!input.updates || typeof input.updates !== 'object' || Array.isArray(input.updates)) {
+			throw new Error('updates is required');
+		}
+		return { target: schedules.update(id, input.updates as Record<string, unknown>) };
+	}
+	if (action === 'schedule.pause') return { target: schedules.pause(id) };
+	if (action === 'schedule.resume') return { target: schedules.resume(id) };
+	if (action === 'schedule.run') {
+		return {
+			target: schedules.detail(id),
+			delivery: schedules.runNow(id, String(input.runId ?? ''))
+		};
+	}
+	if (action === 'schedule.delete') {
+		if (input.confirm !== id) throw new Error(`Type ${id} to confirm deletion`);
+		return { ...schedules.delete(id), verifiedAbsent: true };
+	}
+	throw new Error('Unknown schedule action');
+}
+
 function failure(cause: unknown, status = 400) {
 	return json(
 		{ error: redactHermesValue(cause instanceof Error ? cause.message : String(cause)) },
@@ -46,14 +79,9 @@ export const GET: RequestHandler = async ({ url }) => {
 		if (!view || !views.has(view)) return failure('Unknown Hermes administration view');
 		const id = url.searchParams.get('id');
 		const detail = url.searchParams.get('detail');
-		if (id && (detail === 'schedule' || detail === 'skill' || detail === 'mcp')) {
-			return json(
-				await new HermesAdmin(services().admin).detail(
-					detail,
-					id,
-					url.searchParams.get('profile') ?? undefined
-				)
-			);
+		if (id && detail === 'schedule') return json(services().schedules.detail(id));
+		if (id && (detail === 'skill' || detail === 'mcp')) {
+			return json(await new HermesAdmin(services().admin).detail(detail, id));
 		}
 		return json(await new HermesAdmin(services().admin).view(view as HermesAdminView));
 	} catch (cause) {
@@ -62,7 +90,7 @@ export const GET: RequestHandler = async ({ url }) => {
 };
 
 export const POST: RequestHandler = async ({ request, url, getClientAddress }) => {
-	if (!localApiAllowed(request, url, getClientAddress())) {
+	if (!requestAccessAllowed(request, url, getClientAddress())) {
 		return json({ error: 'API access is limited to this device' }, { status: 403 });
 	}
 	try {
@@ -88,6 +116,15 @@ export const POST: RequestHandler = async ({ request, url, getClientAddress }) =
 		}
 		if (!body.input || typeof body.input !== 'object' || Array.isArray(body.input)) {
 			return failure('input is required');
+		}
+		if (body.action.startsWith('schedule.')) {
+			return json(
+				await _scheduleAction(
+					services().schedules,
+					body.action,
+					body.input as Record<string, unknown>
+				)
+			);
 		}
 		return json(
 			await new HermesAdmin(services().admin).mutate(

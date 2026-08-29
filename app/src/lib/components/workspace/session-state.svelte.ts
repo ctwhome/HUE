@@ -166,6 +166,12 @@ export class SessionState {
 		this.runtime = { profile: 'default' };
 		this.branch = null;
 		this.queuedMessages = [];
+		this.eventCursor = 0;
+		this.activeMessageId = '';
+		this.pendingAssistant = '';
+		this.pendingImages = [];
+		this.pendingThought = '';
+		this.delivery = '';
 	};
 
 	applyCreated = (body: {
@@ -177,12 +183,6 @@ export class SessionState {
 		this.commands = body.commands ?? [];
 		this.runtime = body.runtime ?? { profile: 'default' };
 		this.branch = body.branch ?? null;
-		this.pendingAssistant = '';
-		this.pendingImages = [];
-		this.pendingThought = '';
-		this.activeMessageId = '';
-		this.delivery = '';
-		this.eventCursor = 0;
 	};
 
 	applyLoaded = (body: SessionLoad) => {

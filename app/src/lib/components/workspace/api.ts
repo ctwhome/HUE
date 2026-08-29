@@ -1,12 +1,13 @@
 import { ApiError } from './message-state.svelte';
 import type { Api, Project } from './types';
+import { parseApiResponse } from '$lib/api-response';
 
 export const workspaceApi: Api = async <T>(url: string, options?: RequestInit): Promise<T> => {
 	const response = await fetch(url, {
 		...options,
 		headers: { 'content-type': 'application/json', ...(options?.headers ?? {}) }
 	});
-	const body = (await response.json()) as T & {
+	const body = (await parseApiResponse<T>(response)) as T & {
 		error?: string;
 		project?: Project;
 		restored?: boolean;

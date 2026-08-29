@@ -43,7 +43,9 @@
 	let repositoryError = $state('');
 	let repositoryBusy = $state(false);
 	let commitMessageGenerating = $state(false);
+	let commitOperationId = '';
 	let repositoryMessage = $state('');
+	let commitSessionPath = $state('');
 	let githubItems = $state<GitHubItems | null>(null);
 	let githubError = $state('');
 	let commitMessage = $state('');
@@ -154,19 +156,41 @@
 		if (commitMessageGenerating || !stagedChanges().length) return;
 		commitMessageGenerating = true;
 		repositoryError = repositoryMessage = '';
+		commitSessionPath = '';
 		try {
+			commitOperationId ||= crypto.randomUUID();
 			const separator = commitModel.indexOf(':');
-			const result = await api<{ message: string }>(`/api/projects/${projectId}/repository`, {
+			const result = await api<{
+				status: 'completed' | 'pending' | 'failed' | 'unknown';
+				message?: string;
+				error?: string;
+				sessionId?: string;
+				messageId: string;
+				path?: string;
+			}>(`/api/projects/${projectId}/repository`, {
 				method: 'POST',
 				body: JSON.stringify({
 					action: 'generateCommitMessage',
 					repository: layout.selectedRepository,
 					provider: commitModel.slice(0, separator),
-					model: commitModel.slice(separator + 1)
+					model: commitModel.slice(separator + 1),
+					operationId: commitOperationId
 				})
 			});
+			commitOperationId = '';
+			if (result.status === 'pending') {
+				repositoryMessage = `Draft pending in Session ${result.sessionId}`;
+				commitSessionPath = result.path ?? '';
+				return;
+			}
+			if (result.status !== 'completed' || !result.message) {
+				throw new Error(
+					`${result.error ?? `Commit generation ${result.status}`}${result.sessionId ? ` (Session ${result.sessionId})` : ''}`
+				);
+			}
 			commitMessage = result.message;
-			repositoryMessage = 'Drafted by Hermes';
+			repositoryMessage = `Drafted in Session ${result.sessionId}`;
+			commitSessionPath = result.path ?? '';
 		} catch (cause) {
 			repositoryError = cause instanceof Error ? cause.message : String(cause);
 		} finally {
@@ -199,13 +223,6 @@
 		commitModel = modelId;
 		localStorage.setItem('hue:commit-message-model', modelId);
 	}
-	function togglePanelFromHeader(event: MouseEvent | KeyboardEvent, toggle: () => void) {
-		if ((event.target as HTMLElement).closest('button, select, a')) return;
-		if (event instanceof KeyboardEvent && !['Enter', ' '].includes(event.key)) return;
-		event.preventDefault();
-		toggle();
-	}
-
 	onMount(() => {
 		mounted = true;
 		commitModel = localStorage.getItem('hue:commit-message-model') || commitModel;
@@ -225,12 +242,7 @@
 	aria-label="Git status"
 >
 	<header
-		class="flex min-h-11 cursor-pointer items-center justify-between gap-2 border-b border-border bg-muted/40 px-2.5 py-2"
-		role="button"
-		tabindex="0"
-		aria-expanded={layout.gitOpen}
-		onclick={(event) => togglePanelFromHeader(event, () => toggleRepository('git'))}
-		onkeydown={(event) => togglePanelFromHeader(event, () => toggleRepository('git'))}
+		class="flex min-h-11 items-center justify-between gap-2 border-b border-border bg-muted/40 px-2.5 py-2"
 	>
 		<div class="flex items-center gap-2">
 			<GitBranch width={17} height={17} aria-hidden="true" />
@@ -269,11 +281,18 @@
 				onclick={refreshRepository}><RefreshCw width={15} height={15} aria-hidden="true" /></Button
 			>
 		</div>
-		{#if layout.gitOpen}<ChevronDown
-				width={16}
-				height={16}
-				aria-hidden="true"
-			/>{:else}<ChevronRight width={16} height={16} aria-hidden="true" />{/if}
+		<button
+			type="button"
+			class="grid size-9 shrink-0 place-items-center rounded-md hover:bg-accent"
+			aria-label={layout.gitOpen ? 'Collapse Git status' : 'Expand Git status'}
+			aria-expanded={layout.gitOpen}
+			onclick={() => toggleRepository('git')}
+			>{#if layout.gitOpen}<ChevronDown
+					width={16}
+					height={16}
+					aria-hidden="true"
+				/>{:else}<ChevronRight width={16} height={16} aria-hidden="true" />{/if}</button
+		>
 	</header>
 	{#if layout.gitOpen}
 		<div class="repository-content min-h-0 flex-1 overflow-auto p-2">
@@ -425,7 +444,8 @@
 					>{repositoryMessage ||
 						(stagedChanges().length
 							? `${stagedChanges().length} staged`
-							: 'Stage files to commit')}</small
+							: 'Stage files to commit')}{#if commitSessionPath}
+						<a class="ml-1 underline" href={commitSessionPath}>Open</a>{/if}</small
 				><Button
 					variant="outline"
 					size="sm"
@@ -460,23 +480,25 @@
 	aria-label="Git worktrees"
 >
 	<header
-		class="flex min-h-11 cursor-pointer items-center justify-between border-b border-border bg-muted/40 px-2.5 py-2"
-		role="button"
-		tabindex="0"
-		aria-expanded={layout.worktreesOpen}
-		onclick={(event) => togglePanelFromHeader(event, () => toggleRepository('worktrees'))}
-		onkeydown={(event) => togglePanelFromHeader(event, () => toggleRepository('worktrees'))}
+		class="flex min-h-11 items-center justify-between border-b border-border bg-muted/40 px-2.5 py-2"
 	>
 		<strong class="flex items-center gap-2 text-xs"
 			><GitFork width={17} height={17} aria-hidden="true" />Worktrees</strong
 		>
 		<div class="flex items-center gap-1">
 			<span class="text-[0.68rem] text-muted-foreground">{repository?.worktrees.length ?? 0}</span>
-			{#if layout.worktreesOpen}<ChevronDown
-					width={16}
-					height={16}
-					aria-hidden="true"
-				/>{:else}<ChevronRight width={16} height={16} aria-hidden="true" />{/if}
+			<button
+				type="button"
+				class="grid size-9 place-items-center rounded-md hover:bg-accent"
+				aria-label={layout.worktreesOpen ? 'Collapse Git worktrees' : 'Expand Git worktrees'}
+				aria-expanded={layout.worktreesOpen}
+				onclick={() => toggleRepository('worktrees')}
+				>{#if layout.worktreesOpen}<ChevronDown
+						width={16}
+						height={16}
+						aria-hidden="true"
+					/>{:else}<ChevronRight width={16} height={16} aria-hidden="true" />{/if}</button
+			>
 		</div>
 	</header>
 	{#if layout.worktreesOpen}<div

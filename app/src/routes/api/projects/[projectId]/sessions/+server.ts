@@ -37,15 +37,16 @@ export const GET: RequestHandler = async ({ params, url }) => {
 						// Cached unavailable Sessions remain visible for recovery.
 					}
 					const title =
-						stored.title ??
-						(available ? 'Untitled Hermes Session' : 'Unavailable Hermes Session');
+						stored.title ?? (available ? 'Untitled Hermes Session' : 'Unavailable Hermes Session');
 					return {
 						...stored,
 						title,
 						icon: stored.icon ?? automaticSessionIcon(title),
 						customIcon: stored.icon,
 						available,
-						recovery: available ? null : `Restore the Session folder at ${stored.cwd} to resume it.`,
+						recovery: available
+							? null
+							: `Restore the Session folder at ${stored.cwd} to resume it.`,
 						busySince: busyStarts[stored.sessionId] ?? null,
 						attention: indicators[stored.sessionId]?.attention ?? false,
 						error: indicators[stored.sessionId]?.error ?? false,

@@ -1,10 +1,12 @@
 import { expect, mock, test } from 'bun:test';
+import { serviceExportStubs } from '$lib/server/services-test-stubs';
 
 let workModeCalls: Array<{ sessionId: string; workMode: string; source: string }> = [];
 let lightweightTranscriptCalls = 0;
 let runtimeTranscriptCalls = 0;
 
-mock.module('$lib/server/services', () => ({
+mock.module('$lib/server/route-services', () => ({
+	...serviceExportStubs,
 	services: () => ({
 		store: {
 			hasSession: () => true,

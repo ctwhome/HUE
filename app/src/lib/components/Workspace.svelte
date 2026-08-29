@@ -4,17 +4,15 @@
 	import Folder from '~icons/lucide/folder';
 	import FolderKanban from '~icons/lucide/folder-kanban';
 	import MessageSquare from '~icons/lucide/message-square';
-	import { formatElapsed, isTurnBusy, selectLatestPlan, selectTranscriptTimeline } from '$lib';
+	import { formatElapsed, selectTranscriptTimeline } from '$lib';
 	import { automaticSessionIcon } from '$lib/icon';
 	import { applyPreferences, readPreferences } from '$lib/preferences';
 	import type { CaptureInput } from '$lib/pwa/quick-capture';
-	import { renderMessageMarkdown } from '$lib/message-markdown';
 	import {
 		applyLastSessionSelections,
 		rememberLastSessionSelection
 	} from '$lib/session-selections';
-	import { formatWorkModeAnnouncement, type WorkMode } from '$lib/work-mode';
-	import { createVoiceCall } from '$lib/voice/voice-call.svelte';
+	import type { WorkMode } from '$lib/work-mode';
 	import GlobalNavigation, { type GlobalView } from './GlobalNavigation.svelte';
 	import AttentionCenter from './notifications/AttentionCenter.svelte';
 	import HermesPanel from './HermesPanel.svelte';
@@ -24,12 +22,8 @@
 	import HealthStrip from './workbench/HealthStrip.svelte';
 	import ProjectTerminalDock from './workbench/ProjectTerminalDock.svelte';
 	import QuickCapture from './pwa/QuickCapture.svelte';
-	import Composer from './workspace/Composer.svelte';
 	import ContextPanel from './workspace/ContextPanel.svelte';
-	import Conversation from './workspace/Conversation.svelte';
-	import { MessageState } from './workspace/message-state.svelte';
 	import { MobileShellController } from './workspace/mobile-shell';
-	import { compactModelLabel } from './workspace/mobile-navigation';
 	import { readProjectPanels, togglePanelState as togglePanel } from './workspace/panel-state';
 	import { workspaceApi } from './workspace/api';
 	import { WorkspaceNavigation } from './workspace/navigation.svelte';
@@ -44,10 +38,9 @@
 	import DirtyGuardDialog from './workspace/DirtyGuardDialog.svelte';
 	import { DirtyGuard } from './workspace/dirty-guard';
 	import { installDirtyNavigation } from './workspace/dirty-navigation';
-	import { RuntimeState } from './workspace/runtime-state.svelte';
 	import { preloadSessionViews } from './workspace/session-preload';
-	import { SessionState } from './workspace/session-state.svelte';
-	import { TranscriptFollow } from './workspace/transcript-follow.svelte';
+	import { createSessionController } from './workspace/session-controller.svelte';
+	import SessionSurface from './workspace/SessionSurface.svelte';
 	import {
 		CHAT_BACKGROUND_EVENT,
 		chatBackgroundStyle,
@@ -63,10 +56,12 @@
 	} from './workspace/types';
 	let {
 		projects: initialProjects,
+		chatSessionCount: initialChatSessionCount = 0,
 		projectsCapability = 'available',
 		projectsError = '',
 		reconciliationIssues = []
 	}: WorkspaceProps = $props();
+	let chatSessionCount = $state(untrack(() => initialChatSessionCount));
 	let loading = $state(false),
 		error = $state('');
 	let globalView = $state<GlobalView | null>(null),
@@ -157,25 +152,18 @@
 	}
 	let elapsedTimer: ReturnType<typeof setInterval> | null = null;
 	const navigationRef: { current: WorkspaceNavigation | null } = { current: null };
-	const voiceRef: { current: ReturnType<typeof createVoiceCall> | null } = { current: null };
-	const sessionState = new SessionState(
-		() => navigationRef.current?.selectedProject ?? null,
-		(message) => (error = message)
-	);
-	const transcriptFollow = new TranscriptFollow(() => sessionState.delivery);
-	const messageState = new MessageState({
+	const sessionController = createSessionController({
 		api: workspaceApi,
 		getProject: () => navigationRef.current?.selectedProject ?? null,
 		getSession: () => navigationRef.current?.selectedSession ?? null,
 		getNavigation: () => navigationRef.current!,
-		session: sessionState,
-		transcriptFollow,
-		prepareVoice: () => voiceRef.current?.prepareToSend(),
-		applyVoiceEvents: (events, messageId) => voiceRef.current?.applyEvents(events, messageId),
-		focusComposer: () => messageState.composerElement?.focus(),
 		setError: (message) => (error = message),
-		setLoading: (value) => (loading = value)
+		setLoading: (value) => (loading = value),
+		rememberSelection: (selection) => rememberLastSessionSelection(localStorage, selection),
+		focusNotificationTarget: (events, sourceEventId) =>
+			sessionController.transcriptFollow.focusNotificationTarget(events, sourceEventId)
 	});
+	const { sessionState, messageState, runtimeState } = sessionController;
 	const projectManagement = new ProjectManagement({
 		initialProjects: untrack(() => initialProjects),
 		api: workspaceApi,
@@ -186,16 +174,11 @@
 	const navigation = new WorkspaceNavigation(
 		untrack(() => initialProjects.find(({ rootAvailable }) => rootAvailable) ?? null),
 		{
+			...sessionController.navigationEffects,
 			api: workspaceApi,
 			getProjects: () => projectManagement.projects,
-			endVoice: () => voiceRef.current?.end(false),
-			cacheSession: () => sessionState.cache(navigationRef.current?.selectedSession ?? null),
-			saveDraft: messageState.saveCurrentDraft,
-			clearSession: () => {
-				messageState.clear();
-				sessionState.clear();
-			},
-			showCachedSession: sessionState.showCached,
+			adjustChatSessionCount: (change) =>
+				(chatSessionCount = Math.max(0, chatSessionCount + change)),
 			applyCreatedSession: async (body, preserveWorkMode = false) => {
 				messageState.clear();
 				const selectedSession = navigation.selectedSession;
@@ -233,22 +216,6 @@
 				navigation.replaceSession({ ...selectedSession, workMode: selections.workMode });
 				sessionState.applyCreated({ ...body, runtime: selections.runtime });
 			},
-			applyLoadedSession: (body: SessionLoad) => {
-				messageState.clear();
-				sessionState.applyLoaded(body);
-			},
-			focusNotificationTarget: transcriptFollow.focusNotificationTarget,
-			stopPolling: messageState.stopPolling,
-			startPolling: messageState.startPolling,
-			restoreDraft: messageState.restoreDraft,
-			beginTranscriptEntryStick: transcriptFollow.begin,
-			scrollToLatest: transcriptFollow.scrollToLatest,
-			focusComposer: () => messageState.composerElement?.focus(),
-			getDelivery: () => sessionState.delivery,
-			getRuntimeProfile: () => sessionState.runtime.profile,
-			sendText: messageState.sendText,
-			setError: (message) => (error = message),
-			setLoading: (value) => (loading = value),
 			guard: (action) => dirtyGuard.block(action),
 			isMobile: () => mobile,
 			openCapture: (intent, token) => quickCapture.open(intent, token)
@@ -271,26 +238,10 @@
 		messageState.composerElement?.focus();
 		return true;
 	}
-	const runtimeState = new RuntimeState({
-		api: workspaceApi,
-		getSession: () => navigation.selectedSession,
-		sessionPath: (sessionId) => navigation.sessionApiPath(sessionId),
-		session: sessionState,
-		setError: (message) => (error = message),
-		rememberSelection: (selection) => rememberLastSessionSelection(localStorage, selection)
-	});
-	const voice = createVoiceCall({
-		hasSession: () => navigation.selectedSession !== null,
-		isBusy: () => isTurnBusy(sessionState.delivery),
-		sendText: messageState.sendText,
-		stopTurn: messageState.stopTurn,
-		focusComposer: () => messageState.composerElement?.focus(),
-		reportError: (message) => (error = message)
-	});
-	voiceRef.current = voice;
 	let selectedProject = $derived(navigation.selectedProject);
-	function chooseProjectFromRail(project: Project | null) {
+	function chooseProjectFromRail(project: Project | null, trigger?: HTMLElement) {
 		if (mobile) {
+			if (trigger) mobileShell?.rememberTrigger('sessions', trigger);
 			void navigation.chooseProject(project);
 			return;
 		}
@@ -316,11 +267,9 @@
 	});
 	let timeline = $derived(sessionState.timeline);
 	let hasTranscript = $derived(selectTranscriptTimeline(timeline).length > 0);
-	let selectedPlan = $derived(selectLatestPlan(timeline));
 	let commands = $derived(sessionState.commands);
 	let runtime = $derived(sessionState.runtime);
 	let branch = $derived(sessionState.branch);
-	let queuedMessages = $derived(sessionState.queuedMessages);
 	let delivery = $derived(sessionState.delivery);
 	let selectedAttentionStatus: Session['status'] = $derived.by(() => {
 		const interaction = timeline.findLast(
@@ -342,9 +291,6 @@
 				? `Question: ${interaction.message ?? 'Hermes needs input'}`
 				: undefined;
 	});
-	let composer = $derived(messageState.composer);
-	let editingQueuedMessageId = $derived(messageState.editingQueuedMessageId);
-	let workModeChanging = $state(false);
 	let browserOpen = $state(true),
 		filesOpen = $state(false);
 	let fileRequest = $state<{ path: string; id: string } | null>(null);
@@ -375,32 +321,6 @@
 		if (opening && browserOpen)
 			browserOpen = togglePanel(localStorage, panelProjectId, 'browser', browserOpen);
 	}
-	const changeWorkMode = async (workMode: WorkMode) => {
-		if (!navigation.selectedSession || workModeChanging) return;
-		workModeChanging = true;
-		try {
-			const body = await workspaceApi<{
-				session: { sessionId: string; workMode: WorkMode };
-				workMode: WorkMode;
-				event?: import('./workspace/types').SessionEvent | null;
-			}>(navigation.sessionApiPath(navigation.selectedSession.sessionId), {
-				method: 'PATCH',
-				body: JSON.stringify({ workMode })
-			});
-			navigation.replaceSession({
-				...navigation.selectedSession,
-				...body.session,
-				workMode: body.workMode
-			});
-			rememberLastSessionSelection(localStorage, { workMode: body.workMode });
-			messageState.messageNotice = formatWorkModeAnnouncement(body.workMode);
-			if (body.event) sessionState.applyEvents([body.event]);
-		} catch (cause) {
-			error = cause instanceof Error ? cause.message : String(cause);
-		} finally {
-			workModeChanging = false;
-		}
-	};
 	async function ensureDraftSession() {
 		if (navigation.selectedSession) return navigation.selectedSession;
 		if (!sessionCreation) {
@@ -502,8 +422,6 @@
 			window.removeEventListener(CHAT_BACKGROUND_EVENT, refreshChatBackground);
 			mobileShell?.destroy();
 			mobileShell = null;
-			voice.end(false);
-			messageState.stopPolling();
 			if (elapsedTimer) clearInterval(elapsedTimer);
 		};
 	});
@@ -511,7 +429,6 @@
 </script>
 
 <svelte:window
-	onpagehide={messageState.saveCurrentDraft}
 	onkeydown={handleGlobalKeydown}
 	onbeforeunload={(event) => {
 		if (dirtyGuardDirty) event.preventDefault();
@@ -528,12 +445,12 @@
 	class:embedded
 	style={`--project-pane-width: ${projectPaneWidth}px; --session-pane-width: ${sessionPaneWidth}px; --project-shell-color: ${selectedProject?.color ?? 'var(--background)'}`}
 >
-	<GlobalNavigation
-		view={globalView}
-		unreadCount={unreadNotifications}
-		onview={setGlobalView}
-		onfind={() => (finderOpen = true)}
-	/>
+	{#if !mobile}<GlobalNavigation
+			view={globalView}
+			unreadCount={unreadNotifications}
+			onview={setGlobalView}
+			onfind={() => (finderOpen = true)}
+		/>{/if}
 	<SessionFinder bind:open={finderOpen} onnavigate={openFinderResult} />
 	<AttentionCenter
 		open={globalView === 'notifications'}
@@ -559,6 +476,7 @@
 		open={navigation.mobileDrawer === 'projects'}
 		{mobile}
 		projects={projectManagement.projects}
+		chatSessionCount={chatSessionCount}
 		{selectedProject}
 		{unreadNotifications}
 		sessionsOpen={sessionsPanelOpen}
@@ -631,7 +549,7 @@
 		{now}
 		oncreate={navigation.createSession}
 		onopen={(session) => navigation.openSession(session, 'push')}
-		onback={() => mobileShell?.open('projects')}
+		onback={(trigger) => mobileShell?.open('projects', trigger)}
 		onedit={navigation.openEditSession}
 		onicon={navigation.openSessionIconEditor}
 		onarchive={navigation.archiveSession}
@@ -700,15 +618,15 @@
 		bind:this={chatPaneElement}
 		class="session-workspace flex h-full min-h-0 min-w-0 overflow-hidden"
 		class:terminal-open={terminalOpen && !mobile}
+		inert={mobile && navigation.mobileDrawer !== null}
+		aria-hidden={mobile && navigation.mobileDrawer !== null ? 'true' : undefined}
 		style={`--terminal-panel-height: ${terminalHeight}px`}
 	>
 		<SessionPaneGrid
 			{sessions}
 			project={selectedProject}
 			projectId={selectedProject?.id ?? null}
-			sessionListLoaded={
-				navigation.loadedSessionListProjectId === (selectedProject?.id ?? null)
-			}
+			sessionListLoaded={navigation.loadedSessionListProjectId === (selectedProject?.id ?? null)}
 			{workflows}
 			primarySession={selectedSession}
 			allowDocking={!embedded}
@@ -735,7 +653,10 @@
 					{pendingInteraction}
 					contextPercent={runtimeState.contextPercent}
 					{projectTools}
-					onsessions={() => mobileShell?.open('sessions')}
+					{mobile}
+					{unreadNotifications}
+					onsessions={(trigger) => mobileShell?.open('sessions', trigger)}
+					onnotifications={() => setGlobalView('notifications')}
 					onprojecttools={(open) => (projectTools = open)}
 					onicon={(event) =>
 						selectedSession && navigation.openSessionIconEditor(event, selectedSession)}
@@ -767,108 +688,26 @@
 						/>
 					{/key}
 				{:else if selectedSession || (selectedProject?.rootAvailable && navigation.ready)}
-					<Conversation
-						{timeline}
+					<SessionSurface
+						controller={sessionController}
+						{navigation}
+						project={selectedProject}
+						session={selectedSession}
+						{workflows}
 						sessionLabel={selectedSession?.title ||
 							selectedSession?.sessionId ||
 							'New Hermes Session'}
-						messageNotice={messageState.messageNotice}
-						agentLabel={compactModelLabel(
-							runtime.models?.currentModelId ?? '',
-							runtimeState.currentModel()?.name ?? runtime.models?.currentModelId ?? 'Hermes'
-						)}
-						busy={isTurnBusy(delivery)}
 						mediaPath={selectedSession
 							? navigation.sessionApiPath(selectedSession.sessionId, '/media')
 							: ''}
-						renderMarkdown={renderMessageMarkdown}
-						onedit={messageState.editMessage}
-						oncopy={messageState.copyMessage}
-						oncopycode={messageState.copyCode}
-						oninteraction={messageState.respondToInteraction}
-						onmedia={messageState.openMedia}
-						onretrylast={messageState.retryLastResponse}
-						onquote={messageState.addReviewContext}
-						bind:element={transcriptFollow.element}
-						follow={transcriptFollow.follow}
-					/>
-					{#if selectedSession?.available === false}<div
-							class="m-4 rounded-lg border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-200"
-							role="status"
-						>
-							{selectedSession.recovery ?? 'Hermes Session is unavailable.'}
-						</div>{:else}<Composer
-						{composer}
-						plan={selectedPlan}
-						{timeline}
-						renderMarkdown={renderMessageMarkdown}
-						bind:composerElement={messageState.composerElement}
-						bind:draggingImages={messageState.draggingImages}
-						bind:images={messageState.images}
-						bind:attachments={messageState.attachments}
-						reviewContexts={messageState.reviewContexts}
-						{delivery}
-						pendingEnvelope={messageState.pendingEnvelope}
-						{queuedMessages}
-						{editingQueuedMessageId}
-						commandIndex={messageState.commandIndex}
-						callActive={voice.active}
-						voiceMessageOnly={voice.messageOnly}
-						callMuted={voice.muted}
-						callStatus={voice.status}
-						callError={voice.error}
-						bind:voiceCancelElement={voice.cancelElement}
-						bind:callMuteElement={voice.muteElement}
-						bind:voiceMessageElement={voice.messageElement}
-						bind:voiceStartElement={voice.startElement}
-						{runtime}
-						workMode={selectedSession?.workMode ?? 'autonomous'}
-						{workModeChanging}
-						runtimeChanging={runtimeState.changing}
-						promptLibraryAvailable={Boolean(selectedProject?.rootAvailable)}
-						projectName={selectedProject?.name ?? ''}
-						{workflows}
-						bind:workflowName={navigation.workflowName}
-						bind:workflowPrompt={navigation.workflowPrompt}
-						bind:workflowFolder={navigation.workflowFolder}
-						bind:workflowProfile={navigation.workflowProfile}
-						bind:workflowWorkMode={navigation.workflowWorkMode}
-						stopping={messageState.stopping}
-						showScrollToLatest={timeline.length > 0 && transcriptFollow.showScrollToLatest}
-						busy={isTurnBusy(delivery)}
 						onsubmit={submitDraft}
-						ondrop={messageState.handleDrop}
-						onpaste={messageState.handlePaste}
 						oninput={createSessionFromDraft}
-						onkeydown={messageState.handleComposerKeydown}
-						onimages={messageState.handleImageInput}
-						oncontextcomment={messageState.updateReviewComment}
-						onremovecontext={messageState.removeReviewContext}
-						onvoiceMessage={voice.startMessage}
-						onvoiceCall={voice.startCall}
-						onmute={voice.toggleMute}
-						oninterrupt={voice.interrupt}
-						onendcall={() => voice.end()}
-						onstop={messageState.stopTurn}
-						onretry={messageState.retryPendingMessage}
-						oneditqueued={messageState.editQueuedMessage}
-						oncommand={messageState.chooseCommand}
-						onmodel={runtimeState.selectModel}
-						onruntime={runtimeState.change}
-						onconfig={runtimeState.changeConfig}
-						onworkmode={changeWorkMode}
-						onloadworkflows={navigation.loadWorkflows}
-						onworkflow={navigation.addWorkflow}
-						onupdateworkflow={navigation.updateWorkflow}
-						ondeleteworkflow={navigation.deleteWorkflow}
-						onduplicateworkflow={navigation.duplicateWorkflow}
-						onfavoritecatalog={navigation.favoriteCatalogPrompt}
 						onrunworkflow={navigation.runWorkflow}
-						onscrolllatest={transcriptFollow.scrollToLatest}
-						matchingCommands={messageState.matchingCommands}
-						contextPercent={runtimeState.contextPercent}
+						unavailableRecovery={selectedSession?.available === false
+							? (selectedSession.recovery ?? 'Hermes Session is unavailable.')
+							: null}
 						showContextUsage={false}
-					/>{/if}
+					/>
 				{:else if selectedProject && !selectedProject.rootAvailable}
 					<section
 						class="mx-auto mt-[12vh] grid max-w-xl gap-4 p-8 text-center text-muted-foreground"

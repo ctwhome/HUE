@@ -1,15 +1,14 @@
 <script lang="ts">
+	import { parseApiResponse } from '$lib/api-response';
 	import Input from '../ui/Input.svelte';
 	import Button from '../ui/Button.svelte';
 	import type { Job } from './types';
 
 	let {
 		jobs,
-		deliveryTargets,
 		onaction
 	}: {
 		jobs: Job[];
-		deliveryTargets: Array<{ id: string; name: string; home_target_set?: boolean }>;
 		onaction: (action: string, input: Record<string, unknown>) => Promise<unknown>;
 	} = $props();
 	let filter = $state('');
@@ -18,8 +17,6 @@
 	let newName = $state('');
 	let newPrompt = $state('');
 	let newSchedule = $state('0 9 * * *');
-	let newDeliver = $state('local');
-	let newProfile = $state('default');
 	let historyJob = $state('');
 	let history = $state<Record<string, unknown> | null>(null);
 	let historyError = $state('');
@@ -34,7 +31,7 @@
 		return jobs.filter(
 			(job) =>
 				(!query ||
-					`${job.name || job.id} ${job.schedule || ''} ${job.status} ${job.nextRun || ''} ${job.lastRun || ''}`
+					`${job.name || job.id} ${job.cron} ${job.status} ${job.nextRun || ''}`
 						.toLowerCase()
 						.includes(query)) &&
 				(status === 'all' || job.status === status)
@@ -48,14 +45,14 @@
 			.sort((a, b) => a.name.localeCompare(b.name));
 	};
 	async function loadHistory(job: Job) {
-		historyJob = `${job.profile}:${job.id}`;
+		historyJob = job.id;
 		history = null;
 		historyError = '';
 		try {
 			const response = await fetch(
-				`/api/hermes/admin?view=schedules&detail=schedule&id=${encodeURIComponent(job.id)}&profile=${encodeURIComponent(job.profile)}`
+				`/api/hermes/admin?view=schedules&detail=schedule&id=${encodeURIComponent(job.id)}`
 			);
-			const result = (await response.json()) as Record<string, unknown> & { error?: string };
+			const result = await parseApiResponse<Record<string, unknown>>(response);
 			if (!response.ok) throw new Error(result.error ?? `Request failed (${response.status})`);
 			history = result;
 		} catch (cause) {
@@ -67,14 +64,11 @@
 		if (name === null) return;
 		const promptText = window.prompt('Schedule prompt', job.prompt ?? '');
 		if (promptText === null) return;
-		const schedule = window.prompt('Cron schedule', job.schedule ?? '');
-		if (schedule === null) return;
-		const deliver = window.prompt('Delivery target', job.deliver ?? 'local');
-		if (deliver === null) return;
+		const cron = window.prompt('Cron schedule', job.cron);
+		if (cron === null) return;
 		void onaction('schedule.update', {
 			id: job.id,
-			profile: job.profile,
-			updates: { name, prompt: promptText, schedule, deliver }
+			updates: { name, prompt: promptText, cron }
 		});
 	}
 </script>
@@ -84,21 +78,13 @@
 	onsubmit={(event) => {
 		event.preventDefault();
 		void onaction('schedule.create', {
-			profile: newProfile,
 			name: newName,
 			prompt: newPrompt,
-			schedule: newSchedule,
-			deliver: newDeliver
+			cron: newSchedule
 		});
 	}}
 >
 	<Input bind:value={newName} aria-label="Schedule name" placeholder="Schedule name" required />
-	<Input
-		bind:value={newProfile}
-		aria-label="Schedule profile"
-		placeholder="Exact profile"
-		required
-	/>
 	<Input bind:value={newSchedule} aria-label="Cron schedule" placeholder="0 9 * * *" required />
 	<Input
 		bind:value={newPrompt}
@@ -107,12 +93,6 @@
 		placeholder="Prompt"
 		required
 	/>
-	<select class={inputClass} bind:value={newDeliver} aria-label="Delivery target">
-		{#each deliveryTargets as target}<option
-				value={target.id}
-				disabled={target.home_target_set === false}>{target.name}</option
-			>{/each}
-	</select>
 	<Button type="submit">Create schedule</Button>
 </form>
 
@@ -162,35 +142,26 @@
 					<article class={`${card} flex flex-wrap items-center justify-between gap-4`}>
 						<div class="grid gap-1">
 							<strong>{job.name || job.id}</strong>
-							<small class="text-muted-foreground"
-								>{job.profile} · {job.schedule || 'No schedule'}</small
+							<small class="text-muted-foreground">{job.cron}</small>
+							{#if job.nextRun}
+								<small class="schedule-runs text-xs text-muted-foreground">Next {job.nextRun}</small
+								>
+							{/if}
+							<a
+								class="text-xs text-primary underline"
+								href={`/?project=none&session=${encodeURIComponent(job.sessionId)}`}
+								>Review Session</a
 							>
-							{#if job.nextRun || job.lastRun}
-								<small class="schedule-runs text-xs text-muted-foreground"
-									>{job.nextRun ? `Next ${job.nextRun}` : ''}{job.nextRun && job.lastRun
-										? ' · '
-										: ''}{job.lastRun ? `Last ${job.lastRun}` : ''}</small
-								>
-							{/if}
-							{#if job.last_status || job.last_error || job.last_delivery_error}
-								<small class="text-xs text-muted-foreground"
-									>Last {job.last_status ?? 'run'}{job.last_error
-										? ` · ${job.last_error}`
-										: ''}{job.last_delivery_error
-										? ` · Delivery: ${job.last_delivery_error}`
-										: ''}</small
-								>
-							{/if}
 						</div>
 						<div class="ml-auto flex flex-wrap items-center gap-2">
 							<span
-								class={`rounded-full px-2 py-1 text-xs ${job.status === 'active' ? 'bg-emerald-950 text-emerald-300' : 'bg-amber-950 text-amber-300'}`}
+								class={`rounded-full px-2 py-1 text-xs ${job.status === 'active' ? 'bg-[color-mix(in_srgb,var(--success)_15%,transparent)] text-[var(--success)]' : 'bg-[color-mix(in_srgb,var(--warning)_15%,transparent)] text-[var(--warning)]'}`}
 								>{job.status}</span
 							>
 							<Button
 								size="sm"
 								variant="outline"
-								onclick={() => onaction('schedule.run', { id: job.id, profile: job.profile })}
+								onclick={() => onaction('schedule.run', { id: job.id, runId: crypto.randomUUID() })}
 								>Run now</Button
 							>
 							<Button size="sm" variant="outline" onclick={() => loadHistory(job)}
@@ -201,22 +172,20 @@
 								variant="outline"
 								onclick={() =>
 									onaction(job.status === 'active' ? 'schedule.pause' : 'schedule.resume', {
-										id: job.id,
-										profile: job.profile
+										id: job.id
 									})}>{job.status === 'active' ? 'Pause' : 'Resume'}</Button
 							>
 							<Button size="sm" variant="outline" onclick={() => editJob(job)}>Edit</Button>
 							<Button
 								size="sm"
 								variant="destructive"
-								onclick={() => onaction('schedule.delete', { id: job.id, profile: job.profile })}
-								>Delete</Button
+								onclick={() => onaction('schedule.delete', { id: job.id })}>Delete</Button
 							>
 						</div>
 					</article>
-					{#if historyJob === `${job.profile}:${job.id}`}
+					{#if historyJob === job.id}
 						<aside class={card} aria-label={`${job.name ?? job.id} run history`}>
-							<strong>Run history, output, errors, and delivery</strong>
+							<strong>Run history, output, and errors</strong>
 							{#if historyError}<p class="mt-2 text-sm text-destructive" role="alert">
 									{historyError}
 								</p>{:else if history}<pre

@@ -6,7 +6,6 @@ import {
 	parseNavigationMemory,
 	resolveInitialMobilePane,
 	resolveLaunchDestination,
-	resolveNavigationDestination,
 	updateMobileGesture
 } from './mobile-navigation';
 
@@ -69,7 +68,7 @@ describe('durable mobile navigation', () => {
 		).toMatchObject({ intent: 'capture', projectId: null, sessionId: null, source: 'intent' });
 	});
 	test('clean first launch starts at Projects with the first valid Project ready', () => {
-		expect(resolveNavigationDestination(new URL('http://hue.local/'), null, projects)).toEqual({
+		expect(resolveLaunchDestination(new URL('http://hue.local/'), null, projects)).toMatchObject({
 			projectId: 'project-1',
 			sessionId: null,
 			pane: 'projects',
@@ -86,12 +85,12 @@ describe('durable mobile navigation', () => {
 		});
 
 		expect(
-			resolveNavigationDestination(
+			resolveLaunchDestination(
 				new URL('http://hue.local/?project=project-2&session=session-2'),
 				remembered,
 				projects
 			)
-		).toEqual({
+		).toMatchObject({
 			projectId: 'project-2',
 			sessionId: 'session-2',
 			pane: null,
@@ -108,21 +107,17 @@ describe('durable mobile navigation', () => {
 		});
 
 		expect(
-			resolveNavigationDestination(
-				new URL('http://hue.local/?intent=capture'),
-				remembered,
-				projects
-			)
+			resolveLaunchDestination(new URL('http://hue.local/?intent=capture'), remembered, projects)
 		).toMatchObject({ projectId: null, sessionId: null, pane: null, explicit: false });
 		expect(
-			resolveNavigationDestination(
+			resolveLaunchDestination(
 				new URL('http://hue.local/?intent=share&token=one-time'),
 				remembered,
 				projects
 			)
 		).toMatchObject({ projectId: null, sessionId: null, pane: null, explicit: false });
 		expect(
-			resolveNavigationDestination(
+			resolveLaunchDestination(
 				new URL('http://hue.local/?project=project-2&session=session-2&intent=capture'),
 				remembered,
 				projects
@@ -143,18 +138,10 @@ describe('durable mobile navigation', () => {
 			pane: null
 		});
 		expect(
-			resolveNavigationDestination(
-				new URL('http://hue.local/?intent=projects'),
-				remembered,
-				projects
-			)
+			resolveLaunchDestination(new URL('http://hue.local/?intent=projects'), remembered, projects)
 		).toMatchObject({ projectId: null, sessionId: null, pane: 'projects' });
 		expect(
-			resolveNavigationDestination(
-				new URL('http://hue.local/?intent=recents'),
-				remembered,
-				projects
-			)
+			resolveLaunchDestination(new URL('http://hue.local/?intent=recents'), remembered, projects)
 		).toMatchObject({ projectId: 'project-1', sessionId: null, pane: 'sessions' });
 	});
 
@@ -175,8 +162,8 @@ describe('durable mobile navigation', () => {
 			pane: 'sessions'
 		});
 		expect(
-			resolveNavigationDestination(new URL('http://hue.local/'), remembered, projects)
-		).toEqual({
+			resolveLaunchDestination(new URL('http://hue.local/'), remembered, projects)
+		).toMatchObject({
 			projectId: 'project-1',
 			sessionId: 'session-1',
 			pane: 'sessions',
@@ -200,8 +187,8 @@ describe('durable mobile navigation', () => {
 		});
 
 		expect(
-			resolveNavigationDestination(new URL('http://hue.local/'), remembered, projects)
-		).toEqual({
+			resolveLaunchDestination(new URL('http://hue.local/'), remembered, projects)
+		).toMatchObject({
 			projectId: null,
 			sessionId: null,
 			pane: 'projects',
@@ -224,11 +211,7 @@ describe('mobile gesture state', () => {
 				dialogOpen: false
 			})
 		).not.toBeNull();
-		for (const override of [
-			{ excluded: true },
-			{ dialogOpen: true },
-			{ hasSession: false }
-		]) {
+		for (const override of [{ excluded: true }, { dialogOpen: true }, { hasSession: false }]) {
 			expect(
 				beginMobileGesture({
 					pane: null,

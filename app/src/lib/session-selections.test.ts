@@ -59,14 +59,8 @@ describe('last Session selections', () => {
 			changeRuntime: async (kind, value) => {
 				changes.push([kind, value]);
 				return {
-					models:
-						kind === 'modelId'
-							? { currentModelId: value, availableModels: [] }
-							: undefined,
-					modes:
-						kind === 'modeId'
-							? { currentModeId: value, availableModes: [] }
-							: undefined
+					models: kind === 'modelId' ? { currentModelId: value, availableModels: [] } : undefined,
+					modes: kind === 'modeId' ? { currentModeId: value, availableModes: [] } : undefined
 				};
 			},
 			changeWorkMode: async (value) => {

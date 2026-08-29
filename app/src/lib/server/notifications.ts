@@ -1,4 +1,4 @@
-import type { HUEStore, NotificationKind } from './store';
+import type { HUEStore, NotificationEndpointRow } from './store';
 import webPush from 'web-push';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import {
@@ -82,30 +82,6 @@ export type DeliveryAttempt = {
 	updatedAt: string;
 };
 
-type EndpointRow = {
-	id: string;
-	device_id: string;
-	name: string;
-	endpoint: string;
-	p256dh: string;
-	auth: string;
-	enabled: number;
-	created_at: string;
-	updated_at: string;
-	revoked_at: string | null;
-	notification_baseline: number;
-};
-
-type AttemptRow = {
-	id: string;
-	notification_id: string;
-	endpoint_id: string;
-	status: DeliveryAttempt['status'];
-	attempt_count: number;
-	error_category: string | null;
-	updated_at: string;
-};
-
 export class NotificationService {
 	private readonly now: () => Date;
 	private readonly transport: PushTransport | null;
@@ -151,49 +127,25 @@ export class NotificationService {
 		validateEndpoint(input, this.options.allowHttpLocalhost ?? false);
 		const now = this.now().toISOString();
 		const id = `endpoint:${crypto.randomUUID()}`;
-		const current = this.endpointByDevice(input.deviceId.trim());
-		const baseline = this.currentNotificationBaseline();
-		this.store.database.transaction(() => {
-			this.store.database
-				.query(
-					`INSERT INTO notification_endpoints
-				 (id, device_id, name, endpoint, p256dh, auth, enabled, created_at, updated_at, revoked_at,
-				  notification_baseline)
-				 VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, NULL, ?)
-				 ON CONFLICT(device_id) DO UPDATE SET name = excluded.name, endpoint = excluded.endpoint,
-				 p256dh = excluded.p256dh, auth = excluded.auth, enabled = 1,
-				 updated_at = excluded.updated_at, revoked_at = NULL,
-				 notification_baseline = CASE
-				  WHEN notification_endpoints.enabled = 0 OR notification_endpoints.revoked_at IS NOT NULL
-				  THEN excluded.notification_baseline ELSE notification_endpoints.notification_baseline END`
-				)
-				.run(
-					id,
-					input.deviceId.trim(),
-					input.name.trim(),
-					this.encrypt(idForCredential(current, id), 'endpoint', input.endpoint),
-					this.encrypt(idForCredential(current, id), 'p256dh', input.keys.p256dh),
-					this.encrypt(idForCredential(current, id), 'auth', input.keys.auth),
-					now,
-					now,
-					baseline
-				);
-			if (current && (!current.enabled || current.revokedAt))
-				this.suppressEndpointAttempts(current.id);
-		})();
-		return this.endpointByDevice(input.deviceId.trim())!;
+		const deviceId = input.deviceId.trim();
+		const current = this.store.getNotificationEndpointByDevice(deviceId);
+		const credentialId = current?.id ?? id;
+		return mapEndpoint(
+			this.store.upsertNotificationEndpoint({
+				id,
+				deviceId,
+				name: input.name.trim(),
+				endpoint: this.encrypt(credentialId, 'endpoint', input.endpoint),
+				p256dh: this.encrypt(credentialId, 'p256dh', input.keys.p256dh),
+				auth: this.encrypt(credentialId, 'auth', input.keys.auth),
+				now,
+				baseline: this.store.notificationBaseline()
+			})
+		);
 	}
 
 	listEndpoints(): EndpointMetadata[] {
-		return (
-			this.store.database
-				.query(
-					`SELECT id, device_id, name, endpoint, p256dh, auth, enabled, created_at, updated_at, revoked_at,
-					 notification_baseline
-					 FROM notification_endpoints ORDER BY created_at, id`
-				)
-				.all() as EndpointRow[]
-		).map(mapEndpoint);
+		return this.store.listNotificationEndpoints().map(mapEndpoint);
 	}
 
 	updateEndpoint(id: string, input: { enabled?: boolean; name?: string }): EndpointMetadata {
@@ -201,51 +153,34 @@ export class NotificationService {
 		if (input.enabled !== undefined && typeof input.enabled !== 'boolean') {
 			throw new Error('Endpoint enabled must be boolean');
 		}
-		const current = this.rawEndpoint(id);
+		const current = this.store.getNotificationEndpoint(id);
 		if (!current) throw new Error('Notification endpoint not found');
 		const enabled = input.enabled ?? !!current.enabled;
-		const reenabled = enabled && !current.enabled;
-		this.store.database.transaction(() => {
-			this.store.database
-				.query(
-					`UPDATE notification_endpoints SET name = ?, enabled = ?, updated_at = ?,
-					 notification_baseline = CASE WHEN ? THEN ? ELSE notification_baseline END WHERE id = ?`
-				)
-				.run(
-					input.name?.trim() ?? current.name,
-					enabled ? 1 : 0,
-					this.now().toISOString(),
-					reenabled ? 1 : 0,
-					this.currentNotificationBaseline(),
-					id
-				);
-			if (!enabled || reenabled) this.suppressEndpointAttempts(id);
-		})();
-		return mapEndpoint(this.rawEndpoint(id)!);
+		return mapEndpoint(
+			this.store.updateNotificationEndpoint(id, {
+				name: input.name?.trim() ?? current.name,
+				enabled,
+				now: this.now().toISOString(),
+				baseline: this.store.notificationBaseline()
+			})!
+		);
 	}
 
 	revokeEndpoint(id: string): EndpointMetadata {
 		const now = this.now().toISOString();
-		const result = this.store.database
-			.query(
-				'UPDATE notification_endpoints SET enabled = 0, revoked_at = COALESCE(revoked_at, ?), updated_at = ? WHERE id = ?'
-			)
-			.run(now, now, id);
-		if (!result.changes) throw new Error('Notification endpoint not found');
-		this.suppressEndpointAttempts(id);
-		return mapEndpoint(this.rawEndpoint(id)!);
+		const endpoint = this.store.revokeNotificationEndpoint(id, now);
+		if (!endpoint) throw new Error('Notification endpoint not found');
+		return mapEndpoint(endpoint);
 	}
 
 	deleteEndpoint(id: string): boolean {
-		return !!this.store.database.query('DELETE FROM notification_endpoints WHERE id = ?').run(id)
-			.changes;
+		return this.store.deleteNotificationEndpoint(id);
 	}
 
 	reportPresence(
 		endpointId: string,
 		input: { projectId: string | null; sessionId: string | null; visible: boolean }
 	): void {
-		if (!this.rawEndpoint(endpointId)) throw new Error('Notification endpoint not found');
 		if (input.projectId !== null && (!input.projectId || input.projectId.length > 200)) {
 			throw new Error('Invalid presence Project');
 		}
@@ -253,14 +188,9 @@ export class NotificationService {
 			throw new Error('Invalid presence Session');
 		}
 		const expires = new Date(this.now().getTime() + 90_000).toISOString();
-		this.store.database
-			.query(
-				`INSERT INTO notification_presence (endpoint_id, project_id, session_id, visible, expires_at)
-				 VALUES (?, ?, ?, ?, ?) ON CONFLICT(endpoint_id) DO UPDATE SET
-				 project_id = excluded.project_id, session_id = excluded.session_id,
-				 visible = excluded.visible, expires_at = excluded.expires_at`
-			)
-			.run(endpointId, input.projectId, input.sessionId, input.visible ? 1 : 0, expires);
+		if (!this.store.reportNotificationPresence(endpointId, { ...input, expiresAt: expires })) {
+			throw new Error('Notification endpoint not found');
+		}
 	}
 
 	deliverPending(): Promise<void> {
@@ -280,10 +210,11 @@ export class NotificationService {
 		return delivery;
 	}
 
-	close(): void {
+	async close(): Promise<void> {
 		this.closed = true;
 		if (this.timer) clearTimeout(this.timer);
 		this.timer = null;
+		await this.delivery;
 	}
 
 	private async runDelivery(): Promise<void> {
@@ -297,55 +228,9 @@ export class NotificationService {
 		const status = this.status();
 		if (!status.available || !this.transport) return;
 		const now = this.now().toISOString();
-		this.suppressInactiveAttempts();
-		this.store.database
-			.query(
-				`INSERT OR IGNORE INTO notification_delivery_attempts
-				 (id, notification_id, endpoint_id, status, next_attempt_at, created_at, updated_at)
-				 SELECT 'attempt:' || n.id || ':' || e.id, n.id, e.id, 'queued', ?, ?, ?
-					 FROM notifications n CROSS JOIN notification_endpoints e
-					 WHERE e.enabled = 1 AND e.revoked_at IS NULL
-					 AND CAST(n.source_event_id AS INTEGER) > e.notification_baseline
-					 AND n.read_at IS NULL AND n.dismissed_at IS NULL AND n.acted_at IS NULL
-					 AND ${pendingInteractionSql('n')}`
-			)
-			.run(now, now, now);
-		const rows = this.store.database
-			.query(
-				`SELECT a.id, a.notification_id, a.endpoint_id, a.attempt_count,
-				 e.endpoint, e.p256dh, e.auth,
-				 n.project_id, n.session_id, n.kind, n.title, n.body, n.path,
-				 p.project_id AS visible_project_id, p.session_id AS visible_session_id,
-				 p.visible, p.expires_at
-				 FROM notification_delivery_attempts a
-				 JOIN notification_endpoints e ON e.id = a.endpoint_id
-				 JOIN notifications n ON n.id = a.notification_id
-				 LEFT JOIN notification_presence p ON p.endpoint_id = e.id
-					 WHERE a.status IN ('queued', 'retry') AND a.next_attempt_at <= ?
-					 AND e.enabled = 1 AND e.revoked_at IS NULL
-					 AND n.read_at IS NULL AND n.dismissed_at IS NULL AND n.acted_at IS NULL
-					 AND ${pendingInteractionSql('n')}
-				 ORDER BY a.created_at, a.id`
-			)
-			.all(now) as Array<{
-			id: string;
-			notification_id: string;
-			endpoint_id: string;
-			attempt_count: number;
-			endpoint: string;
-			p256dh: string;
-			auth: string;
-			project_id: string | null;
-			session_id: string;
-			kind: NotificationKind;
-			title: string;
-			body: string;
-			path: string;
-			visible_project_id: string | null;
-			visible_session_id: string | null;
-			visible: number | null;
-			expires_at: string | null;
-		}>;
+		this.store.suppressInactiveNotificationAttempts(now);
+		this.store.queueNotificationAttempts(now);
+		const rows = this.store.listDueNotificationAttempts(now);
 		for (const row of rows) {
 			const exactVisible =
 				row.visible === 1 &&
@@ -381,9 +266,7 @@ export class NotificationService {
 				const gone = statusCode === 404 || statusCode === 410;
 				const count = row.attempt_count + 1;
 				if (gone) {
-					this.store.database
-						.query('UPDATE notification_endpoints SET enabled = 0, updated_at = ? WHERE id = ?')
-						.run(this.now().toISOString(), row.endpoint_id);
+					this.store.disableNotificationEndpoint(row.endpoint_id, this.now().toISOString());
 				}
 				if (gone || count >= 3)
 					this.finishAttempt(row.id, 'expired', count, gone ? 'gone' : 'failed');
@@ -391,34 +274,14 @@ export class NotificationService {
 					const next = new Date(
 						this.now().getTime() + this.retryBaseMs * 2 ** (count - 1)
 					).toISOString();
-					this.store.database
-						.query(
-							`UPDATE notification_delivery_attempts SET status = 'retry', attempt_count = ?,
-							 error_category = 'temporary', next_attempt_at = ?, updated_at = ? WHERE id = ?`
-						)
-						.run(count, next, this.now().toISOString(), row.id);
+					this.store.retryNotificationAttempt(row.id, count, next, this.now().toISOString());
 				}
 			}
 		}
 	}
 
 	listAttempts(): DeliveryAttempt[] {
-		return (
-			this.store.database
-				.query(
-					`SELECT id, notification_id, endpoint_id, status, attempt_count, error_category, updated_at
-					 FROM notification_delivery_attempts ORDER BY created_at, id`
-				)
-				.all() as AttemptRow[]
-		).map((row) => ({
-			id: row.id,
-			notificationId: row.notification_id,
-			endpointId: row.endpoint_id,
-			status: row.status,
-			attemptCount: row.attempt_count,
-			errorCategory: row.error_category,
-			updatedAt: row.updated_at
-		}));
+		return this.store.listNotificationAttempts();
 	}
 
 	private finishAttempt(
@@ -427,87 +290,16 @@ export class NotificationService {
 		count: number,
 		error: string | null
 	): void {
-		const now = this.now().toISOString();
-		this.store.database
-			.query(
-				`UPDATE notification_delivery_attempts SET status = ?, attempt_count = ?, error_category = ?,
-				 updated_at = ?, accepted_at = CASE WHEN ? = 'accepted' THEN ? ELSE accepted_at END WHERE id = ?`
-			)
-			.run(status, count, error, now, status, now, id);
-	}
-
-	private endpointByDevice(deviceId: string): EndpointMetadata | null {
-		const row = this.store.database
-			.query(
-				`SELECT id, device_id, name, endpoint, p256dh, auth, enabled, created_at, updated_at, revoked_at,
-				 notification_baseline
-				 FROM notification_endpoints WHERE device_id = ?`
-			)
-			.get(deviceId) as EndpointRow | null;
-		return row ? mapEndpoint(row) : null;
-	}
-
-	private rawEndpoint(id: string): EndpointRow | null {
-		return this.store.database
-			.query(
-				`SELECT id, device_id, name, endpoint, p256dh, auth, enabled, created_at, updated_at, revoked_at,
-				 notification_baseline
-				 FROM notification_endpoints WHERE id = ?`
-			)
-			.get(id) as EndpointRow | null;
-	}
-
-	private currentNotificationBaseline(): number {
-		return Number(
-			(
-				this.store.database
-					.query(
-						'SELECT COALESCE(MAX(CAST(source_event_id AS INTEGER)), 0) AS baseline FROM notifications'
-					)
-					.get() as { baseline: number }
-			).baseline
-		);
-	}
-
-	private suppressEndpointAttempts(endpointId: string): void {
-		this.store.database
-			.query(
-				`UPDATE notification_delivery_attempts SET status = 'suppressed', error_category = 'endpoint-disabled',
-				 updated_at = ? WHERE endpoint_id = ? AND status IN ('queued', 'retry')`
-			)
-			.run(this.now().toISOString(), endpointId);
-	}
-
-	private suppressInactiveAttempts(): void {
-		this.store.database
-			.query(
-				`UPDATE notification_delivery_attempts AS a SET status = 'suppressed',
-				 error_category = 'canonical-inactive', updated_at = ?
-				 WHERE a.status IN ('queued', 'retry') AND EXISTS (
-				  SELECT 1 FROM notifications n WHERE n.id = a.notification_id AND (
-				   n.read_at IS NOT NULL OR n.dismissed_at IS NOT NULL OR n.acted_at IS NOT NULL OR
-				   NOT (${pendingInteractionSql('n')})
-				  )
-				 )`
-			)
-			.run(this.now().toISOString());
+		this.store.finishNotificationAttempt(id, status, count, error, this.now().toISOString());
 	}
 
 	private armScheduler(): void {
 		if (this.timer) clearTimeout(this.timer);
 		this.timer = null;
 		if (this.closed || !this.transport || this.configurationReason) return;
-		const due = this.store.database
-			.query(
-				`SELECT MIN(next_attempt_at) AS next_attempt_at FROM notification_delivery_attempts
-				 WHERE status IN ('queued', 'retry')`
-			)
-			.get() as { next_attempt_at: string | null };
-		if (!due.next_attempt_at) return;
-		const delay = Math.max(
-			0,
-			Math.min(Date.parse(due.next_attempt_at) - this.now().getTime(), 2_147_483_647)
-		);
+		const due = this.store.nextNotificationAttemptAt();
+		if (!due) return;
+		const delay = Math.max(0, Math.min(Date.parse(due) - this.now().getTime(), 2_147_483_647));
 		this.timer = setTimeout(() => {
 			this.timer = null;
 			void this.deliverPending().catch(() => undefined);
@@ -518,13 +310,7 @@ export class NotificationService {
 	private migratePlaintextCredentials(): void {
 		let migrated = false;
 		for (;;) {
-			const rows = this.store.database
-				.query(
-					`SELECT id, endpoint, p256dh, auth FROM notification_endpoints
-					 WHERE endpoint NOT LIKE 'v1:%' OR p256dh NOT LIKE 'v1:%' OR auth NOT LIKE 'v1:%'
-					 LIMIT 100`
-				)
-				.all() as Array<Pick<EndpointRow, 'id' | 'endpoint' | 'p256dh' | 'auth'>>;
+			const rows = this.store.listPlaintextNotificationCredentials();
 			if (!rows.length) break;
 			this.store.database.transaction(() => {
 				for (const row of rows) {
@@ -540,20 +326,14 @@ export class NotificationService {
 					) {
 						throw new Error('Legacy notification credential exceeds migration bounds');
 					}
-					this.store.database
-						.query(
-							'UPDATE notification_endpoints SET endpoint = ?, p256dh = ?, auth = ? WHERE id = ?'
-						)
-						.run(
-							row.endpoint.startsWith('v1:')
-								? row.endpoint
-								: this.encrypt(row.id, 'endpoint', row.endpoint),
-							row.p256dh.startsWith('v1:')
-								? row.p256dh
-								: this.encrypt(row.id, 'p256dh', row.p256dh),
-							row.auth.startsWith('v1:') ? row.auth : this.encrypt(row.id, 'auth', row.auth),
-							row.id
-						);
+					this.store.updateNotificationCredentials(
+						row.id,
+						row.endpoint.startsWith('v1:')
+							? row.endpoint
+							: this.encrypt(row.id, 'endpoint', row.endpoint),
+						row.p256dh.startsWith('v1:') ? row.p256dh : this.encrypt(row.id, 'p256dh', row.p256dh),
+						row.auth.startsWith('v1:') ? row.auth : this.encrypt(row.id, 'auth', row.auth)
+					);
 				}
 			})();
 			migrated = true;
@@ -590,20 +370,6 @@ export class NotificationService {
 			decipher.final()
 		]).toString('utf8');
 	}
-}
-
-function idForCredential(current: EndpointMetadata | null, generated: string): string {
-	return current?.id ?? generated;
-}
-
-function pendingInteractionSql(alias: string): string {
-	return `(${alias}.kind NOT IN ('permission', 'clarify') OR NOT EXISTS (
-	 SELECT 1 FROM session_events source JOIN session_events later
-	  ON later.sequence > source.sequence AND later.project_id IS source.project_id
-	  AND later.session_id = source.session_id AND later.type = source.type
-	  AND json_extract(later.payload, '$.id') = json_extract(source.payload, '$.id')
-	 WHERE source.sequence = CAST(${alias}.source_event_id AS INTEGER)
-	))`;
 }
 
 function loadCredentialKey(store: HUEStore, configuredPath?: string): Buffer {
@@ -649,7 +415,7 @@ function loadCredentialKey(store: HUEStore, configuredPath?: string): Buffer {
 	}
 }
 
-function mapEndpoint(row: EndpointRow): EndpointMetadata {
+function mapEndpoint(row: NotificationEndpointRow): EndpointMetadata {
 	return {
 		id: row.id,
 		deviceId: row.device_id,

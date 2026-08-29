@@ -576,8 +576,8 @@ export class MessageState {
 			!imagePrompts && result.images.length
 				? 'Hermes does not support image prompts'
 				: result.images.length > availableImages
-				? 'Attach no more than 4 images'
-				: (result.errors.at(-1) ?? '')
+					? 'Attach no more than 4 images'
+					: (result.errors.at(-1) ?? '')
 		);
 	};
 	handleImageInput = (event: Event) => {

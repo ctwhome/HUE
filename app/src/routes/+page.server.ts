@@ -13,6 +13,7 @@ export const load: PageServerLoad = async () => {
 	} catch (cause) {
 		return {
 			projects: [],
+			chatSessionCount: 0,
 			projectsCapability:
 				cause instanceof HermesProjectsCapabilityError
 					? ('unavailable' as const)

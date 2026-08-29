@@ -33,10 +33,7 @@
 	let pullRequestsOpen = $state(true);
 	let milestonesOpen = $state<Record<string, boolean>>({});
 	const storageKey = (name: string) => `hue:project-tools:${projectId}:github-${name}`;
-	function toggleFromHeader(event: MouseEvent | KeyboardEvent) {
-		if ((event.target as HTMLElement).closest('a, button')) return;
-		if (event instanceof KeyboardEvent && !['Enter', ' '].includes(event.key)) return;
-		event.preventDefault();
+	function toggle() {
 		open = !open;
 		localStorage.setItem(storageKey('open'), String(open));
 	}
@@ -74,14 +71,7 @@
 	style:flex={open ? `${weight} 1 0px` : '0 0 auto'}
 	aria-label="GitHub work"
 >
-	<header
-		class="flex min-h-11 cursor-pointer items-center border-b border-border bg-muted/40 px-2.5 py-2"
-		role="button"
-		tabindex="0"
-		aria-expanded={open}
-		onclick={(event) => toggleFromHeader(event)}
-		onkeydown={(event) => toggleFromHeader(event)}
-	>
+	<header class="flex min-h-11 items-center border-b border-border bg-muted/40 px-2.5 py-2">
 		{#if repositoryLink}<a
 				class="flex min-w-0 items-center gap-2 rounded-md text-xs font-semibold hover:underline focus-visible:ring-2 focus-visible:ring-ring"
 				href={repositoryLink.url}
@@ -95,12 +85,19 @@
 			</a>{:else}<strong class="flex items-center gap-2 text-xs"
 				><GitHubMark size={17} /> GitHub</strong
 			>{/if}
-		<ChevronRight
-			width={16}
-			height={16}
-			class={`ml-auto ${open ? 'rotate-90' : ''}`}
-			aria-hidden="true"
-		/>
+		<button
+			type="button"
+			class="ml-auto grid size-9 place-items-center rounded-md hover:bg-accent"
+			aria-label={open ? 'Collapse GitHub work' : 'Expand GitHub work'}
+			aria-expanded={open}
+			onclick={toggle}
+			><ChevronRight
+				width={16}
+				height={16}
+				class={open ? 'rotate-90' : ''}
+				aria-hidden="true"
+			/></button
+		>
 	</header>
 	{#if open}
 		<div class="min-h-0 flex-1 overflow-auto p-2">

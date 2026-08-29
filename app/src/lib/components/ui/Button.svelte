@@ -9,6 +9,7 @@
 		children,
 		variant = 'default',
 		size = 'default',
+		type = 'button',
 		class: className = '',
 		...props
 	}: HTMLButtonAttributes & { children: Snippet; variant?: Variant; size?: Size } = $props();
@@ -29,6 +30,6 @@
 	};
 </script>
 
-<button class={`${base} ${variants[variant]} ${sizes[size]} ${className}`} {...props}>
+<button class={`${base} ${variants[variant]} ${sizes[size]} ${className}`} {type} {...props}>
 	{@render children()}
 </button>

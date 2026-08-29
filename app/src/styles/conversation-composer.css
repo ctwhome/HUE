@@ -13,7 +13,10 @@
 	}
 }
 .transcript {
+	position: relative;
+	z-index: 0;
 	contain: paint;
+	font-size: var(--chat-font-size);
 	overflow-anchor: none;
 	overscroll-behavior: contain;
 }
@@ -60,6 +63,9 @@
 .transcript.empty .transcript-content {
 	display: grid;
 	place-items: center;
+}
+.transcript-spacer {
+	pointer-events: none;
 }
 .session-view.empty-session .transcript {
 	flex: 0 0 auto;
@@ -417,15 +423,21 @@
 }
 
 .scroll-to-latest.visible {
+	top: 4px;
+	z-index: 3;
 	opacity: 1;
 	pointer-events: auto;
 	transform: translate(-50%, 0);
+}
+.composer:has(.scroll-to-latest.visible) {
+	padding-top: 50px;
 }
 .composer.dragging {
 	border-color: var(--ring);
 	box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 25%, transparent);
 }
 .composer {
+	z-index: 10;
 	container-type: inline-size;
 }
 .composer-input {
@@ -520,11 +532,13 @@
 .composer-send {
 	margin-left: auto;
 }
-.composer-more,
 .mobile-option-label,
 .mobile-reasoning-option,
 .mobile-delivery {
 	display: none;
+}
+.composer-more {
+	display: grid;
 }
 .composer-options-menu {
 	display: contents;

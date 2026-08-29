@@ -5,12 +5,14 @@ import { stripReviewContextsFromPrompt, type ImageAttachment } from '$lib/messag
 import { stripHermesPreamble } from '$lib/work-mode';
 import type { HermesTranscriptMessage } from './hermes-acp';
 import { HermesProjectsRpc } from './hermes-projects-rpc';
+import { hermesChildEnvironment } from './hermes-env';
 
 type HermesServeOptions = {
 	command?: string;
 	profile?: string;
 	env?: NodeJS.ProcessEnv;
 	onDiagnostic?: (message: string) => void;
+	requestTimeoutMs?: number;
 };
 
 export type HermesMcpServer = {
@@ -56,6 +58,7 @@ export class HermesServe {
 	private readonly profile: string;
 	private readonly env: NodeJS.ProcessEnv;
 	private readonly onDiagnostic?: (message: string) => void;
+	private readonly requestTimeoutMs: number;
 	private child: ChildProcessWithoutNullStreams | null = null;
 	private baseUrl: string | null = null;
 	private token: string | null = null;
@@ -67,8 +70,9 @@ export class HermesServe {
 	constructor(options: HermesServeOptions = {}) {
 		this.command = options.command ?? 'hermes';
 		this.profile = options.profile ?? 'default';
-		this.env = options.env ?? process.env;
+		this.env = hermesChildEnvironment(options.env ?? process.env);
 		this.onDiagnostic = options.onDiagnostic;
+		this.requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
 	}
 
 	healthStatus(): 'idle' | 'ready' | 'unavailable' {
@@ -127,7 +131,8 @@ export class HermesServe {
 			const port = await this.readyPort(child);
 			const baseUrl = `http://127.0.0.1:${port}`;
 			const response = await fetch(`${baseUrl}/api/health`, {
-				headers: { 'X-Hermes-Session-Token': token }
+				headers: { 'X-Hermes-Session-Token': token },
+				signal: AbortSignal.timeout(this.requestTimeoutMs)
 			});
 			if (!response.ok) throw new Error(`Hermes admin health check failed (${response.status})`);
 			this.baseUrl = baseUrl;
@@ -186,7 +191,12 @@ export class HermesServe {
 		await this.start();
 		const headers = new Headers(init.headers);
 		headers.set('X-Hermes-Session-Token', this.token!);
-		return fetch(`${this.baseUrl}${path}`, { ...init, headers });
+		const timeout = AbortSignal.timeout(this.requestTimeoutMs);
+		return fetch(`${this.baseUrl}${path}`, {
+			...init,
+			headers,
+			signal: init.signal ? AbortSignal.any([init.signal, timeout]) : timeout
+		});
 	}
 
 	async json<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -224,7 +234,8 @@ export class HermesServe {
 				messages?: unknown;
 				pagination?: { returned?: unknown };
 			}>(path);
-			if (!Array.isArray(page.messages)) throw new Error('Hermes returned invalid Session messages');
+			if (!Array.isArray(page.messages))
+				throw new Error('Hermes returned invalid Session messages');
 			if (typeof page.session_id !== 'string' || !page.session_id) {
 				throw new Error('Hermes returned invalid resolved Session identity');
 			}

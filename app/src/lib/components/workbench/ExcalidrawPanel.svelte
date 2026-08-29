@@ -20,11 +20,13 @@
 	let canvasHost: HTMLDivElement;
 	let controller: BrowserCanvasController | undefined;
 	let address = $state('');
+	let addressDirty = false;
 	let currentUrl = $state('');
 	let error = $state('');
 	let canvasReady = $state(false);
 	let saveChain = Promise.resolve();
-	const endpoint = () => `/api/projects/${encodeURIComponent(projectId)}/excalidraw`;
+	let scopedProjectId = '';
+	const endpoint = () => `/api/projects/${encodeURIComponent(scopedProjectId)}/excalidraw`;
 
 	function saveState(input: { address?: string; scene?: string }) {
 		const request = saveChain.then(() =>
@@ -70,15 +72,18 @@
 		}
 	}
 	onMount(() => {
+		scopedProjectId = projectId;
 		let cancelled = false;
 		const mountCanvas = async () => {
 			try {
 				const loaded = await api<{ state: ProjectExcalidrawState | null }>(endpoint());
-				const state = loaded.state ?? (await migrateLegacyExcalidraw(projectId, saveState));
+				const state = loaded.state ?? (await migrateLegacyExcalidraw(scopedProjectId, saveState));
 				if (cancelled) return;
-				address = state?.address ?? '';
-				currentUrl = address;
-				onpreviewchange(address);
+				if (!addressDirty) {
+					address = state?.address ?? '';
+					currentUrl = address;
+					onpreviewchange(address);
+				}
 				const { mountExcalidrawBrowserCanvas } = await import('./ExcalidrawBrowserCanvas');
 				const mounted = await mountExcalidrawBrowserCanvas(canvasHost, {
 					initialScene: state?.scene ?? '',
@@ -160,6 +165,7 @@
 			<Input
 				class="h-9 min-w-0 text-xs"
 				bind:value={address}
+				oninput={() => (addressDirty = true)}
 				aria-label="Browser address"
 				placeholder="http://localhost:5173"
 			/>

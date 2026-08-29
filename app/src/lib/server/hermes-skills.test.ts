@@ -2,7 +2,12 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { deleteHermesSkill, readHermesSkill, writeHermesSkill } from './hermes-skills';
+import {
+	deleteHermesSkill,
+	hermesSkillsRoot,
+	readHermesSkill,
+	writeHermesSkill
+} from './hermes-skills';
 
 function skill(root: string, directory: string, name: string) {
 	const path = join(root, directory);
@@ -76,4 +81,37 @@ test('never follows a skill symlink outside the active profile custom root', () 
 	expect(() => writeHermesSkill('external', '---\nname: external\n---\n', root)).toThrow(
 		'not found'
 	);
+});
+
+test('resolves the active profile under HERMES_HOME', () => {
+	expect(hermesSkillsRoot('default', { HERMES_HOME: '/private/hermes' })).toBe(
+		'/private/hermes/skills'
+	);
+	expect(hermesSkillsRoot('worker', { HERMES_HOME: '/private/hermes' })).toBe(
+		'/private/hermes/profiles/worker/skills'
+	);
+});
+
+test('fails closed when ownership metadata is malformed', () => {
+	const root = mkdtempSync(join(tmpdir(), 'hue-skills-'));
+	skill(root, 'custom', 'custom');
+	mkdirSync(join(root, '.hub'), { recursive: true });
+	writeFileSync(join(root, '.hub', 'lock.json'), '{not-json');
+
+	expect(() => writeHermesSkill('custom', '---\nname: custom\n---\n', root)).toThrow(
+		'ownership could not be verified'
+	);
+	expect(() => deleteHermesSkill('custom', root)).toThrow('ownership could not be verified');
+});
+
+test('rejects oversized skill reads and UTF-8 writes by byte length', () => {
+	const root = mkdtempSync(join(tmpdir(), 'hue-skills-'));
+	const directory = skill(root, 'custom', 'custom');
+	writeFileSync(join(directory, 'SKILL.md'), `---\nname: custom\n---\n${'a'.repeat(1_000_000)}`);
+	expect(() => readHermesSkill('custom', root)).toThrow('Skill content exceeds 1 MB');
+
+	writeFileSync(join(directory, 'SKILL.md'), '---\nname: custom\n---\n');
+	expect(() =>
+		writeHermesSkill('custom', `---\nname: custom\n---\n${'é'.repeat(500_000)}`, root)
+	).toThrow('between 1 byte and 1 MB');
 });

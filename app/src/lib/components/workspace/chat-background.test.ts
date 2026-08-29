@@ -26,12 +26,15 @@ test('stores a background for only the selected Session', () => {
 
 test('ignores invalid saved backgrounds and only styles supported image data', () => {
 	const storage = memoryStorage();
-	storage.setItem('hue:chat-background:unsafe', JSON.stringify({ kind: 'custom', image: 'https://x' }));
+	storage.setItem(
+		'hue:chat-background:unsafe',
+		JSON.stringify({ kind: 'custom', image: 'https://x' })
+	);
 
 	expect(readChatBackground(storage, 'unsafe')).toBeNull();
-	expect(
-		chatBackgroundStyle({ kind: 'custom', image: 'data:image/webp;base64,YQ==' })
-	).toContain('--chat-background-light: url("data:image/webp;base64,YQ==")');
+	expect(chatBackgroundStyle({ kind: 'custom', image: 'data:image/webp;base64,YQ==' })).toContain(
+		'--chat-background-light: url("data:image/webp;base64,YQ==")'
+	);
 });
 
 test('templates provide coordinated light and dark artwork', () => {

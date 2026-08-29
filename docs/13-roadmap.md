@@ -1,64 +1,18 @@
-# Focused implementation roadmap
+# Focused implementation sequence
 
-> **Plan status:** `IMPLEMENTED IN PART`
-> **Product scope:** Projects, Workflows, Sessions
-> **Architecture:** [ADR-0002](decisions/0002-bun-hermes-acp-workspace.md)
+> **Status:** `ACTIVE`
+> **Scope:** Projects, Workflows, Sessions, and accepted supporting surfaces
 
-HUE is now a focused Hermes workspace client. Earlier universal-control-plane milestones are superseded and are not an implicit backlog.
+The former broad JSON issue roadmap has been removed because it described a superseded product. GitHub issues and accepted ADRs now track current work; this page records only the stable delivery order.
 
-## Sequencing principle
+## Current sequence
 
-Build and harden one thin path:
-
-```text
-Project → Workflow or new Session → complete acknowledged message → Hermes ACP → cursor-replayable result
-```
-
-## M0 — Runtime seam and delivery truth
-
-**Goal:** prove that Bun can use Hermes without the Python dashboard or browser PTY.
-
-- Bun/ACP disposable spike;
-- ACP process supervision and v1 negotiation;
-- Project-scoped session create/list/resume;
-- SQLite message-envelope idempotency;
-- queued/running/completed/failed/unknown delivery states;
-- monotonic reconnect event cursor;
-- no automatic retry after uncertain delivery.
-
-**Exit:** a fresh Hermes ACP process can resume a persisted real turn, and backend tests prove exact-message deduplication and reconnect replay.
-
-## M1 — Functional local workspace
-
-**Goal:** operate real Projects, Workflows, and Sessions in a browser.
-
-- SvelteKit/Bun application shell;
-- Hermes-authoritative Project CRUD through profile-scoped `projects.*`, with trusted multi-folder validation and one primary folder;
-- Workflow CRUD and run action;
-- sessions loaded only for the selected Project;
-- new/resume Session;
-- complete-message composer with accepted status;
-- streamed/polled event projection and reconnect recovery;
-- explicit empty, loading, failure, and unknown-delivery states;
-- desktop rail/sidebar/work layout plus the mobile Projects → Sessions → chat hierarchy.
-
-**Exit:** a user can create or edit a multi-folder Hermes Project, create or resume a Session from its primary folder, send a full message, disconnect/reload, and recover the acknowledged result without truncation.
-
-## M2 — Reliability and release
-
-**Goal:** make the focused workspace dependable for daily use.
-
-- ACP crash/restart reconciliation;
-- visible permission requests with deny-by-default policy;
-- cancel/steer support where ACP can prove semantics;
-- SQLite migrations, backup/export, and retention;
-- local authentication and tailnet deployment guidance;
-- keyboard, screen-reader, responsive, and browser tests;
-- startup/navigation/message latency budgets;
-- packaged Bun service with health diagnostics.
-
-**Exit:** representative mobile/Tailscale interruption tests pass, no message is silently truncated or double-executed, and the local service survives restart with truthful state.
+1. Preserve Session delivery truth and Hermes ACP compatibility.
+2. Harden Hermes-authoritative Projects and Projectless Session behavior.
+3. Complete focused supporting surfaces already accepted by ADR: notifications, Excalidraw, and custom skill management. HUE-owned scheduled prompts are implemented.
+4. Keep Project workbench tools bounded to trusted Project roots.
+5. Verify accessibility, responsive behavior, backups/migrations, local authentication, and restart recovery before release.
 
 ## Scope discipline
 
-The roadmap intentionally excludes generic orchestration, multiple runtimes, Areas, knowledge/memory management, global files/artifacts, notifications, computer use, and third-party source integrations. [ADR-0004](decisions/0004-project-development-panels.md) permits bounded file and evidence panels only inside a trusted Project root. Other additions require a superseding product decision with real usage evidence.
+Generic multi-agent orchestration, Areas, a global knowledge system, hosted sync, and additional execution runtimes are not implicit backlog. Adding a fourth product object or changing an authority boundary requires a new accepted ADR backed by a current need.

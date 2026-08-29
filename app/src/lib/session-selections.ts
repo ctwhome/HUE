@@ -18,7 +18,9 @@ function mergeRuntime(runtime: HermesRuntime, update: Partial<HermesRuntime>): H
 	return { ...runtime, ...definedUpdate };
 }
 
-export function readLastSessionSelections(storage: Pick<Storage, 'getItem'>): LastSessionSelections {
+export function readLastSessionSelections(
+	storage: Pick<Storage, 'getItem'>
+): LastSessionSelections {
 	try {
 		const value = JSON.parse(storage.getItem(STORAGE_KEY) ?? '{}') as Record<string, unknown>;
 		return {
@@ -57,10 +59,7 @@ export async function applyLastSessionSelections({
 	storage: Pick<Storage, 'getItem'>;
 	runtime: HermesRuntime;
 	workMode: WorkMode;
-	changeRuntime: (
-		kind: 'modelId' | 'modeId',
-		value: string
-	) => Promise<Partial<HermesRuntime>>;
+	changeRuntime: (kind: 'modelId' | 'modeId', value: string) => Promise<Partial<HermesRuntime>>;
 	changeWorkMode: (value: WorkMode) => Promise<WorkMode>;
 }) {
 	const selections = readLastSessionSelections(storage);

@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { localApiAllowed } from '$lib/server/local-api';
+import { requestAccessAllowed } from '$lib/server/access-auth';
 import { createHueBackup, runtimeDiagnostics } from '$lib/server/runtime-reliability';
 import { services } from '$lib/server/services';
 import type { RequestHandler } from './$types';
@@ -15,7 +15,7 @@ export function _createRuntimeHandlers(dependencies: {
 	backup: () => { filename: string; path: string; validated: true };
 }): { GET: RuntimeHandler; POST: RuntimeHandler } {
 	const allowed = ({ request, url, getClientAddress }: Parameters<RuntimeHandler>[0]) =>
-		localApiAllowed(request, url, getClientAddress());
+		requestAccessAllowed(request, url, getClientAddress());
 	return {
 		GET: async (event) => {
 			if (!allowed(event))

@@ -19,7 +19,6 @@ import {
 } from './message-dispatcher';
 import {
 	formatReviewContextsForPrompt,
-	stripReviewContextsFromPrompt,
 	type ImageAttachment,
 	type InputAttachment,
 	type ReviewContext
@@ -31,6 +30,7 @@ import {
 	type WorkMode
 } from '$lib/work-mode';
 import { redactPersistedValue } from './redaction';
+import { hermesChildEnvironment } from './hermes-env';
 
 export type HermesSession = {
 	sessionId: string;
@@ -364,7 +364,7 @@ export class HermesACP implements PromptRuntime {
 	constructor(options: HermesACPOptions = {}) {
 		this.command = options.command ?? 'hermes';
 		this.profile = options.profile ?? 'default';
-		this.env = options.env ?? process.env;
+		this.env = hermesChildEnvironment(options.env ?? process.env);
 		this.runtimeInfo = { profile: this.profile };
 		this.onDiagnostic = options.onDiagnostic;
 		this.onSessionInfo = options.onSessionInfo;
@@ -610,42 +610,6 @@ export class HermesACP implements PromptRuntime {
 			if (!response) throw new Error(`Hermes Session ${sessionId} was not found`);
 			this.captureSessionResponse(sessionId, response);
 			await this.waitForSessionState(sessionId);
-		} finally {
-			unsubscribe();
-		}
-	}
-
-	async loadTranscript(cwd: string, sessionId: string): Promise<HermesTranscriptMessage[]> {
-		const context = await this.context();
-		if (!this.getCapabilities().loadSession)
-			throw new Error('Hermes does not support Session loading');
-		const transcript: HermesTranscriptMessage[] = [];
-		const unsubscribe = this.subscribe(sessionId, (update) => {
-			if (update.sessionUpdate === 'user_message_chunk' && update.content.type === 'text') {
-				appendTranscriptText(transcript, 'user', update.content.text, true);
-			}
-			if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'text') {
-				transcript.push({ role: 'assistant', text: update.content.text });
-			}
-			if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'image') {
-				transcript.push({ role: 'assistant', text: '', images: [this.image(update.content)] });
-			}
-		});
-		try {
-			const response = await this.requestRaw<HermesSessionResponse | null>(
-				context,
-				acp.methods.agent.session.load,
-				{
-					cwd,
-					sessionId,
-					mcpServers: []
-				}
-			);
-			if (!response) throw new Error(`Hermes Session ${sessionId} was not found`);
-			this.captureSessionResponse(sessionId, response);
-			await this.waitForAvailableCommands(sessionId);
-			await this.waitForSessionState(sessionId);
-			return transcript;
 		} finally {
 			unsubscribe();
 		}
@@ -1032,26 +996,4 @@ export class HermesACP implements PromptRuntime {
 			child.kill('SIGTERM');
 		});
 	}
-}
-
-function appendTranscriptText(
-	transcript: HermesTranscriptMessage[],
-	role: 'user' | 'assistant',
-	text: string,
-	stripGeneratedUserPreamble = false
-) {
-	const last = transcript.at(-1);
-	if (last && last.role === role && !last.images) {
-		last.text += text;
-		if (stripGeneratedUserPreamble) {
-			last.text = stripReviewContextsFromPrompt(stripHermesPreamble(last.text));
-		}
-		return;
-	}
-	transcript.push({
-		role,
-		text: stripGeneratedUserPreamble
-			? stripReviewContextsFromPrompt(stripHermesPreamble(text))
-			: text
-	});
 }

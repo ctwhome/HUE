@@ -32,6 +32,25 @@ async function expectMinimumTouchTargets(locator: import('@playwright/test').Loc
 	}
 }
 
+async function openNotifications(page: import('@playwright/test').Page) {
+	const viewport = page.viewportSize();
+	for (const button of await page.getByRole('button', { name: /Notifications/ }).all()) {
+		const box = await button.boundingBox();
+		if (
+			box &&
+			viewport &&
+			box.x < viewport.width &&
+			box.y < viewport.height &&
+			box.x + box.width > 0 &&
+			box.y + box.height > 0
+		) {
+			await button.click();
+			return;
+		}
+	}
+	throw new Error('No on-screen Notifications control');
+}
+
 function item(kind: Item['kind'], index: number): Item {
 	const copy = {
 		completed: ['Task completed', 'Open HUE to review the result.'],
@@ -173,7 +192,7 @@ test('attention center is complete responsive fallback for all five kinds exactl
 	await page.goto('/');
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
-		await page.getByRole('button', { name: /Notifications/ }).click();
+		await openNotifications(page);
 		await expect(page.getByRole('region', { name: 'Notifications' })).toBeVisible();
 		await expect(page.locator('li')).toHaveCount(5);
 		for (const kind of [
@@ -200,7 +219,7 @@ test('attention center is complete responsive fallback for all five kinds exactl
 		await page.getByRole('button', { name: 'Back to workspace' }).click();
 	}
 
-	await page.getByRole('button', { name: /Notifications/ }).click();
+	await openNotifications(page);
 	await page
 		.locator('li')
 		.filter({ hasText: 'Task completed' })
@@ -246,7 +265,7 @@ test('notification click acknowledges before focusing its exact actionable reque
 		onLoad: () => (actedBeforeSessionLoad = Boolean(items[0]?.actedAt))
 	});
 	await page.goto('/');
-	await page.getByRole('button', { name: /Notifications/ }).click();
+	await openNotifications(page);
 
 	const link = page.getByRole('link', { name: 'HUE needs permission' });
 	expect(
@@ -298,7 +317,7 @@ test('completed notification focuses the corresponding result message', async ({
 		await page.setViewportSize(viewport);
 		if (index === 0) await page.goto('/');
 		const result = page.locator('[data-message-id="message-9"]');
-		await page.getByRole('button', { name: /Notifications/ }).click();
+		await openNotifications(page);
 		await page.getByRole('link', { name: 'Task completed' }).click();
 
 		await expect(result, `${viewport.width}x${viewport.height} result focus`).toBeFocused();
@@ -319,7 +338,7 @@ test('marks every notification read from the panel', async ({ page }) => {
 	const items = [item('completed', 1), item('failed', 2), item('clarify', 3)];
 	await mockNotifications(page, items);
 	await page.goto('/');
-	await page.getByRole('button', { name: /Notifications/ }).click();
+	await openNotifications(page);
 
 	await page.getByRole('button', { name: 'Mark all read' }).click();
 
@@ -378,7 +397,7 @@ test('groups only matching current permission notifications and preserves second
 	});
 	await page.setViewportSize({ width: 320, height: 568 });
 	await page.goto('/');
-	await page.getByRole('button', { name: /Notifications/ }).click();
+	await openNotifications(page);
 
 	await expect(page.getByText('2 pending requests')).toHaveCount(1);
 	await expect(page.locator('li')).toHaveCount(3);
@@ -397,7 +416,7 @@ test('background notification polling keeps the current list visible', async ({ 
 	const items = [item('completed', 1)];
 	await mockNotifications(page, items, { listDelayAfterFirst: 2_000 });
 	await page.goto('/');
-	await page.getByRole('button', { name: /Notifications/ }).click();
+	await openNotifications(page);
 	await expect(page.getByText('Task completed', { exact: true })).toBeVisible();
 	await page.evaluate(() => {
 		(window as Window & { __notificationLoadingSeen?: boolean }).__notificationLoadingSeen = false;
@@ -444,7 +463,7 @@ test('permission is requested on button gesture and exact visible context suppre
 	});
 	await page.goto('/?project=none&session=session-1');
 	await expect(page.getByRole('heading', { name: 'Visible session' })).toBeVisible();
-	await page.getByRole('button', { name: /Notifications/ }).click();
+	await openNotifications(page);
 	await page.getByRole('button', { name: 'Notification settings' }).click();
 	await page.getByRole('button', { name: 'Enable system notifications' }).click();
 	await expect

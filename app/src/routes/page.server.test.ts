@@ -10,6 +10,7 @@ mock.module('$lib/server/route-services', () => ({
 		if (failure) throw failure;
 		return {
 			projects: [{ id: 'p_1', name: 'HUE', primaryPath: '/work/hue', folders: [] }],
+			chatSessionCount: 4,
 			reconciliationIssues: []
 		};
 	}
@@ -22,6 +23,7 @@ test('loads authoritative Hermes Project views', async () => {
 
 	expect(await load({} as never)).toEqual({
 		projects: [expect.objectContaining({ id: 'p_1' })],
+		chatSessionCount: 4,
 		projectsCapability: 'available',
 		projectsError: '',
 		reconciliationIssues: []
@@ -34,6 +36,7 @@ test('renders old-runtime capability guidance without local Project rows', async
 
 	expect(await load({} as never)).toEqual({
 		projects: [],
+		chatSessionCount: 0,
 		projectsCapability: 'unavailable',
 		projectsError: expect.stringContaining('Upgrade Hermes'),
 		reconciliationIssues: []
@@ -46,6 +49,7 @@ test('renders Hermes outage without stale local Project authority', async () => 
 
 	expect(await load({} as never)).toEqual({
 		projects: [],
+		chatSessionCount: 0,
 		projectsCapability: 'outage',
 		projectsError: 'Hermes administration unavailable',
 		reconciliationIssues: []

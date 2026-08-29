@@ -3,7 +3,7 @@ import { HUEStore } from './store';
 
 test('initial Session snapshots compact replay without losing final state or cursor', () => {
 	const store = new HUEStore(':memory:');
-	store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+	store.ensureProjectMetadata('hue', 'HUE');
 	store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 	store.acceptMessage({
 		id: 'message-1',
@@ -60,7 +60,7 @@ test('initial Session snapshots compact replay without losing final state or cur
 
 test('initial replay keeps reused activity ids distinct across messages', () => {
 	const store = new HUEStore(':memory:');
-	store.createProject({ id: 'hue', name: 'HUE', rootPath: '/work/hue' });
+	store.ensureProjectMetadata('hue', 'HUE');
 	store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 	store.appendEvent('hue', 'session-1', 'agent.tool', {
 		messageId: 'message-1',

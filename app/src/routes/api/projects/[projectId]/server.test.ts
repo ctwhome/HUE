@@ -131,7 +131,10 @@ test('updates Hermes name and icon and returns authoritative readback', async ()
 	const response = await patch({ action: 'update', name: 'Renamed', icon: '🚀' });
 
 	expect(response.status).toBe(200);
-	expect(calls).toEqual([{ method: 'update', args: ['p_1', { name: 'Renamed', icon: '🚀' }] }]);
+	expect(calls).toEqual([
+		{ method: 'get', args: ['p_1'] },
+		{ method: 'update', args: ['p_1', { name: 'Renamed', icon: '🚀' }] }
+	]);
 	expect((await response.json()).project).toMatchObject({ id: 'p_1', name: 'Renamed' });
 });
 
@@ -192,6 +195,7 @@ test('adds a validated backend folder with label and primary choice', async () =
 
 	expect(response.status).toBe(200);
 	expect(calls).toEqual([
+		{ method: 'get', args: ['p_1'] },
 		{
 			method: 'addFolder',
 			args: ['p_1', '/work/docs', { label: 'Documentation', isPrimary: true }]
@@ -208,7 +212,10 @@ test('removes a folder only through Hermes with explicit replacement readback', 
 	});
 
 	expect(response.status).toBe(200);
-	expect(calls).toEqual([{ method: 'removeFolder', args: ['p_1', '/work/old', '/work/docs'] }]);
+	expect(calls).toEqual([
+		{ method: 'get', args: ['p_1'] },
+		{ method: 'removeFolder', args: ['p_1', '/work/old', '/work/docs'] }
+	]);
 	expect(closedProjects).toEqual(['p_1']);
 });
 
@@ -245,7 +252,10 @@ test('sets primary only to a validated backend folder', async () => {
 	const response = await patch({ action: 'set_primary', path: '/work/docs' });
 
 	expect(response.status).toBe(200);
-	expect(calls).toEqual([{ method: 'setPrimary', args: ['p_1', '/work/docs'] }]);
+	expect(calls).toEqual([
+		{ method: 'get', args: ['p_1'] },
+		{ method: 'setPrimary', args: ['p_1', '/work/docs'] }
+	]);
 	expect(closedProjects).toEqual(['p_1']);
 });
 

@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { onMount, tick } from 'svelte';
 	import Archive from '~icons/lucide/archive';
 	import ArchiveRestore from '~icons/lucide/archive-restore';
+	import ArchiveX from '~icons/lucide/archive-x';
 	import ArrowLeft from '~icons/lucide/arrow-left';
 	import Ban from '~icons/lucide/ban';
 	import CircleCheck from '~icons/lucide/circle-check';
@@ -15,7 +17,7 @@
 	import Plus from '~icons/lucide/plus';
 	import Search from '~icons/lucide/search';
 	import WifiOff from '~icons/lucide/wifi-off';
-	import { moveBefore, prependNew, sortByOrder } from '$lib/drag-order';
+	import { moveBefore, prependNew, readStringArray, sortByOrder } from '$lib/drag-order';
 	import { sessionRowState } from './session-row-state';
 	type Project = {
 		id: string;
@@ -90,7 +92,7 @@
 		now: number;
 		oncreate: () => void;
 		onopen: (session: Session) => void;
-		onback: () => void;
+		onback: (trigger: HTMLElement) => void;
 		onedit: (event: MouseEvent, session: Session) => void;
 		onicon: (event: MouseEvent, session: Session) => void;
 		onarchive: (event: MouseEvent, session: Session) => void;
@@ -102,23 +104,31 @@
 	} = $props();
 	let sessionOrder = $state<string[]>([]);
 	let draggedSessionId = $state<string | null>(null);
+	let searchOpen = $state(Boolean(sessionSearch || showArchived));
+	let searchInput = $state<HTMLInputElement>();
+	const sessionOrderKey = () => `hue:session-order:${selectedProject?.id ?? 'general'}`;
 	const orderedSessions = $derived(
 		sortByOrder(sessions, sessionOrder, ({ sessionId }) => sessionId)
 	);
 
 	$effect(() => {
-		const key = `hue:session-order:${selectedProject?.id ?? 'general'}`;
-		let next: string[];
-		try {
-			next = prependNew(
-				JSON.parse(localStorage.getItem(key) ?? '[]'),
-				sessions.map(({ sessionId }) => sessionId)
-			);
-		} catch {
-			next = sessions.map(({ sessionId }) => sessionId);
-		}
+		const key = sessionOrderKey();
+		const next = prependNew(
+			readStringArray(localStorage, key),
+			sessions.map(({ sessionId }) => sessionId)
+		);
 		sessionOrder = next;
 		localStorage.setItem(key, JSON.stringify(next));
+	});
+	onMount(() => {
+		const refreshOrder = () => {
+			sessionOrder = prependNew(
+				readStringArray(localStorage, sessionOrderKey()),
+				sessions.map(({ sessionId }) => sessionId)
+			);
+		};
+		window.addEventListener('hue:session-order', refreshOrder);
+		return () => window.removeEventListener('hue:session-order', refreshOrder);
 	});
 
 	function dragSession(event: DragEvent, session: Session) {
@@ -152,16 +162,26 @@
 
 	function finishSessionDrag() {
 		if (draggedSessionId) {
-			localStorage.setItem(
-				`hue:session-order:${selectedProject?.id ?? 'general'}`,
-				JSON.stringify(sessionOrder)
-			);
+			localStorage.setItem(sessionOrderKey(), JSON.stringify(sessionOrder));
 		}
 		draggedSessionId = null;
+	}
+	async function toggleSearch() {
+		searchOpen = !searchOpen;
+		if (searchOpen) {
+			await tick();
+			searchInput?.focus();
+			return;
+		}
+		sessionSearch = '';
+		showArchived = false;
+		onsearch();
 	}
 	const rowState = (session: Session) =>
 		sessionRowState({
 			...session,
+			status: session.error ? 'failed' : session.status,
+			unreadAttention: session.attention || session.unreadAttention,
 			...(selectedSession?.sessionId === session.sessionId
 				? {
 						delivery: selectedDelivery,
@@ -186,7 +206,8 @@
 			data-drawer-focus
 			aria-label="Back to Projects"
 			title="Back to Projects"
-			onclick={onback}><ArrowLeft width={20} height={20} aria-hidden="true" /></button
+			onclick={(event) => onback(event.currentTarget)}
+			><ArrowLeft width={20} height={20} aria-hidden="true" /></button
 		>
 		<h1 class="selected-project-title flex min-w-0 flex-1 items-center gap-2 font-semibold">
 			{#if selectedProject}{#if isImage(selectedProject.icon)}<img
@@ -209,59 +230,78 @@
 					aria-hidden="true"
 				/>{/if}<span class="truncate">{selectedProject?.name ?? 'Chats'}</span>
 		</h1>
-	</header>
-	<form class="flex gap-2 border-b border-border p-2" role="search" onsubmit={onsearch}>
-		<label
-			class="flex min-h-(--control-height) min-w-0 flex-1 items-center gap-2 rounded-md border border-border px-2.5"
-		>
-			<Search width={16} height={16} aria-hidden="true" /><span class="sr-only"
-				>Search Sessions</span
-			><input
-				class="min-w-0 flex-1 border-0 bg-transparent"
-				bind:value={sessionSearch}
-				type="search"
-				placeholder="Search Sessions"
-			/>
-			{#if loading}<LoaderCircle
-					width={14}
-					height={14}
-					class="loading-indicator active shrink-0 animate-spin"
-					role="status"
-					aria-label="Loading project contents"
-				/>{/if}
-		</label>
-		<button
-			class="grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border hover:bg-accent"
-			class:bg-accent={showArchived}
-			type="button"
-			aria-pressed={showArchived}
-			aria-label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'}
-			title={showArchived ? 'Hide archived sessions' : 'Show archived sessions'}
-			onclick={() => {
-				showArchived = !showArchived;
-				onsearch();
-			}}
-			>{#if showArchived}<ArchiveRestore width={17} height={17} aria-hidden="true" />{:else}<Archive
-					width={17}
-					height={17}
-					aria-hidden="true"
-				/>{/if}</button
-		>
-		{#if !mobile}<button
-				class="grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+		{#if loading}<LoaderCircle
+				width={16}
+				height={16}
+				class="loading-indicator active shrink-0 animate-spin"
+				role="status"
+				aria-label="Loading project contents"
+			/>{/if}
+		<div class="flex shrink-0 items-center gap-1">
+			<button
+				class="grid size-11 place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+				class:bg-accent={searchOpen}
 				type="button"
-				aria-label="Hide Sessions panel"
-				title="Hide Sessions panel"
-				onclick={oncollapse}><PanelLeftClose width={17} height={17} aria-hidden="true" /></button
-			>{/if}
-	</form>
-	<div class="item-list grid gap-1 overflow-auto p-2">
-		<button
-			class="new-session-action sticky top-0 z-10 flex min-h-(--control-height) w-full items-center justify-center gap-2 rounded-md bg-primary px-3 font-medium text-primary-foreground hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-			onclick={() => oncreate()}
-			disabled={selectedProject?.rootAvailable === false}
-			><Plus width={18} height={18} aria-hidden="true" /> Add new session</button
+				aria-label="Search sessions"
+				aria-pressed={searchOpen}
+				title="Search sessions"
+				onclick={toggleSearch}><Search width={18} height={18} aria-hidden="true" /></button
+			>
+			<button
+				class="grid size-11 place-items-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+				type="button"
+				aria-label="Add new session"
+				title="Add new session"
+				onclick={() => oncreate()}
+				disabled={selectedProject?.rootAvailable === false}
+				><Plus width={20} height={20} aria-hidden="true" /></button
+			>
+			{#if !mobile}<button
+					class="grid size-11 place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+					type="button"
+					aria-label="Hide Sessions panel"
+					title="Hide Sessions panel"
+					onclick={oncollapse}><PanelLeftClose width={17} height={17} aria-hidden="true" /></button
+				>{/if}
+		</div>
+	</header>
+	{#if searchOpen}<form
+			class="flex gap-2 border-b border-border p-2"
+			role="search"
+			onsubmit={onsearch}
 		>
+			<label
+				class="flex min-h-(--control-height) min-w-0 flex-1 items-center gap-2 rounded-md border border-border px-2.5"
+			>
+				<Search width={16} height={16} aria-hidden="true" /><span class="sr-only"
+					>Search Sessions</span
+				><input
+					bind:this={searchInput}
+					class="min-w-0 flex-1 border-0 bg-transparent"
+					bind:value={sessionSearch}
+					type="search"
+					placeholder="Search Sessions"
+				/>
+			</label>
+			<button
+				class="grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border hover:bg-accent"
+				class:bg-accent={showArchived}
+				type="button"
+				aria-pressed={showArchived}
+				aria-label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'}
+				title={showArchived ? 'Hide archived sessions' : 'Show archived sessions'}
+				onclick={() => {
+					showArchived = !showArchived;
+					onsearch();
+				}}
+				>{#if showArchived}<ArchiveRestore
+						width={17}
+						height={17}
+						aria-hidden="true"
+					/>{:else}<ArchiveX width={17} height={17} aria-hidden="true" />{/if}</button
+			>
+		</form>{/if}
+	<div class="item-list grid gap-1 overflow-auto p-2">
 		{#each orderedSessions as session (session.sessionId)}
 			{@const state = rowState(session)}
 			<div
@@ -303,16 +343,36 @@
 									height={12}
 									aria-label="Pinned"
 								/>{/if}
-							<span class="session-state shrink-0" aria-label={`Status: ${state.label}`} title={state.label}>
+							<span
+								class="session-state shrink-0"
+								aria-label={`Status: ${state.label}`}
+								title={state.label}
+							>
 								{#if state.icon === 'running'}<LoaderCircle
 										class="animate-spin"
 										width={15}
 										height={15}
 										aria-hidden="true"
-									/>{:else if state.icon === 'waiting'}<CircleHelp width={15} height={15} aria-hidden="true" />
-								{:else if state.icon === 'failed'}<CircleX width={15} height={15} aria-hidden="true" />
-								{:else if state.icon === 'cancelled'}<Ban width={15} height={15} aria-hidden="true" />
-								{:else if state.icon === 'unknown'}<WifiOff width={15} height={15} aria-hidden="true" />
+									/>{:else if state.icon === 'waiting'}<CircleHelp
+										width={15}
+										height={15}
+										aria-hidden="true"
+									/>
+								{:else if state.icon === 'failed'}<CircleX
+										width={15}
+										height={15}
+										aria-hidden="true"
+									/>
+								{:else if state.icon === 'cancelled'}<Ban
+										width={15}
+										height={15}
+										aria-hidden="true"
+									/>
+								{:else if state.icon === 'unknown'}<WifiOff
+										width={15}
+										height={15}
+										aria-hidden="true"
+									/>
 								{:else}<CircleCheck width={15} height={15} aria-hidden="true" />{/if}
 							</span>{#if session.busySince}<span
 									class="busy-timer text-xs whitespace-nowrap text-sky-400 tabular-nums"
@@ -320,14 +380,25 @@
 									>{elapsed(session.busySince, now)}</span
 								>{/if}
 						</div>
-						<small class:text-amber-400={session.available === false}
-							>{session.updatedAt
-								? new Date(session.updatedAt).toLocaleString()
-								: session.available === false
-									? session.recovery
-									: 'New session'}{session.tags?.length
-								? ` · ${session.tags.join(', ')}`
-								: ''}</small
+						<small
+							class:text-[var(--warning)]={session.available === false}
+							title={session.updatedAt ? new Date(session.updatedAt).toLocaleString() : undefined}
+							><span class="desktop-session-date"
+								>{session.updatedAt
+									? new Date(session.updatedAt).toLocaleString()
+									: session.available === false
+										? session.recovery
+										: 'New session'}</span
+							><span class="mobile-session-date hidden"
+								>{session.updatedAt
+									? new Date(session.updatedAt).toLocaleDateString(undefined, {
+											month: 'short',
+											day: 'numeric'
+										})
+									: session.available === false
+										? session.recovery
+										: 'New session'}</span
+							>{session.tags?.length ? ` · ${session.tags.join(', ')}` : ''}</small
 						>
 					</div>
 					{#if state.attention}<span
