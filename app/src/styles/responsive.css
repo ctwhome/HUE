@@ -415,7 +415,7 @@
 		grid-column: 2;
 		grid-row: 1;
 	}
-	.composer-toolbar:has(.thinking-activity, .current-task) {
+	.composer-toolbar:has(.current-task) {
 		grid-template-columns: 44px auto minmax(0, 1fr) 44px;
 	}
 	.composer-options-menu {
@@ -472,7 +472,7 @@
 		margin-left: 0;
 		justify-content: flex-start;
 	}
-	.composer-toolbar:has(.thinking-activity, .current-task) .composer-context {
+	.composer-toolbar:has(.current-task) .composer-context {
 		grid-column: 3;
 	}
 	.composer-context .desktop-context-option {
@@ -496,7 +496,7 @@
 		width: 44px;
 		height: 44px;
 	}
-	.composer-toolbar:has(.thinking-activity, .current-task) > .composer-send {
+	.composer-toolbar:has(.current-task) > .composer-send {
 		grid-column: 4;
 	}
 	.composer-toolbar > .retry-message {
@@ -603,8 +603,8 @@
 		display: none;
 	}
 	.transcript {
-		padding: calc(82px + var(--safe-area-top)) 14px var(--composer-height, 160px);
-		scroll-padding-block: calc(82px + var(--safe-area-top)) var(--composer-height, 160px);
+		padding: 24px 14px var(--composer-height, 160px);
+		scroll-padding-block: 24px var(--composer-height, 160px);
 		touch-action: pan-y;
 	}
 	.message-actions button {

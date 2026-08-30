@@ -34,14 +34,16 @@
 	});
 </script>
 
-<section class="generated-outputs mb-3 min-w-0" aria-label="Generated outputs">
+<section class="generated-outputs mb-2 min-w-0" aria-label="Generated outputs">
 	<article
 		class="generated-output-preview overflow-hidden rounded-lg border border-border bg-muted/25"
 	>
-		<header class="flex min-h-12 items-center gap-2 border-b border-border px-3">
+		<header class="flex min-h-11 items-center gap-2 border-b border-border px-2.5">
 			<div class="min-w-0 flex-1">
 				<strong class="block truncate text-sm">{name}</strong>
-				<span class="text-xs text-muted-foreground">{kind.toUpperCase()} output</span>
+				<span class="block truncate text-xs whitespace-nowrap text-muted-foreground"
+					>{kind.toUpperCase()} output</span
+				>
 			</div>
 			<div class="generated-output-toolbar flex shrink-0 items-center">
 				{#if kind !== 'file'}<button
@@ -112,12 +114,12 @@
 		</div>
 	</article>
 	{#if paths.length > 1}<nav
-			class="mt-2 flex touch-pan-x gap-2 overflow-x-auto overscroll-x-contain pb-1"
+			class="mt-1.5 flex touch-pan-x gap-1.5 overflow-x-auto overscroll-x-contain pb-1"
 			aria-label="Generated output files"
 		>
 			{#each paths as path}<button
 					type="button"
-					class="flex min-h-11 max-w-56 shrink-0 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm hover:bg-accent"
+					class="flex min-h-11 max-w-56 shrink-0 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-sm hover:bg-accent"
 					class:border-primary={path === selected}
 					aria-pressed={path === selected}
 					onclick={() => (selected = path)}

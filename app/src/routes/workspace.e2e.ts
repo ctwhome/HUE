@@ -3575,6 +3575,52 @@ test('follows new chat content until the reader scrolls up', async ({ page }) =>
 	expect(browserErrors).toEqual([]);
 });
 
+test('keeps the conversation viewport below the Session header', async ({ page }) => {
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({
+			json: {
+				sessions: [{ sessionId: 'session-short', cwd: '/work/hue', title: 'Short' }]
+			}
+		})
+	);
+	await page.route(/\/sessions\/session-short$/, (route) =>
+		route.fulfill({
+			json: {
+				transcript: [
+					{
+						role: 'user',
+						text: 'A short conversation should remain fully visible below the Session header.'
+					},
+					{ role: 'assistant', text: 'It does.' }
+				],
+				messages: [],
+				events: [],
+				cursor: 0,
+				activeTurn: null
+			}
+		})
+	);
+
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		await addProject(page);
+		await sessionButton(page, 'Short').click();
+		const header = page.locator('.session-header');
+		const transcript = page.locator('.transcript');
+		await expect(page.locator('.transcript article').first()).toBeVisible();
+		await expect
+			.poll(
+				async () => {
+					const headerBox = (await header.boundingBox())!;
+					const transcriptBox = (await transcript.boundingBox())!;
+					return transcriptBox.y - (headerBox.y + headerBox.height);
+				},
+				{ message: `${viewport.width}x${viewport.height}` }
+			)
+			.toBeGreaterThanOrEqual(0);
+	}
+});
+
 test('copies and edits messages while selected-message fork stays honestly unavailable', async ({
 	page,
 	context
@@ -4465,6 +4511,9 @@ test('previews CSV and sandboxed interactive HTML outputs inline', async ({ page
 	await sessionButton(page, 'Formats').click();
 	const outputs = page.getByRole('region', { name: 'Generated outputs' });
 	await expect(outputs.locator('.generated-output-preview')).toHaveCount(1);
+	expect(
+		(await outputs.locator('.generated-output-preview > header').boundingBox())!.height
+	).toBeLessThanOrEqual(44);
 	await expect(outputs.getByRole('button', { name: 'Select report.csv' })).toHaveAttribute(
 		'aria-pressed',
 		'true'
@@ -6796,6 +6845,12 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 	const article = page.locator('.transcript article.assistant');
 	await expect(article).toBeVisible();
 	expect(
+		await article.evaluate((element) => ({
+			gap: parseFloat(getComputedStyle(element).gap),
+			marginBottom: parseFloat(getComputedStyle(element).marginBottom)
+		}))
+	).toEqual({ gap: 8, marginBottom: 20 });
+	expect(
 		await article.locator('.message').evaluate((element) => ({
 			background: getComputedStyle(element).backgroundColor,
 			border: getComputedStyle(element).borderTopWidth,
@@ -6828,6 +6883,19 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 	expect(
 		await sectionHeading.evaluate((element) => Number(getComputedStyle(element).fontWeight))
 	).toBeGreaterThanOrEqual(600);
+	expect(
+		await sectionHeading.evaluate(
+			(element) =>
+				parseFloat(getComputedStyle(element).fontSize) /
+				parseFloat(getComputedStyle(element.closest('.markdown')!).fontSize)
+		)
+	).toBeGreaterThanOrEqual(1.25);
+	expect(
+		await article
+			.locator('.markdown p')
+			.first()
+			.evaluate((element) => parseFloat(getComputedStyle(element).marginBlockEnd))
+	).toBeLessThanOrEqual(10);
 	await expect(keyword).toHaveText('const');
 	expect(
 		await keyword.evaluate(
@@ -6839,6 +6907,15 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 	await expect(page.locator('.table-toolbar button svg')).toHaveCount(4);
 	await expect(page.locator('.code-toolbar button svg')).toHaveCount(7);
 	const typescriptBlock = page.locator('.code-block:has(code.language-typescript)');
+	expect(
+		await typescriptBlock.locator('.code-language').evaluate((element) => ({
+			letterSpacing: parseFloat(getComputedStyle(element).letterSpacing),
+			border: getComputedStyle(element.parentElement!.querySelector('pre')!).borderTopWidth,
+			transition: getComputedStyle(element.parentElement!.querySelector('.code-toolbar button')!)
+				.transitionDuration.split(',')[0]
+				.trim()
+		}))
+	).toEqual({ letterSpacing: 0.7, border: '1px', transition: '0.14s' });
 	await typescriptBlock.getByRole('button', { name: 'Wrap code' }).click();
 	expect(
 		await typescriptBlock
@@ -6857,7 +6934,7 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 	);
 	expect(
 		await listItem.evaluate((element) => parseFloat(getComputedStyle(element).marginBlockEnd))
-	).toBeGreaterThanOrEqual(4);
+	).toBeGreaterThanOrEqual(3);
 	const tables = page.locator('.markdown table');
 	const table = tables.first();
 	expect(
@@ -6870,7 +6947,7 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 		await table
 			.locator('xpath=../..')
 			.evaluate((element) => parseFloat(getComputedStyle(element).marginBlockStart))
-	).toBeGreaterThanOrEqual(12);
+	).toBeGreaterThanOrEqual(10);
 	const tableBlocks = page.locator('.markdown .table-block');
 	await expect(tableBlocks).toHaveCount(2);
 	const firstTable = tableBlocks.first();

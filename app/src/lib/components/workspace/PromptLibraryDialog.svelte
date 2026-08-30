@@ -82,6 +82,7 @@
 	let bundleSkills = $state<HermesBundleSkill[]>([]);
 	let bundlesLoading = $state(false);
 	let bundlesLoaded = $state(false);
+	let bundlesPromise: Promise<void> | null = null;
 	let bundleError = $state('');
 	let selectedBundleSlug = $state('');
 	let creatingBundle = $state(false);
@@ -154,26 +155,31 @@
 			catalogLoading = false;
 		}
 	}
-	async function ensureBundles(force = false) {
-		if ((!force && bundlesLoaded) || bundlesLoading || !available) return;
+	function ensureBundles(force = false): Promise<void> {
+		if ((!force && bundlesLoaded) || !available) return Promise.resolve();
+		if (bundlesPromise) return bundlesPromise;
 		bundlesLoading = true;
 		bundleError = '';
-		try {
-			const body = await workspaceApi<{ bundles: HermesBundle[]; skills: HermesBundleSkill[] }>(
-				'/api/hermes/bundles'
-			);
-			bundles = body.bundles;
-			bundleSkills = body.skills;
-			bundlesLoaded = true;
-			if (!selectedBundleSlug || !bundles.some(({ slug }) => slug === selectedBundleSlug)) {
-				selectBundle(bundles[0] ?? null);
+		return (bundlesPromise = (async () => {
+			try {
+				const body = await workspaceApi<{
+					bundles: HermesBundle[];
+					skills: HermesBundleSkill[];
+				}>('/api/hermes/bundles');
+				bundles = body.bundles;
+				bundleSkills = body.skills;
+				bundlesLoaded = true;
+				if (!selectedBundleSlug || !bundles.some(({ slug }) => slug === selectedBundleSlug)) {
+					selectBundle(bundles[0] ?? null);
+				}
+				if (!bundles.some(({ slug }) => slug === bundle)) bundle = bundles[0]?.slug ?? bundle;
+			} catch (cause) {
+				bundleError = cause instanceof Error ? cause.message : String(cause);
+			} finally {
+				bundlesLoading = false;
+				bundlesPromise = null;
 			}
-			if (!bundles.some(({ slug }) => slug === bundle)) bundle = bundles[0]?.slug ?? bundle;
-		} catch (cause) {
-			bundleError = cause instanceof Error ? cause.message : String(cause);
-		} finally {
-			bundlesLoading = false;
-		}
+		})());
 	}
 	export async function openBundle(slug: string) {
 		source = 'bundles';
@@ -181,7 +187,7 @@
 		await ensureBundles();
 		const item = bundles.find((candidate) => candidate.slug === slug);
 		if (item) selectBundle(item);
-		else bundleError = `Hermes bundle ${slug} is unavailable.`;
+		else if (!bundleError) bundleError = `Hermes bundle ${slug} is unavailable.`;
 	}
 	function selectBundle(item: HermesBundle | null) {
 		selectedBundleSlug = item?.slug ?? '';

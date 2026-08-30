@@ -224,6 +224,8 @@
 	let optionsOpen = $state(false);
 	let optionsButton = $state<HTMLButtonElement>();
 	let optionsMenu = $state<HTMLDivElement>();
+	let deliveryButton = $state<HTMLButtonElement>();
+	let composerActivity = $state<HTMLDivElement>();
 	let commandMatches = $derived(matchingCommands());
 	const deliveryIcons: Record<DeliveryStatusIcon, typeof CircleAlert> = {
 		save: Save,
@@ -239,6 +241,7 @@
 	};
 	let deliveryIcon = $derived(deliveryStatusIcon(delivery));
 	let DeliveryIcon = $derived(deliveryIcons[deliveryIcon]);
+	let activityStatus = $derived(delivery || (thinkingTimeline.length ? 'activity' : ''));
 	function flattenOptions(options: SelectConfig['options']) {
 		return options.flatMap((option) => ('value' in option ? [option] : option.options));
 	}
@@ -268,6 +271,10 @@
 		oninput(event);
 		resizeComposer();
 	}
+	function toggleThinking() {
+		if (!thinkingOpen) tasksOpen = false;
+		thinkingOpen = !thinkingOpen;
+	}
 	$effect(() => {
 		composer;
 		resizeComposer();
@@ -296,6 +303,8 @@
 	function closeOptions(event: MouseEvent) {
 		const target = event.target as Node;
 		if (!optionsButton?.contains(target) && !optionsMenu?.contains(target)) optionsOpen = false;
+		if (!deliveryButton?.contains(target) && !composerActivity?.contains(target))
+			thinkingOpen = false;
 	}
 </script>
 
@@ -303,9 +312,15 @@
 	onresize={() => requestAnimationFrame(resizeComposer)}
 	onclick={closeOptions}
 	onkeydown={(event) => {
-		if (event.key === 'Escape' && optionsOpen) {
-			optionsOpen = false;
-			optionsButton?.focus();
+		if (event.key === 'Escape') {
+			if (optionsOpen) {
+				optionsOpen = false;
+				optionsButton?.focus();
+			}
+			if (thinkingOpen) {
+				thinkingOpen = false;
+				deliveryButton?.focus();
+			}
 		}
 	}}
 />
@@ -313,7 +328,7 @@
 <form
 	class="composer sticky bottom-0 mx-[clamp(10px,2vw,40px)] mb-4 rounded-lg border border-border bg-card/95 px-2.5 py-2 shadow-lg backdrop-blur-xl"
 	class:dragging={draggingImages}
-	class:mt-8={Boolean(delivery)}
+	class:mt-8={Boolean(activityStatus)}
 	use:reserveComposerSpace
 	{onsubmit}
 	ondragover={(event) => {
@@ -517,19 +532,25 @@
 				{/if}
 			</div>
 		</section>{/if}
-	{#if delivery}<small
-			class="composer-delivery absolute bottom-[calc(100%+6px)] left-2 flex items-center gap-1.5 rounded-full bg-muted/80 px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm ring-1 ring-border/50"
-			class:warning={delivery.includes('unknown')}
-			title={delivery.includes('unknown')
-				? 'Hermes delivery acknowledgement was not confirmed'
-				: `Message ${delivery}`}
+	{#if activityStatus}<button
+			bind:this={deliveryButton}
+			type="button"
+			class="composer-delivery absolute bottom-[calc(100%+6px)] left-2 flex items-center gap-1.5 rounded-full bg-muted/80 px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm ring-1 ring-border/50 transition hover:bg-accent hover:text-foreground"
+			class:warning={activityStatus.includes('unknown')}
+			aria-controls={`${instanceId}-thinking`}
+			aria-expanded={thinkingOpen}
+			aria-label={`${thinkingOpen ? 'Hide' : 'Show'} activity details for message ${activityStatus}`}
+			title={activityStatus.includes('unknown')
+				? 'Hermes delivery acknowledgement was not confirmed · Toggle activity details'
+				: `Message ${activityStatus} · Toggle activity details`}
+			onclick={toggleThinking}
 			><DeliveryIcon
 				class={deliveryIcon === 'loader' ? 'animate-spin' : undefined}
-				data-status-icon={delivery}
+				data-status-icon={activityStatus}
 				width={14}
 				height={14}
 				aria-hidden="true"
-			/>{delivery.includes('unknown') ? 'Delivery status unknown' : delivery}</small
+			/>{activityStatus.includes('unknown') ? 'Delivery status unknown' : activityStatus}</button
 		>{/if}
 	<div class="composer-input">
 		<textarea
@@ -565,14 +586,13 @@
 		>
 			<Ellipsis width={20} height={20} aria-hidden="true" />
 		</button>
-		<div class="composer-activity">
+		<div bind:this={composerActivity} class="composer-activity">
 			<ThinkingDialog
 				id={`${instanceId}-thinking`}
 				items={thinkingTimeline}
 				{renderMarkdown}
 				{busy}
 				bind:open={thinkingOpen}
-				onopen={() => (tasksOpen = false)}
 			/>
 			<CurrentTask {plan} bind:open={tasksOpen} onopen={() => (thinkingOpen = false)} />
 		</div>
