@@ -9,7 +9,7 @@ import { redactHermesValue } from './redaction';
 import { resolveHermesCommand } from './hermes-cli';
 import { HermesServe } from './hermes-serve';
 import { HermesBundles } from './hermes-bundles';
-import { hermesSkillAccess, hermesSkillsRoot } from './hermes-skills';
+import { hermesSkillAccessInventory, hermesSkillsRoot } from './hermes-skills';
 import { HermesProjects, type HermesProject } from './hermes-projects';
 import { MessageDispatcher } from './message-dispatcher';
 import { ProjectTerminals, resolveTerminalShell } from './project-terminals';
@@ -73,7 +73,7 @@ function createServices(): HUEServices {
 		{ request: (method, params) => admin.rpc(method, params) },
 		profile,
 		() => admin.json<unknown[]>('/api/skills'),
-		(name) => hermesSkillAccess(name, hermesSkillsRoot(profile))
+		() => hermesSkillAccessInventory(hermesSkillsRoot(profile))
 	);
 	const projectOperations = new ProjectOperations<HermesProject>({
 		resolve: (reference) => projects.get(reference),

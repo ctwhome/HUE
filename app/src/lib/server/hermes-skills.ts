@@ -16,6 +16,8 @@ import { basename, dirname, join, relative, sep } from 'node:path';
 const VALID_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 const MAX_CONTENT_BYTES = 1_000_000;
 type Provenance = 'custom' | 'bundled' | 'hub';
+type SkillAccess = { provenance: Provenance; editable: boolean };
+type OwnershipMetadata = { hubNames: Set<string>; hubPaths: string[]; bundled: Set<string> };
 
 export function hermesSkillsRoot(profile: string, env: NodeJS.ProcessEnv = process.env) {
 	const home = env.HERMES_HOME ?? join(env.HOME ?? '', '.hermes');
@@ -29,7 +31,7 @@ function declaredName(content: string, directory: string) {
 	);
 }
 
-function ownership(root: string, file: string, name: string): Provenance {
+function ownershipMetadata(root: string): OwnershipMetadata {
 	const optional = (path: string) => {
 		try {
 			return readFileSync(path, 'utf8');
@@ -49,21 +51,18 @@ function ownership(root: string, file: string, name: string): Provenance {
 		) {
 			throw new Error('invalid hub lock');
 		}
+		const hubNames = new Set<string>();
+		const hubPaths: string[] = [];
 		for (const [installedName, entry] of Object.entries(lock?.installed ?? {})) {
-			if (installedName === name) return 'hub';
 			if (!entry || typeof entry !== 'object' || typeof entry.install_path !== 'string') {
 				throw new Error('invalid hub lock');
 			}
-			const installPath = realpathSync(join(root, entry.install_path));
-			if (file.startsWith(`${installPath}${sep}`)) return 'hub';
+			hubNames.add(installedName);
+			hubPaths.push(realpathSync(join(root, entry.install_path)));
 		}
-	} catch {
-		throw new Error('Skill ownership could not be verified');
-	}
-	try {
-		const content = optional(join(root, '.bundled_manifest'));
+		const bundledContent = optional(join(root, '.bundled_manifest'));
 		const bundled = new Set(
-			(content ?? '')
+			(bundledContent ?? '')
 				.split('\n')
 				.map((line) => line.trim())
 				.filter(Boolean)
@@ -72,11 +71,24 @@ function ownership(root: string, file: string, name: string): Provenance {
 					return line.split(':', 1)[0].trim();
 				})
 		);
-		if (bundled.has(name)) return 'bundled';
+		return { hubNames, hubPaths, bundled };
 	} catch {
 		throw new Error('Skill ownership could not be verified');
 	}
+}
+
+function provenance(metadata: OwnershipMetadata, file: string, name: string): Provenance {
+	if (
+		metadata.hubNames.has(name) ||
+		metadata.hubPaths.some((path) => file.startsWith(`${path}${sep}`))
+	)
+		return 'hub';
+	if (metadata.bundled.has(name)) return 'bundled';
 	return 'custom';
+}
+
+function ownership(root: string, file: string, name: string): Provenance {
+	return provenance(ownershipMetadata(root), file, name);
 }
 
 function boundedContent(file: string): string {
@@ -86,6 +98,19 @@ function boundedContent(file: string): string {
 	try {
 		const buffer = Buffer.alloc(size);
 		readSync(descriptor, buffer, 0, size, 0);
+		return buffer.toString('utf8');
+	} finally {
+		closeSync(descriptor);
+	}
+}
+
+function boundedHeader(file: string): string {
+	const size = statSync(file).size;
+	if (size > MAX_CONTENT_BYTES) throw new Error('Skill content exceeds 1 MB');
+	const descriptor = openSync(file, 'r');
+	try {
+		const buffer = Buffer.alloc(Math.min(size, 16_384));
+		readSync(descriptor, buffer, 0, buffer.length, 0);
 		return buffer.toString('utf8');
 	} finally {
 		closeSync(descriptor);
@@ -108,8 +133,7 @@ function findSkill(root: string, name: string) {
 				const found = visit(path);
 				if (found) return found;
 			} else if (entry.isFile() && entry.name === 'SKILL.md') {
-				const content = boundedContent(path);
-				if (declaredName(content.slice(0, 16_384), directory) !== name) continue;
+				if (declaredName(boundedHeader(path), directory) !== name) continue;
 				const canonical = realpathSync(path);
 				if (!canonical.startsWith(`${canonicalRoot}${sep}`))
 					throw new Error('Skill path escaped root');
@@ -136,6 +160,36 @@ export function readHermesSkill(name: string, root = hermesSkillsRoot('default')
 export function hermesSkillAccess(name: string, root = hermesSkillsRoot('default')) {
 	const found = findSkill(root, name);
 	return { provenance: found.provenance, editable: found.provenance === 'custom' };
+}
+
+export function hermesSkillAccessInventory(
+	root = hermesSkillsRoot('default')
+): Map<string, SkillAccess> {
+	let canonicalRoot: string;
+	try {
+		canonicalRoot = realpathSync(root);
+	} catch {
+		throw new Error('Hermes skills were not found');
+	}
+	const metadata = ownershipMetadata(canonicalRoot);
+	const result = new Map<string, SkillAccess>();
+	const visit = (directory: string) => {
+		for (const entry of readdirSync(directory, { withFileTypes: true })) {
+			if (entry.isSymbolicLink() || entry.name.startsWith('.')) continue;
+			const path = join(directory, entry.name);
+			if (entry.isDirectory()) visit(path);
+			else if (entry.isFile() && entry.name === 'SKILL.md') {
+				const name = declaredName(boundedHeader(path), directory);
+				if (!VALID_NAME.test(name) || result.has(name)) continue;
+				const file = realpathSync(path);
+				if (!file.startsWith(`${canonicalRoot}${sep}`)) throw new Error('Skill path escaped root');
+				const source = provenance(metadata, file, name);
+				result.set(name, { provenance: source, editable: source === 'custom' });
+			}
+		}
+	};
+	visit(canonicalRoot);
+	return result;
 }
 
 export function writeHermesSkill(

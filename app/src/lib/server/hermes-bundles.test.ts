@@ -74,13 +74,17 @@ describe('HermesBundles', () => {
 
 	it('surfaces skill permissions without returning skill content', async () => {
 		const rpc = transport(() => ({}));
+		let accessReads = 0;
 		const bundles = new HermesBundles(
 			rpc,
 			'default',
 			async () => [
 				{ name: 'review', description: 'Review code', enabled: true, content: 'do not return' }
 			],
-			() => ({ provenance: 'custom', editable: true })
+			() => {
+				accessReads += 1;
+				return new Map([['review', { provenance: 'custom' as const, editable: true }]]);
+			}
 		);
 
 		expect(await bundles.listSkills()).toEqual([
@@ -92,5 +96,6 @@ describe('HermesBundles', () => {
 				permissions: { read: true, write: true, delete: true }
 			}
 		]);
+		expect(accessReads).toBe(1);
 	});
 });

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
 	deleteHermesSkill,
+	hermesSkillAccessInventory,
 	hermesSkillsRoot,
 	readHermesSkill,
 	writeHermesSkill
@@ -37,6 +38,11 @@ test('classifies custom, bundled, and hub skills from canonical profile-root met
 		editable: false
 	});
 	expect(readHermesSkill('hub', root)).toMatchObject({ provenance: 'hub', editable: false });
+	expect(Object.fromEntries(hermesSkillAccessInventory(root))).toEqual({
+		bundled: { provenance: 'bundled', editable: false },
+		custom: { provenance: 'custom', editable: true },
+		hub: { provenance: 'hub', editable: false }
+	});
 });
 
 test('reports hub provenance when hub ownership supersedes a bundled name', () => {
@@ -102,6 +108,7 @@ test('fails closed when ownership metadata is malformed', () => {
 		'ownership could not be verified'
 	);
 	expect(() => deleteHermesSkill('custom', root)).toThrow('ownership could not be verified');
+	expect(() => hermesSkillAccessInventory(root)).toThrow('ownership could not be verified');
 });
 
 test('rejects oversized skill reads and UTF-8 writes by byte length', () => {

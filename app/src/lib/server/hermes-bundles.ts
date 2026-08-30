@@ -71,7 +71,7 @@ export class HermesBundles {
 		private readonly transport: BundlesTransport,
 		private readonly profile: string,
 		private readonly inventory?: () => Promise<unknown[]>,
-		private readonly access?: (name: string) => BundleAccess
+		private readonly access?: () => Map<string, BundleAccess>
 	) {}
 
 	async list(): Promise<HermesBundle[]> {
@@ -141,20 +141,22 @@ export class HermesBundles {
 		if (!this.inventory || !this.access) throw new Error('Hermes skill inventory is unavailable');
 		const inventory = await this.inventory();
 		if (!Array.isArray(inventory)) throw new Error('Hermes returned an invalid skill inventory');
+		const access = this.access();
 		return inventory.map((value) => {
 			if (!value || typeof value !== 'object') throw new Error('Hermes returned an invalid skill');
 			const skill = value as Record<string, unknown>;
 			if (typeof skill.name !== 'string' || !SKILL_NAME.test(skill.name)) {
 				throw new Error('Hermes returned an invalid skill name');
 			}
-			const access = this.access!(skill.name);
+			const skillAccess = access.get(skill.name);
+			if (!skillAccess) throw new Error(`Hermes skill ${skill.name} was not found`);
 			return {
 				name: skill.name,
 				...(typeof skill.description === 'string' ? { description: skill.description } : {}),
 				...(typeof skill.category === 'string' ? { category: skill.category } : {}),
 				enabled: skill.enabled === true,
-				provenance: access.provenance,
-				permissions: { read: true, write: access.editable, delete: access.editable }
+				provenance: skillAccess.provenance,
+				permissions: { read: true, write: skillAccess.editable, delete: skillAccess.editable }
 			};
 		});
 	}
