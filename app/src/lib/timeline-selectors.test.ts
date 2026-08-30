@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import {
 	selectLatestPlan,
+	selectSessionArtifacts,
 	selectTaskSummary,
 	selectThinkingTimeline,
 	selectTranscriptTimeline
@@ -62,5 +63,25 @@ describe('timeline selectors', () => {
 		expect(selectTaskSummary([complete, pending])?.entry).toEqual(pending);
 		expect(selectTaskSummary([complete])?.entry).toEqual(complete);
 		expect(selectTaskSummary([])).toBeNull();
+	});
+
+	it('selects unique Hermes MEDIA artifacts from assistant messages in transcript order', () => {
+		const timeline: WorkspaceTimelineItem[] = [
+			{ sequence: 1, kind: 'message', role: 'user', text: 'MEDIA: input.png' },
+			{
+				sequence: 2,
+				kind: 'message',
+				role: 'assistant',
+				text: 'Created these files:\nMEDIA: output/render.png\nMEDIA: output/report.pdf'
+			},
+			{
+				sequence: 3,
+				kind: 'message',
+				role: 'assistant',
+				text: 'MEDIA: output/render.png'
+			}
+		];
+
+		expect(selectSessionArtifacts(timeline)).toEqual(['output/render.png', 'output/report.pdf']);
 	});
 });

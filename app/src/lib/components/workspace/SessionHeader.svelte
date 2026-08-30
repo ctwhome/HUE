@@ -5,6 +5,7 @@
 	import Wrench from '~icons/lucide/wrench';
 	import { automaticSessionIcon } from '$lib/icon';
 	import { isImageIcon } from './project-management.svelte';
+	import ArtifactGallery from './ArtifactGallery.svelte';
 	import SessionInspector from './SessionInspector.svelte';
 	import type { HermesRuntime, Project, Session } from './types';
 
@@ -15,6 +16,8 @@
 		delivery,
 		pendingInteraction,
 		contextPercent,
+		artifacts,
+		mediaPath,
 		projectTools,
 		mobile,
 		unreadNotifications,
@@ -30,6 +33,8 @@
 		delivery: string;
 		pendingInteraction?: string;
 		contextPercent: () => number | null;
+		artifacts: string[];
+		mediaPath: string;
 		projectTools: boolean;
 		mobile: boolean;
 		unreadNotifications: number;
@@ -81,6 +86,7 @@
 						>{unreadNotifications > 99 ? '99+' : unreadNotifications}</span
 					>{/if}
 			</button>{/if}
+		{#if session && artifacts.length}<ArtifactGallery {artifacts} {mediaPath} />{/if}
 		{#if session && project?.rootAvailable}<button
 				class="session-project-tools grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md hover:bg-accent"
 				class:active={projectTools}

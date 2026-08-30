@@ -1344,11 +1344,17 @@ export class HUEStore {
 		).map(({ cwd }) => cwd);
 	}
 
-	countSessions(projectId: string | null): number {
+	countSessions(projectId: string | null, scope: 'all' | 'scheduled' | 'unscheduled' = 'all'): number {
+		const scheduleFilter =
+			scope === 'scheduled'
+				? 'AND EXISTS (SELECT 1 FROM schedules s WHERE s.session_id = project_sessions.session_id)'
+				: scope === 'unscheduled'
+					? 'AND NOT EXISTS (SELECT 1 FROM schedules s WHERE s.session_id = project_sessions.session_id)'
+					: '';
 		return (
 			this.database
 				.query(
-					'SELECT COUNT(*) AS count FROM project_sessions WHERE project_id IS ? AND archived = 0'
+					`SELECT COUNT(*) AS count FROM project_sessions WHERE project_id IS ? AND archived = 0 ${scheduleFilter}`
 				)
 				.get(projectId) as { count: number }
 		).count;
@@ -1356,7 +1362,13 @@ export class HUEStore {
 
 	listSessionPage(
 		projectId: string | null,
-		options: { includeArchived: boolean; query: string; limit: number; offset: number }
+		options: {
+			includeArchived: boolean;
+			query: string;
+			limit: number;
+			offset: number;
+			scope?: 'scheduled' | 'unscheduled';
+		}
 	): { sessions: StoredSession[]; hasMore: boolean } {
 		const requestedLimit = Math.trunc(options.limit);
 		const requestedOffset = Math.trunc(options.offset);
@@ -1369,6 +1381,12 @@ export class HUEStore {
 		const needle = options.query.trim().toLowerCase();
 		const columns =
 			'ps.session_id, ps.cwd, ps.icon, ps.title, ps.work_mode, ps.pinned, ps.archived, ps.folder, ps.tags, ps.updated_at';
+		const scheduleFilter =
+			options.scope === 'scheduled'
+				? 'AND EXISTS (SELECT 1 FROM schedules s WHERE s.session_id = ps.session_id)'
+				: options.scope === 'unscheduled'
+					? 'AND NOT EXISTS (SELECT 1 FROM schedules s WHERE s.session_id = ps.session_id)'
+					: '';
 		const rows = needle
 			? (this.database
 					.query(
@@ -1384,7 +1402,7 @@ export class HUEStore {
 						)
 						SELECT ${columns} FROM project_sessions ps
 						JOIN matched ON matched.session_id = ps.session_id
-						WHERE ps.project_id IS ? AND (? OR ps.archived = 0)
+						WHERE ps.project_id IS ? AND (? OR ps.archived = 0) ${scheduleFilter}
 						ORDER BY ps.pinned DESC, ps.updated_at DESC, ps.session_id
 						LIMIT ? OFFSET ?`
 					)
@@ -1403,7 +1421,7 @@ export class HUEStore {
 			: (this.database
 					.query(
 						`SELECT ${columns} FROM project_sessions ps
-						 WHERE ps.project_id IS ? AND (? OR ps.archived = 0)
+						 WHERE ps.project_id IS ? AND (? OR ps.archived = 0) ${scheduleFilter}
 						 ORDER BY ps.pinned DESC, ps.updated_at DESC, ps.session_id
 						 LIMIT ? OFFSET ?`
 					)

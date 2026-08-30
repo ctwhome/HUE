@@ -9,7 +9,7 @@ import {
 	realpathSync
 } from 'node:fs';
 import { Readable } from 'node:stream';
-import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
+import { basename, extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { attachmentMatchesDeclaredType, mimeTypeForFile } from '$lib/message-content';
 
 const signatureTypes = new Set([
@@ -32,6 +32,18 @@ const signatureTypes = new Set([
 	'video/webm',
 	'video/quicktime'
 ]);
+
+const svgContentSecurityPolicy =
+	"default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; sandbox";
+
+function isSvg(bytes: Uint8Array) {
+	try {
+		const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+		return /^(?:\uFEFF|\s|<\?xml[\s\S]*?\?>|<!--[\s\S]*?-->)*<svg(?:\s|>)/i.test(source);
+	} catch {
+		return false;
+	}
+}
 
 function safeDisposition(name: string, download: boolean) {
 	const fallback = name.replace(/[^\x20-\x7e]|["\\]/g, '_');
@@ -76,14 +88,20 @@ export function resolveSessionMedia(root: string, source: string) {
 		}
 		const stat = fstatSync(descriptor);
 		if (!stat.isFile()) throw new Error('MEDIA output is not a regular file');
-		const mimeType = mimeTypeForFile(candidate);
+		const mimeType =
+			mimeTypeForFile(candidate) ??
+			(extname(candidate).toLowerCase() === '.svg' ? 'image/svg+xml' : null);
 		if (!mimeType) throw new Error('MEDIA output type is not allowed');
 		if (/\p{C}/u.test(basename(candidate)))
 			throw new Error('MEDIA file name contains unsafe characters');
-		if (signatureTypes.has(mimeType)) {
-			const bytes = new Uint8Array(512);
+		if (signatureTypes.has(mimeType) || mimeType === 'image/svg+xml') {
+			const bytes = new Uint8Array(mimeType === 'image/svg+xml' ? 64 * 1024 : 512);
 			const length = readSync(descriptor, bytes, 0, bytes.length, 0);
-			if (!attachmentMatchesDeclaredType(mimeType, bytes.subarray(0, length))) {
+			if (
+				!(mimeType === 'image/svg+xml'
+					? isSvg(bytes.subarray(0, length))
+					: attachmentMatchesDeclaredType(mimeType, bytes.subarray(0, length)))
+			) {
 				throw new Error('MEDIA content does not match its file type');
 			}
 		}
@@ -119,6 +137,12 @@ export function serveSessionMedia(
 		'x-content-type-options': 'nosniff',
 		'content-security-policy': "default-src 'none'; media-src 'self'; sandbox"
 	});
+	if (media.mimeType === 'image/svg+xml') {
+		headers.set('content-security-policy', svgContentSecurityPolicy);
+		headers.set('cross-origin-resource-policy', 'same-origin');
+		headers.set('referrer-policy', 'no-referrer');
+		headers.set('x-frame-options', 'DENY');
+	}
 	if (range === false) {
 		headers.set('content-range', `bytes */${media.size}`);
 		closeSessionMedia(media);

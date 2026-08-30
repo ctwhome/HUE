@@ -39,11 +39,11 @@ dialog.global-panel::backdrop {
 	}
 	.workspace > .project-rail {
 		margin-top: var(--panel-gap);
-		border-block: 1px solid var(--border);
+		border-block: 1px solid var(--navigation-border);
 	}
 	.workspace > .context-panel {
 		margin-top: var(--panel-gap);
-		border-block: 1px solid var(--border);
+		border-block: 1px solid var(--navigation-border);
 		border-radius: 0 var(--radius-panel) var(--radius-panel) 0;
 		box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
 	}

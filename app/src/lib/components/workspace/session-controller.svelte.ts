@@ -75,7 +75,7 @@ export function createSessionController(options: {
 			navigation.replaceSession({ ...selected, ...body.session, workMode: body.workMode });
 			options.rememberSelection({ workMode: body.workMode });
 			messageState.messageNotice = formatWorkModeAnnouncement(body.workMode);
-			if (body.event) sessionState.applyEvents([body.event]);
+			if (body.event) sessionState.previewEvents([body.event]);
 		} catch (cause) {
 			options.setError(cause instanceof Error ? cause.message : String(cause));
 		} finally {

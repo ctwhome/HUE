@@ -55,6 +55,31 @@ test('serves the validated descriptor after the path is swapped for a symlink', 
 	expect(() => fstatSync(media.descriptor)).toThrow();
 });
 
+test('serves validated SVG MEDIA with image-safe document headers', async () => {
+	const root = join(tmpdir(), `hue-media-${crypto.randomUUID()}`);
+	roots.push(root);
+	mkdirSync(root, { recursive: true });
+	writeFileSync(
+		join(root, 'diagram.svg'),
+		'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0 0h10v10z"/></svg>'
+	);
+	writeFileSync(join(root, 'fake.svg'), '<html>not an image</html>');
+
+	const media = resolveSessionMedia(root, 'diagram.svg');
+	expect(media.mimeType).toBe('image/svg+xml');
+	const response = serveSessionMedia(media, new Request('http://hue.test/media'), false);
+	expect(response.headers.get('content-type')).toBe('image/svg+xml');
+	expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+	expect(response.headers.get('cross-origin-resource-policy')).toBe('same-origin');
+	expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+	expect(response.headers.get('x-frame-options')).toBe('DENY');
+	expect(response.headers.get('content-security-policy')).toBe(
+		"default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; sandbox"
+	);
+	expect(await response.text()).toContain('<svg');
+	expect(() => resolveSessionMedia(root, 'fake.svg')).toThrow('content does not match');
+});
+
 test('closes the MEDIA descriptor when a response body is cancelled', async () => {
 	const root = join(tmpdir(), `hue-media-${crypto.randomUUID()}`);
 	roots.push(root);

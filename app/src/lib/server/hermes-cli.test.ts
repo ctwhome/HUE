@@ -14,10 +14,16 @@ test('resolves a user-local Hermes install when it is outside PATH', () => {
 	expect(resolveHermesCommand({}, home)).toBe(command);
 });
 
-test('production code has no direct hermes chat or Hermes cron API path', () => {
+test('production code has no direct hermes chat or mutable Hermes cron API path', () => {
 	for (const path of new Bun.Glob('app/src/**/*.{ts,svelte}').scanSync('.')) {
 		if (path.endsWith('.test.ts') || path.endsWith('.e2e.ts')) continue;
 		const source = readFileSync(path, 'utf8');
+		if (path.endsWith('external-hermes-cron.ts')) {
+			expect(source).toContain("'/api/cron/jobs?profile=all'");
+			expect(source).not.toContain('/trigger');
+			expect(source).not.toContain('/fire');
+			continue;
+		}
 		expect(source).not.toContain('/api/cron');
 	}
 	const cli = readFileSync('app/src/lib/server/hermes-cli.ts', 'utf8');

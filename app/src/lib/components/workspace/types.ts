@@ -22,9 +22,26 @@ export type Project = {
 export type WorkspaceProps = {
 	projects: Project[];
 	chatSessionCount?: number;
+	cronSessionCount?: number;
 	projectsCapability?: 'available' | 'unavailable' | 'outage';
 	projectsError?: string;
 	reconciliationIssues?: Array<{ legacyProjectId: string; kind: string; message: string }>;
+};
+
+export type SessionCollection = 'chats' | 'cron';
+
+export type ExternalCronJob = {
+	jobId: string;
+	name: string;
+	profile: string;
+	profileName: string;
+	schedule: string;
+	scheduleKind: 'cron' | 'interval' | 'once' | 'unknown';
+	enabled: boolean;
+	state: 'scheduled' | 'paused' | 'completed' | 'error' | 'unknown';
+	nextRunAt: string | null;
+	lastRunAt: string | null;
+	lastStatus: string | null;
 };
 
 export type Session = {

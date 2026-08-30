@@ -39,6 +39,7 @@ test('failed unavailable or deleted Session restoration leaves Session list reco
 		selectedSession: null,
 		mobileDrawer: null,
 		activeTab: 'sessions',
+		sessionCollection: 'chats',
 		sessions: [],
 		persistSelection() {
 			persistedSessionId = this.selectedSession?.sessionId ?? null;

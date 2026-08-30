@@ -11,10 +11,12 @@ import {
 } from './navigation-history';
 import type {
 	Api,
+	ExternalCronJob,
 	HermesCommand,
 	HermesRuntime,
 	Project,
 	Session,
+	SessionCollection,
 	SessionLoad,
 	Workflow
 } from './types';
@@ -22,6 +24,7 @@ type NavigationEffects = {
 	api: Api;
 	getProjects: () => Project[];
 	adjustChatSessionCount: (change: number) => void;
+	adjustCronSessionCount: (change: number) => void;
 	endVoice: () => void;
 	cacheSession: () => void;
 	saveDraft: () => void;
@@ -58,7 +61,11 @@ type NavigationEffects = {
 };
 export class WorkspaceNavigation {
 	selectedProject = $state<Project | null>(null);
+	sessionCollection = $state<SessionCollection>('chats');
 	sessions = $state<Session[]>([]);
+	externalCronJobs = $state<ExternalCronJob[]>([]);
+	externalCronError = $state('');
+	selectedExternalCronJob = $state<ExternalCronJob | null>(null);
 	workflows = $state<Workflow[]>([]);
 	selectedSession = $state<Session | null>(null);
 	activeTab = $state<'sessions' | 'workflows'>('sessions');
@@ -144,8 +151,12 @@ export class WorkspaceNavigation {
 			await this.effects.openCapture(launch.intent, launch.token);
 		return true;
 	};
-	chooseProject = async (project: Project | null, historyMode: HistoryMode = 'push') => {
-		if (this.effects.guard(() => void this.chooseProject(project, historyMode))) return;
+	chooseProject = async (
+		project: Project | null,
+		historyMode: HistoryMode = 'push',
+		collection: SessionCollection = 'chats'
+	) => {
+		if (this.effects.guard(() => void this.chooseProject(project, historyMode, collection))) return;
 		const drillingFromProjects = this.effects.isMobile() && this.mobileDrawer === 'projects';
 		this.effects.endVoice();
 		this.effects.cacheSession();
@@ -153,10 +164,12 @@ export class WorkspaceNavigation {
 		this.sessionRequestGeneration += 1;
 		this.effects.stopPolling();
 		this.selectedProject = project;
+		this.sessionCollection = project ? 'chats' : collection;
+		this.selectedExternalCronJob = null;
 		this.loadedSessionListProjectId = undefined;
 		if (!project) this.activeTab = 'sessions';
 		this.selectedSession = null;
-		this.sessions = this.sessionLists.get(project?.id ?? 'none') ?? [];
+		this.sessions = this.sessionLists.get(project?.id ?? this.sessionCollection) ?? [];
 		this.workflows = project ? (this.workflowLists.get(project.id) ?? []) : [];
 		this.effects.clearSession();
 		this.effects.setError('');
@@ -170,13 +183,35 @@ export class WorkspaceNavigation {
 		await this.loadActiveTab();
 		if (this.effects.isMobile()) this.setMobileDrawer('sessions', 'push');
 	};
-	openFinderSession = async (project: Project | null, sessionId: string) => {
+	chooseSessionCollection = (collection: SessionCollection, historyMode: HistoryMode = 'push') =>
+		this.chooseProject(null, historyMode, collection);
+	openExternalCronJob = (job: ExternalCronJob, historyMode: HistoryMode = 'push') => {
+		if (this.effects.guard(() => this.openExternalCronJob(job, historyMode))) return;
+		this.effects.endVoice();
+		this.effects.cacheSession();
+		this.effects.saveDraft();
+		this.sessionRequestGeneration += 1;
+		this.effects.stopPolling();
+		this.selectedProject = null;
+		this.sessionCollection = 'cron';
+		this.selectedSession = null;
+		this.selectedExternalCronJob = job;
+		this.effects.clearSession();
+		this.effects.setError('');
+		this.mobileDrawer = null;
+		if (historyMode !== 'none') this.persistSelection(historyMode);
+	};
+	openFinderSession = async (
+		project: Project | null,
+		sessionId: string,
+		collection: SessionCollection = 'chats'
+	) => {
 		const generation = this.sessionRequestGeneration + 1;
 		const projectId = project?.id ?? null;
 		const isCurrent = () =>
 			generation === this.sessionRequestGeneration &&
 			projectId === (this.selectedProject?.id ?? null);
-		await this.chooseProject(project, 'none');
+		await this.chooseProject(project, 'none', collection);
 		if (!isCurrent()) return;
 		if (!this.sessions.some((session) => session.sessionId === sessionId)) {
 			await this.loadActiveTab(sessionId);
@@ -193,7 +228,7 @@ export class WorkspaceNavigation {
 	private currentTabRequest() {
 		return {
 			generation: this.tabRequestGeneration,
-			projectId: this.selectedProject?.id ?? '',
+			projectId: this.selectedProject?.id ?? this.sessionCollection,
 			tab: this.activeTab
 		};
 	}
@@ -201,10 +236,10 @@ export class WorkspaceNavigation {
 		if (this.selectedProject && !this.selectedProject.rootAvailable) return;
 		const request = {
 			generation: ++this.tabRequestGeneration,
-			projectId: this.selectedProject?.id ?? '',
+			projectId: this.selectedProject?.id ?? this.sessionCollection,
 			tab: this.activeTab
 		};
-		const sessionPath = request.projectId
+		const sessionPath = this.selectedProject
 			? `/api/projects/${request.projectId}/sessions`
 			: '/api/sessions';
 		this.effects.setLoading(true);
@@ -217,6 +252,8 @@ export class WorkspaceNavigation {
 					for (;;) {
 						const query = new URLSearchParams();
 						if (targetSessionId) query.set('sessionId', targetSessionId);
+						if (!this.selectedProject)
+							query.set('scope', this.sessionCollection === 'cron' ? 'scheduled' : 'unscheduled');
 						if (cached) query.set('cached', 'true');
 						if (offset) {
 							query.set('limit', '100');
@@ -224,10 +261,20 @@ export class WorkspaceNavigation {
 						}
 						if (this.sessionSearch.trim()) query.set('q', this.sessionSearch.trim());
 						if (this.showArchived) query.set('archived', 'true');
-						const body = await this.effects.api<{ sessions: Session[]; hasMore?: boolean }>(
-							`${sessionPath}${query.size ? `?${query}` : ''}`
-						);
+						const body = await this.effects.api<{
+							sessions: Session[];
+							hasMore?: boolean;
+							externalCronJobs?: ExternalCronJob[];
+							externalCronError?: unknown;
+						}>(`${sessionPath}${query.size ? `?${query}` : ''}`);
 						if (!isCurrentTabRequest(request, this.currentTabRequest())) return null;
+						if (!this.selectedProject && this.sessionCollection === 'cron') {
+							this.externalCronJobs = Array.isArray(body.externalCronJobs)
+								? body.externalCronJobs
+								: [];
+							this.externalCronError =
+								typeof body.externalCronError === 'string' ? body.externalCronError : '';
+						}
 						sessions.push(...body.sessions);
 						if (targetSessionId || !body.hasMore || !body.sessions.length) return sessions;
 						offset += body.sessions.length;
@@ -248,8 +295,8 @@ export class WorkspaceNavigation {
 				if (!sessions) return;
 				if (!isCurrentTabRequest(request, this.currentTabRequest())) return;
 				this.sessions = sessions;
-				this.sessionLists.set(request.projectId || 'none', sessions);
-				this.loadedSessionListProjectId = request.projectId || null;
+				this.sessionLists.set(request.projectId, sessions);
+				this.loadedSessionListProjectId = request.projectId;
 				if (this.selectedSession) {
 					this.selectedSession =
 						this.sessions.find(
@@ -375,6 +422,7 @@ export class WorkspaceNavigation {
 		this.effects.saveDraft();
 		this.effects.cacheSession();
 		this.effects.stopPolling();
+		this.selectedExternalCronJob = null;
 		this.selectedSession = session;
 		this.effects.restoreDraft();
 		this.effects.showCachedSession(session);
@@ -632,7 +680,7 @@ export class WorkspaceNavigation {
 			this.sessions = this.showArchived
 				? this.sessions.map((item) => (item.sessionId === session.sessionId ? updated : item))
 				: this.sessions.filter((item) => item.sessionId !== session.sessionId);
-			this.sessionLists.set(this.selectedProject?.id ?? 'none', this.sessions);
+			this.sessionLists.set(this.selectedProject?.id ?? this.sessionCollection, this.sessions);
 			if (this.selectedSession?.sessionId === session.sessionId) this.selectedSession = updated;
 		} catch (cause) {
 			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
@@ -652,7 +700,7 @@ export class WorkspaceNavigation {
 		this.sessions = this.sessions.map((session) =>
 			session.sessionId === selected.sessionId ? patch(session) : session
 		);
-		this.sessionLists.set(this.selectedProject?.id ?? 'none', this.sessions);
+		this.sessionLists.set(this.selectedProject?.id ?? this.sessionCollection, this.sessions);
 		this.selectedSession = patch(selected);
 	};
 
@@ -804,6 +852,11 @@ export class WorkspaceNavigation {
 			this.sessionSaving = false;
 		}
 	};
+	deleteSessionFromRow = (event: MouseEvent, session: Session) => {
+		event.stopPropagation();
+		this.prepareEditingSession(session);
+		return this.deleteSession();
+	};
 
 	setMobileDrawer(drawer: Exclude<MobilePane, null>, mode: HistoryMode = 'push') {
 		if (this.mobileDrawer === drawer) return;
@@ -831,14 +884,15 @@ export class WorkspaceNavigation {
 
 	prependSession(session: Session) {
 		this.sessions = [session, ...this.sessions];
-		this.sessionLists.set(this.selectedProject?.id ?? 'none', this.sessions);
+		this.sessionLists.set(this.selectedProject?.id ?? this.sessionCollection, this.sessions);
 		if (!session.archived) this.adjustSessionCount(1);
 	}
 
 	private adjustSessionCount(change: number) {
 		if (this.selectedProject) {
 			this.selectedProject.sessionCount = Math.max(0, this.selectedProject.sessionCount + change);
-		} else this.effects.adjustChatSessionCount(change);
+		} else if (this.sessionCollection === 'cron') this.effects.adjustCronSessionCount(change);
+		else this.effects.adjustChatSessionCount(change);
 	}
 
 	replaceSession = (session: Session) => {
@@ -859,7 +913,7 @@ export class WorkspaceNavigation {
 		busySince: string | null,
 		projectId: string | null = this.selectedProject?.id ?? null
 	) {
-		const key = projectId ?? 'none';
+		const key = projectId ?? this.sessionCollection;
 		const sessions = (this.sessionLists.get(key) ?? []).map((session) =>
 			session.sessionId === sessionId ? { ...session, busySince } : session
 		);

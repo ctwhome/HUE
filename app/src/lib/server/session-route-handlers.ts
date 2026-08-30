@@ -426,6 +426,9 @@ export async function postMedia(projectId: string | null, event: SessionEvent) {
 			return json({ error: 'Action must be open or reveal' }, { status: 400 });
 		const media = resolveSessionMedia(session.cwd, body.path ?? '');
 		try {
+			if (body.action === 'open' && media.mimeType === 'image/svg+xml') {
+				throw new Error('SVG outputs can only be previewed or revealed');
+			}
 			const process = Bun.spawn(
 				body.action === 'reveal' ? ['open', '-R', media.path] : ['open', media.path],
 				{ stdout: 'ignore', stderr: 'pipe' }

@@ -197,7 +197,8 @@ export async function loadProjectViews() {
 					state.store.countSessions(project.id)
 				)
 			),
-		chatSessionCount: state.store.countSessions(null),
+		chatSessionCount: state.store.countSessions(null, 'unscheduled'),
+		cronSessionCount: state.store.countSessions(null, 'scheduled'),
 		reconciliationIssues: reconciled.issues
 	};
 }

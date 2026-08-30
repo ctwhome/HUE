@@ -7,7 +7,7 @@ import {
 	type LaunchDestination,
 	type MobilePane
 } from './mobile-navigation';
-import type { Project, Session } from './types';
+import type { Project, Session, SessionCollection } from './types';
 
 export type HistoryMode = 'push' | 'replace' | 'none';
 
@@ -20,6 +20,7 @@ type NavigationState = {
 	selectedSession: Session | null;
 	mobileDrawer: MobilePane;
 	activeTab: 'sessions' | 'workflows';
+	sessionCollection: SessionCollection;
 	sessions: Session[];
 	persistSelection: (
 		mode?: Exclude<HistoryMode, 'none'>,
@@ -43,7 +44,10 @@ type RestoreEffects = {
 };
 
 export function persistNavigationSelection(
-	navigation: Pick<NavigationState, 'selectedProject' | 'selectedSession' | 'mobileDrawer'>,
+	navigation: Pick<
+		NavigationState,
+		'selectedProject' | 'selectedSession' | 'mobileDrawer' | 'sessionCollection'
+	>,
 	mode: Exclude<HistoryMode, 'none'> = 'replace',
 	drawerEntry = false,
 	remember = true
@@ -53,6 +57,9 @@ export function persistNavigationSelection(
 	url.searchParams.delete('token');
 	url.searchParams.delete('event');
 	url.searchParams.set('project', navigation.selectedProject?.id ?? 'none');
+	if (!navigation.selectedProject && navigation.sessionCollection === 'cron')
+		url.searchParams.set('collection', 'cron');
+	else url.searchParams.delete('collection');
 	if (navigation.selectedSession)
 		url.searchParams.set('session', navigation.selectedSession.sessionId);
 	else url.searchParams.delete('session');
@@ -72,7 +79,8 @@ export function persistNavigationSelection(
 				version: 1,
 				projectId: navigation.selectedProject?.id ?? null,
 				sessionId: navigation.selectedSession?.sessionId ?? null,
-				pane: navigation.mobileDrawer
+				pane: navigation.mobileDrawer,
+				collection: navigation.sessionCollection
 			})
 		);
 	document.title = navigation.selectedSession?.title
@@ -97,6 +105,7 @@ export async function restoreNavigationSelection(
 		!notificationTarget &&
 		navigation.ready &&
 		destination.projectId === (navigation.selectedProject?.id ?? null) &&
+		destination.collection === navigation.sessionCollection &&
 		destination.sessionId === (navigation.selectedSession?.sessionId ?? null);
 	if (navigation.ready && !sameWorkspace && guard?.()) return null;
 	if (sameWorkspace) {
@@ -116,6 +125,7 @@ export async function restoreNavigationSelection(
 			? null
 			: (effects.getProjects().find(({ id }) => id === destination.projectId) ?? null);
 	navigation.selectedSession = null;
+	navigation.sessionCollection = destination.collection;
 	effects.clearSession();
 	navigation.activeTab = 'sessions';
 	navigation.mobileDrawer = null;

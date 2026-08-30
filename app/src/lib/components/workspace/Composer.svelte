@@ -1,14 +1,24 @@
 <script lang="ts">
 	import ArrowDown from '~icons/lucide/arrow-down';
+	import Ban from '~icons/lucide/ban';
+	import CircleAlert from '~icons/lucide/circle-alert';
+	import CircleCheck from '~icons/lucide/circle-check';
+	import CircleDot from '~icons/lucide/circle-dot';
 	import CircleHelp from '~icons/lucide/circle-help';
+	import CircleStop from '~icons/lucide/circle-stop';
+	import CircleX from '~icons/lucide/circle-x';
 	import BookOpenText from '~icons/lucide/book-open-text';
+	import Clock3 from '~icons/lucide/clock-3';
 	import Ellipsis from '~icons/lucide/ellipsis';
 	import GripVertical from '~icons/lucide/grip-vertical';
+	import LoaderCircle from '~icons/lucide/loader-circle';
 	import Mic from '~icons/lucide/mic';
 	import MicOff from '~icons/lucide/mic-off';
 	import Paperclip from '~icons/lucide/paperclip';
 	import PhoneCall from '~icons/lucide/phone-call';
 	import PhoneOff from '~icons/lucide/phone-off';
+	import RefreshCw from '~icons/lucide/refresh-cw';
+	import Save from '~icons/lucide/save';
 	import Send from '~icons/lucide/send';
 	import Square from '~icons/lucide/square';
 	import UserRound from '~icons/lucide/user-round';
@@ -29,6 +39,7 @@
 	import CurrentTask from './CurrentTask.svelte';
 	import PromptLibraryDialog from './PromptLibraryDialog.svelte';
 	import ThinkingDialog from './ThinkingDialog.svelte';
+	import { deliveryStatusIcon, type DeliveryStatusIcon } from './delivery-status';
 	import type {
 		HermesCommand as Command,
 		HermesRuntime as Runtime,
@@ -213,6 +224,20 @@
 	let optionsButton = $state<HTMLButtonElement>();
 	let optionsMenu = $state<HTMLDivElement>();
 	let commandMatches = $derived(matchingCommands());
+	const deliveryIcons: Record<DeliveryStatusIcon, typeof CircleAlert> = {
+		save: Save,
+		clock: Clock3,
+		loader: LoaderCircle,
+		refresh: RefreshCw,
+		stop: CircleStop,
+		check: CircleCheck,
+		error: CircleX,
+		cancelled: Ban,
+		unknown: CircleHelp,
+		status: CircleDot
+	};
+	let deliveryIcon = $derived(deliveryStatusIcon(delivery));
+	let DeliveryIcon = $derived(deliveryIcons[deliveryIcon]);
 	function flattenOptions(options: SelectConfig['options']) {
 		return options.flatMap((option) => ('value' in option ? [option] : option.options));
 	}
@@ -283,6 +308,7 @@
 <form
 	class="composer sticky bottom-0 mx-[clamp(10px,2vw,40px)] mb-4 rounded-lg border border-border bg-card/95 px-2.5 py-2 shadow-lg backdrop-blur-xl"
 	class:dragging={draggingImages}
+	class:mt-8={Boolean(delivery)}
 	use:reserveComposerSpace
 	{onsubmit}
 	ondragover={(event) => {
@@ -486,6 +512,22 @@
 				{/if}
 			</div>
 		</section>{/if}
+	{#if delivery}<small
+			class="composer-delivery absolute bottom-[calc(100%+6px)] left-2 flex items-center gap-1.5 rounded-full bg-muted/80 px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm ring-1 ring-border/50"
+			class:warning={delivery.includes('unknown')}
+			title={delivery.includes('unknown')
+				? 'Hermes delivery acknowledgement was not confirmed'
+				: `Message ${delivery}`}
+			><DeliveryIcon
+				class={deliveryIcon === 'loader' ? 'animate-spin' : undefined}
+				data-status-icon={delivery}
+				width={14}
+				height={14}
+				aria-hidden="true"
+			/>{delivery.includes('unknown')
+				? 'Delivery status unknown'
+				: delivery}</small
+		>{/if}
 	<div class="composer-input">
 		<textarea
 			bind:this={composerElement}
@@ -536,8 +578,8 @@
 			id={`${instanceId}-composer-options`}
 			class="composer-options-menu"
 			class:open={optionsOpen && ready}
-			inert={!optionsOpen || !ready}
-			aria-hidden={!optionsOpen || !ready ? 'true' : undefined}
+			inert={!ready}
+			aria-hidden={!ready ? 'true' : undefined}
 			role="group"
 			aria-label="Secondary session options"
 		>
@@ -639,11 +681,6 @@
 						onselect={(value) => onconfig(reasoning!.id, value)}
 					/>
 				</div>{/if}
-			{#if delivery}<small
-					class="mobile-delivery text-xs text-muted-foreground"
-					class:warning={delivery.includes('unknown')}
-					>{delivery.includes('unknown') ? 'Delivery status unknown' : delivery}</small
-				>{/if}
 		</div>
 		<div
 			class="composer-context ml-auto flex min-w-0 items-center gap-1"
@@ -682,16 +719,6 @@
 					>{contextPercent()}%</span
 				>{/if}
 		</div>
-		{#if delivery}<small
-				class="composer-delivery inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
-				class:warning={delivery.includes('unknown')}
-				title={delivery.includes('unknown')
-					? 'Hermes delivery acknowledgement was not confirmed'
-					: `Message ${delivery}`}
-				><CircleHelp width={14} height={14} aria-hidden="true" />{delivery.includes('unknown')
-					? 'Delivery status unknown'
-					: delivery}</small
-			>{/if}
 		{#if pendingEnvelope}<button
 				type="button"
 				class="retry-message rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"

@@ -288,11 +288,11 @@
 
 .context-panel > header {
 	display: flex;
-	min-height: 76px;
+	min-height: 64px;
 	align-items: center;
 	justify-content: space-between;
-	border-bottom: 1px solid var(--border);
-	padding: 14px 18px;
+	border-bottom: 1px solid var(--navigation-border);
+	padding: 10px 12px;
 }
 .context-panel > .project-context-header {
 	display: flex;

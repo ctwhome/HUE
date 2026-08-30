@@ -33,9 +33,10 @@ The real ACP test creates and resumes a Hermes Session but uses the local `/vers
 
 ```bash
 make build
+make serve HOST=127.0.0.1 PORT=4174 ORIGIN=https://m3-max.tail33436f.ts.net:4173
 ```
 
-`make build` rebuilds the docs and production app, then serves HUE on `127.0.0.1:4174`. The configured Tailscale Serve route exposes it at `https://m3-max.tail33436f.ts.net:4173`. Set `HUE_ACCESS_SECRET`, `HUE_DATABASE_PATH`, and optionally `HUE_HERMES_PROFILE` in `app/.env`.
+`make build` rebuilds the docs and production app without starting it. `make serve` runs an immutable build snapshot on `127.0.0.1:4174`, so later builds cannot remove assets from the live process. The configured Tailscale Serve route exposes it at `https://m3-max.tail33436f.ts.net:4173`. Set `HUE_ACCESS_SECRET`, `HUE_DATABASE_PATH`, and optionally `HUE_HERMES_PROFILE` in `app/.env`.
 
 Development and production can run together. `make dev` uses `http://127.0.0.1:4010` and the isolated `~/.hue/hue-dev.db`; its Tailscale URL is `https://m3-max.tail33436f.ts.net:4010`. Restarting either target leaves the other running. `make stop` stops both.
 

@@ -22,6 +22,18 @@ export function selectLatestPlan(timeline: WorkspaceTimelineItem[]): WorkspacePl
 	return [...timeline].reverse().find((item) => item.kind === 'plan')?.entries ?? [];
 }
 
+export function selectSessionArtifacts(timeline: WorkspaceTimelineItem[]): string[] {
+	return [
+		...new Set(
+			timeline.flatMap((item) =>
+				item.kind === 'message' && item.role === 'assistant'
+					? item.text.split(/\r?\n/).flatMap((line) => line.match(/^MEDIA:\s*(.+?)\s*$/)?.[1] ?? [])
+					: []
+			)
+		)
+	];
+}
+
 export function selectTaskSummary(plan: WorkspacePlanEntry[]) {
 	if (!plan.length) return null;
 	return {

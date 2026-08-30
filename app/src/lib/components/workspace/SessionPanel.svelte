@@ -48,6 +48,7 @@
 		api: workspaceApi,
 		getProjects: () => (fixedProject ? [fixedProject] : []),
 		adjustChatSessionCount: () => {},
+		adjustCronSessionCount: () => {},
 		applyCreatedSession: () => {},
 		guard: () => false,
 		isMobile: () => false,
