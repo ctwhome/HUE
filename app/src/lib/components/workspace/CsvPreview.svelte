@@ -43,7 +43,15 @@
 	});
 </script>
 
-<div class:h-full={full} class:max-h-[min(55vh,520px)]={!full} class="overflow-auto bg-card">
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<div
+	class:h-full={full}
+	class:max-h-[min(55vh,520px)]={!full}
+	class="csv-preview overflow-auto bg-card"
+	role="region"
+	aria-label={`${name} data`}
+	tabindex="0"
+>
 	{#if error}<p class="p-4 text-sm text-destructive" role="alert">{error}</p>
 	{:else if loading}<p class="p-4 text-sm text-muted-foreground">Loading CSV preview…</p>
 	{:else if rows.length}<table

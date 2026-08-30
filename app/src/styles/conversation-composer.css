@@ -299,6 +299,21 @@
 	margin-block: 1.25em 0.55em;
 	line-height: 1.25;
 }
+.markdown h1 {
+	font-size: 1.5em;
+	font-weight: 700;
+}
+.markdown h2 {
+	font-size: 1.3em;
+	font-weight: 650;
+}
+.markdown h3 {
+	font-size: 1.15em;
+	font-weight: 650;
+}
+.markdown :is(h4, h5, h6) {
+	font-weight: 650;
+}
 .markdown p,
 .markdown ul,
 .markdown ol,

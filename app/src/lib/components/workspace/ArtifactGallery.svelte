@@ -25,7 +25,11 @@
 		dialog.showModal();
 	}
 	function handleKeydown(event: KeyboardEvent) {
-		if ((event.target as Element).closest('input, textarea, select, button, a, audio, video'))
+		if (
+			(event.target as Element).closest(
+				'input, textarea, select, button, a, audio, video, .csv-preview'
+			)
+		)
 			return;
 		if (event.key === 'ArrowLeft') move(-1);
 		if (event.key === 'ArrowRight') move(1);
