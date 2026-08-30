@@ -4,6 +4,8 @@
 
 HUE is a focused native Bun/SvelteKit workspace for exactly three user-facing objects: Projects, Workflows, and Hermes Sessions. HUE owns local organization and reliable message-delivery state; Hermes ACP owns agent execution and Hermes transcript persistence. Do not write Hermes' internal database directly or silently grant ACP permission requests.
 
+HUE currently requires the local Hermes bundle integration patch in `acp_adapter/server.py`, `agent/skill_bundles.py`, and `tui_gateway/server.py`: authenticated `bundles.*` RPC plus ACP-native bundle commands that preserve the original user transcript. After every Hermes update, verify that capability before removing or reapplying the patch; never fall back to expanding skill content inside HUE.
+
 ## Repository map
 
 - `app/`: production SvelteKit 5/Svelte 5 application and Bun SQLite control plane.

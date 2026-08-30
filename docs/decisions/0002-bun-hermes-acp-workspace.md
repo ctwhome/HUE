@@ -7,6 +7,8 @@
 - **Supersedes:** the universal personal-agent control-plane alpha scope
 
 > Project identity and folder ownership in this record are superseded by [ADR-0006](0006-hermes-projects-authority.md). Hermes Projects are authoritative; HUE retains only its own linked metadata and delivery truth.
+>
+> Workflow `work_mode` defaults are superseded by [ADR-0013](0013-hermes-native-workflow-bundles.md). Workflows now reference Hermes-owned bundle slugs; Session-level cadence state remains unchanged.
 
 ## Context
 

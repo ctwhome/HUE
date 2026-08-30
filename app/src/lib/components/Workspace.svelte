@@ -634,6 +634,16 @@
 					);
 					navigation.selectedExternalCronJob = { ...selectedExternalCronJob, ...updated };
 				}}
+				onread={() => {
+					const unreadCount = Math.max(0, (selectedExternalCronJob.unreadCount ?? 0) - 1);
+					navigation.externalCronJobs = navigation.externalCronJobs.map((job) =>
+						job.jobId === selectedExternalCronJob.jobId &&
+						job.profile === selectedExternalCronJob.profile
+							? { ...job, unreadCount }
+							: job
+					);
+					navigation.selectedExternalCronJob = { ...selectedExternalCronJob, unreadCount };
+				}}
 				ondeleted={(deleted) => {
 					navigation.externalCronJobs = navigation.externalCronJobs.filter(
 						(job) => job.jobId !== deleted.jobId || job.profile !== deleted.profile

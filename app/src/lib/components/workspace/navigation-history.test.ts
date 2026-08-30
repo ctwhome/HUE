@@ -1,5 +1,5 @@
 import { afterEach, expect, mock, test } from 'bun:test';
-import type { Project, Session } from './types';
+import type { ExternalCronJob, Project, Session } from './types';
 
 mock.module('$app/navigation', () => ({ pushState() {}, replaceState() {} }));
 mock.module('$app/state', () => ({ page: { state: {} } }));
@@ -37,10 +37,12 @@ test('failed unavailable or deleted Session restoration leaves Session list reco
 		ready: false,
 		selectedProject: null,
 		selectedSession: null,
+		selectedExternalCronJob: null,
 		mobileDrawer: null,
 		activeTab: 'sessions',
 		sessionCollection: 'chats',
 		sessions: [],
+		externalCronJobs: [],
 		persistSelection() {
 			persistedSessionId = this.selectedSession?.sessionId ?? null;
 		},
@@ -68,4 +70,49 @@ test('failed unavailable or deleted Session restoration leaves Session list reco
 	expect(persistedSessionId).toBeNull();
 	expect(cleared).toBe(2);
 	expect(loads).toEqual(['deleted-session', null]);
+});
+
+test('restores an external cron run notification target', async () => {
+	Object.defineProperty(globalThis, 'window', {
+		configurable: true,
+		value: {
+			location: {
+				href: 'http://hue.local/?project=none&collection=cron&cronProfile=default&cronJob=job-1&cronRun=run-1'
+			}
+		}
+	});
+	Object.defineProperty(globalThis, 'localStorage', {
+		configurable: true,
+		value: { getItem: () => null }
+	});
+	const job = { profile: 'default', jobId: 'job-1', name: 'Daily review' } as ExternalCronJob;
+	const navigation = {
+		ready: false,
+		selectedProject: null,
+		selectedSession: null,
+		selectedExternalCronJob: null,
+		mobileDrawer: null,
+		activeTab: 'sessions',
+		sessionCollection: 'chats',
+		sessions: [],
+		externalCronJobs: [] as ExternalCronJob[],
+		persistSelection() {},
+		async loadActiveTab() {
+			this.externalCronJobs = [job];
+		},
+		async openSession() {
+			return false;
+		}
+	} as Parameters<typeof restoreNavigationSelection>[0];
+
+	await restoreNavigationSelection(navigation, {
+		getProjects: () => [],
+		isMobile: () => false,
+		endVoice: () => undefined,
+		stopPolling: () => undefined,
+		clearSession: () => undefined
+	});
+
+	expect(navigation.sessionCollection).toBe('cron');
+	expect(navigation.selectedExternalCronJob).toBe(job);
 });

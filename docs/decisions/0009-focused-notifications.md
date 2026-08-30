@@ -13,7 +13,7 @@ Session work can finish, fail, become uncertain, or require permission while the
 
 Retain HUE notifications as a bounded supporting surface. HUE owns an idempotent SQLite projection for five Session event kinds: completion, pending permission, pending clarify, failure, and unknown delivery. In-app state is canonical. Optional Web Push and foreground sound are delivery projections, not new product objects.
 
-External content is privacy-minimized and generic. Credentials are encrypted at rest with a separate local key. Registration starts from the current event baseline, retries are bounded, endpoint presence can suppress redundant non-urgent delivery, and delivery acknowledgements never imply read or action.
+External content is privacy-minimized and generic. Credentials are encrypted at rest with a separate local key. Registration starts from the current event baseline, retries are bounded, endpoint presence can suppress redundant non-urgent delivery, and delivery acknowledgements never imply read or action. ADR-0010 extends this projection to newly discovered terminal external Hermes cron runs after a separate run-history baseline.
 
 Notifications do not grant permissions, answer clarifications, retry unknown prompts, or disclose transcript content.
 

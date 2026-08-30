@@ -3,6 +3,7 @@ import { chmodSync, lstatSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { Database as BunDatabase } from 'bun:sqlite';
 import { validateIcon } from '$lib/icon';
+import { DEFAULT_BUNDLE, parseBundleReference } from '$lib/bundle';
 import type { ImageAttachment, InputAttachment, ReviewContext } from '$lib/message-content';
 import { validateProjectColor } from '$lib/project-color';
 import { DEFAULT_WORK_MODE, parseWorkMode, type WorkMode } from '$lib/work-mode';
@@ -37,7 +38,7 @@ export type Workflow = {
 	folder: string | null;
 	favorite: boolean;
 	profile: string;
-	workMode: WorkMode;
+	bundle: string;
 	archived: boolean;
 	createdAt: string;
 	updatedAt: string;
@@ -53,6 +54,21 @@ export type Schedule = {
 	sessionId: string;
 	createdAt: string;
 	updatedAt: string;
+};
+
+export type ExternalCronRun = {
+	profile: string;
+	profileName: string;
+	jobId: string;
+	jobName: string;
+	sessionId: string;
+	status: 'completed' | 'failed' | 'unknown';
+	startedAt: string;
+	endedAt: string | null;
+	endReason: string | null;
+	messageCount: number;
+	discoveredAt: string;
+	readAt: string | null;
 };
 
 export type CommitGeneration = {
@@ -176,6 +192,7 @@ export type NotificationDeliveryRow = {
 	visible_session_id: string | null;
 	visible: number | null;
 	expires_at: string | null;
+	external_cron_run: number;
 };
 
 export type StoredSession = {
@@ -330,6 +347,12 @@ function cleanOptional(value: unknown, max: number, label: string): string | nul
 	return value.trim();
 }
 
+function cleanExternalCronText(value: unknown, max: number, label: string): string {
+	if (typeof value !== 'string' || !value.trim() || value.length > max || value.includes('\0'))
+		throw new Error(`External cron ${label} is invalid`);
+	return value.trim();
+}
+
 function validateTags(tags: unknown): string[] {
 	if (!Array.isArray(tags) || tags.length > 10) throw new Error('A Session supports up to 10 tags');
 	const normalized = tags.map((tag) => cleanOptional(tag, 40, 'tag')!);
@@ -411,7 +434,9 @@ export class HUEStore {
 			currentVersion !== 1 &&
 			currentVersion !== 2 &&
 			currentVersion !== 3 &&
-			currentVersion !== 4
+			currentVersion !== 4 &&
+			currentVersion !== 5 &&
+			currentVersion !== 6
 		) {
 			throw new Error(
 				`HUE schema migration ${currentVersion} -> ${HUE_SCHEMA_VERSION} is unsupported. Stop HUE and use an application version that supports this database.`
@@ -431,9 +456,16 @@ export class HUEStore {
 					.get() as { notnull: number } | null
 			)?.notnull
 		);
+		const workflowColumns = this.database.query("PRAGMA table_info('workflows')").all() as Array<{
+			name: string;
+		}>;
+		const migratesWorkflowBundle =
+			workflowColumns.some(({ name }) => name === 'work_mode') &&
+			!workflowColumns.some(({ name }) => name === 'bundle');
 		const destructiveMigration = rebuildsMessages || rebuildsProjectSessions;
+		const requiresBackup = destructiveMigration || migratesWorkflowBundle;
 		let backup: { filename: string } | null = null;
-		if (this.filename !== ':memory:' && destructiveMigration) {
+		if (this.filename !== ':memory:' && requiresBackup) {
 			try {
 				backup = createHueDatabaseBackup(this.database, this.filename, undefined, true);
 			} catch {
@@ -479,7 +511,7 @@ export class HUEStore {
 				folder TEXT,
 				favorite INTEGER NOT NULL DEFAULT 0,
 				profile TEXT NOT NULL DEFAULT 'default',
-				work_mode TEXT NOT NULL DEFAULT 'autonomous',
+				bundle TEXT NOT NULL DEFAULT 'autonomous',
 				archived INTEGER NOT NULL DEFAULT 0,
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL
@@ -619,6 +651,31 @@ export class HUEStore {
 
 			CREATE INDEX IF NOT EXISTS schedules_due_idx ON schedules(enabled, next_run_at);
 
+			CREATE TABLE IF NOT EXISTS external_cron_state (
+				id INTEGER PRIMARY KEY CHECK (id = 1),
+				initialized_at TEXT NOT NULL
+			);
+
+			CREATE TABLE IF NOT EXISTS external_cron_runs (
+				profile TEXT NOT NULL,
+				profile_name TEXT NOT NULL,
+				job_id TEXT NOT NULL,
+				job_name TEXT NOT NULL,
+				session_id TEXT NOT NULL,
+				status TEXT NOT NULL CHECK (status IN ('completed', 'failed', 'unknown')),
+				started_at TEXT NOT NULL,
+				ended_at TEXT,
+				end_reason TEXT,
+				message_count INTEGER NOT NULL,
+				discovered_at TEXT NOT NULL,
+				read_at TEXT,
+				event_sequence INTEGER UNIQUE REFERENCES session_events(sequence),
+				PRIMARY KEY (profile, session_id)
+			);
+
+			CREATE INDEX IF NOT EXISTS external_cron_runs_job_idx
+				ON external_cron_runs(profile, job_id, started_at DESC);
+
 			CREATE TABLE IF NOT EXISTS commit_generations (
 				operation_id TEXT PRIMARY KEY,
 				project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -651,7 +708,7 @@ export class HUEStore {
 			name: string;
 		}>;
 		for (const [name, definition] of [
-			['work_mode', "TEXT NOT NULL DEFAULT 'autonomous'"],
+			['bundle', "TEXT NOT NULL DEFAULT 'autonomous'"],
 			['folder', 'TEXT'],
 			['favorite', 'INTEGER NOT NULL DEFAULT 0'],
 			['archived', 'INTEGER NOT NULL DEFAULT 0'],
@@ -660,6 +717,14 @@ export class HUEStore {
 			if (!workflowColumns.some((column) => column.name === name)) {
 				this.database.exec(`ALTER TABLE workflows ADD COLUMN ${name} ${definition}`);
 			}
+		}
+		if (
+			!workflowColumns.some((column) => column.name === 'bundle') &&
+			workflowColumns.some((column) => column.name === 'work_mode')
+		) {
+			this.database.exec(
+				"UPDATE workflows SET bundle = work_mode WHERE work_mode IN ('autonomous', 'live')"
+			);
 		}
 		this.database.exec("UPDATE workflows SET updated_at = created_at WHERE updated_at = ''");
 		let sessionColumns = this.database.query('PRAGMA table_info(project_sessions)').all() as Array<{
@@ -1031,11 +1096,13 @@ export class HUEStore {
 			.query(
 				`SELECT a.id, a.notification_id, a.endpoint_id, a.attempt_count,
 				 e.endpoint, e.p256dh, e.auth, n.project_id, n.session_id, n.kind, n.title, n.body, n.path,
-				 p.project_id AS visible_project_id, p.session_id AS visible_session_id, p.visible, p.expires_at
+				 p.project_id AS visible_project_id, p.session_id AS visible_session_id, p.visible, p.expires_at,
+				 CASE WHEN r.event_sequence IS NULL THEN 0 ELSE 1 END external_cron_run
 				 FROM notification_delivery_attempts a
 				 JOIN notification_endpoints e ON e.id = a.endpoint_id
 				 JOIN notifications n ON n.id = a.notification_id
 				 LEFT JOIN notification_presence p ON p.endpoint_id = e.id
+				 LEFT JOIN external_cron_runs r ON r.event_sequence = CAST(n.source_event_id AS INTEGER)
 				 WHERE a.status IN ('queued', 'retry') AND a.next_attempt_at <= ?
 				 AND e.enabled = 1 AND e.revoked_at IS NULL
 				 AND n.read_at IS NULL AND n.dismissed_at IS NULL AND n.acted_at IS NULL
@@ -1344,7 +1411,10 @@ export class HUEStore {
 		).map(({ cwd }) => cwd);
 	}
 
-	countSessions(projectId: string | null, scope: 'all' | 'scheduled' | 'unscheduled' = 'all'): number {
+	countSessions(
+		projectId: string | null,
+		scope: 'all' | 'scheduled' | 'unscheduled' = 'all'
+	): number {
 		const scheduleFilter =
 			scope === 'scheduled'
 				? 'AND EXISTS (SELECT 1 FROM schedules s WHERE s.session_id = project_sessions.session_id)'
@@ -2038,14 +2108,15 @@ export class HUEStore {
 		folder?: string | null;
 		favorite?: boolean;
 		profile?: string;
-		workMode?: WorkMode;
+		bundle?: string;
 	}): Workflow {
 		const createdAt = new Date().toISOString();
 		const profile = input.profile ?? 'default';
-		const workMode = input.workMode ?? DEFAULT_WORK_MODE;
+		const bundle = input.bundle === undefined ? DEFAULT_BUNDLE : parseBundleReference(input.bundle);
+		if (!bundle) throw new Error('Invalid bundle reference');
 		this.database
 			.query(
-				'INSERT INTO workflows (id, project_id, name, prompt, folder, favorite, profile, work_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+				'INSERT INTO workflows (id, project_id, name, prompt, folder, favorite, profile, bundle, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
 			)
 			.run(
 				input.id,
@@ -2055,7 +2126,7 @@ export class HUEStore {
 				input.folder ?? null,
 				input.favorite ? 1 : 0,
 				profile,
-				workMode,
+				bundle,
 				createdAt,
 				createdAt
 			);
@@ -2064,7 +2135,7 @@ export class HUEStore {
 			folder: input.folder ?? null,
 			favorite: input.favorite ?? false,
 			profile,
-			workMode,
+			bundle,
 			archived: false,
 			createdAt,
 			updatedAt: createdAt
@@ -2074,7 +2145,7 @@ export class HUEStore {
 	listWorkflows(projectId: string, includeArchived = false): Workflow[] {
 		const rows = this.database
 			.query(
-				`SELECT id, project_id, name, prompt, folder, favorite, profile, work_mode, archived, created_at, updated_at
+				`SELECT id, project_id, name, prompt, folder, favorite, profile, bundle, archived, created_at, updated_at
 				 FROM workflows WHERE project_id = ? ${includeArchived ? '' : 'AND archived = 0'}
 				 ORDER BY archived, updated_at DESC, id`
 			)
@@ -2086,7 +2157,7 @@ export class HUEStore {
 			folder: string | null;
 			favorite: number;
 			profile: string;
-			work_mode: string;
+			bundle: string;
 			archived: number;
 			created_at: string;
 			updated_at: string;
@@ -2099,7 +2170,7 @@ export class HUEStore {
 			folder: row.folder,
 			favorite: Boolean(row.favorite),
 			profile: row.profile,
-			workMode: parseWorkMode(row.work_mode) ?? DEFAULT_WORK_MODE,
+			bundle: parseBundleReference(row.bundle) ?? DEFAULT_BUNDLE,
 			archived: Boolean(row.archived),
 			createdAt: row.created_at,
 			updatedAt: row.updated_at
@@ -2110,18 +2181,23 @@ export class HUEStore {
 		projectId: string,
 		id: string,
 		patch: Partial<
-			Pick<
-				Workflow,
-				'name' | 'prompt' | 'folder' | 'favorite' | 'profile' | 'workMode' | 'archived'
-			>
+			Pick<Workflow, 'name' | 'prompt' | 'folder' | 'favorite' | 'profile' | 'bundle' | 'archived'>
 		>
 	): Workflow | null {
+		if (patch.bundle !== undefined && !parseBundleReference(patch.bundle)) {
+			throw new Error('Invalid bundle reference');
+		}
 		const current = this.listWorkflows(projectId, true).find((workflow) => workflow.id === id);
 		if (!current) return null;
-		const updated = { ...current, ...patch, updatedAt: new Date().toISOString() };
+		const updated = {
+			...current,
+			...patch,
+			bundle: patch.bundle === undefined ? current.bundle : parseBundleReference(patch.bundle)!,
+			updatedAt: new Date().toISOString()
+		};
 		this.database
 			.query(
-				`UPDATE workflows SET name = ?, prompt = ?, folder = ?, favorite = ?, profile = ?, work_mode = ?, archived = ?, updated_at = ?
+				`UPDATE workflows SET name = ?, prompt = ?, folder = ?, favorite = ?, profile = ?, bundle = ?, archived = ?, updated_at = ?
 				 WHERE id = ? AND project_id = ?`
 			)
 			.run(
@@ -2130,7 +2206,7 @@ export class HUEStore {
 				updated.folder,
 				updated.favorite ? 1 : 0,
 				updated.profile,
-				updated.workMode,
+				updated.bundle,
 				updated.archived ? 1 : 0,
 				updated.updatedAt,
 				id,
@@ -2217,6 +2293,185 @@ export class HUEStore {
 				'UPDATE commit_generations SET status = ?, error = ?, updated_at = ? WHERE operation_id = ?'
 			)
 			.run(status, error, new Date().toISOString(), operationId);
+	}
+
+	externalCronInitialized(): boolean {
+		return !!this.database.query('SELECT 1 FROM external_cron_state WHERE id = 1').get();
+	}
+
+	initializeExternalCron(now: string): void {
+		if (!Number.isFinite(Date.parse(now)))
+			throw new Error('External cron baseline time is invalid');
+		this.database
+			.query('INSERT OR IGNORE INTO external_cron_state (id, initialized_at) VALUES (1, ?)')
+			.run(now);
+	}
+
+	recordExternalCronRun(
+		input: Omit<ExternalCronRun, 'discoveredAt' | 'readAt'> & { discoveredAt: string },
+		notify: boolean
+	): boolean {
+		const profile = cleanExternalCronText(input.profile, 64, 'profile');
+		const profileName = cleanExternalCronText(input.profileName, 100, 'profile name');
+		const jobId = cleanExternalCronText(input.jobId, 128, 'job id');
+		const jobName = cleanExternalCronText(input.jobName, 200, 'job name');
+		const sessionId = cleanExternalCronText(input.sessionId, 300, 'Session id');
+		const endReason = input.endReason
+			? cleanExternalCronText(input.endReason, 128, 'end reason')
+			: null;
+		if (!['completed', 'failed', 'unknown'].includes(input.status))
+			throw new Error('External cron status is invalid');
+		for (const [label, value] of [
+			['start time', input.startedAt],
+			['discovery time', input.discoveredAt],
+			...(input.endedAt ? ([['end time', input.endedAt]] as const) : [])
+		] as const) {
+			if (!Number.isFinite(Date.parse(value))) throw new Error(`External cron ${label} is invalid`);
+		}
+		if (!Number.isSafeInteger(input.messageCount) || input.messageCount < 0)
+			throw new Error('External cron message count is invalid');
+		let created = false;
+		this.database.transaction(() => {
+			const result = this.database
+				.query(
+					`INSERT OR IGNORE INTO external_cron_runs
+					 (profile, profile_name, job_id, job_name, session_id, status, started_at, ended_at,
+					  end_reason, message_count, discovered_at, read_at)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+				)
+				.run(
+					profile,
+					profileName,
+					jobId,
+					jobName,
+					sessionId,
+					input.status,
+					input.startedAt,
+					input.endedAt,
+					endReason,
+					input.messageCount,
+					input.discoveredAt,
+					notify ? null : input.discoveredAt
+				);
+			created = result.changes > 0;
+			if (!created || !notify) return;
+			const event = this.appendEvent(null, sessionId, `message.${input.status}`, {
+				externalCron: true,
+				profile,
+				jobId,
+				runSessionId: sessionId
+			});
+			const presentation = {
+				completed: {
+					title: 'Hermes cron run completed',
+					body: `${jobName} completed in ${profileName}.`
+				},
+				failed: {
+					title: 'Hermes cron run failed',
+					body: `${jobName} failed in ${profileName}.`
+				},
+				unknown: {
+					title: 'Hermes cron outcome unknown',
+					body: `The outcome of ${jobName} in ${profileName} is unknown.`
+				}
+			}[input.status];
+			const path = `/?project=none&collection=cron&cronProfile=${encodeURIComponent(profile)}&cronJob=${encodeURIComponent(jobId)}&cronRun=${encodeURIComponent(sessionId)}`;
+			this.database
+				.query('UPDATE notifications SET title = ?, body = ?, path = ? WHERE source_event_id = ?')
+				.run(presentation.title, presentation.body, path, String(event.sequence));
+			this.database
+				.query(
+					'UPDATE external_cron_runs SET event_sequence = ? WHERE profile = ? AND session_id = ?'
+				)
+				.run(event.sequence, profile, sessionId);
+		})();
+		return created;
+	}
+
+	listExternalCronRuns(profile: string, jobId: string): ExternalCronRun[] {
+		const rows = this.database
+			.query(
+				`SELECT profile, profile_name, job_id, job_name, session_id, status, started_at,
+				 ended_at, end_reason, message_count, discovered_at, read_at
+				 FROM external_cron_runs WHERE profile = ? AND job_id = ?
+				 ORDER BY started_at DESC, session_id DESC`
+			)
+			.all(profile, jobId) as Array<{
+			profile: string;
+			profile_name: string;
+			job_id: string;
+			job_name: string;
+			session_id: string;
+			status: ExternalCronRun['status'];
+			started_at: string;
+			ended_at: string | null;
+			end_reason: string | null;
+			message_count: number;
+			discovered_at: string;
+			read_at: string | null;
+		}>;
+		return rows.map((row) => ({
+			profile: row.profile,
+			profileName: row.profile_name,
+			jobId: row.job_id,
+			jobName: row.job_name,
+			sessionId: row.session_id,
+			status: row.status,
+			startedAt: row.started_at,
+			endedAt: row.ended_at,
+			endReason: row.end_reason,
+			messageCount: row.message_count,
+			discoveredAt: row.discovered_at,
+			readAt: row.read_at
+		}));
+	}
+
+	getExternalCronRun(profile: string, jobId: string, sessionId: string): ExternalCronRun | null {
+		return (
+			this.listExternalCronRuns(profile, jobId).find((run) => run.sessionId === sessionId) ?? null
+		);
+	}
+
+	externalCronUnreadCount(profile: string, jobId: string): number {
+		return Number(
+			(
+				this.database
+					.query(
+						`SELECT COUNT(*) AS count FROM external_cron_runs
+						 WHERE profile = ? AND job_id = ? AND read_at IS NULL`
+					)
+					.get(profile, jobId) as { count: number }
+			).count
+		);
+	}
+
+	markExternalCronRunRead(profile: string, jobId: string, sessionId: string): boolean {
+		const now = new Date().toISOString();
+		let changed = false;
+		this.database.transaction(() => {
+			const row = this.database
+				.query(
+					`SELECT event_sequence FROM external_cron_runs
+					 WHERE profile = ? AND job_id = ? AND session_id = ?`
+				)
+				.get(profile, jobId, sessionId) as { event_sequence: number | null } | null;
+			if (!row) return;
+			changed =
+				this.database
+					.query(
+						`UPDATE external_cron_runs SET read_at = COALESCE(read_at, ?)
+						 WHERE profile = ? AND job_id = ? AND session_id = ?`
+					)
+					.run(now, profile, jobId, sessionId).changes > 0;
+			if (row.event_sequence !== null) {
+				this.database
+					.query(
+						'UPDATE notifications SET read_at = COALESCE(read_at, ?) WHERE source_event_id = ?'
+					)
+					.run(now, String(row.event_sequence));
+			}
+		})();
+		return changed;
 	}
 
 	createSchedule(input: Omit<Schedule, 'createdAt' | 'updatedAt'>): Schedule {

@@ -7,7 +7,7 @@ import {
 	type LaunchDestination,
 	type MobilePane
 } from './mobile-navigation';
-import type { Project, Session, SessionCollection } from './types';
+import type { ExternalCronJob, Project, Session, SessionCollection } from './types';
 
 export type HistoryMode = 'push' | 'replace' | 'none';
 
@@ -18,10 +18,12 @@ type NavigationState = {
 	ready: boolean;
 	selectedProject: Project | null;
 	selectedSession: Session | null;
+	selectedExternalCronJob: ExternalCronJob | null;
 	mobileDrawer: MobilePane;
 	activeTab: 'sessions' | 'workflows';
 	sessionCollection: SessionCollection;
 	sessions: Session[];
+	externalCronJobs: ExternalCronJob[];
 	persistSelection: (
 		mode?: Exclude<HistoryMode, 'none'>,
 		drawerEntry?: boolean,
@@ -46,7 +48,11 @@ type RestoreEffects = {
 export function persistNavigationSelection(
 	navigation: Pick<
 		NavigationState,
-		'selectedProject' | 'selectedSession' | 'mobileDrawer' | 'sessionCollection'
+		| 'selectedProject'
+		| 'selectedSession'
+		| 'selectedExternalCronJob'
+		| 'mobileDrawer'
+		| 'sessionCollection'
 	>,
 	mode: Exclude<HistoryMode, 'none'> = 'replace',
 	drawerEntry = false,
@@ -63,6 +69,14 @@ export function persistNavigationSelection(
 	if (navigation.selectedSession)
 		url.searchParams.set('session', navigation.selectedSession.sessionId);
 	else url.searchParams.delete('session');
+	url.searchParams.delete('cronRun');
+	if (navigation.selectedExternalCronJob) {
+		url.searchParams.set('cronProfile', navigation.selectedExternalCronJob.profile);
+		url.searchParams.set('cronJob', navigation.selectedExternalCronJob.jobId);
+	} else {
+		url.searchParams.delete('cronProfile');
+		url.searchParams.delete('cronJob');
+	}
 	if (navigation.mobileDrawer) url.searchParams.set('pane', navigation.mobileDrawer);
 	else url.searchParams.delete('pane');
 	(mode === 'push' ? pushState : replaceState)(url, {
@@ -85,7 +99,9 @@ export function persistNavigationSelection(
 		);
 	document.title = navigation.selectedSession?.title
 		? `${navigation.selectedSession.title} · HUE`
-		: 'HUE';
+		: navigation.selectedExternalCronJob?.name
+			? `${navigation.selectedExternalCronJob.name} · HUE`
+			: 'HUE';
 }
 
 export async function restoreNavigationSelection(
@@ -99,14 +115,18 @@ export async function restoreNavigationSelection(
 		localStorage.getItem(NAVIGATION_MEMORY_KEY),
 		effects.getProjects().map(({ id }) => id)
 	);
-	const notificationTarget = url.searchParams.has('event');
+	const notificationTarget = url.searchParams.has('event') || url.searchParams.has('cronRun');
+	const cronProfile = url.searchParams.get('cronProfile');
+	const cronJob = url.searchParams.get('cronJob');
 	const mobilePane = effects.isMobile() ? resolveInitialMobilePane(destination) : null;
 	const sameWorkspace =
 		!notificationTarget &&
 		navigation.ready &&
 		destination.projectId === (navigation.selectedProject?.id ?? null) &&
 		destination.collection === navigation.sessionCollection &&
-		destination.sessionId === (navigation.selectedSession?.sessionId ?? null);
+		destination.sessionId === (navigation.selectedSession?.sessionId ?? null) &&
+		cronProfile === (navigation.selectedExternalCronJob?.profile ?? null) &&
+		cronJob === (navigation.selectedExternalCronJob?.jobId ?? null);
 	if (navigation.ready && !sameWorkspace && guard?.()) return null;
 	if (sameWorkspace) {
 		navigation.mobileDrawer = mobilePane;
@@ -125,6 +145,7 @@ export async function restoreNavigationSelection(
 			? null
 			: (effects.getProjects().find(({ id }) => id === destination.projectId) ?? null);
 	navigation.selectedSession = null;
+	navigation.selectedExternalCronJob = null;
 	navigation.sessionCollection = destination.collection;
 	effects.clearSession();
 	navigation.activeTab = 'sessions';
@@ -136,6 +157,12 @@ export async function restoreNavigationSelection(
 	// Shell and workbench stay usable while slower Session discovery continues.
 	navigation.ready = true;
 	await navigation.loadActiveTab(destination.sessionId);
+	if (!navigation.selectedProject && destination.collection === 'cron' && cronProfile && cronJob) {
+		navigation.selectedExternalCronJob =
+			navigation.externalCronJobs.find(
+				(job) => job.profile === cronProfile && job.jobId === cronJob
+			) ?? null;
+	}
 	const session = navigation.sessions.find(({ sessionId }) => sessionId === destination.sessionId);
 	const sessionRestored = session
 		? await navigation.openSession(session, 'none', url.searchParams.get('event'))

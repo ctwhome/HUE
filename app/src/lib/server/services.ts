@@ -4,9 +4,12 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { HermesACP } from './hermes-acp';
 import type { HermesSession } from './hermes-acp';
+import { ExternalCronService } from './external-cron-service';
 import { redactHermesValue } from './redaction';
 import { resolveHermesCommand } from './hermes-cli';
 import { HermesServe } from './hermes-serve';
+import { HermesBundles } from './hermes-bundles';
+import { hermesSkillAccess, hermesSkillsRoot } from './hermes-skills';
 import { HermesProjects, type HermesProject } from './hermes-projects';
 import { MessageDispatcher } from './message-dispatcher';
 import { ProjectTerminals, resolveTerminalShell } from './project-terminals';
@@ -21,10 +24,12 @@ type HUEServices = {
 	store: HUEStore;
 	runtime: HermesACP;
 	admin: HermesServe;
+	bundles: HermesBundles;
 	projects: HermesProjects;
 	dispatcher: MessageDispatcher;
 	notifications: NotificationService;
 	schedules: ScheduleService;
+	externalCron: ExternalCronService;
 	terminals: ProjectTerminals;
 	projectOperations: ProjectOperations<HermesProject>;
 };
@@ -64,6 +69,12 @@ function createServices(): HUEServices {
 		{ request: (method, params) => admin.rpc(method, params) },
 		profile
 	);
+	const bundles = new HermesBundles(
+		{ request: (method, params) => admin.rpc(method, params) },
+		profile,
+		() => admin.json<unknown[]>('/api/skills'),
+		(name) => hermesSkillAccess(name, hermesSkillsRoot(profile))
+	);
 	const projectOperations = new ProjectOperations<HermesProject>({
 		resolve: (reference) => projects.get(reference),
 		active: (projectId) => store.hasActiveProjectDeliveries(projectId),
@@ -77,14 +88,21 @@ function createServices(): HUEServices {
 		dispatcher,
 		root: unprojectedSessionRoot
 	});
+	const externalCron = new ExternalCronService({
+		store,
+		transport: admin,
+		onAttention: () => notifications.deliverPending()
+	});
 	return {
 		store,
 		runtime,
 		admin,
+		bundles,
 		projects,
 		dispatcher,
 		notifications,
 		schedules,
+		externalCron,
 		terminals: new ProjectTerminals(),
 		projectOperations
 	};
@@ -93,7 +111,8 @@ function createServices(): HUEServices {
 export function services(): HUEServices {
 	if (
 		!(globalServices.__hueServices?.store instanceof HUEStore) ||
-		!(globalServices.__hueServices?.schedules instanceof ScheduleService)
+		!(globalServices.__hueServices?.schedules instanceof ScheduleService) ||
+		!(globalServices.__hueServices?.externalCron instanceof ExternalCronService)
 	) {
 		globalServices.__hueServices = createServices();
 	}
@@ -107,6 +126,7 @@ export function shutdownServices(): Promise<void> {
 	globalServices.__hueShutdown = (async () => {
 		state.terminals.dispose();
 		state.schedules.close();
+		await state.externalCron?.close();
 		const dispatcherDrain = state.dispatcher.close();
 		const notificationDrain = state.notifications.close();
 		await Promise.all([state.runtime.close(), state.admin.close()]);

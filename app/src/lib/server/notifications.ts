@@ -233,6 +233,7 @@ export class NotificationService {
 		const rows = this.store.listDueNotificationAttempts(now);
 		for (const row of rows) {
 			const exactVisible =
+				row.external_cron_run === 0 &&
 				row.visible === 1 &&
 				row.expires_at !== null &&
 				row.expires_at > now &&
@@ -242,11 +243,18 @@ export class NotificationService {
 				this.finishAttempt(row.id, 'suppressed', row.attempt_count, 'visible-context');
 				continue;
 			}
+			const externalBody = {
+				completed: 'Open HUE to review the Hermes job.',
+				failed: 'Open HUE to inspect the Hermes job.',
+				unknown: 'Open HUE to review the Hermes job.',
+				permission: row.body,
+				clarify: row.body
+			}[row.kind];
 			const payload = JSON.stringify({
 				id: row.notification_id,
 				kind: row.kind,
 				title: row.title,
-				body: row.body,
+				body: row.external_cron_run ? externalBody : row.body,
 				path: row.path
 			});
 			try {

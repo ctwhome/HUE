@@ -22,6 +22,17 @@ export type ExternalHermesCronDetail = ExternalHermesCronJob & {
 	scriptOnly: boolean;
 };
 
+export type ExternalHermesCronRun = {
+	sessionId: string;
+	profile: string;
+	status: 'completed' | 'failed' | 'unknown';
+	startedAt: string;
+	endedAt: string | null;
+	endReason: string | null;
+	messageCount: number;
+	readAt?: string | null;
+};
+
 type Transport = { json(path: string, init?: RequestInit): Promise<unknown> };
 
 const safeString = (value: unknown, maximum: number) => {
@@ -86,6 +97,57 @@ export async function listExternalHermesCron(
 		});
 	}
 	return jobs;
+}
+
+export async function listExternalHermesCronRuns(
+	transport: Transport,
+	profile: string,
+	jobId: string
+): Promise<ExternalHermesCronRun[]> {
+	const safeProfile = reference(profile, 'Profile');
+	const safeJobId = reference(jobId, 'Job id');
+	const result = await transport.json(
+		`/api/cron/jobs/${encodeURIComponent(safeJobId)}/runs?profile=${encodeURIComponent(safeProfile)}&limit=100`
+	);
+	if (!result || typeof result !== 'object' || !Array.isArray((result as { runs?: unknown }).runs))
+		throw new Error('Hermes returned invalid cron run history');
+	return (result as { runs: unknown[] }).runs.flatMap((value) => {
+		if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+		const run = value as Record<string, unknown>;
+		const sessionId = rawString(run.id, 300);
+		const started = typeof run.started_at === 'number' ? run.started_at : NaN;
+		if (
+			!sessionId ||
+			run.source !== 'cron' ||
+			!sessionId.startsWith(`cron_${safeJobId}_`) ||
+			!Number.isFinite(started) ||
+			started <= 0 ||
+			run.is_active === true
+		)
+			return [];
+		const ended = typeof run.ended_at === 'number' ? run.ended_at : null;
+		const endReason = rawString(run.end_reason, 128);
+		const status =
+			ended !== null && endReason === 'cron_complete'
+				? 'completed'
+				: ended !== null && endReason === 'cron_incomplete_no_output'
+					? 'failed'
+					: 'unknown';
+		return [
+			{
+				sessionId,
+				profile: safeProfile,
+				status,
+				startedAt: new Date(started * 1_000).toISOString(),
+				endedAt: ended === null ? null : new Date(ended * 1_000).toISOString(),
+				endReason,
+				messageCount:
+					typeof run.message_count === 'number' && Number.isSafeInteger(run.message_count)
+						? Math.max(0, run.message_count)
+						: 0
+			}
+		];
+	});
 }
 
 const reference = (value: unknown, name: string) => {

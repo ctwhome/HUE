@@ -32,7 +32,7 @@ test('updates and deletes a workflow through the canonical Hermes project', asyn
 				name: 'Ship release',
 				prompt: 'Run checks.',
 				profile: 'default',
-				workMode: 'live',
+				bundle: 'release',
 				folder: 'Delivery',
 				favorite: true,
 				archived: true
@@ -52,7 +52,7 @@ test('updates and deletes a workflow through the canonical Hermes project', asyn
 				name: 'Ship release',
 				prompt: 'Run checks.',
 				profile: 'default',
-				workMode: 'live',
+				bundle: 'release',
 				folder: 'Delivery',
 				favorite: true,
 				archived: true
@@ -68,7 +68,7 @@ test('rejects invalid workflow fields', async () => {
 		params: { projectId: 'slug', workflowId: 'release' },
 		request: new Request('http://hue.test/workflow', {
 			method: 'PATCH',
-			body: JSON.stringify({ workMode: 'unsafe' })
+			body: JSON.stringify({ bundle: '' })
 		})
 	} as never);
 

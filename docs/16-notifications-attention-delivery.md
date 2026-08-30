@@ -11,9 +11,10 @@ HUE keeps a durable, local attention projection for meaningful Session outcomes 
 - Source-event sequence is unique, making startup projection and replay idempotent.
 - Canonical lifecycle, device endpoints, endpoint presence, and delivery attempts are separate SQLite records.
 - Projectless and Project-scoped Sessions use the same behavior.
+- External Hermes cron runs establish a read baseline, then terminal runs discovered by 30-minute or Cron-surface polling create the same completion, failure, or unknown attention projection.
 - In-app notification text resolves current Project and Session names after authentication.
 - External payloads remain generic and exclude prompts, transcript text, paths, tool arguments, answers, and secret-bearing errors.
-- Permission and clarify notifications remain urgent; visible exact-Session presence may suppress redundant completion/failure/unknown system delivery for that endpoint.
+- Permission and clarify notifications remain urgent; visible exact-Session presence may suppress redundant completion/failure/unknown system delivery for that endpoint. External cron delivery is not presence-suppressed because it has no HUE Session context.
 
 ## Optional Web Push
 
@@ -29,4 +30,4 @@ Registration starts at the current event baseline, so enabling a device never re
 
 ## Truth and privacy
 
-Gateway acceptance is not display, read, or action. HUE records only the strongest acknowledgement available. Read, dismissed, acted, and resolved-interaction notifications are excluded from future delivery. Foreground sound is local opt-in; browser and operating-system policy controls background sound and wearable mirroring.
+Gateway acceptance is not display, read, or action. HUE records only the strongest acknowledgement available. Read, dismissed, acted, and resolved-interaction notifications are excluded from future delivery. Opening an external cron run marks its projected unread state and notification read; the transcript remains a live Hermes read. Foreground sound is local opt-in; browser and operating-system policy controls background sound and wearable mirroring.

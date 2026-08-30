@@ -295,6 +295,41 @@ describe('notification delivery boundary', () => {
 		store.close();
 	});
 
+	it('keeps external cron job details out of Web Push', async () => {
+		const store = setup();
+		const payloads: string[] = [];
+		const service = new NotificationService(store, {
+			vapid: { publicKey: 'public', privateKey: 'private', subject: 'mailto:hue@example.test' },
+			transport: { send: async (_target, payload) => payloads.push(payload) }
+		});
+		service.upsertEndpoint(subscription);
+		store.recordExternalCronRun(
+			{
+				profile: 'default',
+				profileName: 'Private profile',
+				jobId: 'job-1',
+				jobName: 'Secret daily review',
+				sessionId: 'cron_job-1_20260830_090000',
+				status: 'failed',
+				startedAt: '2026-08-30T09:00:00.000Z',
+				endedAt: '2026-08-30T09:01:00.000Z',
+				endReason: 'cron_incomplete_no_output',
+				messageCount: 1,
+				discoveredAt: '2026-08-30T09:02:00.000Z'
+			},
+			true
+		);
+
+		await service.deliverPending();
+		expect(payloads).toHaveLength(1);
+		expect(payloads[0]).not.toMatch(/Secret daily review|Private profile/i);
+		expect(JSON.parse(payloads[0]!)).toMatchObject({
+			kind: 'failed',
+			body: 'Open HUE to inspect the Hermes job.'
+		});
+		store.close();
+	});
+
 	it('never suppresses permission or clarify for visible exact context', async () => {
 		const store = setup();
 		const payloads: string[] = [];

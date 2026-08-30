@@ -13,6 +13,7 @@ import type {
 	Api,
 	ExternalCronJob,
 	HermesCommand,
+	HermesBundle,
 	HermesRuntime,
 	Project,
 	Session,
@@ -77,7 +78,7 @@ export class WorkspaceNavigation {
 	workflowPrompt = $state('');
 	workflowFolder = $state('');
 	workflowProfile = $state('default');
-	workflowWorkMode = $state<'autonomous' | 'live'>('autonomous');
+	workflowBundle = $state('autonomous');
 	editSessionMenu = $state<HTMLElement>();
 	sessionIconMenu = $state<HTMLElement>();
 	sessionIconAnchor = $state<HTMLElement>();
@@ -496,7 +497,7 @@ export class WorkspaceNavigation {
 						prompt: this.workflowPrompt,
 						folder: this.workflowFolder,
 						profile: this.workflowProfile,
-						workMode: this.workflowWorkMode
+						bundle: this.workflowBundle
 					})
 				}
 			);
@@ -529,7 +530,7 @@ export class WorkspaceNavigation {
 						folder: prompt.category,
 						favorite: true,
 						profile: 'default',
-						workMode: 'autonomous'
+						bundle: 'autonomous'
 					})
 				}
 			);
@@ -545,10 +546,7 @@ export class WorkspaceNavigation {
 	updateWorkflow = async (
 		workflow: Workflow,
 		patch: Partial<
-			Pick<
-				Workflow,
-				'name' | 'prompt' | 'folder' | 'favorite' | 'profile' | 'workMode' | 'archived'
-			>
+			Pick<Workflow, 'name' | 'prompt' | 'folder' | 'favorite' | 'profile' | 'bundle' | 'archived'>
 		>
 	) => {
 		const project = this.selectedProject;
@@ -599,7 +597,7 @@ export class WorkspaceNavigation {
 						folder: workflow.folder,
 						favorite: workflow.favorite,
 						profile: workflow.profile,
-						workMode: workflow.workMode
+						bundle: workflow.bundle
 					})
 				}
 			);
@@ -620,10 +618,34 @@ export class WorkspaceNavigation {
 			);
 			return;
 		}
+		if (!workflow.bundle.trim()) {
+			this.effects.setError('Choose a Hermes bundle before running this Workflow.');
+			return;
+		}
+		let bundle: HermesBundle | undefined;
+		try {
+			const body = await this.effects.api<{ bundles: HermesBundle[] }>('/api/hermes/bundles');
+			bundle = body.bundles.find(({ slug }) => slug === workflow.bundle);
+		} catch (cause) {
+			this.effects.setError(
+				`Could not validate Hermes bundle ${workflow.bundle}: ${cause instanceof Error ? cause.message : String(cause)}`
+			);
+			return;
+		}
+		if (!bundle) {
+			this.effects.setError(
+				`Hermes bundle ${workflow.bundle} is unavailable. Choose an installed bundle and try again.`
+			);
+			return;
+		}
+		if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(bundle.slug)) {
+			this.effects.setError(`Hermes bundle ${workflow.bundle} has an invalid command slug.`);
+			return;
+		}
 		this.activeTab = 'sessions';
-		const session = await this.createSession(workflow.workMode);
+		const session = await this.createSession();
 		if (!session) return;
-		await this.effects.sendText(workflow.prompt);
+		await this.effects.sendText(`/${bundle.slug} ${workflow.prompt}`);
 	};
 	openEditSession = (event: MouseEvent, session: Session) => {
 		event.stopPropagation();

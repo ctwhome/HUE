@@ -133,6 +133,11 @@ export function readHermesSkill(name: string, root = hermesSkillsRoot('default')
 	};
 }
 
+export function hermesSkillAccess(name: string, root = hermesSkillsRoot('default')) {
+	const found = findSkill(root, name);
+	return { provenance: found.provenance, editable: found.provenance === 'custom' };
+}
+
 export function writeHermesSkill(
 	name: string,
 	content: string,

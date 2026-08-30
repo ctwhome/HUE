@@ -1191,7 +1191,7 @@ test('Project tools stay docked across Sessions and collapse to their rail', asy
 		contentType: 'image/png'
 	});
 	await page.setViewportSize(viewports[1]);
-	await page.locator('.projectless-row > .project-select').click();
+	await page.locator('.projectless-row > .project-select').first().click();
 	await page
 		.locator('.project-rail nav .project-select')
 		.filter({ hasText: 'HUE' })
@@ -4767,11 +4767,14 @@ test('keeps chat clean while Thinking dialog and current task preserve ACP activ
 			)
 	).toEqual([1, 2, 5, 7, 8, 9]);
 	await expect(page.getByRole('button', { name: 'Thinking' })).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Tasks' })).toHaveAttribute('title', /1\/2/);
+	await expect(page.getByRole('button', { name: 'Tasks', exact: true })).toHaveAttribute(
+		'title',
+		/1\/2/
+	);
 	const composer = primarySessionSurface(page).locator('.composer');
 	for (const trigger of [
 		page.getByRole('button', { name: 'Thinking' }),
-		page.getByRole('button', { name: 'Tasks' })
+		page.getByRole('button', { name: 'Tasks', exact: true })
 	]) {
 		const triggerBox = (await trigger.boundingBox())!;
 		const composerBox = (await composer.boundingBox())!;
@@ -4791,7 +4794,7 @@ test('keeps chat clean while Thinking dialog and current task preserve ACP activ
 		await expect(time).toHaveAttribute('title', /2026/);
 	}
 	const thinkingTrigger = page.getByRole('button', { name: 'Thinking' });
-	const taskTrigger = page.getByRole('button', { name: 'Tasks' });
+	const taskTrigger = page.getByRole('button', { name: 'Tasks', exact: true });
 	await thinkingTrigger.click();
 	const thinking = page.getByLabel('Thinking timeline');
 	await expect(thinking).toBeVisible();
@@ -5600,11 +5603,14 @@ test('starts a new session without the previous session output', async ({ page }
 test('opens the project prompt library from the composer across required viewports', async ({
 	page
 }, testInfo) => {
+	test.setTimeout(60_000);
 	const browserErrors: string[] = [];
 	let sentPrompt = '';
 	let createdFolder = '';
 	let createdFavorite = false;
 	let updatedFolder = '';
+	let updatedBundle = '';
+	let savedSkill = '';
 	async function openPromptLibrary() {
 		const button = page.getByRole('button', { name: 'Prompt library' });
 		if (!(await button.isVisible()))
@@ -5624,9 +5630,34 @@ test('opens the project prompt library from the composer across required viewpor
 			prompt: 'Run checks and prepare release notes.',
 			folder: 'Delivery',
 			profile: 'default',
-			workMode: 'autonomous',
+			bundle: 'release',
 			archived: false,
 			favorite: false
+		}
+	];
+	const bundleRows = [
+		{
+			name: 'Release',
+			slug: 'release',
+			description: 'Release safely',
+			skills: ['review', 'protected'],
+			instruction: 'Check every release.'
+		}
+	];
+	const bundleSkills = [
+		{
+			name: 'review',
+			description: 'Review code',
+			enabled: true,
+			provenance: 'custom',
+			permissions: { read: true, write: true, delete: true }
+		},
+		{
+			name: 'protected',
+			description: 'Protected guidance',
+			enabled: true,
+			provenance: 'bundled',
+			permissions: { read: true, write: false, delete: false }
 		}
 	];
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
@@ -5670,8 +5701,51 @@ test('opens the project prompt library from the composer across required viewpor
 	await page.route('**/api/projects/*/workflows/catalog-copy', async (route) => {
 		const patch = (await route.request().postDataJSON()) as Partial<(typeof workflowRows)[number]>;
 		updatedFolder = patch.folder ?? '';
+		updatedBundle = patch.bundle ?? '';
 		Object.assign(workflowRows[1]!, patch);
 		await route.fulfill({ json: { workflow: workflowRows[1] } });
+	});
+	await page.route('**/api/hermes/bundles', async (route) => {
+		if (route.request().method() === 'POST') {
+			const body = (await route.request().postDataJSON()) as (typeof bundleRows)[number];
+			const bundle = {
+				...body,
+				slug: body.name.toLowerCase().replaceAll(' ', '-'),
+				description: body.description ?? '',
+				instruction: body.instruction ?? ''
+			};
+			bundleRows.push(bundle);
+			return route.fulfill({ status: 201, json: { bundle } });
+		}
+		return route.fulfill({ json: { bundles: bundleRows, skills: bundleSkills } });
+	});
+	await page.route(/\/api\/hermes\/bundles\/([^/?]+)$/, async (route) => {
+		const slug = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop()!);
+		const index = bundleRows.findIndex((bundle) => bundle.slug === slug);
+		if (route.request().method() === 'DELETE') {
+			bundleRows.splice(index, 1);
+			return route.fulfill({ json: { deleted: true } });
+		}
+		if (route.request().method() === 'PUT') {
+			Object.assign(bundleRows[index]!, await route.request().postDataJSON());
+			return route.fulfill({ json: { bundle: bundleRows[index] } });
+		}
+		return route.fulfill({ json: { bundle: bundleRows[index] } });
+	});
+	await page.route(/\/api\/hermes\/skills\/([^/?]+)$/, async (route) => {
+		const name = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop()!);
+		const editable = name === 'review';
+		if (route.request().method() === 'PUT') {
+			savedSkill = ((await route.request().postDataJSON()) as { content: string }).content;
+		}
+		return route.fulfill({
+			json: {
+				name,
+				content: savedSkill || `---\nname: ${name}\n---\n\n# ${name}\n`,
+				provenance: editable ? 'custom' : 'bundled',
+				editable
+			}
+		});
 	});
 
 	await addProject(page);
@@ -5692,7 +5766,7 @@ test('opens the project prompt library from the composer across required viewpor
 			dialog.getByRole('button', { name: 'Add Prepare release to input' })
 		).toBeVisible();
 		await expect(dialog.getByText('Run checks and prepare release notes.')).toBeVisible();
-		await expect(dialog.getByText('HUE · default · Autonomous')).toBeVisible();
+		await expect(dialog.getByText('HUE · default · Release')).toBeVisible();
 		const more = dialog.getByRole('button', { name: 'More actions for Prepare release' });
 		expect((await more.boundingBox())!.width).toBeGreaterThanOrEqual(44);
 		await more.click();
@@ -5742,9 +5816,11 @@ test('opens the project prompt library from the composer across required viewpor
 		.click();
 	await dialog.getByRole('button', { name: 'More actions for Code Reviewer' }).click();
 	await dialog.getByRole('button', { name: 'Edit Workflow' }).click();
+	await dialog.locator('form').getByLabel('Hermes bundle').selectOption('release');
 	await dialog.locator('form').getByLabel('Folder').fill('Quality');
 	await dialog.getByRole('button', { name: 'Save prompt' }).click();
 	await expect.poll(() => updatedFolder).toBe('Quality');
+	await expect.poll(() => updatedBundle).toBe('release');
 	await dialog.getByRole('button', { name: 'Back to prompts' }).click();
 	await dialog.getByRole('button', { name: /Prompts/ }).click();
 	await dialog.locator('summary').filter({ hasText: 'Delivery' }).click();
@@ -5758,6 +5834,44 @@ test('opens the project prompt library from the composer across required viewpor
 		'Existing draft\n\nRun checks and prepare release notes.'
 	);
 	await expect(page.getByLabel('Message Hermes')).toBeFocused();
+	await openPromptLibrary();
+	await dialog.getByRole('button', { name: /Bundles/ }).click();
+	await expect(dialog.getByRole('navigation', { name: 'Hermes bundles' })).toBeVisible();
+	await expect(dialog.getByLabel('Search prompts')).toBeHidden();
+	await dialog.getByRole('button', { name: /^Release / }).click();
+	await expect(dialog.getByText('Release safely')).toBeVisible();
+	await expect(dialog.getByRole('button', { name: 'Open review skill' })).toBeVisible();
+	await dialog.getByLabel('Include protected').uncheck();
+	await dialog.getByRole('button', { name: 'Save bundle' }).click();
+	await expect.poll(() => bundleRows[0]?.skills).toEqual(['review']);
+	await dialog.getByLabel('Include protected').check();
+	await dialog.getByRole('button', { name: 'Save bundle' }).click();
+	await dialog.getByRole('button', { name: 'Open review skill' }).click();
+	await expect(dialog.getByLabel('Skill content')).toBeEditable();
+	await dialog.getByLabel('Skill content').fill('---\nname: review\n---\n\nUpdated\n');
+	await dialog.getByRole('button', { name: 'Save skill' }).click();
+	await expect.poll(() => savedSkill).toContain('Updated');
+	await dialog.getByRole('button', { name: 'Back to bundle', exact: true }).click();
+	await dialog.getByRole('button', { name: 'Open protected skill' }).click();
+	await expect(dialog.getByLabel('Skill content')).toBeDisabled();
+	await expect(dialog.getByText('Read-only · bundled')).toBeVisible();
+	await dialog.getByRole('button', { name: 'Back to bundle', exact: true }).click();
+	if (await dialog.getByRole('button', { name: 'Back to bundles' }).isVisible()) {
+		await dialog.getByRole('button', { name: 'Back to bundles' }).click();
+	}
+	await dialog.getByRole('button', { name: 'New bundle' }).click();
+	await dialog.getByLabel('Bundle name').fill('Quality');
+	await dialog.getByLabel('Include review').check();
+	await dialog.getByRole('button', { name: 'Add bundle' }).click();
+	await dialog.getByLabel('Bundle description').fill('Quality checks');
+	await dialog.getByLabel('Include protected').check();
+	await dialog.getByRole('button', { name: 'Save bundle' }).click();
+	await expect
+		.poll(() => bundleRows.find(({ name }) => name === 'Quality')?.skills)
+		.toEqual(['review', 'protected']);
+	page.once('dialog', (prompt) => prompt.accept('Quality'));
+	await dialog.getByRole('button', { name: 'Delete bundle' }).click();
+	await expect.poll(() => bundleRows.some(({ name }) => name === 'Quality')).toBe(false);
 	expect(sentPrompt).toBe('');
 	expect(browserErrors).toEqual([]);
 });
@@ -5890,7 +6004,7 @@ test('starts and revisits a session without a project', async ({ page }) => {
 		await page.getByRole('button', { name: 'New chat' }).click();
 		await expect.poll(() => creations).toBe(expectedCreations);
 		await expect(page.getByRole('heading', { name: 'Start this Hermes Session' })).toBeVisible();
-		await expect(page.locator('.projectless-row .project-select')).toContainText('Chats');
+		await expect(page.locator('.projectless-row .project-select').first()).toContainText('Chats');
 		await expect(page.getByLabel('Message Hermes')).toBeFocused();
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
@@ -5912,26 +6026,28 @@ test('shows external Hermes cron jobs in the Cron tasks folder', async ({ page }
 				externalCronJobs:
 					url.searchParams.get('scope') === 'scheduled'
 						? Array.from({ length: 25 }, (_, index) => ({
-									jobId: index === 0 ? 'af28bd12971a' : `job-${index}`,
-									name:
-										index === 0
-											? 'Daily review'
-											: `Long scheduled Hermes maintenance job ${index}`,
-									profile: 'default',
-									profileName: 'Default',
-									schedule: 'Daily at 9:00 AM',
-									scheduleKind: 'cron',
-									enabled: true,
-									state: 'scheduled',
-									nextRunAt: '2026-08-30T09:00:00Z',
-									lastRunAt: '2026-08-29T09:00:00Z',
-									lastStatus: 'completed'
-								}))
+								jobId: index === 0 ? 'af28bd12971a' : `job-${index}`,
+								name:
+									index === 0 ? 'Daily review' : `Long scheduled Hermes maintenance job ${index}`,
+								profile: 'default',
+								profileName: 'Default',
+								schedule: 'Daily at 9:00 AM',
+								scheduleKind: 'cron',
+								enabled: true,
+								state: 'scheduled',
+								nextRunAt: '2026-08-30T09:00:00Z',
+								lastRunAt: '2026-08-29T09:00:00Z',
+								lastStatus: 'completed'
+							}))
 						: []
 			}
 		});
 	});
 	await page.route('**/api/hermes/cron/**', async (route) => {
+		if (new URL(route.request().url()).pathname.endsWith('/runs')) {
+			await route.fulfill({ json: { runs: [] } });
+			return;
+		}
 		const requestBody = route.request().method() === 'PUT' ? route.request().postDataJSON() : null;
 		await route.fulfill({
 			json: {
@@ -5981,6 +6097,7 @@ test('shows external Hermes cron jobs in the Cron tasks folder', async ({ page }
 		const editor = page.getByRole('main', { name: 'Cron job editor' });
 		await expect(editor).toBeVisible();
 		await expect(editor.getByRole('heading', { name: 'Daily review' })).toBeVisible();
+		await editor.getByRole('button', { name: 'Settings' }).click();
 		await expect(editor.getByLabel('Name', { exact: true })).toHaveValue('Daily review');
 		await expect(editor.getByLabel('Schedule')).toHaveValue('0 9 * * *');
 		await expect(editor.getByLabel('Prompt')).toHaveValue('Review progress');
@@ -6066,11 +6183,7 @@ test('retries a lost acknowledgement with the same complete envelope', async ({ 
 	expect(serverEnvelopes).toHaveLength(2);
 	expect(serverEnvelopes[1]).toEqual(serverEnvelopes[0]);
 	await openComposerOptions(page);
-	await expect(
-		primarySessionSurface(page)
-			.getByLabel('Secondary session options')
-			.getByText('completed', { exact: true })
-	).toBeVisible();
+	await expect(primarySessionSurface(page).getByText('completed', { exact: true })).toBeVisible();
 	await expect(page.getByText('Execute this exactly once.')).toHaveCount(1);
 	await expect(page.getByLabel('Message Hermes')).toBeEnabled();
 });
@@ -6439,7 +6552,7 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 				transcript: [
 					{
 						role: 'assistant',
-						text: `${longUrl}\n\n${longPath}\n\n${token}\n\n| Model | ID |\n| --- | --- |\n| Hermes | ${token} |\n\n\`\`\`text\n${token}\n\`\`\``,
+						text: `${longUrl}\n\n${longPath}\n\n${token}\n\nThen consider:\n\n- Who was the person?\n- What were they trying to do?\n\n| Model | ID |\n| --- | --- |\n| Hermes | ${token} |\n\nAfter the table.\n\n\`\`\`text\n${token}\n\`\`\``,
 						images: [
 							{
 								name: 'Pixel',
@@ -6489,6 +6602,24 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 	).toBe(true);
 	const code = page.locator('.markdown pre');
 	expect(await code.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+	const listItem = page.locator('.markdown li').first();
+	expect(await listItem.evaluate((element) => getComputedStyle(element).listStyleType)).toBe(
+		'disc'
+	);
+	expect(
+		await listItem.evaluate((element) => parseFloat(getComputedStyle(element).marginBlockEnd))
+	).toBeGreaterThanOrEqual(4);
+	const table = page.locator('.markdown table');
+	expect(await table.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+	expect(
+		await table
+			.locator('td')
+			.first()
+			.evaluate((element) => parseFloat(getComputedStyle(element).paddingInlineStart))
+	).toBeGreaterThanOrEqual(8);
+	expect(
+		await table.evaluate((element) => parseFloat(getComputedStyle(element).marginBlockStart))
+	).toBeGreaterThanOrEqual(12);
 	await expect(page.getByRole('img', { name: 'Pixel' })).toBeVisible();
 
 	const textarea = page.getByLabel('Message Hermes');

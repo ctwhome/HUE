@@ -3,6 +3,7 @@ import {
 	deleteExternalHermesCron,
 	getExternalHermesCron,
 	listExternalHermesCron,
+	listExternalHermesCronRuns,
 	setExternalHermesCronEnabled,
 	updateExternalHermesCron
 } from './external-hermes-cron';
@@ -131,4 +132,55 @@ test('reads, updates, pauses, and removes only the selected profile job', async 
 	});
 	expect(calls[2]?.[1]?.method).toBe('POST');
 	expect(calls[3]?.[1]?.method).toBe('DELETE');
+});
+
+test('normalizes profile-scoped Hermes cron run Sessions conservatively', async () => {
+	const runs = await listExternalHermesCronRuns(
+		{
+			async json() {
+				return {
+					runs: [
+						{
+							id: 'cron_job-1_20260830_090000',
+							source: 'cron',
+							started_at: 1788080400,
+							ended_at: 1788080460,
+							end_reason: 'cron_complete',
+							message_count: 2,
+							is_active: false
+						},
+						{
+							id: 'cron_job-1_20260829_090000',
+							source: 'cron',
+							started_at: 1787994000,
+							ended_at: 1787994060,
+							end_reason: 'cron_incomplete_no_output',
+							message_count: 1,
+							is_active: false
+						},
+						{
+							id: 'cron_job-1_20260828_090000',
+							source: 'cron',
+							started_at: 1787907600,
+							ended_at: null,
+							end_reason: null,
+							message_count: 1,
+							is_active: false
+						},
+						{ id: 'other-session', source: 'acp' }
+					]
+				};
+			}
+		},
+		'default',
+		'job-1'
+	);
+
+	expect(runs.map(({ status }) => status)).toEqual(['completed', 'failed', 'unknown']);
+	expect(runs[0]).toMatchObject({
+		sessionId: 'cron_job-1_20260830_090000',
+		profile: 'default',
+		messageCount: 2,
+		endReason: 'cron_complete'
+	});
 });

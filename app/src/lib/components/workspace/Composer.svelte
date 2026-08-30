@@ -84,7 +84,7 @@
 		workflowPrompt = $bindable(),
 		workflowFolder = $bindable(),
 		workflowProfile = $bindable(),
-		workflowWorkMode = $bindable(),
+		workflowBundle = $bindable(),
 		stopping,
 		showScrollToLatest,
 		onsubmit,
@@ -156,7 +156,7 @@
 		workflowPrompt: string;
 		workflowFolder: string;
 		workflowProfile: string;
-		workflowWorkMode: WorkMode;
+		workflowBundle: string;
 		stopping: boolean;
 		showScrollToLatest: boolean;
 		busy: boolean;
@@ -189,7 +189,7 @@
 			patch: Partial<
 				Pick<
 					Workflow,
-					'name' | 'prompt' | 'folder' | 'favorite' | 'profile' | 'workMode' | 'archived'
+					'name' | 'prompt' | 'folder' | 'favorite' | 'profile' | 'bundle' | 'archived'
 				>
 			>
 		) => Promise<boolean>;
@@ -524,9 +524,7 @@
 				width={14}
 				height={14}
 				aria-hidden="true"
-			/>{delivery.includes('unknown')
-				? 'Delivery status unknown'
-				: delivery}</small
+			/>{delivery.includes('unknown') ? 'Delivery status unknown' : delivery}</small
 		>{/if}
 	<div class="composer-input">
 		<textarea
@@ -757,7 +755,7 @@
 	bind:prompt={workflowPrompt}
 	bind:folder={workflowFolder}
 	bind:profile={workflowProfile}
-	bind:workMode={workflowWorkMode}
+	bind:bundle={workflowBundle}
 	onsubmit={onworkflow}
 	onupdate={onupdateworkflow}
 	ondelete={ondeleteworkflow}

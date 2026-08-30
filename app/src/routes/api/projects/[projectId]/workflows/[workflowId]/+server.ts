@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { parseWorkMode } from '$lib/work-mode';
+import { parseBundleReference } from '$lib/bundle';
 import { authoritativeProject, services } from '$lib/server/services';
 import type { Workflow } from '$lib/server/store';
 import type { RequestHandler } from './$types';
@@ -9,10 +9,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		const project = await authoritativeProject(params.projectId);
 		const body = (await request.json()) as Record<string, unknown>;
 		const patch: Partial<
-			Pick<
-				Workflow,
-				'name' | 'prompt' | 'folder' | 'favorite' | 'profile' | 'workMode' | 'archived'
-			>
+			Pick<Workflow, 'name' | 'prompt' | 'folder' | 'favorite' | 'profile' | 'bundle' | 'archived'>
 		> = {};
 		for (const field of ['name', 'prompt', 'profile'] as const) {
 			if (field in body) {
@@ -29,10 +26,10 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				return json({ error: 'Folder must be null or at most 100 characters' }, { status: 400 });
 			patch.folder = typeof body.folder === 'string' ? body.folder.trim() || null : null;
 		}
-		if ('workMode' in body) {
-			const workMode = parseWorkMode(body.workMode);
-			if (!workMode) return json({ error: 'Invalid work mode' }, { status: 400 });
-			patch.workMode = workMode;
+		if ('bundle' in body) {
+			const bundle = parseBundleReference(body.bundle);
+			if (!bundle) return json({ error: 'Invalid bundle reference' }, { status: 400 });
+			patch.bundle = bundle;
 		}
 		if ('archived' in body) {
 			if (typeof body.archived !== 'boolean')

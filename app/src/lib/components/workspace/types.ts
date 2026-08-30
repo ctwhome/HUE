@@ -42,6 +42,7 @@ export type ExternalCronJob = {
 	nextRunAt: string | null;
 	lastRunAt: string | null;
 	lastStatus: string | null;
+	unreadCount?: number;
 };
 
 export type Session = {
@@ -80,10 +81,25 @@ export type Workflow = {
 	folder?: string | null;
 	favorite?: boolean;
 	profile: string;
-	workMode: WorkMode;
+	bundle: string;
 	archived: boolean;
 	createdAt?: string;
 	updatedAt?: string;
+};
+export type HermesBundle = {
+	name: string;
+	slug: string;
+	description: string;
+	skills: string[];
+	instruction: string;
+};
+export type HermesBundleSkill = {
+	name: string;
+	description?: string;
+	category?: string;
+	enabled: boolean;
+	provenance: 'custom' | 'bundled' | 'hub';
+	permissions: { read: boolean; write: boolean; delete: boolean };
 };
 export type HermesCommand = { name: string; description: string; input?: { hint: string } | null };
 export type HermesRuntime = {

@@ -165,7 +165,7 @@ test('workflow mutations remain scoped to the selected project', async () => {
 						name: 'Ship release',
 						prompt: 'Run checks.',
 						profile: 'default',
-						workMode: 'live',
+						bundle: 'Release',
 						archived: false
 					}
 				};
@@ -179,7 +179,7 @@ test('workflow mutations remain scoped to the selected project', async () => {
 			name: 'Prepare release',
 			prompt: 'Old prompt',
 			profile: 'default',
-			workMode: 'autonomous',
+			bundle: 'Autonomous',
 			archived: false
 		}
 	];
@@ -188,7 +188,7 @@ test('workflow mutations remain scoped to the selected project', async () => {
 		name: 'Ship release',
 		prompt: 'Run checks.',
 		profile: 'default',
-		workMode: 'live'
+		bundle: 'Release'
 	});
 	await state.duplicateWorkflow(state.workflows[0]);
 	await state.deleteWorkflow(state.workflows[0]);
@@ -201,7 +201,7 @@ test('workflow mutations remain scoped to the selected project', async () => {
 				name: 'Ship release',
 				prompt: 'Run checks.',
 				profile: 'default',
-				workMode: 'live'
+				bundle: 'Release'
 			}
 		},
 		{
@@ -211,7 +211,7 @@ test('workflow mutations remain scoped to the selected project', async () => {
 				name: 'Ship release copy',
 				prompt: 'Run checks.',
 				profile: 'default',
-				workMode: 'live'
+				bundle: 'Release'
 			}
 		},
 		{ path: '/api/projects/hue/workflows/release', method: 'DELETE', body: {} }
@@ -219,19 +219,29 @@ test('workflow mutations remain scoped to the selected project', async () => {
 	expect(state.workflows).toEqual([expect.objectContaining({ id: 'release-copy' })]);
 });
 
-test('workflow launch applies its work mode before sending the saved prompt', async () => {
+test('workflow launch resolves its Hermes bundle and sends one complete native bundle prompt', async () => {
 	const calls: string[] = [];
-	let createBody = {};
 	let launchError = '';
 	const state = new WorkspaceNavigation(
 		{ id: 'hue', rootAvailable: true } as never,
 		{
 			api: async (path: string, options?: RequestInit) => {
 				calls.push(`${options?.method ?? 'GET'} ${path}`);
-				if (options?.method === 'POST') createBody = JSON.parse(String(options.body));
-				return options?.method === 'POST'
-					? { session: { sessionId: 'new', cwd: '/work', workMode: 'autonomous' } }
-					: { workMode: 'live' };
+				if (path === '/api/hermes/bundles') {
+					return {
+						bundles: [
+							{
+								name: 'Release',
+								slug: 'release-ready',
+								description: '',
+								skills: ['review'],
+								instruction: ''
+							}
+						],
+						skills: []
+					};
+				}
+				return { session: { sessionId: 'new', cwd: '/work', workMode: 'autonomous' } };
 			},
 			getRuntimeProfile: () => 'default',
 			guard: () => false,
@@ -259,13 +269,58 @@ test('workflow launch applies its work mode before sending the saved prompt', as
 		name: 'Release',
 		prompt: 'Run checks.',
 		profile: 'default',
-		workMode: 'live',
+		bundle: 'release-ready',
 		archived: false
 	});
 
 	expect(launchError).toBe('');
-	expect(calls).toEqual(['POST /api/projects/hue/sessions', 'SEND Run checks.']);
-	expect(createBody).toEqual({ workMode: 'live' });
+	expect(calls).toEqual([
+		'GET /api/hermes/bundles',
+		'POST /api/projects/hue/sessions',
+		'SEND /release-ready Run checks.'
+	]);
+});
+
+test('workflow launch reports a missing Hermes bundle before creating a session', async () => {
+	let error = '';
+	let created = false;
+	const state = new WorkspaceNavigation(
+		{ id: 'hue', rootAvailable: true } as never,
+		{
+			api: async (path: string) => {
+				if (path.includes('/sessions')) {
+					created = true;
+					return { session: { sessionId: 'new', cwd: '/work' } };
+				}
+				return { bundles: [], skills: [] };
+			},
+			guard: () => false,
+			getRuntimeProfile: () => 'default',
+			setError: (message: string) => (error = message),
+			endVoice() {},
+			saveDraft() {},
+			cacheSession() {},
+			clearSessionState() {},
+			setLoading() {},
+			applyCreatedSession() {},
+			restoreDraft() {},
+			focusComposer() {},
+			sendText: async () => true
+		} as never
+	);
+	state.persistSelection = () => {};
+
+	await state.runWorkflow({
+		id: 'release',
+		name: 'Release',
+		prompt: 'Run checks.',
+		profile: 'default',
+		bundle: 'Missing',
+		archived: false
+	});
+
+	expect(created).toBe(false);
+	expect(error).toContain('Missing');
 });
 
 test('workflow launch does not create a session under the wrong Hermes profile', async () => {
@@ -284,7 +339,7 @@ test('workflow launch does not create a session under the wrong Hermes profile',
 		name: 'Release',
 		prompt: 'Run checks.',
 		profile: 'work',
-		workMode: 'autonomous',
+		bundle: 'Release',
 		archived: false
 	});
 
@@ -303,7 +358,7 @@ test('workflow mutation response cannot overwrite a newly selected project', asy
 		name: 'Project one',
 		prompt: 'One',
 		profile: 'default',
-		workMode: 'autonomous',
+		bundle: 'Release',
 		archived: false
 	} as const;
 	state.workflows = [workflow];
