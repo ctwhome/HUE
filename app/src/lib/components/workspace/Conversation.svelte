@@ -44,6 +44,7 @@
 		onedit,
 		oncopy,
 		oncopycode,
+		oncopytable,
 		oninteraction,
 		mediaPath,
 		onmedia,
@@ -61,6 +62,7 @@
 		onedit: (message: Message) => void;
 		oncopy: (message: Message) => void;
 		oncopycode: (code: string) => void;
+		oncopytable: (table: string) => void;
 		oninteraction: (
 			id: string,
 			response:
@@ -118,11 +120,36 @@
 	const timestampTitle = (value: string) =>
 		new Date(value).toLocaleString([], { dateStyle: 'full', timeStyle: 'long' });
 	let transcriptTimeline = $derived(selectTranscriptTimeline(timeline));
+	function renderChatMarkdown(text: string) {
+		return renderMarkdown(text)
+			.replaceAll(
+				'<table>',
+				'<div class="table-block"><div class="table-toolbar"><button type="button" data-copy-table aria-label="Copy table">Copy</button><button type="button" data-toggle-table-wrap aria-label="Wrap table cells" aria-pressed="false">Wrap</button></div><table>'
+			)
+			.replaceAll('</table>', '</table></div>');
+	}
 	function handleTranscriptClick(event: MouseEvent) {
-		const button = (event.target as Element).closest<HTMLButtonElement>('[data-copy-code]');
+		const button = (event.target as Element).closest<HTMLButtonElement>('button');
 		if (!button) return;
-		const code = button.parentElement?.querySelector('code')?.textContent ?? '';
-		oncopycode(code);
+		if (button.matches('[data-copy-code]')) {
+			const code = button.parentElement?.querySelector('code')?.textContent ?? '';
+			oncopycode(code);
+			return;
+		}
+		const block = button.closest('.table-block');
+		if (!block) return;
+		if (button.matches('[data-copy-table]')) {
+			const rows = Array.from(block.querySelectorAll('tr'), (row) =>
+				Array.from(row.querySelectorAll('th, td'), (cell) => cell.textContent?.trim() ?? '').join(
+					'\t'
+				)
+			);
+			oncopytable(rows.join('\n'));
+			return;
+		}
+		if (button.matches('[data-toggle-table-wrap]')) {
+			button.setAttribute('aria-pressed', String(block.classList.toggle('table-wrap')));
+		}
 	}
 	function copyDelegation(node: HTMLElement) {
 		node.addEventListener('click', handleTranscriptClick);
@@ -334,7 +361,7 @@
 												alt={image.name}
 											/>{/each}
 									</div>{/if}
-								{@html renderMarkdown(
+								{@html renderChatMarkdown(
 									message.text
 								)}{#if index === transcriptTimeline.length - 1 && busy}<span
 										class="cursor animate-pulse text-primary">▋</span

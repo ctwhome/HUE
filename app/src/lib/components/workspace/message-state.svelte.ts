@@ -191,6 +191,8 @@ export class MessageState {
 		}
 	};
 	copyCode = (code: string) => copyCode(code, (message) => (this.messageNotice = message));
+	copyTable = (table: string) =>
+		copyCode(table, (message) => (this.messageNotice = message), 'Table copied');
 
 	respondToInteraction = async (
 		interactionId: string,
