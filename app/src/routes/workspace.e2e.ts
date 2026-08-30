@@ -6531,9 +6531,11 @@ test('mobile Session rows reveal edit archive and delete actions when swiped lef
 });
 
 test('short mobile chat contains hostile content and keeps core controls reachable', async ({
-	page
-}) => {
+	page,
+	context
+}, testInfo) => {
 	test.setTimeout(60_000);
+	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 	const token = 'unbroken'.repeat(70);
 	const longPath = `/workspace/${'nested-directory/'.repeat(35)}file.ts`;
 	const longUrl = `https://example.test/${'long-segment/'.repeat(35)}resource?id=${token}`;
@@ -6552,7 +6554,7 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 				transcript: [
 					{
 						role: 'assistant',
-						text: `${longUrl}\n\n${longPath}\n\n${token}\n\nThen consider:\n\n- Who was the person?\n- What were they trying to do?\n\n| Model | ID |\n| --- | --- |\n| Hermes | ${token} |\n\nAfter the table.\n\n\`\`\`text\n${token}\n\`\`\``,
+						text: `${longUrl}\n\n${longPath}\n\n${token}\n\nThen consider:\n\n- Who was the person?\n- What were they trying to do?\n\n| Model | ID |\n| --- | --- |\n| Hermes | ${token} |\n\nAfter the table.\n\n| Name | Value |\n| --- | --- |\n| Local | Ready |\n\n\`\`\`text\n${token}\n\`\`\``,
 						images: [
 							{
 								name: 'Pixel',
@@ -6609,7 +6611,8 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 	expect(
 		await listItem.evaluate((element) => parseFloat(getComputedStyle(element).marginBlockEnd))
 	).toBeGreaterThanOrEqual(4);
-	const table = page.locator('.markdown table');
+	const tables = page.locator('.markdown table');
+	const table = tables.first();
 	expect(await table.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
 	expect(
 		await table
@@ -6618,9 +6621,48 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 			.evaluate((element) => parseFloat(getComputedStyle(element).paddingInlineStart))
 	).toBeGreaterThanOrEqual(8);
 	expect(
-		await table.evaluate((element) => parseFloat(getComputedStyle(element).marginBlockStart))
+		await table
+			.locator('xpath=..')
+			.evaluate((element) => parseFloat(getComputedStyle(element).marginBlockStart))
 	).toBeGreaterThanOrEqual(12);
+	const tableBlocks = page.locator('.markdown .table-block');
+	await expect(tableBlocks).toHaveCount(2);
+	const firstTable = tableBlocks.first();
+	const secondTable = tableBlocks.nth(1);
+	const wrap = firstTable.getByRole('button', { name: 'Wrap table cells' });
+	await expect(wrap).toHaveAttribute('aria-pressed', 'false');
+	await wrap.click();
+	await expect(wrap).toHaveAttribute('aria-pressed', 'true');
+	expect(
+		await firstTable
+			.locator('td')
+			.first()
+			.evaluate((cell) => getComputedStyle(cell).whiteSpace)
+	).toBe('normal');
+	await expect(secondTable.getByRole('button', { name: 'Wrap table cells' })).toHaveAttribute(
+		'aria-pressed',
+		'false'
+	);
+	await firstTable.getByRole('button', { name: 'Copy table' }).click();
+	expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+		`Model\tID\nHermes\t${token}`
+	);
+	await expect(page.getByText('Table copied')).toBeVisible();
+	await expectMinimumTouchTargets(firstTable.locator('.table-toolbar button'));
 	await expect(page.getByRole('img', { name: 'Pixel' })).toBeVisible();
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		await expect(tableBlocks).toHaveCount(2);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		if (viewport.width <= 390)
+			await expectMinimumTouchTargets(firstTable.locator('.table-toolbar button'));
+		await testInfo.attach(`chat-tables-${viewport.width}x${viewport.height}`, {
+			body: await page.screenshot(),
+			contentType: 'image/png'
+		});
+	}
 
 	const textarea = page.getByLabel('Message Hermes');
 	expect((await textarea.boundingBox())!.height).toBe(44);
