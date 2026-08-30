@@ -276,7 +276,7 @@
 		sessionRowState({
 			...session,
 			status: session.error ? 'failed' : session.status,
-			unreadAttention: session.attention || session.unreadAttention,
+			unreadAttention: session.attention,
 			...(selectedSession?.sessionId === session.sessionId
 				? {
 						delivery: selectedDelivery,

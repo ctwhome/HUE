@@ -31,7 +31,7 @@ test('Session row state preserves authoritative labels and maps them to icons', 
 	expect(sessionRowState({})).toEqual({ label: 'Idle', icon: 'idle', attention: false });
 });
 
-test('selected cancellation and unread attention remain explicit text', () => {
+test('selected cancellation and actionable attention remain explicit text', () => {
 	expect(sessionRowState({ delivery: 'cancelling', unreadAttention: true })).toEqual({
 		label: 'Cancelling',
 		icon: 'running',
@@ -43,6 +43,12 @@ test('selected cancellation and unread attention remain explicit text', () => {
 		icon: 'cancelled',
 		attention: false
 	});
+});
+
+test('unread completion notifications do not make healthy session rows look broken', () => {
+	const panel = readFileSync(new URL('./ContextPanel.svelte', import.meta.url), 'utf8');
+	expect(panel).toContain('unreadAttention: session.attention,');
+	expect(panel).not.toContain('session.attention || session.unreadAttention');
 });
 
 test('session row icons are larger than navigation icons', () => {
