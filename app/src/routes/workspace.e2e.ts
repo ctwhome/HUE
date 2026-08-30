@@ -4512,6 +4512,9 @@ test('previews CSV and sandboxed interactive HTML outputs inline', async ({ page
 	await expect(galleryCsv).toBeVisible();
 	await expect(galleryCsv.getByRole('columnheader', { name: 'name' })).toBeVisible();
 	await expect(galleryCsv.getByRole('cell', { name: 'ready' })).toBeVisible();
+	await gallery.locator('.csv-preview').focus();
+	await gallery.locator('.csv-preview').press('ArrowRight');
+	await expect(gallery.getByText('1 / 3')).toBeVisible();
 	await gallery.getByRole('button', { name: 'Select dashboard.html' }).click();
 	await expect(gallery.getByTitle('Preview of dashboard.html')).toHaveAttribute('sandbox', '');
 	await gallery.getByRole('button', { name: 'Close artifacts gallery' }).click();
@@ -6495,8 +6498,9 @@ test('per-session work mode selector persists across natural text, slash alias, 
 	await page.route('**/api/projects/*/workflows', (route) =>
 		route.fulfill({ json: { workflows: [] } })
 	);
-	await page.route('**/api/hermes/bundles', (route) =>
-		route.fulfill({
+	await page.route('**/api/hermes/bundles', async (route) => {
+		await new Promise((resolve) => setTimeout(resolve, 150));
+		await route.fulfill({
 			json: {
 				bundles: [
 					{
@@ -6516,8 +6520,8 @@ test('per-session work mode selector persists across natural text, slash alias, 
 				],
 				skills: []
 			}
-		})
-	);
+		});
+	});
 
 	await addProject(page);
 	await sessionButton(page, 'Main').click();
@@ -6756,7 +6760,7 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 				transcript: [
 					{
 						role: 'assistant',
-						text: `${longUrl}\n\n${longPath}\n\n${token}\n\nThen consider:\n\n- Who was the person?\n- What were they trying to do?\n\n| Model | ID |\n| --- | --- |\n| Hermes | ${token} |\n\nAfter the table.\n\n| Name | Value |\n| --- | --- |\n| Local | Ready |\n\n\`\`\`ts\nconst answer: number = 42;\n\`\`\`\n\n\`\`\`mermaid\ngraph TD\nA[Start] --> B[Ready]\n\`\`\`\n\n\`\`\`text\n${token}\n\`\`\``,
+						text: `${longUrl}\n\n${longPath}\n\n${token}\n\n## 10. Unicode and international text\n\nThen consider:\n\n- Who was the person?\n- What were they trying to do?\n\n| Model | ID |\n| --- | --- |\n| Hermes | ${token} |\n\nAfter the table.\n\n| Name | Value |\n| --- | --- |\n| Local | Ready |\n\n\`\`\`ts\nconst answer: number = 42;\n\`\`\`\n\n\`\`\`mermaid\ngraph TD\nA[Start] --> B[Ready]\n\`\`\`\n\n\`\`\`text\n${token}\n\`\`\``,
 						images: [
 							{
 								name: 'Pixel',
@@ -6816,6 +6820,14 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 		true
 	);
 	const keyword = page.locator('.markdown code.language-typescript .token.keyword');
+	const sectionHeading = page.getByRole('heading', {
+		name: '10. Unicode and international text',
+		level: 2
+	});
+	await expect(sectionHeading).toBeVisible();
+	expect(
+		await sectionHeading.evaluate((element) => Number(getComputedStyle(element).fontWeight))
+	).toBeGreaterThanOrEqual(600);
 	await expect(keyword).toHaveText('const');
 	expect(
 		await keyword.evaluate(
