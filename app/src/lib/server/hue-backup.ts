@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import type { Database as BunDatabase } from 'bun:sqlite';
 
 const runtimeRequire = createRequire(import.meta.url);
-export const HUE_SCHEMA_VERSION = 5;
+export const HUE_SCHEMA_VERSION = 7;
 
 const HUE_REQUIRED_COLUMNS = {
 	projects: ['id', 'name', 'root_path', 'icon', 'group_name', 'legacy', 'created_at', 'color'],
@@ -16,7 +16,7 @@ const HUE_REQUIRED_COLUMNS = {
 		'folder',
 		'favorite',
 		'profile',
-		'work_mode',
+		'bundle',
 		'archived',
 		'created_at',
 		'updated_at'
@@ -100,6 +100,22 @@ const HUE_REQUIRED_COLUMNS = {
 		'session_id',
 		'created_at',
 		'updated_at'
+	],
+	external_cron_state: ['id', 'initialized_at'],
+	external_cron_runs: [
+		'profile',
+		'profile_name',
+		'job_id',
+		'job_name',
+		'session_id',
+		'status',
+		'started_at',
+		'ended_at',
+		'end_reason',
+		'message_count',
+		'discovered_at',
+		'read_at',
+		'event_sequence'
 	],
 	commit_generations: [
 		'operation_id',

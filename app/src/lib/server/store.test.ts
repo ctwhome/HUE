@@ -800,7 +800,7 @@ describe('HUEStore project and workflow boundaries', () => {
 			name: 'Prepare release',
 			prompt: 'Run release checks.',
 			profile: 'work',
-			workMode: 'live',
+			bundle: 'live',
 			folder: 'Release',
 			favorite: true
 		});
@@ -810,7 +810,7 @@ describe('HUEStore project and workflow boundaries', () => {
 				name: 'Ship release',
 				prompt: 'Run checks and prepare release notes.',
 				profile: 'default',
-				workMode: 'autonomous',
+				bundle: 'autonomous',
 				archived: true
 			})
 		).toMatchObject({
@@ -818,7 +818,7 @@ describe('HUEStore project and workflow boundaries', () => {
 			projectId: 'hue',
 			name: 'Ship release',
 			profile: 'default',
-			workMode: 'autonomous',
+			bundle: 'autonomous',
 			archived: true
 		});
 		expect(store.listWorkflows('hue')).toEqual([]);
@@ -856,6 +856,30 @@ describe('HUEStore project and workflow boundaries', () => {
 		expect(store.listWorkflows('hue')).toEqual([
 			expect.objectContaining({ id: 'release', name: 'Prepare release' })
 		]);
+		store.close();
+	});
+
+	it('rejects invalid Workflow bundle references at the store boundary', () => {
+		const store = makeStore();
+		store.ensureProjectMetadata('hue', 'HUE');
+		expect(() =>
+			store.createWorkflow({
+				id: 'release',
+				projectId: 'hue',
+				name: 'Release',
+				prompt: 'Ship.',
+				bundle: ' '
+			})
+		).toThrow('Invalid bundle reference');
+		store.createWorkflow({
+			id: 'release',
+			projectId: 'hue',
+			name: 'Release',
+			prompt: 'Ship.'
+		});
+		expect(() => store.updateWorkflow('hue', 'release', { bundle: '' })).toThrow(
+			'Invalid bundle reference'
+		);
 		store.close();
 	});
 

@@ -35,7 +35,8 @@ test('uses canonical Hermes id for workflow reads and creates reached by slug', 
 				name: 'Review',
 				prompt: 'Review code',
 				folder: 'Engineering',
-				favorite: true
+				favorite: true,
+				bundle: 'live'
 			})
 		})
 	} as never);
@@ -43,5 +44,5 @@ test('uses canonical Hermes id for workflow reads and creates reached by slug', 
 	expect(getResponse.status).toBe(200);
 	expect(postResponse.status).toBe(201);
 	expect(projectIds).toEqual(['canonical-project', 'canonical-project']);
-	expect(created).toMatchObject({ folder: 'Engineering', favorite: true });
+	expect(created).toMatchObject({ folder: 'Engineering', favorite: true, bundle: 'live' });
 });

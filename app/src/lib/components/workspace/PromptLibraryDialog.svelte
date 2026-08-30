@@ -13,8 +13,8 @@
 	import Trash2 from '~icons/lucide/trash-2';
 	import X from '~icons/lucide/x';
 	import { groupPromptCatalog, loadPromptCatalog, type CatalogPrompt } from '$lib/prompt-catalog';
-	import type { WorkMode } from '$lib/work-mode';
-	import type { Workflow } from './types';
+	import { workspaceApi } from './api';
+	import type { HermesBundle, HermesBundleSkill, Workflow } from './types';
 
 	let {
 		id,
@@ -27,7 +27,7 @@
 		prompt = $bindable(),
 		folder = $bindable(),
 		profile = $bindable(),
-		workMode = $bindable(),
+		bundle = $bindable(),
 		onsubmit,
 		onupdate,
 		ondelete,
@@ -46,14 +46,14 @@
 		prompt: string;
 		folder: string;
 		profile: string;
-		workMode: WorkMode;
+		bundle: string;
 		onsubmit: (event: SubmitEvent) => boolean | void | Promise<boolean | void>;
 		onupdate: (
 			workflow: Workflow,
 			patch: Partial<
 				Pick<
 					Workflow,
-					'name' | 'prompt' | 'folder' | 'favorite' | 'profile' | 'workMode' | 'archived'
+					'name' | 'prompt' | 'folder' | 'favorite' | 'profile' | 'bundle' | 'archived'
 				>
 			>
 		) => Promise<boolean>;
@@ -64,7 +64,7 @@
 		oninsert: (prompt: string) => void;
 	} = $props();
 
-	let source = $state<'prompts' | 'community'>('community');
+	let source = $state<'prompts' | 'community' | 'bundles'>('community');
 	let query = $state('');
 	let catalog = $state<CatalogPrompt[]>([]);
 	let catalogLoading = $state(false);
@@ -77,7 +77,22 @@
 	let editPrompt = $state('');
 	let editFolder = $state('');
 	let editProfile = $state('default');
-	let editWorkMode = $state<WorkMode>('autonomous');
+	let editBundle = $state('autonomous');
+	let bundles = $state<HermesBundle[]>([]);
+	let bundleSkills = $state<HermesBundleSkill[]>([]);
+	let bundlesLoading = $state(false);
+	let bundleError = $state('');
+	let selectedBundleSlug = $state('');
+	let creatingBundle = $state(false);
+	let bundleName = $state('');
+	let bundleDescription = $state('');
+	let bundleInstruction = $state('');
+	let bundleMembers = $state<string[]>([]);
+	let openedSkill = $state('');
+	let skillContent = $state('');
+	let skillEditable = $state(false);
+	let skillProvenance = $state('');
+	let skillSaving = $state(false);
 	let showArchived = $state(false);
 	let actions = $state(false);
 	let mobileDetail = $state(false);
@@ -138,6 +153,127 @@
 			catalogLoading = false;
 		}
 	}
+	async function ensureBundles(force = false) {
+		if ((!force && bundles.length) || bundlesLoading || !available) return;
+		bundlesLoading = true;
+		bundleError = '';
+		try {
+			const body = await workspaceApi<{ bundles: HermesBundle[]; skills: HermesBundleSkill[] }>(
+				'/api/hermes/bundles'
+			);
+			bundles = body.bundles;
+			bundleSkills = body.skills;
+			if (!selectedBundleSlug || !bundles.some(({ slug }) => slug === selectedBundleSlug)) {
+				selectBundle(bundles[0] ?? null);
+			}
+			if (!bundles.some(({ slug }) => slug === bundle)) bundle = bundles[0]?.slug ?? bundle;
+		} catch (cause) {
+			bundleError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			bundlesLoading = false;
+		}
+	}
+	function selectBundle(item: HermesBundle | null) {
+		selectedBundleSlug = item?.slug ?? '';
+		bundleName = item?.name ?? '';
+		bundleDescription = item?.description ?? '';
+		bundleInstruction = item?.instruction ?? '';
+		bundleMembers = [...(item?.skills ?? [])];
+		creatingBundle = false;
+		openedSkill = '';
+	}
+	function startBundleCreate() {
+		selectedBundleSlug = '';
+		bundleName = '';
+		bundleDescription = '';
+		bundleInstruction = '';
+		bundleMembers = [];
+		creatingBundle = true;
+		openedSkill = '';
+	}
+	function toggleBundleSkill(name: string, included: boolean) {
+		bundleMembers = included
+			? [...bundleMembers, name]
+			: bundleMembers.filter((member) => member !== name);
+	}
+	async function saveBundle(event: SubmitEvent) {
+		event.preventDefault();
+		bundleError = '';
+		try {
+			const body = await workspaceApi<{ bundle: HermesBundle }>(
+				creatingBundle
+					? '/api/hermes/bundles'
+					: `/api/hermes/bundles/${encodeURIComponent(selectedBundleSlug)}`,
+				{
+					method: creatingBundle ? 'POST' : 'PUT',
+					body: JSON.stringify({
+						...(creatingBundle ? { name: bundleName } : {}),
+						description: bundleDescription,
+						skills: bundleMembers,
+						instruction: bundleInstruction
+					})
+				}
+			);
+			bundles = creatingBundle
+				? [...bundles, body.bundle]
+				: bundles.map((item) => (item.slug === selectedBundleSlug ? body.bundle : item));
+			selectBundle(body.bundle);
+			bundle = body.bundle.slug;
+		} catch (cause) {
+			bundleError = cause instanceof Error ? cause.message : String(cause);
+		}
+	}
+	async function deleteBundle() {
+		const selected = bundles.find(({ slug }) => slug === selectedBundleSlug);
+		if (!selected || window.prompt(`Type ${selected.name} to delete this Bundle`) !== selected.name)
+			return;
+		bundleError = '';
+		try {
+			await workspaceApi(`/api/hermes/bundles/${encodeURIComponent(selected.slug)}`, {
+				method: 'DELETE',
+				body: JSON.stringify({ confirm: selected.name })
+			});
+			bundles = bundles.filter((item) => item.slug !== selected.slug);
+			selectBundle(bundles[0] ?? null);
+			if (bundle === selected.slug) bundle = bundles[0]?.slug ?? '';
+		} catch (cause) {
+			bundleError = cause instanceof Error ? cause.message : String(cause);
+		}
+	}
+	async function openSkill(name: string) {
+		bundleError = '';
+		try {
+			const body = await workspaceApi<{
+				name: string;
+				content: string;
+				provenance: string;
+				editable: boolean;
+			}>(`/api/hermes/skills/${encodeURIComponent(name)}`);
+			const access = bundleSkills.find((skill) => skill.name === name);
+			openedSkill = name;
+			skillContent = body.content;
+			skillProvenance = body.provenance;
+			skillEditable =
+				body.editable && access?.permissions.write === true && access.provenance === 'custom';
+		} catch (cause) {
+			bundleError = cause instanceof Error ? cause.message : String(cause);
+		}
+	}
+	async function saveSkill() {
+		if (!openedSkill || !skillEditable) return;
+		skillSaving = true;
+		bundleError = '';
+		try {
+			await workspaceApi(`/api/hermes/skills/${encodeURIComponent(openedSkill)}`, {
+				method: 'PUT',
+				body: JSON.stringify({ content: skillContent })
+			});
+		} catch (cause) {
+			bundleError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			skillSaving = false;
+		}
+	}
 	function startCreate(template?: CatalogPrompt) {
 		name = template?.title ?? '';
 		prompt = template?.prompt ?? '';
@@ -158,7 +294,7 @@
 		editPrompt = workflow.prompt;
 		editFolder = workflow.folder ?? '';
 		editProfile = workflow.profile;
-		editWorkMode = workflow.workMode;
+		editBundle = workflow.bundle;
 		editor = 'edit';
 		mobileDetail = true;
 		actions = false;
@@ -172,7 +308,7 @@
 				prompt: editPrompt,
 				folder: editFolder.trim() || null,
 				profile: editProfile,
-				workMode: editWorkMode
+				bundle: editBundle
 			}))
 		)
 			editor = null;
@@ -216,7 +352,10 @@
 	aria-labelledby={id}
 	onclick={(event) => event.target === event.currentTarget && dialog?.close()}
 	onkeydown={closeActionsOnEscape}
-	onfocusin={() => void ensureCatalog()}
+	onfocusin={() => {
+		void ensureCatalog();
+		void ensureBundles();
+	}}
 	onclose={() => {
 		mobileDetail = false;
 		editor = null;
@@ -245,7 +384,7 @@
 			<div class="grid gap-3 border-b border-border p-3">
 				<div
 					class="grid rounded-lg bg-muted p-1"
-					class:grid-cols-2={available}
+					class:grid-cols-3={available}
 					role="group"
 					aria-label="Prompt sources"
 				>
@@ -275,17 +414,28 @@
 							>{catalog.length ? catalog.length.toLocaleString() : ''}</span
 						></button
 					>
+					{#if available}<button
+							type="button"
+							aria-pressed={source === 'bundles'}
+							class:bg-card={source === 'bundles'}
+							onclick={() => {
+								source = 'bundles';
+								editor = null;
+								mobileDetail = false;
+								void ensureBundles();
+							}}>Bundles <span class="text-muted-foreground">{bundles.length}</span></button
+						>{/if}
 				</div>
-				<label
-					class="flex min-h-11 items-center gap-2 rounded-lg border border-input bg-background px-3"
-					><Search width={17} height={17} aria-hidden="true" /><span class="sr-only"
-						>Search prompts</span
-					><input
-						class="min-w-0 flex-1 border-0 bg-transparent outline-none"
-						bind:value={query}
-						placeholder="Search prompts…"
-					/></label
-				>
+				{#if source !== 'bundles'}<label
+						class="flex min-h-11 items-center gap-2 rounded-lg border border-input bg-background px-3"
+						><Search width={17} height={17} aria-hidden="true" /><span class="sr-only"
+							>Search prompts</span
+						><input
+							class="min-w-0 flex-1 border-0 bg-transparent outline-none"
+							bind:value={query}
+							placeholder="Search prompts…"
+						/></label
+					>{/if}
 				{#if source === 'prompts'}<div class="flex items-center justify-between gap-2">
 						<button
 							type="button"
@@ -304,13 +454,48 @@
 								>{showArchived ? 'Hide archived' : 'Show archived'}</button
 							>
 						</div>
-					</div>{/if}
+					</div>{:else if source === 'bundles'}<button
+						type="button"
+						class="inline-flex min-h-11 items-center gap-2"
+						onclick={() => {
+							startBundleCreate();
+							mobileDetail = true;
+						}}><Plus width={16} height={16} aria-hidden="true" />New bundle</button
+					>{/if}
 			</div>
 			<nav
 				class="min-h-0 flex-1 overflow-y-auto p-2"
-				aria-label={source === 'community' ? 'Community prompts' : 'Prompts'}
+				aria-label={source === 'community'
+					? 'Community prompts'
+					: source === 'bundles'
+						? 'Hermes bundles'
+						: 'Prompts'}
 			>
-				{#if loading && source === 'prompts'}<p
+				{#if bundlesLoading && source === 'bundles'}<p
+						class="p-4 text-center text-sm text-muted-foreground"
+						role="status"
+					>
+						Loading bundles…
+					</p>
+				{:else if source === 'bundles'}
+					{#each bundles as item (item.slug)}<button
+							type="button"
+							class="mb-1 grid min-h-12 w-full gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-accent"
+							class:bg-accent={selectedBundleSlug === item.slug && !creatingBundle}
+							aria-pressed={selectedBundleSlug === item.slug && !creatingBundle}
+							onclick={() => {
+								selectBundle(item);
+								mobileDetail = true;
+							}}
+							><strong class="truncate text-sm">{item.name}</strong><span
+								class="truncate text-xs text-muted-foreground"
+								>/{item.slug} · {item.skills.length} skills</span
+							></button
+						>{/each}
+					{#if !bundles.length}<p class="p-5 text-center text-sm text-muted-foreground">
+							No Hermes bundles installed.
+						</p>{/if}
+				{:else if loading && source === 'prompts'}<p
 						class="p-4 text-center text-sm text-muted-foreground"
 						role="status"
 					>
@@ -384,7 +569,7 @@
 									}}
 									><strong class="truncate text-sm">{item.name}</strong><span
 										class="truncate text-xs text-muted-foreground"
-										>{item.archived ? 'Archived · ' : ''}{item.profile} · {item.workMode}</span
+										>{item.archived ? 'Archived · ' : ''}{item.profile} · {item.bundle}</span
 									></button
 								>{/each}
 						</details>{/each}
@@ -392,14 +577,14 @@
 						{query ? 'No matching prompts.' : 'No custom prompts yet.'}
 					</p>{/if}
 			</nav>
-			<p class="border-t border-border p-3 text-xs text-muted-foreground">
-				Open catalog curated from <a
-					class="underline"
-					href="https://github.com/f/prompts.chat"
-					target="_blank"
-					rel="noreferrer">prompts.chat</a
-				> · CC0
-			</p>
+			{#if source !== 'bundles'}<p class="border-t border-border p-3 text-xs text-muted-foreground">
+					Open catalog curated from <a
+						class="underline"
+						href="https://github.com/f/prompts.chat"
+						target="_blank"
+						rel="noreferrer">prompts.chat</a
+					> · CC0
+				</p>{/if}
 		</aside>
 
 		<section
@@ -412,9 +597,116 @@
 				onclick={() => {
 					mobileDetail = false;
 					editor = null;
-				}}>Back to prompts</button
+				}}>Back to {source === 'bundles' ? 'bundles' : 'prompts'}</button
 			>
-			{#if editor === 'create'}
+			{#if source === 'bundles'}
+				{#if bundleError}<p class="mb-3 text-sm text-destructive" role="alert">
+						{bundleError}
+					</p>{/if}
+				{#if openedSkill}
+					<section class="mx-auto grid max-w-2xl gap-3" aria-label={`${openedSkill} skill editor`}>
+						<div class="flex flex-wrap items-center gap-3">
+							<button type="button" class="min-h-11" onclick={() => (openedSkill = '')}
+								>Back to bundle</button
+							>
+							<h3 class="text-base font-semibold">{openedSkill}</h3>
+							{#if !skillEditable}<span class="text-sm text-muted-foreground"
+									>Read-only · {skillProvenance}</span
+								>{/if}
+						</div>
+						<textarea
+							class="min-h-[min(480px,60dvh)] font-mono"
+							bind:value={skillContent}
+							aria-label="Skill content"
+							spellcheck="false"
+							disabled={!skillEditable}></textarea>
+						<button
+							type="button"
+							class="min-h-11 w-fit"
+							disabled={!skillEditable || skillSaving}
+							onclick={saveSkill}>{skillSaving ? 'Saving…' : 'Save skill'}</button
+						>
+					</section>
+				{:else if creatingBundle || selectedBundleSlug}
+					<form
+						class="workflow-form mx-auto grid max-w-2xl content-start gap-4"
+						onsubmit={saveBundle}
+					>
+						<div>
+							<h3 class="text-base font-semibold">
+								{creatingBundle ? 'Add Hermes bundle' : bundleName}
+							</h3>
+							{#if !creatingBundle}<p class="text-sm text-muted-foreground">
+									{bundleDescription}
+								</p>{/if}
+						</div>
+						<label class="grid gap-1 text-sm"
+							><span>Bundle name</span><input
+								bind:value={bundleName}
+								disabled={!creatingBundle}
+								required
+								maxlength="128"
+							/></label
+						>
+						<label class="grid gap-1 text-sm"
+							><span>Bundle description</span><input
+								bind:value={bundleDescription}
+								maxlength="1000"
+							/></label
+						>
+						<label class="grid gap-1 text-sm"
+							><span>Bundle instruction</span><textarea
+								class="min-h-28"
+								bind:value={bundleInstruction}
+								maxlength="10000"></textarea></label
+						>
+						<fieldset class="grid gap-2 rounded-xl border border-border p-3">
+							<legend class="px-1 text-sm font-semibold">Member skills</legend>
+							{#each bundleSkills as skill (skill.name)}<label
+									class="flex min-h-11 items-center gap-3 rounded-lg px-2 hover:bg-accent"
+									><input
+										type="checkbox"
+										aria-label={`Include ${skill.name}`}
+										checked={bundleMembers.includes(skill.name)}
+										onchange={(event) => toggleBundleSkill(skill.name, event.currentTarget.checked)}
+									/><span class="min-w-0"
+										><strong>{skill.name}</strong>{#if skill.description}<small
+												class="block text-muted-foreground">{skill.description}</small
+											>{/if}</span
+									></label
+								>{/each}
+						</fieldset>
+						{#if !creatingBundle && bundleMembers.length}<section
+								class="grid gap-2"
+								aria-label="Bundle member skills"
+							>
+								<h4 class="text-sm font-semibold">Open member skill</h4>
+								<div class="flex flex-wrap gap-2">
+									{#each bundleMembers as member}<button
+											type="button"
+											class="min-h-11 rounded-md border border-border px-3"
+											aria-label={`Open ${member} skill`}
+											onclick={() => openSkill(member)}>{member}</button
+										>{/each}
+								</div>
+							</section>{/if}
+						<div class="flex flex-wrap justify-between gap-2">
+							{#if !creatingBundle}<button
+									type="button"
+									class="min-h-11 text-destructive"
+									onclick={deleteBundle}>Delete bundle</button
+								>{/if}
+							<button type="submit" class="min-h-11" disabled={!bundleMembers.length}
+								>{creatingBundle ? 'Add bundle' : 'Save bundle'}</button
+							>
+						</div>
+					</form>
+				{:else}<div
+						class="grid min-h-64 place-items-center text-center text-sm text-muted-foreground"
+					>
+						<p>Create a Hermes bundle to group skills for Workflows.</p>
+					</div>{/if}
+			{:else if editor === 'create'}
 				<form
 					class="workflow-form mx-auto grid max-w-2xl content-start gap-3"
 					onsubmit={saveCreate}
@@ -447,9 +739,11 @@
 						<label class="grid gap-1 text-sm"
 							><span>Hermes profile</span><input bind:value={profile} required /></label
 						><label class="grid gap-1 text-sm"
-							><span>Work mode</span><select bind:value={workMode}
-								><option value="autonomous">Autonomous</option><option value="live">Live</option
-								></select
+							><span>Hermes bundle</span><select bind:value={bundle} required
+								>{#if bundle && !bundles.some(({ slug }) => slug === bundle)}<option value={bundle}
+										>{bundle} (unavailable)</option
+									>{/if}{#each bundles as item}<option value={item.slug}>{item.name}</option
+									>{/each}</select
 							></label
 						>
 					</div>
@@ -479,9 +773,11 @@
 						<label class="grid gap-1 text-sm"
 							><span>Hermes profile</span><input bind:value={editProfile} required /></label
 						><label class="grid gap-1 text-sm"
-							><span>Work mode</span><select bind:value={editWorkMode}
-								><option value="autonomous">Autonomous</option><option value="live">Live</option
-								></select
+							><span>Hermes bundle</span><select bind:value={editBundle} required
+								>{#if editBundle && !bundles.some(({ slug }) => slug === editBundle)}<option
+										value={editBundle}>{editBundle} (unavailable)</option
+									>{/if}{#each bundles as item}<option value={item.slug}>{item.name}</option
+									>{/each}</select
 							></label
 						>
 					</div>
@@ -541,9 +837,9 @@
 							>
 							<h3 class="mt-1 text-xl font-semibold">{selectedWorkflow.name}</h3>
 							<p class="mt-1 text-sm text-muted-foreground">
-								{projectName} · {selectedWorkflow.profile} · {selectedWorkflow.workMode === 'live'
-									? 'Live'
-									: 'Autonomous'}{selectedWorkflow.archived ? ' · Archived' : ''}
+								{projectName} · {selectedWorkflow.profile} · {bundles.find(
+									({ slug }) => slug === selectedWorkflow.bundle
+								)?.name ?? selectedWorkflow.bundle}{selectedWorkflow.archived ? ' · Archived' : ''}
 							</p>
 						</div>
 						<div class="flex items-center gap-1">

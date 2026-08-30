@@ -26,7 +26,7 @@ function createHistoricalCancelledSchema(path: string): void {
 		projectId: 'hue',
 		name: 'Release',
 		prompt: 'Ship without losing state.',
-		workMode: 'live'
+		bundle: 'live'
 	});
 	store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 	store.updateSession('hue', 'session-1', {
@@ -194,7 +194,7 @@ describe('HUEStore versioned migrations', () => {
 			user_version: HUE_SCHEMA_VERSION
 		});
 		store.close();
-		expect(readdirSync(root)).toEqual(['hue.db']);
+		expect(readdirSync(root).sort()).toEqual(['backups', 'hue.db']);
 	});
 
 	it('adds Workflow favorites to version 2 databases without a backup', () => {
@@ -249,6 +249,74 @@ describe('HUEStore versioned migrations', () => {
 		expect(readdirSync(root)).toEqual(['hue.db']);
 	});
 
+	it('backs up version 5 and additively migrates Workflow work modes to bundle references', () => {
+		const { root, path } = temporaryDatabase('workflow-bundle-migration');
+		const initial = new HUEStore(path);
+		initial.ensureProjectMetadata('hue', 'HUE');
+		initial.close();
+		const historical = new Database(path);
+		historical.exec(`
+			ALTER TABLE workflows DROP COLUMN bundle;
+			ALTER TABLE workflows ADD COLUMN work_mode TEXT NOT NULL DEFAULT 'autonomous';
+			INSERT INTO workflows
+			 (id, project_id, name, prompt, folder, favorite, profile, work_mode, archived, created_at, updated_at)
+			 VALUES
+			 ('auto', 'hue', 'Auto', 'Run.', NULL, 0, 'default', 'autonomous', 0, '2026-08-29T00:00:00.000Z', '2026-08-29T00:00:00.000Z'),
+			 ('live', 'hue', 'Live', 'Pair.', NULL, 0, 'default', 'live', 0, '2026-08-29T00:00:00.000Z', '2026-08-29T00:00:00.000Z');
+			PRAGMA user_version = 5;
+		`);
+		historical.close();
+
+		const migrated = new HUEStore(path);
+		expect(migrated.listWorkflows('hue').map(({ id, bundle }) => ({ id, bundle }))).toEqual([
+			{ id: 'auto', bundle: 'autonomous' },
+			{ id: 'live', bundle: 'live' }
+		]);
+		expect(migrated.database.query('PRAGMA table_info(workflows)').all()).toContainEqual(
+			expect.objectContaining({ name: 'work_mode' })
+		);
+		migrated.close();
+
+		const backups = readdirSync(join(root, 'backups'));
+		expect(backups).toHaveLength(1);
+		const backup = new Database(join(root, 'backups', backups[0]!), {
+			readonly: true,
+			strict: true
+		});
+		expect(backup.query('PRAGMA user_version').get()).toEqual({ user_version: 5 });
+		expect(backup.query('SELECT id, work_mode FROM workflows ORDER BY id').all()).toEqual([
+			{ id: 'auto', work_mode: 'autonomous' },
+			{ id: 'live', work_mode: 'live' }
+		]);
+		backup.close();
+	});
+
+	it('adds external Hermes cron tracking to version 6 databases without a backup', () => {
+		const { root, path } = temporaryDatabase('external-cron-migration');
+		const initial = new HUEStore(path);
+		initial.ensureProjectMetadata('hue', 'HUE');
+		initial.close();
+		const historical = new Database(path);
+		historical.exec(`
+			ALTER TABLE workflows ADD COLUMN work_mode TEXT NOT NULL DEFAULT 'autonomous';
+			INSERT INTO workflows
+			 (id, project_id, name, prompt, profile, bundle, created_at, updated_at, work_mode)
+			 VALUES ('custom', 'hue', 'Custom', 'Run.', 'default', 'release-ready',
+			 '2026-08-29T00:00:00.000Z', '2026-08-29T00:00:00.000Z', 'live');
+			DROP TABLE external_cron_runs;
+			DROP TABLE external_cron_state;
+			PRAGMA user_version = 6;
+		`);
+		historical.close();
+
+		const migrated = new HUEStore(path);
+		expect(migrated.externalCronInitialized()).toBe(false);
+		expect(migrated.listExternalCronRuns('default', 'job-1')).toEqual([]);
+		expect(migrated.listWorkflows('hue')[0]?.bundle).toBe('release-ready');
+		migrated.close();
+		expect(readdirSync(root)).toEqual(['hue.db']);
+	});
+
 	it('versions a fresh database and reopens it without schema writes or backups', () => {
 		const { root, path } = temporaryDatabase('fresh-migration');
 		const store = new HUEStore(path);
@@ -283,7 +351,7 @@ describe('HUEStore versioned migrations', () => {
 			expect.objectContaining({
 				id: 'release',
 				prompt: 'Ship without losing state.',
-				workMode: 'live'
+				bundle: 'live'
 			})
 		]);
 		expect(store.getSession('hue', 'session-1')).toMatchObject({

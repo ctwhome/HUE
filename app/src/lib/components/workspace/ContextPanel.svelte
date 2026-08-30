@@ -532,14 +532,14 @@
 					</button>
 				</div>
 				{#if !session.archived}<button
-						class="session-archive session-desktop-action absolute top-1/2 right-8 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
+						class="session-archive session-desktop-action absolute top-1/2 right-8 z-2 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
 						aria-label={`Archive ${session.title || 'Untitled session'}`}
 						title={`Archive ${session.title || 'Untitled session'}`}
 						onclick={(event) => onarchive(event, session)}
 						><Archive width={15} height={15} aria-hidden="true" /></button
 					>{/if}
 				<button
-					class="session-edit session-desktop-action absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
+					class="session-edit session-desktop-action absolute top-1/2 right-1 z-2 grid size-7 -translate-y-1/2 place-items-center rounded-md opacity-0 hover:bg-accent [.session-row:focus-within_&]:opacity-100 [.session-row:hover_&]:opacity-100"
 					aria-label={`Edit ${session.title || 'Untitled session'}`}
 					title={`Edit ${session.title || 'Untitled session'}`}
 					onclick={(event) => onedit(event, session)}
@@ -575,8 +575,9 @@
 							height={18}
 							aria-hidden="true"
 						/>
-						<div class="min-w-0 overflow-hidden self-end">
-							<strong class="block truncate text-sm leading-5">{job.name}</strong>
+						<div class="flex min-w-0 items-center gap-2 overflow-hidden self-end">
+							<strong class="block min-w-0 truncate text-sm leading-5">{job.name}</strong>
+							{#if job.unreadCount}<span class="size-2 shrink-0 rounded-full bg-destructive" aria-label={`${job.unreadCount} unread runs`}></span>{/if}
 						</div>
 						<div class="flex min-w-0 items-center gap-2 self-start">
 							<small class="min-w-0 flex-1 truncate text-xs leading-4 text-muted-foreground"

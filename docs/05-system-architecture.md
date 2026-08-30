@@ -21,32 +21,35 @@ flowchart LR
 ```
 
 - SvelteKit serves the responsive workspace and same-origin HTTP API.
-- `bun:sqlite` stores HUE-owned Workflows, schedules, associations, UI metadata, notification state, and durable message-delivery state.
+- `bun:sqlite` stores HUE-owned Workflows, schedules, associations, UI metadata, notification state, external-cron read projections, and durable message-delivery state.
 - A supervised Hermes ACP process is the only Session execution and mutation adapter.
 - A supervised, authenticated, loopback-only `hermes serve --isolated` process supplies bounded transcript reads and Hermes-owned administration APIs.
 - HUE never opens or writes Hermes databases directly.
 
 ## Ownership
 
-| Concern | Authority |
-| --- | --- |
-| Project identity, folders, icon, archive state | Hermes `projects.*` |
-| Workflow definitions and Project association | HUE SQLite |
-| Session execution and transcript persistence | Hermes through ACP |
-| Project/projectless Session association and work mode | HUE SQLite |
-| Message envelope, idempotency, delivery state, replay cursor | HUE SQLite |
-| Hermes profiles, models, MCP | Hermes authenticated APIs |
-| Schedule definition, next occurrence, and Session association | HUE SQLite |
-| External cron definition, status, and explicit mutation | Hermes authenticated APIs |
-| Custom skill `SKILL.md` mutation | Narrow HUE exception in ADR-0012 |
-| Notification projection and delivery attempts | HUE SQLite |
-| Project Excalidraw scene and workbench state | HUE SQLite |
+| Concern                                                                 | Authority                         |
+| ----------------------------------------------------------------------- | --------------------------------- |
+| Project identity, folders, icon, archive state                          | Hermes `projects.*`               |
+| Workflow prompt, display metadata, Project association, and bundle slug | HUE SQLite                        |
+| Bundle definitions, membership, and activation                          | Hermes authenticated RPC and ACP  |
+| Session execution and transcript persistence                            | Hermes through ACP                |
+| Project/projectless Session association and work mode                   | HUE SQLite                        |
+| Message envelope, idempotency, delivery state, replay cursor            | HUE SQLite                        |
+| Hermes profiles, models, MCP                                            | Hermes authenticated APIs         |
+| Schedule definition, next occurrence, and Session association           | HUE SQLite                        |
+| External cron definition, status, and explicit mutation                 | Hermes authenticated APIs         |
+| External cron run transcript                                            | Hermes profile-scoped Session API |
+| External cron run baseline, unread state, and notification projection   | HUE SQLite                        |
+| Custom skill `SKILL.md` mutation                                        | Narrow HUE exception in ADR-0012  |
+| Notification projection and delivery attempts                           | HUE SQLite                        |
+| Project Excalidraw scene and workbench state                            | HUE SQLite                        |
 
 ## Delivery invariant
 
 The browser submits one complete envelope with a client-generated ID. HUE persists it before dispatch, serializes turns per Session, deduplicates retries, and exposes monotonic event replay. A transport loss after dispatch becomes `unknown`; HUE does not automatically repeat a possibly side-effecting prompt.
 
-Scheduled prompts follow the same invariant through a dedicated projectless Session per schedule. The Projects rail surfaces those Sessions together under Cron tasks without turning schedules into a fourth user-facing object. HUE coalesces downtime catch-up to one durable run. Existing external Hermes cron jobs may appear as Hermes-owned rows and accept explicit authenticated edits or deletion, but they are not imported and carry no HUE delivery or notification guarantee.
+Scheduled prompts follow the same invariant through a dedicated projectless Session per schedule. The Projects rail surfaces those Sessions together under Cron tasks without turning schedules into a fourth user-facing object. HUE coalesces downtime catch-up to one durable run. Existing external Hermes cron jobs may appear as Hermes-owned rows and accept explicit authenticated edits or deletion. HUE polls their run history after a read baseline and projects unread terminal outcomes and best-effort notifications, but does not import their execution, persist their transcripts, or claim HUE delivery guarantees.
 
 ## Trust boundary
 

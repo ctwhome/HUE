@@ -58,11 +58,14 @@ export const GET: RequestHandler = async ({ url }) => {
 		const limit = Math.max(1, Math.min(Number(url.searchParams.get('limit') ?? 100) || 100, 100));
 		const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0) || 0);
 		const scope = url.searchParams.get('scope');
-		let externalCronJobs: ExternalHermesCronJob[] = [];
+		let externalCronJobs: Array<ExternalHermesCronJob & { unreadCount: number }> = [];
 		let externalCronError: unknown = null;
 		if (scope === 'scheduled') {
 			try {
-				externalCronJobs = await listExternalHermesCron(services().admin);
+				externalCronJobs = (await listExternalHermesCron(services().admin)).map((job) => ({
+					...job,
+					unreadCount: services().store.externalCronUnreadCount(job.profile, job.jobId)
+				}));
 			} catch (cause) {
 				externalCronError = redactHermesValue(
 					cause instanceof Error ? cause.message : String(cause)

@@ -151,7 +151,30 @@
 	display: block;
 	max-inline-size: 100%;
 	overflow-x: auto;
+	margin-block: 1em;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-panel);
+	border-spacing: 0;
+	background: var(--card);
 	white-space: nowrap;
+	word-break: normal;
+}
+.markdown th,
+.markdown td {
+	padding: 0.55em 0.75em;
+	border-block-end: 1px solid var(--border);
+	text-align: start;
+}
+.markdown th {
+	background: var(--muted);
+	font-weight: 650;
+}
+.markdown th + th,
+.markdown td + td {
+	border-inline-start: 1px solid var(--border);
+}
+.markdown tr:last-child td {
+	border-block-end: 0;
 }
 .markdown img,
 .markdown video,
@@ -217,11 +240,27 @@
 .markdown ol,
 .markdown pre,
 .markdown blockquote {
-	margin-block: 0.65em;
+	margin-block: 0.85em;
 }
 .markdown ul,
 .markdown ol {
-	padding-left: 1.5em;
+	padding-inline-start: 1.6em;
+}
+.markdown ul {
+	list-style: disc outside;
+}
+.markdown ol {
+	list-style: decimal outside;
+}
+.markdown li {
+	margin-block: 0.35em;
+	padding-inline-start: 0.2em;
+}
+.markdown li::marker {
+	color: var(--muted-foreground);
+}
+.markdown li > p {
+	margin-block: 0.35em;
 }
 .markdown code {
 	border-radius: var(--radius-small);

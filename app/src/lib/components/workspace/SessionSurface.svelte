@@ -111,7 +111,7 @@
 		bind:workflowPrompt={navigation.workflowPrompt}
 		bind:workflowFolder={navigation.workflowFolder}
 		bind:workflowProfile={navigation.workflowProfile}
-		bind:workflowWorkMode={navigation.workflowWorkMode}
+		bind:workflowBundle={navigation.workflowBundle}
 		stopping={messageState.stopping}
 		showScrollToLatest={timeline.length > 0 && transcriptFollow.showScrollToLatest}
 		busy={isTurnBusy(sessionState.delivery)}

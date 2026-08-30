@@ -220,7 +220,7 @@ export class HermesServe {
 		return this.projectsRpc.request<T>(url.toString(), method, params);
 	}
 
-	async loadTranscript(sessionId: string): Promise<HermesTranscriptMessage[]> {
+	async loadTranscript(sessionId: string, profile?: string): Promise<HermesTranscriptMessage[]> {
 		const transcript: HermesTranscriptMessage[] = [];
 		const messageIds = new Set<string>();
 		let resolvedSessionId = '';
@@ -228,7 +228,7 @@ export class HermesServe {
 			if (offset >= MAX_TRANSCRIPT_MESSAGES) {
 				throw new Error(`Hermes Session transcript exceeds ${MAX_TRANSCRIPT_MESSAGES} messages`);
 			}
-			const path = `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=${TRANSCRIPT_PAGE_SIZE}&offset=${offset}&order=oldest&include_compacted=true`;
+			const path = `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=${TRANSCRIPT_PAGE_SIZE}&offset=${offset}&order=oldest&include_compacted=true${profile ? `&profile=${encodeURIComponent(profile)}` : ''}`;
 			const page = await this.json<{
 				session_id?: unknown;
 				messages?: unknown;
