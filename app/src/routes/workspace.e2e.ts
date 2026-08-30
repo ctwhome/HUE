@@ -2304,8 +2304,20 @@ test('personalizes one Session with template and uploaded chat backgrounds', asy
 
 	await addProject(page);
 	await sessionButton(page, 'Personal chat').click();
+	await expect
+		.poll(() => page.locator('.transcript-content').evaluate((element) => element.clientWidth))
+		.toBeLessThanOrEqual(768);
+	await expect
+		.poll(() => page.locator('.composer').evaluate((element) => element.clientWidth))
+		.toBeLessThanOrEqual(768);
 	await openAppSettings(page);
 	let appSettings = page.getByRole('dialog', { name: 'App settings dialog' });
+	const limitChatWidth = appSettings.getByLabel('Limit chat width');
+	await expect(limitChatWidth).toBeChecked();
+	await limitChatWidth.uncheck();
+	await expect(page.locator('html')).toHaveAttribute('data-limit-chat-width', 'false');
+	await limitChatWidth.check();
+	await expect(page.locator('html')).toHaveAttribute('data-limit-chat-width', 'true');
 	await appSettings.getByLabel('Chat font size').fill('18');
 	await expect
 		.poll(() =>
@@ -4143,7 +4155,7 @@ test('mod-enter sends command text while plain Enter completes selected command'
 
 test('keeps generic attachment bytes transient and restores explicit reattach plus MEDIA controls', async ({
 	page
-}) => {
+}, testInfo) => {
 	let sent = false;
 	let posts = 0;
 	let envelope: {
@@ -4290,15 +4302,20 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 
 	const preview = page.getByRole('link', { name: 'Preview output/report.pdf' });
 	const download = page.getByRole('link', { name: 'Download output/report.pdf' });
+	const outputs = page.getByRole('region', { name: 'Generated outputs' });
 	const image = page.getByRole('img', { name: 'screenshot.png' });
 	const svg = page.getByRole('img', { name: 'diagram.svg' });
-	await expect(page.getByTitle('Inline preview of report.pdf')).toBeVisible();
+	await expect(outputs.getByLabel('Inline preview of report.pdf')).toBeVisible();
+	const previewHref = (await preview.getAttribute('href'))!;
+	await outputs.getByRole('button', { name: 'Select screenshot.png' }).click();
 	await expect(image).toBeVisible();
 	await expect(image).toHaveAttribute(
 		'src',
 		/\/sessions\/files\/media\?path=output%2Fscreenshot\.png$/
 	);
+	await outputs.getByRole('button', { name: 'Select diagram.svg' }).click();
 	await expect(svg).toHaveAttribute('src', /\/sessions\/files\/media\?path=output%2Fdiagram\.svg$/);
+	await outputs.getByRole('button', { name: 'Select report.pdf' }).click();
 	await expect(preview).toHaveAttribute('target', '_blank');
 	await expect(download).toHaveAttribute('href', /download=true/);
 	const artifactsButton = page.getByRole('button', {
@@ -4308,6 +4325,11 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 	await artifactsButton.click();
 	const artifactsGallery = page.getByRole('dialog', { name: 'Session artifacts gallery' });
 	await expect(artifactsGallery).toBeVisible();
+	await expect(artifactsGallery.getByText('1 / 3')).toBeVisible();
+	await artifactsGallery.getByRole('link', { name: 'Download output/report.pdf' }).focus();
+	await artifactsGallery
+		.getByRole('link', { name: 'Download output/report.pdf' })
+		.press('ArrowRight');
 	await expect(artifactsGallery.getByText('1 / 3')).toBeVisible();
 	await page.setViewportSize(viewports.at(-1)!);
 	const artifactStrip = artifactsGallery.getByRole('navigation', { name: 'Artifacts' });
@@ -4337,7 +4359,8 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 	await artifactsGallery.getByRole('button', { name: 'Close artifacts gallery' }).click();
 	await expect(artifactsGallery).not.toBeVisible();
 	await expect(artifactsButton).toBeFocused();
-	await page.getByRole('button', { name: 'Show output/screenshot.png' }).click();
+	await outputs.getByRole('button', { name: 'Select screenshot.png' }).click();
+	await page.getByRole('button', { name: 'Expand output/screenshot.png' }).click();
 	const showcase = page.getByRole('dialog', { name: 'screenshot.png' });
 	await expect(showcase).toBeVisible();
 	await showcase.getByRole('button', { name: 'Zoom in' }).click();
@@ -4347,12 +4370,12 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 	);
 	await showcase.getByRole('button', { name: 'Close preview' }).click();
 	await expect(showcase).not.toBeVisible();
-	const ranged = await preview.evaluate(async (link) => {
-		const response = await fetch((link as HTMLAnchorElement).href, {
+	const ranged = await page.evaluate(async (href) => {
+		const response = await fetch(href, {
 			headers: { range: 'bytes=5-11' }
 		});
 		return { status: response.status, contentRange: response.headers.get('content-range') };
-	});
+	}, previewHref);
 	expect(ranged.status).toBe(206);
 	expect(ranged.contentRange).toMatch(/^bytes 5-11\//);
 
@@ -4361,7 +4384,7 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
 		);
-		await page.getByRole('button', { name: 'Show output/screenshot.png' }).click();
+		await page.getByRole('button', { name: 'Expand output/screenshot.png' }).click();
 		await expect(showcase).toBeVisible();
 		const box = await showcase.boundingBox();
 		expect(box).not.toBeNull();
@@ -4375,10 +4398,143 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 			);
 			await expectMinimumTouchTargets(showcase.locator('header a, header button'));
 		}
+		await testInfo.attach(`selected-artifact-${viewport.width}x${viewport.height}`, {
+			body: await page.screenshot(),
+			contentType: 'image/png'
+		});
 		await showcase.getByRole('button', { name: 'Close preview' }).click();
 	}
 	await page.getByLabel('Message Hermes').focus();
 	await expect(page.getByLabel('Message Hermes')).toBeFocused();
+});
+
+test('previews CSV and sandboxed interactive HTML outputs inline', async ({ page }, testInfo) => {
+	const errors: string[] = [];
+	const csvRanges: string[] = [];
+	page.on(
+		'console',
+		(message) =>
+			message.type() === 'error' &&
+			!message.text().startsWith('Blocked script execution in') &&
+			errors.push(message.text())
+	);
+	page.on('pageerror', (error) => errors.push(error.message));
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) =>
+		route.fulfill({
+			json: { sessions: [{ sessionId: 'preview-formats', cwd: '/work/hue', title: 'Formats' }] }
+		})
+	);
+	await page.route(/\/sessions\/preview-formats$/, (route) =>
+		route.fulfill({
+			json: {
+				transcript: [
+					{
+						role: 'assistant',
+						text: 'Outputs ready.\nMEDIA: output/report.csv\nMEDIA: output/empty.csv\nMEDIA: output/dashboard.html'
+					}
+				],
+				messages: [],
+				events: [],
+				cursor: 0,
+				activeTurn: null
+			}
+		})
+	);
+	await page.route(/\/sessions\/preview-formats\/media\?.*$/, (route) => {
+		const path = new URL(route.request().url()).searchParams.get('path');
+		if (path?.endsWith('.html'))
+			return route.fulfill({
+				headers: {
+					'content-type': 'text/html; charset=utf-8',
+					'content-security-policy':
+						"default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; connect-src 'none'; sandbox"
+				},
+				body: '<details><summary>Dashboard controls</summary><label>Scenario <input></label></details><script>document.body.dataset.script="unsafe"</script>'
+			});
+		csvRanges.push(route.request().headers().range ?? '');
+		return route.fulfill({
+			headers: {
+				'content-type': 'text/plain; charset=utf-8',
+				'content-disposition': 'inline; filename="report.csv"'
+			},
+			body: path?.endsWith('empty.csv') ? '' : 'name,value\nHermes,ready\n'
+		});
+	});
+
+	await addProject(page);
+	await sessionButton(page, 'Formats').click();
+	const outputs = page.getByRole('region', { name: 'Generated outputs' });
+	await expect(outputs.locator('.generated-output-preview')).toHaveCount(1);
+	await expect(outputs.getByRole('button', { name: 'Select report.csv' })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+	const csv = outputs.getByRole('table', { name: 'Preview of report.csv' });
+	await expect(csv).toBeVisible();
+	await expect(csv.getByRole('columnheader', { name: 'name' })).toBeVisible();
+	await expect(csv.getByRole('cell', { name: 'ready' })).toBeVisible();
+	expect(csvRanges).toContain('bytes=0-999999');
+	await expect(outputs.locator('.generated-output-toolbar svg')).toHaveCount(5);
+	await outputs.getByRole('button', { name: 'Expand output/report.csv' }).click();
+	const csvShowcase = page.getByRole('dialog', { name: 'report.csv' });
+	await expect(csvShowcase.getByRole('table', { name: 'Preview of report.csv' })).toBeVisible();
+	await csvShowcase.getByRole('button', { name: 'Close preview' }).click();
+	await outputs.getByRole('button', { name: 'Select empty.csv' }).click();
+	await expect(outputs.getByText('CSV file is empty.')).toBeVisible();
+	await outputs.getByRole('button', { name: 'Select dashboard.html' }).click();
+	const html = outputs.getByLabel('Inline preview of dashboard.html');
+	await expect(html).toBeVisible();
+	await expect(html).toHaveAttribute('sandbox', '');
+	await expect(html.contentFrame().locator('body')).not.toHaveAttribute('data-script', 'unsafe');
+	const details = html.contentFrame().locator('details');
+	expect(
+		await details.evaluate((element) => {
+			element.querySelector('summary')?.click();
+			return (element as HTMLDetailsElement).open;
+		})
+	).toBe(true);
+	await html.contentFrame().getByLabel('Scenario').fill('Release');
+	await expect(html.contentFrame().getByLabel('Scenario')).toHaveValue('Release');
+	expect(errors).toEqual([]);
+	await expect(
+		page.getByRole('button', { name: 'Open output/dashboard.html', exact: true })
+	).toHaveCount(0);
+
+	const artifactsButton = page.getByRole('button', {
+		name: 'Open artifacts gallery, 3 artifacts'
+	});
+	await artifactsButton.click();
+	const gallery = page.getByRole('dialog', { name: 'Session artifacts gallery' });
+	await expect(
+		gallery.getByRole('button', { name: 'Select report.csv' }).locator('iframe')
+	).toHaveCount(0);
+	const galleryCsv = gallery.getByRole('table', { name: 'Preview of report.csv' });
+	await expect(galleryCsv).toBeVisible();
+	await expect(galleryCsv.getByRole('columnheader', { name: 'name' })).toBeVisible();
+	await expect(galleryCsv.getByRole('cell', { name: 'ready' })).toBeVisible();
+	await gallery.getByRole('button', { name: 'Select dashboard.html' }).click();
+	await expect(gallery.getByTitle('Preview of dashboard.html')).toHaveAttribute('sandbox', '');
+	await gallery.getByRole('button', { name: 'Close artifacts gallery' }).click();
+
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		await outputs.getByRole('button', { name: 'Select report.csv' }).click();
+		await expect(csv).toBeVisible();
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		await testInfo.attach(`csv-preview-${viewport.width}x${viewport.height}`, {
+			body: await page.screenshot(),
+			contentType: 'image/png'
+		});
+		await outputs.getByRole('button', { name: 'Select dashboard.html' }).click();
+		await expect(html).toBeVisible();
+		await testInfo.attach(`format-previews-${viewport.width}x${viewport.height}`, {
+			body: await page.screenshot(),
+			contentType: 'image/png'
+		});
+	}
+	expect(errors).toEqual([]);
 });
 
 test('queues and edits messages with attachments while streaming, then can send now or stop', async ({
@@ -5872,6 +6028,13 @@ test('opens the project prompt library from the composer across required viewpor
 	page.once('dialog', (prompt) => prompt.accept('Quality'));
 	await dialog.getByRole('button', { name: 'Delete bundle' }).click();
 	await expect.poll(() => bundleRows.some(({ name }) => name === 'Quality')).toBe(false);
+	page.once('dialog', (prompt) => prompt.accept('Release'));
+	await dialog.getByRole('button', { name: 'Delete bundle' }).click();
+	await expect.poll(() => bundleRows).toEqual([]);
+	await dialog.getByRole('button', { name: 'Back to bundles' }).click();
+	await dialog.getByRole('button', { name: 'New bundle' }).click();
+	await page.waitForTimeout(200);
+	await expect(dialog.getByLabel('Bundle name')).toBeVisible();
 	expect(sentPrompt).toBe('');
 	expect(browserErrors).toEqual([]);
 });
@@ -6329,6 +6492,32 @@ test('per-session work mode selector persists across natural text, slash alias, 
 	await page.route(/\/api\/projects\/[^/]+\/sessions\/session-1\/events\?after=.*/, async (route) =>
 		route.fulfill({ json: { events: [] } })
 	);
+	await page.route('**/api/projects/*/workflows', (route) =>
+		route.fulfill({ json: { workflows: [] } })
+	);
+	await page.route('**/api/hermes/bundles', (route) =>
+		route.fulfill({
+			json: {
+				bundles: [
+					{
+						name: 'autonomous',
+						slug: 'autonomous',
+						description: 'Work independently.',
+						skills: ['autonomous-delivery'],
+						instruction: ''
+					},
+					{
+						name: 'live',
+						slug: 'live',
+						description: 'Collaborate turn by turn.',
+						skills: ['live-co-development'],
+						instruction: ''
+					}
+				],
+				skills: []
+			}
+		})
+	);
 
 	await addProject(page);
 	await sessionButton(page, 'Main').click();
@@ -6345,6 +6534,14 @@ test('per-session work mode selector persists across natural text, slash alias, 
 		if (viewport.width <= 390) {
 			expect((await selector.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 		}
+		await selector.click();
+		const menu = page.getByRole('dialog', { name: 'Choose work mode' });
+		await expect(
+			menu.getByRole('button', { name: 'Review and edit Autonomous bundle' })
+		).toBeVisible();
+		await expect(menu.getByRole('button', { name: 'Review and edit Live bundle' })).toBeVisible();
+		if (viewport.width <= 390) await expectMinimumTouchTargets(menu.locator('button'));
+		await page.keyboard.press('Escape');
 	}
 
 	await page.setViewportSize({ width: 1440, height: 900 });
@@ -6359,9 +6556,14 @@ test('per-session work mode selector persists across natural text, slash alias, 
 	await expect(page.getByText('/autonomous-delivery')).toHaveCount(0);
 
 	await workModeButton.click();
+	await page.getByRole('button', { name: 'Review and edit Autonomous bundle' }).click();
+	const promptLibrary = page.getByRole('dialog', { name: 'Prompt library' });
+	await expect(promptLibrary.getByRole('heading', { name: 'autonomous' })).toBeVisible();
+	await promptLibrary.getByRole('button', { name: 'Close prompt library' }).click();
+	await workModeButton.click();
 	await page
 		.getByRole('dialog', { name: 'Choose work mode' })
-		.getByRole('button', { name: /Live/ })
+		.getByRole('button', { name: /^Live/ })
 		.click();
 	await expect(workModeButton).toHaveAttribute('title', 'Work mode: Live');
 	await page.getByRole('button', { name: 'Thinking' }).click();
@@ -6554,7 +6756,7 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 				transcript: [
 					{
 						role: 'assistant',
-						text: `${longUrl}\n\n${longPath}\n\n${token}\n\nThen consider:\n\n- Who was the person?\n- What were they trying to do?\n\n| Model | ID |\n| --- | --- |\n| Hermes | ${token} |\n\nAfter the table.\n\n| Name | Value |\n| --- | --- |\n| Local | Ready |\n\n\`\`\`text\n${token}\n\`\`\``,
+						text: `${longUrl}\n\n${longPath}\n\n${token}\n\nThen consider:\n\n- Who was the person?\n- What were they trying to do?\n\n| Model | ID |\n| --- | --- |\n| Hermes | ${token} |\n\nAfter the table.\n\n| Name | Value |\n| --- | --- |\n| Local | Ready |\n\n\`\`\`ts\nconst answer: number = 42;\n\`\`\`\n\n\`\`\`mermaid\ngraph TD\nA[Start] --> B[Ready]\n\`\`\`\n\n\`\`\`text\n${token}\n\`\`\``,
 						images: [
 							{
 								name: 'Pixel',
@@ -6589,6 +6791,13 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 	await page.setViewportSize({ width: 320, height: 568 });
 	const article = page.locator('.transcript article.assistant');
 	await expect(article).toBeVisible();
+	expect(
+		await article.locator('.message').evaluate((element) => ({
+			background: getComputedStyle(element).backgroundColor,
+			border: getComputedStyle(element).borderTopWidth,
+			padding: getComputedStyle(element).paddingInlineStart
+		}))
+	).toEqual({ background: 'rgba(0, 0, 0, 0)', border: '0px', padding: '0px' });
 	expect(await article.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
 		true
 	);
@@ -6603,7 +6812,33 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 		)
 	).toBe(true);
 	const code = page.locator('.markdown pre');
-	expect(await code.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+	expect(await code.last().evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+		true
+	);
+	const keyword = page.locator('.markdown code.language-typescript .token.keyword');
+	await expect(keyword).toHaveText('const');
+	expect(
+		await keyword.evaluate(
+			(element) =>
+				getComputedStyle(element).color !== getComputedStyle(element.parentElement!).color
+		)
+	).toBe(true);
+	await expect(page.getByRole('img', { name: 'Mermaid diagram' })).toBeVisible();
+	await expect(page.locator('.table-toolbar button svg')).toHaveCount(4);
+	await expect(page.locator('.code-toolbar button svg')).toHaveCount(7);
+	const typescriptBlock = page.locator('.code-block:has(code.language-typescript)');
+	await typescriptBlock.getByRole('button', { name: 'Wrap code' }).click();
+	expect(
+		await typescriptBlock
+			.locator('code')
+			.evaluate((element) => getComputedStyle(element).whiteSpace)
+	).toBe('pre-wrap');
+	const mermaidBlock = page.locator('.code-block:has(.mermaid-diagram)');
+	await mermaidBlock.getByRole('button', { name: 'Show Mermaid source' }).click();
+	await expect(mermaidBlock.locator('pre')).toBeVisible();
+	const diagramDownload = page.waitForEvent('download');
+	await mermaidBlock.getByRole('button', { name: 'Download Mermaid diagram' }).click();
+	expect((await diagramDownload).suggestedFilename()).toBe('mermaid-diagram.svg');
 	const listItem = page.locator('.markdown li').first();
 	expect(await listItem.evaluate((element) => getComputedStyle(element).listStyleType)).toBe(
 		'disc'
@@ -6613,7 +6848,6 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 	).toBeGreaterThanOrEqual(4);
 	const tables = page.locator('.markdown table');
 	const table = tables.first();
-	expect(await table.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
 	expect(
 		await table
 			.locator('td')
@@ -6622,7 +6856,7 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 	).toBeGreaterThanOrEqual(8);
 	expect(
 		await table
-			.locator('xpath=..')
+			.locator('xpath=../..')
 			.evaluate((element) => parseFloat(getComputedStyle(element).marginBlockStart))
 	).toBeGreaterThanOrEqual(12);
 	const tableBlocks = page.locator('.markdown .table-block');
@@ -6630,8 +6864,6 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 	const firstTable = tableBlocks.first();
 	const secondTable = tableBlocks.nth(1);
 	const wrap = firstTable.getByRole('button', { name: 'Wrap table cells' });
-	await expect(wrap).toHaveAttribute('aria-pressed', 'false');
-	await wrap.click();
 	await expect(wrap).toHaveAttribute('aria-pressed', 'true');
 	expect(
 		await firstTable
@@ -6639,9 +6871,16 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 			.first()
 			.evaluate((cell) => getComputedStyle(cell).whiteSpace)
 	).toBe('normal');
+	await wrap.click();
+	await expect(wrap).toHaveAttribute('aria-pressed', 'false');
+	expect(
+		await firstTable
+			.locator('.table-scroll')
+			.evaluate((element) => element.scrollWidth > element.clientWidth)
+	).toBe(true);
 	await expect(secondTable.getByRole('button', { name: 'Wrap table cells' })).toHaveAttribute(
 		'aria-pressed',
-		'false'
+		'true'
 	);
 	await firstTable.getByRole('button', { name: 'Copy table' }).click();
 	expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
@@ -6658,6 +6897,22 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 		);
 		if (viewport.width <= 390)
 			await expectMinimumTouchTargets(firstTable.locator('.table-toolbar button'));
+		const codeToolbarBox = (await typescriptBlock.locator('.code-toolbar').boundingBox())!;
+		const codeSurfaceBox = (await typescriptBlock.locator('pre').boundingBox())!;
+		expect(codeToolbarBox.y + codeToolbarBox.height).toBeLessThanOrEqual(codeSurfaceBox.y);
+		const tableToolbarBox = (await firstTable.locator('.table-toolbar').boundingBox())!;
+		const tableSurfaceBox = (await firstTable.locator('.table-scroll').boundingBox())!;
+		expect(tableToolbarBox.y + tableToolbarBox.height).toBeLessThanOrEqual(tableSurfaceBox.y);
+		const controlBox = (await typescriptBlock
+			.getByRole('button', { name: 'Copy code' })
+			.boundingBox())!;
+		if (viewport.width <= 390) expect(controlBox.height).toBeGreaterThanOrEqual(44);
+		else expect(controlBox.height).toBeLessThanOrEqual(32);
+		if (viewport.width > 390) {
+			const shortTableBox = (await secondTable.boundingBox())!;
+			const messageBox = (await article.locator('.message').boundingBox())!;
+			expect(shortTableBox.width).toBeLessThan(messageBox.width * 0.75);
+		}
 		await testInfo.attach(`chat-tables-${viewport.width}x${viewport.height}`, {
 			body: await page.screenshot(),
 			contentType: 'image/png'

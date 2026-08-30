@@ -80,6 +80,61 @@ test('serves validated SVG MEDIA with image-safe document headers', async () => 
 	expect(() => resolveSessionMedia(root, 'fake.svg')).toThrow('content does not match');
 });
 
+test('previews CSV as text while preserving its download type', async () => {
+	const root = join(tmpdir(), `hue-media-${crypto.randomUUID()}`);
+	roots.push(root);
+	mkdirSync(root, { recursive: true });
+	writeFileSync(join(root, 'report.csv'), 'name,value\nHermes,ready\n');
+
+	const preview = serveSessionMedia(
+		resolveSessionMedia(root, 'report.csv'),
+		new Request('http://hue.test/media'),
+		false
+	);
+	expect(preview.headers.get('content-type')).toBe('text/plain; charset=utf-8');
+	expect(preview.headers.get('content-disposition')).toStartWith('inline;');
+	expect(await preview.text()).toContain('Hermes,ready');
+
+	const download = serveSessionMedia(
+		resolveSessionMedia(root, 'report.csv'),
+		new Request('http://hue.test/media?download=true'),
+		true
+	);
+	expect(download.headers.get('content-type')).toBe('text/csv');
+	expect(download.headers.get('content-disposition')).toStartWith('attachment;');
+	await download.body?.cancel();
+});
+
+test('serves only valid generated HTML inside a script-only sandbox', async () => {
+	const root = join(tmpdir(), `hue-media-${crypto.randomUUID()}`);
+	roots.push(root);
+	mkdirSync(root, { recursive: true });
+	writeFileSync(
+		join(root, 'dashboard.html'),
+		'<button onclick="this.textContent=\'Clicked\'">Run</button>'
+	);
+	writeFileSync(join(root, 'nul.html'), Buffer.from('<p>bad\0html</p>'));
+	writeFileSync(
+		join(root, 'invalid.html'),
+		Buffer.from([0x3c, 0x70, 0x3e, 0xff, 0x3c, 0x2f, 0x70, 0x3e])
+	);
+
+	const response = serveSessionMedia(
+		resolveSessionMedia(root, 'dashboard.html'),
+		new Request('http://hue.test/media'),
+		false
+	);
+	expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8');
+	expect(response.headers.get('cache-control')).toBe('private, no-store');
+	expect(response.headers.get('content-security-policy')).toContain("script-src 'none'");
+	expect(response.headers.get('content-security-policy')).toMatch(/(?:^|; )sandbox(?:;|$)/);
+	expect(response.headers.get('content-security-policy')).toContain("connect-src 'none'");
+	expect(response.headers.get('content-security-policy')).not.toContain('allow-same-origin');
+	expect(await response.text()).toContain('onclick');
+	expect(() => resolveSessionMedia(root, 'nul.html')).toThrow('content does not match');
+	expect(() => resolveSessionMedia(root, 'invalid.html')).toThrow('content does not match');
+});
+
 test('closes the MEDIA descriptor when a response body is cancelled', async () => {
 	const root = join(tmpdir(), `hue-media-${crypto.randomUUID()}`);
 	roots.push(root);

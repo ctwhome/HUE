@@ -6,6 +6,7 @@
 	import FileCheck2 from '~icons/lucide/file-check-2';
 	import Gauge from '~icons/lucide/gauge';
 	import MessageCircleQuestion from '~icons/lucide/message-circle-question';
+	import Pencil from '~icons/lucide/pencil';
 	import Radio from '~icons/lucide/radio';
 	import ShieldAlert from '~icons/lucide/shield-alert';
 	import ShieldCheck from '~icons/lucide/shield-check';
@@ -20,7 +21,8 @@
 		kind,
 		showLabel = false,
 		disabled = false,
-		onselect
+		onselect,
+		onedit
 	}: {
 		options: SessionOption[];
 		value: string;
@@ -29,6 +31,7 @@
 		showLabel?: boolean;
 		disabled?: boolean;
 		onselect: (value: string) => void;
+		onedit?: (value: string) => void;
 	} = $props();
 	const instanceId = $props.id();
 	const menuId = `${instanceId}-menu`;
@@ -53,6 +56,10 @@
 	function select(next: string) {
 		menu?.hidePopover();
 		onselect(next);
+	}
+	function edit(next: string) {
+		menu?.hidePopover();
+		onedit?.(next);
 	}
 	let SelectedIcon = $derived(iconFor(selected));
 </script>
@@ -82,21 +89,37 @@
 >
 	{#each options as option}
 		{@const Icon = iconFor(option)}
-		<button
-			type="button"
-			aria-pressed={option.value === value}
-			class="flex min-h-11 w-full items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-accent"
-			onclick={() => select(option.value)}
-		>
-			<Icon width={16} height={16} class="mt-0.5 shrink-0" aria-hidden="true" />
-			<span class="grid min-w-0 flex-1 text-xs"
-				><strong>{option.name}</strong>{#if option.description}<small class="text-muted-foreground"
-						>{option.description}</small
-					>{/if}</span
+		<div class="flex items-stretch gap-1 rounded-lg hover:bg-accent">
+			<button
+				type="button"
+				aria-pressed={option.value === value}
+				class="flex min-h-11 min-w-0 flex-1 items-start gap-2 rounded-lg px-2 py-2 text-left"
+				onclick={() => select(option.value)}
 			>
-			<span class="grid w-4 shrink-0 place-items-center pt-0.5"
-				>{#if option.value === value}<Check width={15} height={15} aria-hidden="true" />{/if}</span
-			>
-		</button>
+				<Icon width={16} height={16} class="mt-0.5 shrink-0" aria-hidden="true" />
+				<span class="grid min-w-0 flex-1 text-xs"
+					><strong>{option.name}</strong>{#if option.description}<small
+							class="text-muted-foreground">{option.description}</small
+						>{/if}</span
+				>
+				<span class="grid w-4 shrink-0 place-items-center pt-0.5"
+					>{#if option.value === value}<Check
+							width={15}
+							height={15}
+							aria-hidden="true"
+						/>{/if}</span
+				>
+			</button>
+			{#if onedit}<button
+					type="button"
+					class="grid min-h-11 min-w-11 place-items-center rounded-lg text-muted-foreground hover:text-foreground"
+					aria-label={`Review and edit ${option.name} bundle`}
+					title={`Review and edit ${option.name} bundle`}
+					onclick={() => edit(option.value)}
+				>
+					<Pencil width={15} height={15} aria-hidden="true" />
+				</button>
+			{/if}
+		</div>
 	{/each}
 </div>

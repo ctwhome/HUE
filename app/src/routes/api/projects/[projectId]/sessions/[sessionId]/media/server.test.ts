@@ -11,6 +11,7 @@ writeFileSync(
 	join(root, 'diagram.svg'),
 	'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><path d="M0 0h1v1z"/></svg>'
 );
+writeFileSync(join(root, 'dashboard.html'), '<button>Interactive output</button>');
 const projectIds: string[] = [];
 
 mock.module('$lib/server/route-services', () => ({
@@ -137,5 +138,33 @@ test('previews SVG MEDIA but never opens it outside the hardened response contex
 	expect(opened.status).toBe(400);
 	expect(await opened.json()).toEqual({
 		error: 'SVG outputs can only be previewed or revealed'
+	});
+});
+
+test('previews generated HTML but never opens it outside the sandbox', async () => {
+	const { GET, POST } = await import('./+server');
+	const url = new URL('http://127.0.0.1/api/projects/p/sessions/s/media?path=dashboard.html');
+	const preview = await GET({
+		params: { projectId: 'p', sessionId: 's' },
+		url,
+		request: new Request(url)
+	} as never);
+	expect(preview.status).toBe(200);
+	expect(preview.headers.get('content-type')).toBe('text/html; charset=utf-8');
+	await preview.body?.cancel();
+
+	const opened = await POST({
+		params: { projectId: 'p', sessionId: 's' },
+		url,
+		getClientAddress: () => '127.0.0.1',
+		request: new Request(url, {
+			method: 'POST',
+			headers: { host: url.host, origin: url.origin },
+			body: JSON.stringify({ action: 'open', path: 'dashboard.html' })
+		})
+	} as never);
+	expect(opened.status).toBe(400);
+	expect(await opened.json()).toEqual({
+		error: 'HTML outputs can only be previewed or revealed'
 	});
 });

@@ -6,22 +6,17 @@
 	import Images from '~icons/lucide/images';
 	import Music from '~icons/lucide/music';
 	import X from '~icons/lucide/x';
+	import { artifactKind, artifactName, artifactUrl } from '$lib/artifact';
+	import CsvPreview from './CsvPreview.svelte';
 
 	let { artifacts, mediaPath }: { artifacts: string[]; mediaPath: string } = $props();
 	let trigger: HTMLButtonElement;
 	let dialog: HTMLDialogElement;
 	let index = $state(0);
 	let artifact = $derived(artifacts[index] ?? artifacts[0] ?? '');
-	const name = (path: string) => path.split('/').at(-1) ?? path;
-	const url = (path: string) => `${mediaPath}?path=${encodeURIComponent(path)}`;
-	const kind = (path: string) => {
-		if (/\.(?:png|jpe?g|gif|webp|svg)$/i.test(path)) return 'image';
-		if (/\.(?:mp3|wav|ogg|oga|m4a)$/i.test(path)) return 'audio';
-		if (/\.(?:mp4|m4v|webm|mov)$/i.test(path)) return 'video';
-		if (/\.(?:pdf|txt|log|md|markdown|csv|json|xml|css|ts|mts|cts|tsx|py|rs|go|java)$/i.test(path))
-			return 'document';
-		return 'file';
-	};
+	const name = artifactName;
+	const url = (path: string) => artifactUrl(mediaPath, path);
+	const kind = artifactKind;
 	function move(change: number) {
 		index = (index + change + artifacts.length) % artifacts.length;
 	}
@@ -30,6 +25,8 @@
 		dialog.showModal();
 	}
 	function handleKeydown(event: KeyboardEvent) {
+		if ((event.target as Element).closest('input, textarea, select, button, a, audio, video'))
+			return;
 		if (event.key === 'ArrowLeft') move(-1);
 		if (event.key === 'ArrowRight') move(1);
 	}
@@ -86,10 +83,15 @@
 					<audio class="w-full max-w-2xl" controls src={url(artifact)}
 						><track kind="captions" /></audio
 					>
-				</div>{:else if kind(artifact) === 'document'}<iframe
+				</div>{:else if kind(artifact) === 'csv'}<CsvPreview
+					src={url(artifact)}
+					name={name(artifact)}
+					full
+				/>{:else if kind(artifact) === 'pdf' || kind(artifact) === 'text' || kind(artifact) === 'html'}<iframe
 					class="size-full border-0 bg-white"
 					title={`Preview of ${name(artifact)}`}
 					src={url(artifact)}
+					sandbox={kind(artifact) === 'html' ? '' : undefined}
 				></iframe>{:else}<div class="grid h-full place-items-center p-6 text-center text-white">
 					<div>
 						<Images class="mx-auto mb-3" width={40} height={40} aria-hidden="true" />
@@ -113,7 +115,7 @@
 				>{/if}
 		</div>
 		<nav
-			class="flex w-full min-w-0 max-w-full touch-pan-x gap-2 overflow-x-auto overscroll-x-contain border-t border-border p-2"
+			class="flex w-full max-w-full min-w-0 touch-pan-x gap-2 overflow-x-auto overscroll-x-contain border-t border-border p-2"
 			aria-label="Artifacts"
 		>
 			{#each artifacts as path, artifactIndex}<button
@@ -135,13 +137,14 @@
 							preload="metadata"
 							src={url(path)}
 							aria-label={`Thumbnail of ${name(path)}`}><track kind="captions" /></video
-						>{:else if kind(path) === 'document'}<iframe
+						>{:else if kind(path) === 'pdf' || kind(path) === 'text' || kind(path) === 'html'}<iframe
 							class="pointer-events-none size-full border-0 bg-white"
 							title={`Thumbnail of ${name(path)}`}
 							inert
 							tabindex="-1"
 							loading="lazy"
 							src={url(path)}
+							sandbox={kind(path) === 'html' ? '' : undefined}
 						></iframe>{:else}<span class="grid size-full place-items-center bg-black/90 text-white"
 							>{#if kind(path) === 'audio'}<Music
 									width={24}

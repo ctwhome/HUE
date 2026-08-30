@@ -16,6 +16,7 @@ export type HUEPreferences = {
 	theme: HUETheme;
 	density: 'comfortable' | 'compact';
 	chatFontSize: number;
+	limitChatWidth: boolean;
 	language: string;
 	voice: string;
 	showUsage: boolean;
@@ -27,6 +28,7 @@ export const defaultPreferences: HUEPreferences = {
 	theme: 'system',
 	density: 'comfortable',
 	chatFontSize: 14,
+	limitChatWidth: true,
 	language: 'en',
 	voice: 'hermes',
 	showUsage: true,
@@ -45,6 +47,10 @@ export function normalizePreferences(value: unknown): HUEPreferences {
 			typeof input.chatFontSize === 'number'
 				? Math.min(20, Math.max(12, input.chatFontSize))
 				: defaultPreferences.chatFontSize,
+		limitChatWidth:
+			typeof input.limitChatWidth === 'boolean'
+				? input.limitChatWidth
+				: defaultPreferences.limitChatWidth,
 		language:
 			typeof input.language === 'string' && /^[a-z]{2,3}(?:-[A-Z]{2})?$/.test(input.language)
 				? input.language
@@ -92,6 +98,7 @@ export function applyPreferences(root: HTMLElement, preferences: HUEPreferences)
 	root.dataset.sendKey = preferences.sendKey;
 	root.dataset.voice = preferences.voice;
 	root.dataset.showUsage = String(preferences.showUsage);
+	root.dataset.limitChatWidth = String(preferences.limitChatWidth);
 	root.style.setProperty('--chat-font-size', `${preferences.chatFontSize}px`);
 	root.lang = preferences.language;
 	const prefersDark =

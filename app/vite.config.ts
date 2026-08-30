@@ -37,7 +37,7 @@ export default defineConfig({
 				runes: ({ filename }) =>
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
-			adapter: adapter(),
+			adapter: adapter({ out: process.env.HUE_BUILD_DIR || 'build' }),
 			version: { pollInterval: 60_000 }
 		})
 	],

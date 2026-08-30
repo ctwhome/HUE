@@ -21,6 +21,7 @@
         "emoji-picker-element": "1.29.1",
         "emoji-picker-element-data": "1.8.0",
         "marked": "^18.0.10",
+        "mermaid": "11.16.0",
         "prismjs": "1.30.0",
         "react": "19",
         "react-dom": "19",

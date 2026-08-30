@@ -20,6 +20,7 @@
 	let theme = $state<HUEPreferences['theme']>(defaultPreferences.theme);
 	let density = $state<HUEPreferences['density']>(defaultPreferences.density);
 	let chatFontSize = $state(defaultPreferences.chatFontSize);
+	let limitChatWidth = $state(defaultPreferences.limitChatWidth);
 	let language = $state(defaultPreferences.language);
 	let voice = $state(defaultPreferences.voice);
 	let showUsage = $state(defaultPreferences.showUsage);
@@ -36,6 +37,7 @@
 			theme,
 			density,
 			chatFontSize,
+			limitChatWidth,
 			language,
 			voice,
 			showUsage,
@@ -52,6 +54,7 @@
 		theme = preferences.theme;
 		density = preferences.density;
 		chatFontSize = preferences.chatFontSize;
+		limitChatWidth = preferences.limitChatWidth;
 		language = preferences.language;
 		voice = preferences.voice;
 		showUsage = preferences.showUsage;
@@ -129,6 +132,9 @@
 				oninput={apply}
 			/>
 		</div>
+		<label class="flex min-h-11 items-center gap-2 text-sm"
+			><input type="checkbox" bind:checked={limitChatWidth} onchange={apply} /> Limit chat width</label
+		>
 		<label class="grid gap-1 text-sm"
 			>Language<select class={selectClass} bind:value={language} onchange={apply}
 				><option value="en">English</option><option value="nl-NL">Nederlands</option></select
