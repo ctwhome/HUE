@@ -98,6 +98,14 @@
 .transcript-spacer {
 	pointer-events: none;
 }
+:root[data-limit-chat-width='true'] .transcript-content {
+	width: min(100%, 48rem);
+	margin-inline: auto;
+}
+:root[data-limit-chat-width='true'] .composer {
+	width: min(calc(100% - 2 * clamp(10px, 2vw, 40px)), 48rem);
+	margin-inline: auto;
+}
 .session-view.empty-session .transcript {
 	flex: 0 0 auto;
 	margin-top: auto;
@@ -148,51 +156,61 @@
 	word-break: break-word;
 }
 .markdown .table-block {
+	width: fit-content;
 	max-inline-size: 100%;
 	margin-block: 1em;
 }
 .markdown .table-toolbar {
 	display: flex;
 	justify-content: flex-end;
-	gap: 6px;
-	margin-block-end: -1px;
-	border: 1px solid var(--border);
-	border-radius: var(--radius-panel) var(--radius-panel) 0 0;
-	background: var(--card);
-	padding: 5px;
+	margin-block-end: 4px;
 }
-.markdown .table-toolbar button {
-	min-height: 44px;
+.markdown-icon-toolbar {
+	display: flex;
+	gap: 4px;
+}
+.markdown-icon-toolbar button {
+	display: grid;
+	width: 32px;
+	height: 32px;
+	place-items: center;
+	border: 1px solid var(--border);
 	border-radius: var(--radius-control);
 	background: var(--secondary);
-	padding-inline: 10px;
 	color: var(--muted-foreground);
-	font-size: var(--font-size-meta);
 }
-.markdown .table-toolbar button:hover,
-.markdown .table-toolbar button:focus-visible,
-.markdown .table-toolbar button[aria-pressed='true'] {
+.markdown-icon-toolbar button:hover,
+.markdown-icon-toolbar button:focus-visible,
+.markdown-icon-toolbar button[aria-pressed='true'] {
 	background: var(--accent);
 	color: var(--foreground);
 }
-.markdown .table-toolbar button:focus-visible {
+.markdown-icon-toolbar button:focus-visible {
 	outline: 2px solid var(--ring);
 	outline-offset: 2px;
 }
 .markdown table {
-	display: block;
-	max-inline-size: 100%;
-	overflow-x: auto;
+	display: table;
 	margin: 0;
 	border: 1px solid var(--border);
-	border-radius: 0 0 var(--radius-panel) var(--radius-panel);
+	border-radius: var(--radius-panel);
 	border-spacing: 0;
 	background: var(--card);
 	white-space: nowrap;
 	word-break: normal;
 }
+.markdown .table-scroll {
+	max-inline-size: 100%;
+	overflow-x: auto;
+	border-radius: var(--radius-panel);
+}
 .markdown .table-wrap table {
+	width: fit-content;
+	max-inline-size: 100%;
 	white-space: normal;
+}
+.markdown .table-block:not(.table-wrap) table {
+	width: max-content;
 }
 .markdown .table-wrap th,
 .markdown .table-wrap td {
@@ -274,6 +292,13 @@
 .markdown > :last-child {
 	margin-bottom: 0;
 }
+.message.markdown > :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote) {
+	max-inline-size: 78ch;
+}
+.markdown :is(h1, h2, h3, h4, h5, h6) {
+	margin-block: 1.25em 0.55em;
+	line-height: 1.25;
+}
 .markdown p,
 .markdown ul,
 .markdown ol,
@@ -325,20 +350,76 @@
 }
 .code-block {
 	position: relative;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 6px;
+	margin-block: 0.85em;
 }
-.code-block > button {
-	position: absolute;
-	top: 6px;
-	right: 6px;
-	min-height: 44px;
-	border: 1px solid var(--border);
-	border-radius: var(--radius-control);
-	background: var(--secondary);
-	padding: 4px 8px;
+.code-toolbar {
+	grid-column: 2;
+	grid-row: 1;
+}
+.code-language {
+	grid-column: 1;
+	grid-row: 1;
+	padding-inline-start: 2px;
+	color: var(--muted-foreground);
 	font-size: var(--font-size-meta);
+	text-transform: uppercase;
 }
 .code-block > pre {
-	padding-top: 56px;
+	grid-column: 1 / -1;
+	margin: 0;
+	padding-top: 10px;
+}
+.code-block.code-wrap pre code {
+	width: auto;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.code-block.has-mermaid-diagram > pre {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	clip-path: inset(50%);
+}
+.code-block.has-mermaid-diagram.show-mermaid-source > pre {
+	position: static;
+	grid-column: 1 / -1;
+	width: auto;
+	height: auto;
+	margin-block: 0.85em;
+	overflow-x: auto;
+	clip: auto;
+	white-space: normal;
+	clip-path: none;
+}
+.mermaid-diagram {
+	display: block;
+	grid-column: 1 / -1;
+	width: 100%;
+	max-height: min(55vh, 560px);
+	border-radius: var(--radius-panel);
+	background: white;
+	padding: 12px;
+	object-fit: contain;
+}
+.generated-output-toolbar :is(button, a) {
+	width: 32px;
+	height: 32px;
+}
+
+@media (max-width: 700px) {
+	.markdown-icon-toolbar button,
+	.generated-output-toolbar :is(button, a) {
+		width: 44px;
+		height: 44px;
+	}
 }
 .copy-notice {
 	position: sticky;

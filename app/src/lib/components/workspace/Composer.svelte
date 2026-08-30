@@ -219,6 +219,7 @@
 	let tasksOpen = $state(false);
 	let imagePrompts = $derived(runtime.capabilities?.promptImage === true);
 	let promptLibraryDialog = $state<HTMLDialogElement>();
+	let promptLibrary = $state<{ openBundle: (slug: string) => Promise<void> }>();
 	let promptLibraryLoading = $state(false);
 	let optionsOpen = $state(false);
 	let optionsButton = $state<HTMLButtonElement>();
@@ -280,6 +281,10 @@
 			await onloadworkflows();
 			promptLibraryLoading = false;
 		}
+	}
+	async function reviewWorkModeBundle(value: string) {
+		promptLibraryDialog?.showModal();
+		await promptLibrary?.openBundle(value);
 	}
 	function insertPrompt(prompt: string) {
 		if (!composerElement) return;
@@ -709,6 +714,7 @@
 				showLabel={true}
 				disabled={workModeChanging || !ready}
 				onselect={(value) => onworkmode(value as WorkMode)}
+				onedit={reviewWorkModeBundle}
 			/>
 			{#if showContextUsage && contextPercent() !== null}<span
 					class="desktop-context-option context-chip context-usage inline-flex min-h-8 shrink-0 items-center rounded-lg border border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_15%,transparent)] px-2 text-xs font-bold text-[var(--success)]"
@@ -745,6 +751,7 @@
 	</div>
 </form>
 <PromptLibraryDialog
+	bind:this={promptLibrary}
 	id={`${instanceId}-prompts`}
 	bind:dialog={promptLibraryDialog}
 	loading={promptLibraryLoading}

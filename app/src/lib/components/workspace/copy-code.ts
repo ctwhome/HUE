@@ -1,7 +1,11 @@
-export async function copyCode(code: string, notify: (message: string) => void): Promise<void> {
+export async function copyCode(
+	code: string,
+	notify: (message: string) => void,
+	successMessage = 'Code copied'
+): Promise<void> {
 	try {
 		await navigator.clipboard.writeText(code);
-		notify('Code copied');
+		notify(successMessage);
 	} catch {
 		const fallback = document.createElement('textarea');
 		fallback.value = code;
@@ -9,7 +13,7 @@ export async function copyCode(code: string, notify: (message: string) => void):
 		fallback.style.opacity = '0';
 		document.body.append(fallback);
 		fallback.select();
-		notify(document.execCommand('copy') ? 'Code copied' : 'Copy unavailable');
+		notify(document.execCommand('copy') ? successMessage : 'Copy unavailable');
 		fallback.remove();
 	}
 }

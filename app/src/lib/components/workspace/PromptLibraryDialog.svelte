@@ -81,6 +81,7 @@
 	let bundles = $state<HermesBundle[]>([]);
 	let bundleSkills = $state<HermesBundleSkill[]>([]);
 	let bundlesLoading = $state(false);
+	let bundlesLoaded = $state(false);
 	let bundleError = $state('');
 	let selectedBundleSlug = $state('');
 	let creatingBundle = $state(false);
@@ -154,7 +155,7 @@
 		}
 	}
 	async function ensureBundles(force = false) {
-		if ((!force && bundles.length) || bundlesLoading || !available) return;
+		if ((!force && bundlesLoaded) || bundlesLoading || !available) return;
 		bundlesLoading = true;
 		bundleError = '';
 		try {
@@ -163,6 +164,7 @@
 			);
 			bundles = body.bundles;
 			bundleSkills = body.skills;
+			bundlesLoaded = true;
 			if (!selectedBundleSlug || !bundles.some(({ slug }) => slug === selectedBundleSlug)) {
 				selectBundle(bundles[0] ?? null);
 			}
@@ -172,6 +174,14 @@
 		} finally {
 			bundlesLoading = false;
 		}
+	}
+	export async function openBundle(slug: string) {
+		source = 'bundles';
+		mobileDetail = true;
+		await ensureBundles();
+		const item = bundles.find((candidate) => candidate.slug === slug);
+		if (item) selectBundle(item);
+		else bundleError = `Hermes bundle ${slug} is unavailable.`;
 	}
 	function selectBundle(item: HermesBundle | null) {
 		selectedBundleSlug = item?.slug ?? '';

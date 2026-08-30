@@ -64,6 +64,7 @@
 	onedit={messageState.editMessage}
 	oncopy={messageState.copyMessage}
 	oncopycode={messageState.copyCode}
+	oncopytable={messageState.copyTable}
 	oninteraction={messageState.respondToInteraction}
 	onmedia={messageState.openMedia}
 	onretrylast={messageState.retryLastResponse}

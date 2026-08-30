@@ -1,10 +1,26 @@
+<script module lang="ts">
+	let mermaidLoader: Promise<(typeof import('mermaid'))['default']> | undefined;
+	let mermaidId = 0;
+
+	async function renderMermaid(source: string) {
+		const mermaid = await (mermaidLoader ??= import('mermaid').then(({ default: renderer }) => {
+			renderer.initialize({
+				startOnLoad: false,
+				securityLevel: 'strict',
+				theme: 'default',
+				flowchart: { htmlLabels: false }
+			});
+			return renderer;
+		}));
+		return (await mermaid.render(`hue-mermaid-${++mermaidId}`, source)).svg;
+	}
+</script>
+
 <script lang="ts">
+	import { mount, unmount } from 'svelte';
 	import Copy from '~icons/lucide/copy';
 	import Download from '~icons/lucide/download';
-	import ExternalLink from '~icons/lucide/external-link';
-	import FolderOpen from '~icons/lucide/folder-open';
 	import GitFork from '~icons/lucide/git-fork';
-	import Maximize2 from '~icons/lucide/maximize-2';
 	import Pencil from '~icons/lucide/pencil';
 	import Quote from '~icons/lucide/quote';
 	import RotateCcw from '~icons/lucide/rotate-ccw';
@@ -18,6 +34,10 @@
 		ReviewContextSeed
 	} from '$lib/message-content';
 	import BrandMark from '$lib/components/BrandMark.svelte';
+	import { artifactKind, artifactName, artifactUrl } from '$lib/artifact';
+	import CsvPreview from './CsvPreview.svelte';
+	import GeneratedOutputs from './GeneratedOutputs.svelte';
+	import MarkdownControls from './MarkdownControls.svelte';
 	import { permissionDetails } from './permission-consequence';
 	import {
 		selectTranscriptTimeline,
@@ -85,17 +105,9 @@
 			)
 		];
 	}
-	const mediaKind = (path: string) => {
-		if (/\.(?:png|jpe?g|gif|webp|svg)$/i.test(path)) return 'image';
-		if (/\.pdf$/i.test(path)) return 'pdf';
-		if (/\.(?:mp3|wav|ogg|oga|m4a)$/i.test(path)) return 'audio';
-		if (/\.(?:mp4|m4v|webm|mov)$/i.test(path)) return 'video';
-		if (/\.(?:txt|log|md|markdown|csv|json|xml|css|ts|mts|cts|tsx|py|rs|go|java)$/i.test(path))
-			return 'text';
-		return 'file';
-	};
-	const mediaName = (path: string) => path.split('/').at(-1) ?? path;
-	const mediaUrl = (path: string) => `${mediaPath}?path=${encodeURIComponent(path)}`;
+	const mediaKind = artifactKind;
+	const mediaName = artifactName;
+	const mediaUrl = (path: string) => artifactUrl(mediaPath, path);
 	let showcaseDialog: HTMLDialogElement;
 	let showcasePath = $state('');
 	let zoom = $state(1);
@@ -124,36 +136,123 @@
 		return renderMarkdown(text)
 			.replaceAll(
 				'<table>',
-				'<div class="table-block"><div class="table-toolbar"><button type="button" data-copy-table aria-label="Copy table">Copy</button><button type="button" data-toggle-table-wrap aria-label="Wrap table cells" aria-pressed="false">Wrap</button></div><table>'
+				'<div class="table-block table-wrap"><div class="table-toolbar"></div><div class="table-scroll"><table>'
 			)
-			.replaceAll('</table>', '</table></div>');
+			.replaceAll('</table>', '</table></div></div>');
 	}
-	function handleTranscriptClick(event: MouseEvent) {
-		const button = (event.target as Element).closest<HTMLButtonElement>('button');
-		if (!button) return;
-		if (button.matches('[data-copy-code]')) {
-			const code = button.parentElement?.querySelector('code')?.textContent ?? '';
-			oncopycode(code);
-			return;
-		}
-		const block = button.closest('.table-block');
-		if (!block) return;
-		if (button.matches('[data-copy-table]')) {
-			const rows = Array.from(block.querySelectorAll('tr'), (row) =>
-				Array.from(row.querySelectorAll('th, td'), (cell) => cell.textContent?.trim() ?? '').join(
-					'\t'
-				)
-			);
-			oncopytable(rows.join('\n'));
-			return;
-		}
-		if (button.matches('[data-toggle-table-wrap]')) {
-			button.setAttribute('aria-pressed', String(block.classList.toggle('table-wrap')));
-		}
-	}
-	function copyDelegation(node: HTMLElement) {
-		node.addEventListener('click', handleTranscriptClick);
-		return { destroy: () => node.removeEventListener('click', handleTranscriptClick) };
+	function markdownInteractions(node: HTMLElement) {
+		const diagrams = new Map<HTMLImageElement, string>();
+		const controls = new Map<HTMLElement, ReturnType<typeof mount>>();
+		const mountControls = () => {
+			for (const [toolbar, component] of controls) {
+				if (toolbar.isConnected) continue;
+				void unmount(component);
+				controls.delete(toolbar);
+			}
+			for (const toolbar of node.querySelectorAll<HTMLElement>(
+				'.table-toolbar:not([data-controls-mounted])'
+			)) {
+				const block = toolbar.closest<HTMLElement>('.table-block')!;
+				toolbar.dataset.controlsMounted = 'true';
+				controls.set(
+					toolbar,
+					mount(MarkdownControls, {
+						target: toolbar,
+						props: {
+							kind: 'table',
+							oncopy: () => {
+								const rows = Array.from(block.querySelectorAll('tr'), (row) =>
+									Array.from(
+										row.querySelectorAll('th, td'),
+										(cell) => cell.textContent?.trim() ?? ''
+									).join('\t')
+								);
+								oncopytable(rows.join('\n'));
+							},
+							ontogglewrap: (wrapped: boolean) => block.classList.toggle('table-wrap', wrapped)
+						}
+					})
+				);
+			}
+			for (const toolbar of node.querySelectorAll<HTMLElement>(
+				'.code-toolbar:not([data-controls-mounted])'
+			)) {
+				const block = toolbar.closest<HTMLElement>('.code-block')!;
+				const code = block.querySelector('code')!;
+				const mermaid = code.classList.contains('language-mermaid');
+				if (mermaid && !['rendered', 'source'].includes(code.dataset.mermaidState ?? '')) continue;
+				toolbar.dataset.controlsMounted = 'true';
+				controls.set(
+					toolbar,
+					mount(MarkdownControls, {
+						target: toolbar,
+						props: {
+							kind: mermaid && code.dataset.mermaidState === 'rendered' ? 'mermaid' : 'code',
+							oncopy: () => oncopycode(code.textContent ?? ''),
+							ontogglewrap: (wrapped: boolean) => block.classList.toggle('code-wrap', wrapped),
+							ontogglesource: (shown: boolean) =>
+								block.classList.toggle('show-mermaid-source', shown),
+							ondownload: () => {
+								const image = block.querySelector<HTMLImageElement>('.mermaid-diagram');
+								if (!image) return;
+								const link = document.createElement('a');
+								link.href = image.src;
+								link.download = 'mermaid-diagram.svg';
+								link.click();
+							}
+						}
+					})
+				);
+			}
+		};
+		const enhanceMermaid = () => {
+			mountControls();
+			for (const [image, url] of diagrams) {
+				if (image.isConnected) continue;
+				URL.revokeObjectURL(url);
+				diagrams.delete(image);
+			}
+			for (const code of node.querySelectorAll<HTMLElement>(
+				'code.language-mermaid:not([data-mermaid-state])'
+			)) {
+				const source = code.textContent?.trim() ?? '';
+				code.dataset.mermaidState = 'rendering';
+				if (!source || source.length > 50_000) {
+					code.dataset.mermaidState = 'source';
+					mountControls();
+					continue;
+				}
+				void renderMermaid(source)
+					.then((svg) => {
+						const block = code.closest('.code-block');
+						if (!block?.isConnected) return;
+						const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+						const image = new Image();
+						image.className = 'mermaid-diagram';
+						image.alt = 'Mermaid diagram';
+						image.src = url;
+						block.querySelector('pre')?.before(image);
+						block.classList.add('has-mermaid-diagram');
+						code.dataset.mermaidState = 'rendered';
+						diagrams.set(image, url);
+						mountControls();
+					})
+					.catch(() => {
+						code.dataset.mermaidState = 'source';
+						mountControls();
+					});
+			}
+		};
+		const observer = new MutationObserver(enhanceMermaid);
+		observer.observe(node, { childList: true, subtree: true });
+		enhanceMermaid();
+		return {
+			destroy: () => {
+				observer.disconnect();
+				for (const url of diagrams.values()) URL.revokeObjectURL(url);
+				for (const component of controls.values()) void unmount(component);
+			}
+		};
 	}
 	function submitClarify(event: SubmitEvent, item: WorkspaceActivity) {
 		event.preventDefault();
@@ -191,7 +290,7 @@
 	tabindex="0"
 	bind:this={element}
 	use:follow
-	use:copyDelegation
+	use:markdownInteractions
 >
 	<div class="transcript-content min-h-full">
 		{#if messageNotice}<span class="copy-notice" role="status">{messageNotice}</span>{/if}
@@ -256,103 +355,14 @@
 											>{/if}
 									</article>{/each}
 							</div>{/if}
-						{#if message.role === 'assistant' && mediaOutputs(message.text).length}<div
-								class="mb-2 grid gap-1.5"
-								aria-label="Generated outputs"
-							>
-								{#each mediaOutputs(message.text) as path}<article
-										class="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"
-									>
-										{#if mediaKind(path) === 'image'}<button
-												type="button"
-												class="col-span-2 block min-h-11 overflow-hidden rounded-md bg-black/20"
-												onclick={() => showMedia(path)}
-												aria-label={`Show ${path}`}
-												title={`Show ${path}`}
-												><img
-													class="block max-h-[70vh] w-full max-w-full object-contain"
-													src={mediaUrl(path)}
-													alt={mediaName(path)}
-												/></button
-											>{:else if mediaKind(path) === 'pdf' || mediaKind(path) === 'text'}<div
-												class="relative col-span-2 h-[min(42vh,360px)] min-h-52 overflow-hidden rounded-md bg-white"
-											>
-												<iframe
-													class="size-full border-0"
-													title={`Inline preview of ${mediaName(path)}`}
-													src={mediaUrl(path)}
-												></iframe><button
-													type="button"
-													class="absolute inset-0 grid place-items-center bg-transparent opacity-0 transition-opacity hover:bg-black/10 hover:opacity-100 focus-visible:bg-black/10 focus-visible:opacity-100"
-													onclick={() => showMedia(path)}
-													aria-label={`Show ${path}`}
-													title={`Show ${path}`}
-													><Maximize2
-														class="rounded-full bg-black/75 p-3 text-white"
-														width={44}
-														height={44}
-														aria-hidden="true"
-													/></button
-												>
-											</div>{:else if mediaKind(path) === 'video'}<video
-												class="col-span-2 max-h-[70vh] w-full rounded-md bg-black"
-												controls
-												src={mediaUrl(path)}><track kind="captions" /></video
-											>{:else if mediaKind(path) === 'audio'}<audio
-												class="col-span-2 w-full"
-												controls
-												src={mediaUrl(path)}><track kind="captions" /></audio
-											>{/if}
-										<div class="min-w-0">
-											<strong class="block truncate">{path.split('/').at(-1)}</strong><small
-												title={`Hermes MEDIA: ${path}`}>Hermes MEDIA output · {path}</small
-											>
-										</div>
-										<div class="flex">
-											{#if mediaKind(path) !== 'file'}<button
-													type="button"
-													class="grid min-h-11 min-w-11 place-items-center"
-													onclick={() => showMedia(path)}
-													aria-label={`Open ${path} in showcase`}
-													title={`Open ${path} in showcase`}
-													><Maximize2 width={16} height={16} aria-hidden="true" /></button
-												>{/if}<a
-												class="grid min-h-11 min-w-11 place-items-center"
-												href={`${mediaPath}?path=${encodeURIComponent(path)}`}
-												target="_blank"
-												rel="noreferrer"
-												aria-label={`Preview ${path}`}
-												title={`Preview ${path}`}
-												><ExternalLink width={16} height={16} aria-hidden="true" /></a
-											><a
-												class="grid min-h-11 min-w-11 place-items-center"
-												href={`${mediaPath}?path=${encodeURIComponent(path)}&download=true`}
-												download
-												aria-label={`Download ${path}`}
-												title={`Download ${path}`}
-												><Download width={16} height={16} aria-hidden="true" /></a
-											><button
-												type="button"
-												class="grid min-h-11 min-w-11 place-items-center"
-												onclick={() => onmedia(path, 'open')}
-												aria-label={`Open ${path}`}
-												title={`Open ${path}`}
-												><ExternalLink width={16} height={16} aria-hidden="true" /></button
-											><button
-												type="button"
-												class="grid min-h-11 min-w-11 place-items-center"
-												onclick={() => onmedia(path, 'reveal')}
-												aria-label={`Reveal ${path}`}
-												title={`Reveal ${path}`}
-												><FolderOpen width={16} height={16} aria-hidden="true" /></button
-											>
-										</div>
-									</article>{/each}
-							</div>{/if}
+						{#if message.role === 'assistant' && mediaOutputs(message.text).length}<GeneratedOutputs
+								paths={mediaOutputs(message.text)}
+								{mediaPath}
+								onshow={showMedia}
+								{onmedia}
+							/>{/if}
 						{#if message.role === 'assistant'}
-							<div
-								class="message markdown rounded-lg rounded-tl-sm border border-border bg-card px-3 py-2.5 leading-relaxed"
-							>
+							<div class="message markdown leading-relaxed">
 								{#if message.images?.length}<div
 										class="message-images mb-2 grid grid-cols-2 gap-1.5"
 									>
@@ -595,10 +605,15 @@
 						<audio class="w-full max-w-2xl" controls autoplay src={mediaUrl(showcasePath)}
 							><track kind="captions" /></audio
 						>
-					</div>{:else}<iframe
+					</div>{:else if mediaKind(showcasePath) === 'csv'}<CsvPreview
+						src={mediaUrl(showcasePath)}
+						name={mediaName(showcasePath)}
+						full
+					/>{:else}<iframe
 						class="size-full border-0 bg-white"
 						title={`Preview of ${mediaName(showcasePath)}`}
 						src={mediaUrl(showcasePath)}
+						sandbox={mediaKind(showcasePath) === 'html' ? '' : undefined}
 					></iframe>{/if}
 			</div>
 		</div>{/if}

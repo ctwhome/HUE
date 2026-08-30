@@ -203,43 +203,43 @@ dialog.global-panel::backdrop {
 	white-space: pre;
 	line-height: 1.5;
 }
-.file-editor-highlight .token.comment,
-.file-editor-highlight .token.prolog,
-.file-editor-highlight .token.doctype,
-.file-editor-highlight .token.cdata {
+:is(.file-editor-highlight, .markdown) .token.comment,
+:is(.file-editor-highlight, .markdown) .token.prolog,
+:is(.file-editor-highlight, .markdown) .token.doctype,
+:is(.file-editor-highlight, .markdown) .token.cdata {
 	color: var(--muted-foreground);
 }
-.file-editor-highlight .token.punctuation,
-.file-editor-highlight .token.operator {
+:is(.file-editor-highlight, .markdown) .token.punctuation,
+:is(.file-editor-highlight, .markdown) .token.operator {
 	color: var(--syntax-marker);
 }
-.file-editor-highlight .token.property,
-.file-editor-highlight .token.tag,
-.file-editor-highlight .token.constant,
-.file-editor-highlight .token.symbol,
-.file-editor-highlight .token.deleted,
-.file-editor-highlight .token.attr-name {
+:is(.file-editor-highlight, .markdown) .token.property,
+:is(.file-editor-highlight, .markdown) .token.tag,
+:is(.file-editor-highlight, .markdown) .token.constant,
+:is(.file-editor-highlight, .markdown) .token.symbol,
+:is(.file-editor-highlight, .markdown) .token.deleted,
+:is(.file-editor-highlight, .markdown) .token.attr-name {
 	color: var(--syntax-link);
 }
-.file-editor-highlight .token.boolean,
-.file-editor-highlight .token.number,
-.file-editor-highlight .token.selector,
-.file-editor-highlight .token.builtin {
+:is(.file-editor-highlight, .markdown) .token.boolean,
+:is(.file-editor-highlight, .markdown) .token.number,
+:is(.file-editor-highlight, .markdown) .token.selector,
+:is(.file-editor-highlight, .markdown) .token.builtin {
 	color: var(--syntax-emphasis);
 }
-.file-editor-highlight .token.string,
-.file-editor-highlight .token.char,
-.file-editor-highlight .token.inserted,
-.file-editor-highlight .token.regex {
+:is(.file-editor-highlight, .markdown) .token.string,
+:is(.file-editor-highlight, .markdown) .token.char,
+:is(.file-editor-highlight, .markdown) .token.inserted,
+:is(.file-editor-highlight, .markdown) .token.regex {
 	color: var(--syntax-code);
 }
-.file-editor-highlight .token.keyword,
-.file-editor-highlight .token.atrule,
-.file-editor-highlight .token.important {
+:is(.file-editor-highlight, .markdown) .token.keyword,
+:is(.file-editor-highlight, .markdown) .token.atrule,
+:is(.file-editor-highlight, .markdown) .token.important {
 	color: var(--syntax-strong);
 }
-.file-editor-highlight .token.function,
-.file-editor-highlight .token.class-name {
+:is(.file-editor-highlight, .markdown) .token.function,
+:is(.file-editor-highlight, .markdown) .token.class-name {
 	color: var(--syntax-heading);
 }
 .file-type-icon {

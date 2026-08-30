@@ -6,19 +6,20 @@ import { basename, dirname, join } from 'node:path';
 const port = Number(process.env.HUE_E2E_PORT ?? 4173);
 const testHome = mkdtempSync(join(tmpdir(), 'hue-playwright-home-'));
 const hermesHome = join(testHome, '.hermes');
+const buildDir = join(process.cwd(), `.hue-e2e-build-${crypto.randomUUID()}`);
 mkdirSync(hermesHome);
 process.env.HUE_E2E_HERMES_HOME = hermesHome;
 process.once('exit', () => {
-	if (dirname(testHome) !== tmpdir() || !basename(testHome).startsWith('hue-playwright-home-')) {
-		return;
-	}
-	rmSync(testHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+	if (dirname(testHome) === tmpdir() && basename(testHome).startsWith('hue-playwright-home-'))
+		rmSync(testHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+	if (dirname(buildDir) === process.cwd() && basename(buildDir).startsWith('.hue-e2e-build-'))
+		rmSync(buildDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 export default defineConfig({
 	workers: 1,
 	webServer: {
-		command: 'bun run build && bun run start',
+		command: `HUE_BUILD_DIR=${JSON.stringify(buildDir)} bun run build && bun ${JSON.stringify(join(buildDir, 'index.js'))}`,
 		port,
 		timeout: 180_000,
 		env: {
