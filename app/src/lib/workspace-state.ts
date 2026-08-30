@@ -240,7 +240,9 @@ export function applyTimelineEvents(
 	for (const event of events) {
 		if (event.sequence <= cursor) continue;
 		cursor = event.sequence;
-		timeline = applyTimelineEvent(timeline, event);
+		if (!timeline.some((item) => item.sequence === event.sequence)) {
+			timeline = applyTimelineEvent(timeline, event);
+		}
 	}
 	return { cursor, timeline };
 }

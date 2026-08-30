@@ -238,4 +238,11 @@ export class SessionState {
 		this.plan = next.plan ?? [];
 		return settled;
 	};
+
+	previewEvents = (events: SessionEvent[]) => {
+		this.timeline = applyTimelineEvents(
+			{ cursor: this.eventCursor, timeline: this.timeline },
+			events
+		).timeline;
+	};
 }

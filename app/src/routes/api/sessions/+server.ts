@@ -1,5 +1,10 @@
 import { json } from '@sveltejs/kit';
 import { automaticSessionIcon } from '$lib/icon';
+import {
+	listExternalHermesCron,
+	type ExternalHermesCronJob
+} from '$lib/server/external-hermes-cron';
+import { redactHermesValue } from '$lib/server/redaction';
 import { services, sessionMatchesProjectRoot, unprojectedSessionRoot } from '$lib/server/services';
 import type { RequestHandler } from './$types';
 
@@ -52,8 +57,28 @@ export const GET: RequestHandler = async ({ url }) => {
 		const includeArchived = url.searchParams.get('archived') === 'true';
 		const limit = Math.max(1, Math.min(Number(url.searchParams.get('limit') ?? 100) || 100, 100));
 		const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0) || 0);
-		const page = services().store.listSessionPage(null, { includeArchived, query, limit, offset });
+		const scope = url.searchParams.get('scope');
+		let externalCronJobs: ExternalHermesCronJob[] = [];
+		let externalCronError: unknown = null;
+		if (scope === 'scheduled') {
+			try {
+				externalCronJobs = await listExternalHermesCron(services().admin);
+			} catch (cause) {
+				externalCronError = redactHermesValue(
+					cause instanceof Error ? cause.message : String(cause)
+				);
+			}
+		}
+		const page = services().store.listSessionPage(null, {
+			includeArchived,
+			query,
+			limit,
+			offset,
+			...(scope === 'scheduled' || scope === 'unscheduled' ? { scope } : {})
+		});
 		return json({
+			externalCronJobs,
+			externalCronError,
 			sessions: page.sessions.map((stored) => {
 				const runtime = runtimeById.get(stored.sessionId);
 				const title = stored.title ?? runtime?.title ?? 'Untitled Hermes Session';

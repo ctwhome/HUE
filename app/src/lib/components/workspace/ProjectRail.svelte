@@ -10,6 +10,7 @@
 	import EllipsisVertical from '~icons/lucide/ellipsis-vertical';
 	import Folder from '~icons/lucide/folder';
 	import FolderPlus from '~icons/lucide/folder-plus';
+	import CalendarClock from '~icons/lucide/calendar-clock';
 	import MessageSquare from '~icons/lucide/message-square';
 	import Menu from '~icons/lucide/menu';
 	import Plus from '~icons/lucide/plus';
@@ -25,7 +26,9 @@
 		mobile,
 		projects,
 		chatSessionCount,
+		cronSessionCount,
 		selectedProject,
+		sessionCollection,
 		unreadNotifications,
 		sessionsOpen,
 		projectsCapability,
@@ -54,6 +57,7 @@
 		selectedFolders,
 		primaryFolder,
 		onprojectless,
+		oncollection,
 		onaddopen,
 		onchoose,
 		onlocate,
@@ -86,7 +90,9 @@
 		mobile: boolean;
 		projects: Project[];
 		chatSessionCount: number;
+		cronSessionCount: number;
 		selectedProject: Project | null;
+		sessionCollection: 'chats' | 'cron';
 		unreadNotifications: number;
 		sessionsOpen: boolean;
 		projectsCapability: 'available' | 'unavailable' | 'outage';
@@ -115,6 +121,7 @@
 		selectedFolders: string[];
 		primaryFolder: string;
 		onprojectless: () => void;
+		oncollection: (collection: 'chats' | 'cron', trigger?: HTMLElement) => void;
 		onaddopen: () => void;
 		onchoose: (project: Project | null, trigger?: HTMLElement) => void;
 		onlocate: (project: Project) => void;
@@ -418,7 +425,7 @@
 <aside
 	bind:this={element}
 	id="project-drawer"
-	class="project-rail flex min-h-0 flex-col gap-3 border-r border-border bg-card/95 px-2 py-3"
+	class="project-rail flex min-h-0 flex-col gap-2 border-r border-[var(--navigation-border)] bg-[var(--navigation-surface)] px-3 py-3"
 	class:open
 	inert={mobile && !open}
 	aria-hidden={mobile ? !open : undefined}
@@ -494,11 +501,11 @@
 		<div class="project-row projectless-row relative">
 			<button
 				class="project-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md bg-transparent px-2 py-1 pr-8 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
-				class:active={!selectedProject}
-				aria-current={!selectedProject ? 'page' : undefined}
-				aria-controls={!selectedProject ? 'session-drawer' : undefined}
-				aria-expanded={!selectedProject ? sessionsOpen : undefined}
-				onclick={(event) => onchoose(null, event.currentTarget)}
+				class:active={!selectedProject && sessionCollection === 'chats'}
+				aria-current={!selectedProject && sessionCollection === 'chats' ? 'page' : undefined}
+				aria-controls={!selectedProject && sessionCollection === 'chats' ? 'session-drawer' : undefined}
+				aria-expanded={!selectedProject && sessionCollection === 'chats' ? sessionsOpen : undefined}
+				onclick={(event) => oncollection('chats', event.currentTarget)}
 			>
 				<MessageSquare
 					class="project-icon grid size-(--navigation-icon-size) shrink-0 place-items-center rounded-md"
@@ -518,6 +525,28 @@
 				title="New chat"
 				onclick={onprojectless}><Plus width={18} height={18} aria-hidden="true" /></button
 			>
+		</div>
+		<div class="project-row projectless-row relative">
+			<button
+				class="project-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md bg-transparent px-2 py-1 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
+				class:active={!selectedProject && sessionCollection === 'cron'}
+				aria-current={!selectedProject && sessionCollection === 'cron' ? 'page' : undefined}
+				aria-controls={!selectedProject && sessionCollection === 'cron' ? 'session-drawer' : undefined}
+				aria-expanded={!selectedProject && sessionCollection === 'cron' ? sessionsOpen : undefined}
+				onclick={(event) => oncollection('cron', event.currentTarget)}
+			>
+				<CalendarClock
+					class="project-icon grid size-(--navigation-icon-size) shrink-0 place-items-center rounded-md"
+					width={18}
+					height={18}
+					aria-hidden="true"
+				/>
+				<span class="project-name min-w-0 flex-1 truncate">Cron tasks</span>
+				{#if cronSessionCount}<span
+						class="project-session-count shrink-0 text-xs tabular-nums text-muted-foreground"
+						aria-label={`${cronSessionCount} cron tasks`}>{cronSessionCount}</span
+					>{/if}
+			</button>
 		</div>
 		{#if draggedProjectId && projects.find(({ id }) => id === draggedProjectId)?.group}<div
 				class={`mt-1 flex min-h-11 items-center rounded-md border border-dashed px-2 text-xs sm:min-h-8 ${dropGroup === '' ? 'border-ring bg-accent text-foreground ring-2 ring-ring' : 'border-border text-muted-foreground'}`}

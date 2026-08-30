@@ -32,6 +32,7 @@ Open [http://127.0.0.1:4010](http://127.0.0.1:4010). Development uses `~/.hue/hu
 ## Build and serve
 
 `make build` compiles documentation and the production app without starting a process.
+`make serve` runs an immutable snapshot of that build so later builds cannot invalidate a live server's assets.
 
 ```bash
 make build

@@ -7,6 +7,10 @@ import { serviceExportStubs } from '$lib/server/services-test-stubs';
 const root = join(tmpdir(), `hue-media-route-${crypto.randomUUID()}`);
 mkdirSync(root, { recursive: true });
 writeFileSync(join(root, 'report.pdf'), '%PDF-1.7\nroute range proof');
+writeFileSync(
+	join(root, 'diagram.svg'),
+	'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><path d="M0 0h1v1z"/></svg>'
+);
 const projectIds: string[] = [];
 
 mock.module('$lib/server/route-services', () => ({
@@ -106,4 +110,32 @@ test('rejects remote MEDIA open while retaining remote GET access', async () => 
 		})
 	} as never);
 	expect(response.status).toBe(403);
+});
+
+test('previews SVG MEDIA but never opens it outside the hardened response context', async () => {
+	const { GET, POST } = await import('./+server');
+	const url = new URL('http://127.0.0.1/api/projects/p/sessions/s/media?path=diagram.svg');
+	const preview = await GET({
+		params: { projectId: 'p', sessionId: 's' },
+		url,
+		request: new Request(url)
+	} as never);
+	expect(preview.status).toBe(200);
+	expect(preview.headers.get('content-type')).toBe('image/svg+xml');
+	await preview.body?.cancel();
+
+	const opened = await POST({
+		params: { projectId: 'p', sessionId: 's' },
+		url,
+		getClientAddress: () => '127.0.0.1',
+		request: new Request(url, {
+			method: 'POST',
+			headers: { host: url.host, origin: url.origin },
+			body: JSON.stringify({ action: 'open', path: 'diagram.svg' })
+		})
+	} as never);
+	expect(opened.status).toBe(400);
+	expect(await opened.json()).toEqual({
+		error: 'SVG outputs can only be previewed or revealed'
+	});
 });

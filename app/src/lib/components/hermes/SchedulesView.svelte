@@ -149,7 +149,7 @@
 							{/if}
 							<a
 								class="text-xs text-primary underline"
-								href={`/?project=none&session=${encodeURIComponent(job.sessionId)}`}
+								href={`/?project=none&collection=cron&session=${encodeURIComponent(job.sessionId)}`}
 								>Review Session</a
 							>
 						</div>

@@ -4,8 +4,13 @@
 	import ExternalLink from '~icons/lucide/external-link';
 	import FolderOpen from '~icons/lucide/folder-open';
 	import GitFork from '~icons/lucide/git-fork';
+	import Maximize2 from '~icons/lucide/maximize-2';
 	import Pencil from '~icons/lucide/pencil';
 	import Quote from '~icons/lucide/quote';
+	import RotateCcw from '~icons/lucide/rotate-ccw';
+	import X from '~icons/lucide/x';
+	import ZoomIn from '~icons/lucide/zoom-in';
+	import ZoomOut from '~icons/lucide/zoom-out';
 	import type {
 		ImageAttachment,
 		InputAttachment,
@@ -77,6 +82,29 @@
 				text.split(/\r?\n/).flatMap((line) => line.match(/^MEDIA:\s*(.+?)\s*$/)?.[1] ?? [])
 			)
 		];
+	}
+	const mediaKind = (path: string) => {
+		if (/\.(?:png|jpe?g|gif|webp|svg)$/i.test(path)) return 'image';
+		if (/\.pdf$/i.test(path)) return 'pdf';
+		if (/\.(?:mp3|wav|ogg|oga|m4a)$/i.test(path)) return 'audio';
+		if (/\.(?:mp4|m4v|webm|mov)$/i.test(path)) return 'video';
+		if (/\.(?:txt|log|md|markdown|csv|json|xml|css|ts|mts|cts|tsx|py|rs|go|java)$/i.test(path))
+			return 'text';
+		return 'file';
+	};
+	const mediaName = (path: string) => path.split('/').at(-1) ?? path;
+	const mediaUrl = (path: string) => `${mediaPath}?path=${encodeURIComponent(path)}`;
+	let showcaseDialog: HTMLDialogElement;
+	let showcasePath = $state('');
+	let zoom = $state(1);
+	function showMedia(path: string) {
+		showcasePath = path;
+		zoom = 1;
+		showcaseDialog.showModal();
+	}
+	function resetShowcase() {
+		showcasePath = '';
+		zoom = 1;
 	}
 
 	const validTimestamp = (value?: string): value is string =>
@@ -208,18 +236,60 @@
 								{#each mediaOutputs(message.text) as path}<article
 										class="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"
 									>
-										{#if /\.(?:png|jpe?g|gif|webp)$/i.test(path)}<img
-												class="col-span-2 block max-h-[70vh] w-full max-w-full rounded-md object-contain"
-												src={`${mediaPath}?path=${encodeURIComponent(path)}`}
-												alt={path.split('/').at(-1) ?? path}
-											/>{/if}
+										{#if mediaKind(path) === 'image'}<button
+												type="button"
+												class="col-span-2 block min-h-11 overflow-hidden rounded-md bg-black/20"
+												onclick={() => showMedia(path)}
+												aria-label={`Show ${path}`}
+												title={`Show ${path}`}
+												><img
+													class="block max-h-[70vh] w-full max-w-full object-contain"
+													src={mediaUrl(path)}
+													alt={mediaName(path)}
+												/></button
+											>{:else if mediaKind(path) === 'pdf' || mediaKind(path) === 'text'}<div
+												class="relative col-span-2 h-[min(42vh,360px)] min-h-52 overflow-hidden rounded-md bg-white"
+											>
+												<iframe
+													class="size-full border-0"
+													title={`Inline preview of ${mediaName(path)}`}
+													src={mediaUrl(path)}
+												></iframe><button
+													type="button"
+													class="absolute inset-0 grid place-items-center bg-transparent opacity-0 transition-opacity hover:bg-black/10 hover:opacity-100 focus-visible:bg-black/10 focus-visible:opacity-100"
+													onclick={() => showMedia(path)}
+													aria-label={`Show ${path}`}
+													title={`Show ${path}`}
+													><Maximize2
+														class="rounded-full bg-black/75 p-3 text-white"
+														width={44}
+														height={44}
+														aria-hidden="true"
+													/></button
+												>
+											</div>{:else if mediaKind(path) === 'video'}<video
+												class="col-span-2 max-h-[70vh] w-full rounded-md bg-black"
+												controls
+												src={mediaUrl(path)}><track kind="captions" /></video
+											>{:else if mediaKind(path) === 'audio'}<audio
+												class="col-span-2 w-full"
+												controls
+												src={mediaUrl(path)}><track kind="captions" /></audio
+											>{/if}
 										<div class="min-w-0">
 											<strong class="block truncate">{path.split('/').at(-1)}</strong><small
 												title={`Hermes MEDIA: ${path}`}>Hermes MEDIA output · {path}</small
 											>
 										</div>
 										<div class="flex">
-											<a
+											{#if mediaKind(path) !== 'file'}<button
+													type="button"
+													class="grid min-h-11 min-w-11 place-items-center"
+													onclick={() => showMedia(path)}
+													aria-label={`Open ${path} in showcase`}
+													title={`Open ${path} in showcase`}
+													><Maximize2 width={16} height={16} aria-hidden="true" /></button
+												>{/if}<a
 												class="grid min-h-11 min-w-11 place-items-center"
 												href={`${mediaPath}?path=${encodeURIComponent(path)}`}
 												target="_blank"
@@ -430,3 +500,79 @@
 			></div>{/if}
 	</div>
 </section>
+
+<dialog
+	bind:this={showcaseDialog}
+	class="m-auto h-[min(92dvh,900px)] w-[min(96vw,1200px)] max-w-none overflow-hidden rounded-xl border border-border bg-card p-0 text-foreground shadow-2xl backdrop:bg-black/80"
+	aria-label={showcasePath ? mediaName(showcasePath) : 'File preview'}
+	onclose={resetShowcase}
+	onclick={(event) => event.target === showcaseDialog && showcaseDialog.close()}
+>
+	{#if showcasePath}<div class="grid h-full grid-rows-[auto_minmax(0,1fr)]">
+			<header class="flex min-h-14 items-center gap-2 border-b border-border px-3">
+				<strong class="min-w-0 flex-1 truncate">{mediaName(showcasePath)}</strong>
+				{#if mediaKind(showcasePath) === 'image'}<button
+						type="button"
+						class="grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-accent"
+						disabled={zoom <= 0.5}
+						onclick={() => (zoom = Math.max(0.5, zoom - 0.25))}
+						aria-label="Zoom out"
+						title="Zoom out"><ZoomOut width={18} height={18} aria-hidden="true" /></button
+					><button
+						type="button"
+						class="grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-accent"
+						onclick={() => (zoom = 1)}
+						aria-label="Reset zoom"
+						title={`${Math.round(zoom * 100)}%`}
+						><RotateCcw width={18} height={18} aria-hidden="true" /></button
+					><button
+						type="button"
+						class="grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-accent"
+						disabled={zoom >= 3}
+						onclick={() => (zoom = Math.min(3, zoom + 0.25))}
+						aria-label="Zoom in"
+						title="Zoom in"><ZoomIn width={18} height={18} aria-hidden="true" /></button
+					>{/if}<a
+					class="grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-accent"
+					href={`${mediaUrl(showcasePath)}&download=true`}
+					download
+					aria-label={`Download ${showcasePath}`}
+					title={`Download ${showcasePath}`}
+					><Download width={18} height={18} aria-hidden="true" /></a
+				><button
+					type="button"
+					class="grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-accent"
+					onclick={() => showcaseDialog.close()}
+					aria-label="Close preview"
+					title="Close preview"><X width={20} height={20} aria-hidden="true" /></button
+				>
+			</header>
+			<div class="min-h-0 overflow-auto bg-black/90 p-2 sm:p-4">
+				{#if mediaKind(showcasePath) === 'image'}<div
+						class="grid min-h-full min-w-full place-items-center"
+					>
+						<img
+							class="block h-auto max-w-none object-contain transition-[width]"
+							style={`width: ${zoom * 100}%`}
+							src={mediaUrl(showcasePath)}
+							alt={`Preview of ${mediaName(showcasePath)}`}
+						/>
+					</div>{:else if mediaKind(showcasePath) === 'video'}<video
+						class="size-full object-contain"
+						controls
+						autoplay
+						src={mediaUrl(showcasePath)}><track kind="captions" /></video
+					>{:else if mediaKind(showcasePath) === 'audio'}<div
+						class="grid h-full place-items-center"
+					>
+						<audio class="w-full max-w-2xl" controls autoplay src={mediaUrl(showcasePath)}
+							><track kind="captions" /></audio
+						>
+					</div>{:else}<iframe
+						class="size-full border-0 bg-white"
+						title={`Preview of ${mediaName(showcasePath)}`}
+						src={mediaUrl(showcasePath)}
+					></iframe>{/if}
+			</div>
+		</div>{/if}
+</dialog>

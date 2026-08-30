@@ -37,6 +37,7 @@ flowchart LR
 | Message envelope, idempotency, delivery state, replay cursor | HUE SQLite |
 | Hermes profiles, models, MCP | Hermes authenticated APIs |
 | Schedule definition, next occurrence, and Session association | HUE SQLite |
+| External cron definition, status, and explicit mutation | Hermes authenticated APIs |
 | Custom skill `SKILL.md` mutation | Narrow HUE exception in ADR-0012 |
 | Notification projection and delivery attempts | HUE SQLite |
 | Project Excalidraw scene and workbench state | HUE SQLite |
@@ -45,7 +46,7 @@ flowchart LR
 
 The browser submits one complete envelope with a client-generated ID. HUE persists it before dispatch, serializes turns per Session, deduplicates retries, and exposes monotonic event replay. A transport loss after dispatch becomes `unknown`; HUE does not automatically repeat a possibly side-effecting prompt.
 
-Scheduled prompts follow the same invariant through a dedicated projectless Session per schedule. HUE coalesces downtime catch-up to one durable run. Existing external Hermes cron jobs are not imported or mutated silently.
+Scheduled prompts follow the same invariant through a dedicated projectless Session per schedule. The Projects rail surfaces those Sessions together under Cron tasks without turning schedules into a fourth user-facing object. HUE coalesces downtime catch-up to one durable run. Existing external Hermes cron jobs may appear as Hermes-owned rows and accept explicit authenticated edits or deletion, but they are not imported and carry no HUE delivery or notification guarantee.
 
 ## Trust boundary
 

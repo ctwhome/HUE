@@ -15,7 +15,7 @@ pids=""
 for pid in $(lsof -t -a -d cwd "$app" 2>/dev/null || true); do
 	command=$(ps -p "$pid" -o command= 2>/dev/null || true)
 	case "$mode:$command" in
-		dev:*"vite dev"*|all:*"vite dev"*|serve:*"bun build/index.js"*|all:*"bun build/index.js"*)
+		dev:*"vite dev"*|all:*"vite dev"*|serve:*"bun build/index.js"*|all:*"bun build/index.js"*|serve:*"hue-serve."*"/index.js"*|all:*"hue-serve."*"/index.js"*)
 			pids="$pids $pid"
 			;;
 	esac

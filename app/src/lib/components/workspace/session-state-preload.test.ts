@@ -93,3 +93,32 @@ test('clear resets every active Session field', () => {
 		delivery: ''
 	});
 });
+
+test('response event previews do not skip an earlier terminal polling event', () => {
+	const state = new SessionState(
+		() => null,
+		() => undefined
+	);
+	Object.assign(state, {
+		eventCursor: 10,
+		activeMessageId: 'message-1',
+		delivery: 'running'
+	});
+	const workModeEvent = {
+		sequence: 12,
+		type: 'session.work_mode_changed',
+		payload: { workMode: 'live' }
+	};
+
+	state.previewEvents([workModeEvent]);
+	expect(state.eventCursor).toBe(10);
+
+	state.applyEvents([
+		{ sequence: 11, type: 'message.completed', payload: { messageId: 'message-1' } },
+		workModeEvent
+	]);
+
+	expect(state.delivery).toBe('completed');
+	expect(state.eventCursor).toBe(12);
+	expect(state.timeline.filter((item) => item.kind === 'status')).toHaveLength(1);
+});

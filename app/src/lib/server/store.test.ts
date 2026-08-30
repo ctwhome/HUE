@@ -524,6 +524,51 @@ describe('HUEStore project and workflow boundaries', () => {
 		store.close();
 	});
 
+	it('partitions projectless chats from schedule-backed Sessions', () => {
+		const store = makeStore();
+		store.upsertSession(null, { sessionId: 'chat', cwd: '/work/sessions', title: 'Chat' });
+		store.upsertSession(null, {
+			sessionId: 'scheduled',
+			cwd: '/work/sessions',
+			title: 'Daily review'
+		});
+		store.createSchedule({
+			id: 'daily',
+			name: 'Daily review',
+			prompt: 'Review progress',
+			cron: '0 9 * * *',
+			enabled: true,
+			nextRunAt: '2026-01-02T09:00:00.000Z',
+			sessionId: 'scheduled'
+		});
+
+		expect(store.countSessions(null, 'unscheduled')).toBe(1);
+		expect(store.countSessions(null, 'scheduled')).toBe(1);
+		expect(
+			store
+				.listSessionPage(null, {
+					includeArchived: false,
+					query: '',
+					limit: 100,
+					offset: 0,
+					scope: 'scheduled'
+				})
+				.sessions.map(({ sessionId }) => sessionId)
+		).toEqual(['scheduled']);
+		expect(
+			store
+				.listSessionPage(null, {
+					includeArchived: false,
+					query: '',
+					limit: 100,
+					offset: 0,
+					scope: 'unscheduled'
+				})
+				.sessions.map(({ sessionId }) => sessionId)
+		).toEqual(['chat']);
+		store.close();
+	});
+
 	it('previews exact Session delete impact and blocks deletion with unresolved delivery', () => {
 		const store = makeDeliveryStore();
 		store.acceptMessage({

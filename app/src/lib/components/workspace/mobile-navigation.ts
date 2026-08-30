@@ -1,3 +1,5 @@
+import type { SessionCollection } from './types';
+
 export type MobilePane = 'projects' | 'sessions' | null;
 
 export type NavigationMemory = {
@@ -5,6 +7,7 @@ export type NavigationMemory = {
 	projectId: string | null;
 	sessionId: string | null;
 	pane: MobilePane;
+	collection: SessionCollection;
 };
 
 export type LaunchIntent = 'new-session' | 'capture' | 'share' | 'projects' | 'recents' | null;
@@ -43,7 +46,8 @@ export function parseNavigationMemory(_raw: string | null): NavigationMemory | n
 			version: 1,
 			projectId: value.projectId as string | null,
 			sessionId: value.sessionId as string | null,
-			pane: value.pane as MobilePane
+			pane: value.pane as MobilePane,
+			collection: value.collection === 'cron' ? 'cron' : 'chats'
 		};
 	} catch {
 		return null;
@@ -57,7 +61,8 @@ export function resolveLaunchDestination(
 	_notification: { projectId: string | null; sessionId: string | null } | null = null
 ): LaunchDestination {
 	const params = _url.searchParams;
-	const explicit = params.has('project') || params.has('session') || params.has('pane');
+	const explicit =
+		params.has('project') || params.has('session') || params.has('pane') || params.has('collection');
 	const memory = parseNavigationMemory(_rawMemory);
 	const requestedIntent = explicit
 		? null
@@ -75,6 +80,7 @@ export function resolveLaunchDestination(
 			projectId: null,
 			sessionId: null,
 			pane: null,
+			collection: 'chats',
 			explicit: false,
 			intent,
 			token: token && /^[A-Za-z0-9-]{1,128}$/.test(token) ? token : null,
@@ -86,6 +92,7 @@ export function resolveLaunchDestination(
 			projectId: null,
 			sessionId: null,
 			pane: 'projects',
+			collection: 'chats',
 			explicit: false,
 			intent,
 			token: null,
@@ -102,6 +109,7 @@ export function resolveLaunchDestination(
 			projectId,
 			sessionId: null,
 			pane: 'sessions',
+			collection: 'chats',
 			explicit: false,
 			intent,
 			token: null,
@@ -115,6 +123,7 @@ export function resolveLaunchDestination(
 				projectId,
 				sessionId: _notification.sessionId,
 				pane: null,
+				collection: 'chats',
 				explicit: false,
 				intent: null,
 				token: null,
@@ -132,6 +141,7 @@ export function resolveLaunchDestination(
 			projectId: _projectIds[0] ?? null,
 			sessionId: null,
 			pane: 'projects',
+			collection: 'chats',
 			explicit: false,
 			intent: null,
 			token: null,
@@ -145,6 +155,7 @@ export function resolveLaunchDestination(
 			projectId: null,
 			sessionId: null,
 			pane: 'projects',
+			collection: 'chats',
 			explicit,
 			intent: null,
 			token: null,
@@ -159,6 +170,10 @@ export function resolveLaunchDestination(
 		projectId: requestedProject,
 		sessionId: explicit ? params.get('session') : (memory?.sessionId ?? null),
 		pane,
+		collection:
+			requestedProject === null && (explicit ? params.get('collection') : memory?.collection) === 'cron'
+				? 'cron'
+				: 'chats',
 		explicit,
 		intent: null,
 		token: null,

@@ -146,7 +146,8 @@ function primarySessionSurface(page: import('@playwright/test').Page) {
 async function openComposerOptions(page: import('@playwright/test').Page) {
 	const surface = primarySessionSurface(page);
 	const button = surface.getByRole('button', { name: 'More session options' });
-	if ((await button.getAttribute('aria-expanded')) !== 'true') await button.click();
+	if ((await button.isVisible()) && (await button.getAttribute('aria-expanded')) !== 'true')
+		await button.click();
 	return surface;
 }
 
@@ -474,7 +475,9 @@ test('the navigation rail toggles both panels and Projects still toggle Sessions
 		.boundingBox())!;
 	expect(toggleBox.width).toBeLessThanOrEqual(36);
 	expect(toggleBox.height).toBeLessThanOrEqual(36);
-	expect(globalRailBox.y + globalRailBox.height - (toggleBox.y + toggleBox.height)).toBeLessThanOrEqual(16);
+	expect(
+		globalRailBox.y + globalRailBox.height - (toggleBox.y + toggleBox.height)
+	).toBeLessThanOrEqual(16);
 	await navigationToggle.click();
 	await expect(projects).toBeHidden();
 	await expect(sessions).toBeHidden();
@@ -899,17 +902,17 @@ test('conversation scrolls behind the translucent Session header', async ({ page
 	const composer = page.locator('.composer');
 	await expect(header).toHaveCSS('position', 'absolute');
 	await expect(composer).toHaveCSS('position', 'absolute');
-	await expect.poll(async () => (await transcript.boundingBox())?.y).toBe(
-		(await header.boundingBox())?.y
-	);
+	await expect
+		.poll(async () => (await transcript.boundingBox())?.y)
+		.toBe((await header.boundingBox())?.y);
 	expect(await header.evaluate((element) => getComputedStyle(element).backdropFilter)).not.toBe(
 		'none'
 	);
 	await page.setViewportSize({ width: 1024, height: 768 });
 	await expect(header).toHaveCSS('position', 'absolute');
-	await expect.poll(async () => (await transcript.boundingBox())?.y).toBe(
-		(await header.boundingBox())?.y
-	);
+	await expect
+		.poll(async () => (await transcript.boundingBox())?.y)
+		.toBe((await header.boundingBox())?.y);
 
 	await page.setViewportSize({ width: 390, height: 844 });
 	await expect(header).toHaveCSS('position', 'absolute');
@@ -3031,7 +3034,7 @@ test('capability-gates Hermes v0.20.5 administration and keeps controls responsi
 		await expect(panel.getByRole('button', { name: 'Run history' })).toBeVisible();
 		await expect(panel.getByRole('link', { name: 'Review Session' })).toHaveAttribute(
 			'href',
-			'/?project=none&session=scheduled-session'
+			'/?project=none&collection=cron&session=scheduled-session'
 		);
 		await chooseHermesSection(page, viewport, 'mcp', 'MCP');
 		await expect(panel.getByLabel('MCP bearer token')).toHaveAttribute('type', 'password');
@@ -3148,9 +3151,28 @@ test('sends one complete envelope and renders streamed completion', async ({ pag
 
 	await expect(surface.getByRole('button', { name: 'Thinking' })).toBeVisible();
 	await expect(surface.getByTitle('Message running')).toBeVisible();
+	const deliveryStatus = surface.locator('.composer-delivery');
+	await expect(deliveryStatus).toHaveClass(/rounded-full/);
+	const capsuleStyle = await deliveryStatus.evaluate((element) => ({
+		background: getComputedStyle(element).backgroundColor,
+		radius: Number.parseFloat(getComputedStyle(element).borderRadius),
+		height: element.getBoundingClientRect().height
+	}));
+	expect(capsuleStyle.background).not.toBe('rgba(0, 0, 0, 0)');
+	expect(capsuleStyle.radius).toBeGreaterThanOrEqual(capsuleStyle.height / 2);
+	await expect(deliveryStatus.locator('[data-status-icon="running"]')).toBeVisible();
+	await expect(deliveryStatus.locator('svg')).toHaveClass(/animate-spin/);
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await expect(surface.getByRole('button', { name: 'Thinking' })).toBeVisible();
+		const [deliveryBox, composerBox] = await Promise.all([
+			surface.locator('.composer-delivery').boundingBox(),
+			surface.locator('.composer').boundingBox()
+		]);
+		expect(deliveryBox).not.toBeNull();
+		expect(deliveryBox!.y + deliveryBox!.height).toBeLessThanOrEqual(composerBox!.y);
+		expect(deliveryBox!.x).toBeGreaterThanOrEqual(composerBox!.x);
+		expect(deliveryBox!.x).toBeLessThan(composerBox!.x + composerBox!.width / 2);
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
 		);
@@ -3169,10 +3191,9 @@ test('sends one complete envelope and renders streamed completion', async ({ pag
 	await expect(assistant.locator('code')).toHaveText('safely');
 	await expect(assistant.getByRole('img', { name: 'Hermes image' })).toBeVisible();
 	finishCompletion();
-	await openComposerOptions(page);
-	await expect(
-		surface.getByLabel('Secondary session options').getByText('completed', { exact: true })
-	).toBeVisible();
+	await expect(deliveryStatus).toHaveText('completed');
+	await expect(deliveryStatus.locator('[data-status-icon="completed"]')).toBeVisible();
+	await expect(deliveryStatus.locator('svg')).not.toHaveClass(/animate-spin/);
 	await expect(assistant.locator('.message strong')).toHaveText('Done');
 	await expect(assistant.locator('code')).toHaveText('safely');
 	expect(
@@ -3479,7 +3500,9 @@ test('follows new chat content until the reader scrolls up', async ({ page }) =>
 				)
 			)
 			.toBeLessThan(2);
-		const composerHeight = await page.locator('.composer').evaluate((element) => element.clientHeight);
+		const composerHeight = await page
+			.locator('.composer')
+			.evaluate((element) => element.clientHeight);
 
 		await scroller.hover();
 		await page.mouse.wheel(0, -300);
@@ -3663,7 +3686,7 @@ test('shows a live timer beside each busy session', async ({ page }) => {
 	expect(browserErrors).toEqual([]);
 });
 
-test('discovers Hermes slash commands and sends an attached image', async ({ page }) => {
+test('discovers Hermes slash commands and sends an attached image', async ({ page }, testInfo) => {
 	let envelope: { text: string; images: Array<{ name: string; mimeType: string; data: string }> };
 	let selectedModel = 'openai:gpt-5.6';
 	let selectedReasoning = 'balanced';
@@ -3805,11 +3828,33 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 	const approvalsTrigger = page.getByRole('button', { name: 'Edit approvals' });
 	const approvalsMenu = page.getByRole('dialog', { name: 'Choose edit approvals' });
 	const moreOptions = page.getByRole('button', { name: 'More session options' });
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await openComposerOptions(page);
+	await page.getByRole('button', { name: 'Prompt library' }).click();
+	const promptLibrary = page.getByRole('dialog', { name: 'Prompt library' });
+	await expect(promptLibrary).toBeVisible();
+	await promptLibrary.getByRole('button', { name: 'Close prompt library' }).click();
 	await expect(modelTrigger).toHaveText(/gpt-5\.6/);
 	await expect(modelTrigger).not.toContainText('OpenAI');
 	await expect(modelTrigger).not.toContainText('subscription');
-	for (const viewport of viewports) {
+	const composerViewports = [
+		...viewports.slice(0, 2),
+		{ width: 768, height: 1024 },
+		...viewports.slice(2)
+	];
+	for (const viewport of composerViewports) {
 		await page.setViewportSize(viewport);
+		if (viewport.width === 768) {
+			const browserToggle = page
+				.getByRole('navigation', { name: 'Project tools' })
+				.getByRole('button', { name: 'Browser' });
+			if ((await browserToggle.getAttribute('aria-expanded')) === 'true')
+				await browserToggle.click();
+		}
+		if (viewport.width > 700 && viewport.width <= 1024) {
+			await expect(moreOptions).toBeVisible();
+			await expect(page.getByRole('button', { name: 'Prompt library' })).toBeHidden();
+		}
 		const context = page.getByLabel('Hermes session context');
 		await context.evaluate((element) => (element.scrollLeft = 0));
 		expect(await context.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
@@ -3838,7 +3883,21 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 		if (viewport.width <= 390) await expectMinimumTouchTargets(modelMenu.locator('button'));
 		await page.keyboard.press('Escape');
 		await expect(modelMenu).toBeHidden();
-		await openComposerOptions(page);
+		const surface = await openComposerOptions(page);
+		if (viewport.width > 700 && viewport.width <= 1024) {
+			const menu = surface.getByLabel('Secondary session options');
+			await expect(menu).toBeVisible();
+			const [composerBox, menuBox] = await Promise.all([
+				surface.locator('.composer').boundingBox(),
+				menu.boundingBox()
+			]);
+			expect(menuBox!.x).toBeGreaterThanOrEqual(composerBox!.x);
+			expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(composerBox!.x + composerBox!.width);
+			await testInfo.attach(`composer-options-${viewport.width}x${viewport.height}`, {
+				body: await page.screenshot(),
+				contentType: 'image/png'
+			});
+		}
 		await reasoningTrigger.click();
 		await expect(reasoningMenu).toBeVisible();
 		await expect(reasoningMenu.getByRole('button', { name: /Balanced/ })).toBeVisible();
@@ -4103,7 +4162,7 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 							{ role: 'user', text: 'Review notes' },
 							{
 								role: 'assistant',
-								text: 'Reviewed.\nMEDIA: output/report.pdf\nMEDIA: output/screenshot.png'
+								text: 'Reviewed.\nMEDIA: output/report.pdf\nMEDIA: output/screenshot.png\nMEDIA: output/diagram.svg'
 							}
 						],
 						messages: [
@@ -4141,7 +4200,7 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 								type: 'agent.chunk',
 								payload: {
 									messageId: 'file-message',
-									text: 'Reviewed.\nMEDIA: output/report.pdf\nMEDIA: output/screenshot.png'
+									text: 'Reviewed.\nMEDIA: output/report.pdf\nMEDIA: output/screenshot.png\nMEDIA: output/diagram.svg'
 								},
 								createdAt: '2026-08-22T10:00:02Z'
 							},
@@ -4168,6 +4227,24 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 		route.fulfill({ json: { events: [] } })
 	);
 	await page.route(/\/sessions\/files\/media\?.*$/, (route) => {
+		const path = new URL(route.request().url()).searchParams.get('path');
+		if (path?.endsWith('.svg'))
+			return route.fulfill({
+				headers: {
+					'content-type': 'image/svg+xml',
+					'x-content-type-options': 'nosniff',
+					'content-security-policy': "default-src 'none'; script-src 'none'; sandbox"
+				},
+				body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" fill="blue"/></svg>'
+			});
+		if (path?.endsWith('.png'))
+			return route.fulfill({
+				headers: { 'content-type': 'image/png' },
+				body: Buffer.from(
+					'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+					'base64'
+				)
+			});
 		const bytes = Buffer.from('%PDF-1.7\nrange');
 		const range = route.request().headers().range;
 		if (range)
@@ -4214,13 +4291,62 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 	const preview = page.getByRole('link', { name: 'Preview output/report.pdf' });
 	const download = page.getByRole('link', { name: 'Download output/report.pdf' });
 	const image = page.getByRole('img', { name: 'screenshot.png' });
+	const svg = page.getByRole('img', { name: 'diagram.svg' });
+	await expect(page.getByTitle('Inline preview of report.pdf')).toBeVisible();
 	await expect(image).toBeVisible();
 	await expect(image).toHaveAttribute(
 		'src',
 		/\/sessions\/files\/media\?path=output%2Fscreenshot\.png$/
 	);
+	await expect(svg).toHaveAttribute('src', /\/sessions\/files\/media\?path=output%2Fdiagram\.svg$/);
 	await expect(preview).toHaveAttribute('target', '_blank');
 	await expect(download).toHaveAttribute('href', /download=true/);
+	const artifactsButton = page.getByRole('button', {
+		name: 'Open artifacts gallery, 3 artifacts'
+	});
+	await expect(artifactsButton).toBeVisible();
+	await artifactsButton.click();
+	const artifactsGallery = page.getByRole('dialog', { name: 'Session artifacts gallery' });
+	await expect(artifactsGallery).toBeVisible();
+	await expect(artifactsGallery.getByText('1 / 3')).toBeVisible();
+	await page.setViewportSize(viewports.at(-1)!);
+	const artifactStrip = artifactsGallery.getByRole('navigation', { name: 'Artifacts' });
+	const stripSize = await artifactStrip.evaluate((element) => ({
+		clientWidth: element.clientWidth,
+		scrollWidth: element.scrollWidth,
+		children: [...element.children].map((child) => (child as HTMLElement).offsetWidth)
+	}));
+	expect(stripSize.scrollWidth).toBeGreaterThan(stripSize.clientWidth);
+	await artifactStrip.evaluate((element) => (element.scrollLeft = element.scrollWidth));
+	expect(await artifactStrip.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+	await page.setViewportSize(viewports[0]);
+	await expect(
+		artifactsGallery.getByRole('img', { name: 'Thumbnail of screenshot.png' })
+	).toBeVisible();
+	await expect(
+		artifactsGallery.getByRole('img', { name: 'Thumbnail of diagram.svg' })
+	).toBeVisible();
+	await artifactsGallery.getByRole('button', { name: 'Select diagram.svg' }).click();
+	await expect(artifactsGallery.getByRole('img', { name: 'Preview of diagram.svg' })).toBeVisible();
+	await artifactsGallery.getByRole('button', { name: 'Select report.pdf' }).click();
+	await artifactsGallery.getByRole('button', { name: 'Next artifact' }).click();
+	await expect(
+		artifactsGallery.getByRole('img', { name: 'Preview of screenshot.png' })
+	).toBeVisible();
+	await artifactsGallery.getByRole('button', { name: 'Close artifacts gallery' }).click();
+	await expect(artifactsGallery).not.toBeVisible();
+	await expect(artifactsButton).toBeFocused();
+	await page.getByRole('button', { name: 'Show output/screenshot.png' }).click();
+	const showcase = page.getByRole('dialog', { name: 'screenshot.png' });
+	await expect(showcase).toBeVisible();
+	await showcase.getByRole('button', { name: 'Zoom in' }).click();
+	await expect(showcase.getByRole('img', { name: 'Preview of screenshot.png' })).toHaveAttribute(
+		'style',
+		/width: 125%/
+	);
+	await showcase.getByRole('button', { name: 'Close preview' }).click();
+	await expect(showcase).not.toBeVisible();
 	const ranged = await preview.evaluate(async (link) => {
 		const response = await fetch((link as HTMLAnchorElement).href, {
 			headers: { range: 'bytes=5-11' }
@@ -4235,10 +4361,21 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
 		);
-		if (viewport.width <= 390)
+		await page.getByRole('button', { name: 'Show output/screenshot.png' }).click();
+		await expect(showcase).toBeVisible();
+		const box = await showcase.boundingBox();
+		expect(box).not.toBeNull();
+		expect(box!.x).toBeGreaterThanOrEqual(0);
+		expect(box!.y).toBeGreaterThanOrEqual(0);
+		expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
+		expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
+		if (viewport.width <= 390) {
 			await expectMinimumTouchTargets(
 				page.locator('[aria-label="Generated outputs"] a, [aria-label="Generated outputs"] button')
 			);
+			await expectMinimumTouchTargets(showcase.locator('header a, header button'));
+		}
+		await showcase.getByRole('button', { name: 'Close preview' }).click();
 	}
 	await page.getByLabel('Message Hermes').focus();
 	await expect(page.getByLabel('Message Hermes')).toBeFocused();
@@ -5285,7 +5422,7 @@ test('opens and focuses a new Session while Hermes starts', async ({ page }) => 
 	await expect(page.getByRole('heading', { name: 'Start this Hermes Session' })).toBeVisible();
 	await expect(page.getByLabel('Message Hermes')).toBeFocused();
 	await expect(page.locator('.session-row')).toHaveCount(0);
-	await expect(page.getByRole('button', { name: 'More session options' })).toBeDisabled();
+	await expect(page.locator('.composer-more')).toBeDisabled();
 	await page.getByLabel('Message Hermes').fill('Draft while Hermes starts');
 	expect(
 		await page.evaluate(() => Object.keys(localStorage).some((key) => key.includes(':pending-')))
@@ -5762,6 +5899,109 @@ test('starts and revisits a session without a project', async ({ page }) => {
 	expect(browserErrors).toEqual([]);
 });
 
+test('shows external Hermes cron jobs in the Cron tasks folder', async ({ page }) => {
+	const browserErrors: string[] = [];
+	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
+	page.on('pageerror', (error) => browserErrors.push(error.message));
+	page.on('requestfailed', (request) => recordRequestFailure(browserErrors, request));
+	await page.route('**/api/sessions**', async (route) => {
+		const url = new URL(route.request().url());
+		await route.fulfill({
+			json: {
+				sessions: [],
+				externalCronJobs:
+					url.searchParams.get('scope') === 'scheduled'
+						? Array.from({ length: 25 }, (_, index) => ({
+									jobId: index === 0 ? 'af28bd12971a' : `job-${index}`,
+									name:
+										index === 0
+											? 'Daily review'
+											: `Long scheduled Hermes maintenance job ${index}`,
+									profile: 'default',
+									profileName: 'Default',
+									schedule: 'Daily at 9:00 AM',
+									scheduleKind: 'cron',
+									enabled: true,
+									state: 'scheduled',
+									nextRunAt: '2026-08-30T09:00:00Z',
+									lastRunAt: '2026-08-29T09:00:00Z',
+									lastStatus: 'completed'
+								}))
+						: []
+			}
+		});
+	});
+	await page.route('**/api/hermes/cron/**', async (route) => {
+		const requestBody = route.request().method() === 'PUT' ? route.request().postDataJSON() : null;
+		await route.fulfill({
+			json: {
+				job: {
+					jobId: 'af28bd12971a',
+					name: requestBody?.updates?.name ?? 'Daily review',
+					profile: 'default',
+					profileName: 'Default',
+					schedule: requestBody?.updates?.schedule ?? '0 9 * * *',
+					scheduleKind: 'cron',
+					enabled: requestBody?.enabled ?? true,
+					state: requestBody?.enabled === false ? 'paused' : 'scheduled',
+					nextRunAt: '2026-08-30T09:00:00Z',
+					lastRunAt: '2026-08-29T09:00:00Z',
+					lastStatus: 'completed',
+					prompt: requestBody?.updates?.prompt ?? 'Review progress',
+					deliver: requestBody?.updates?.deliver ?? 'local',
+					model: requestBody?.updates?.model ?? '',
+					provider: requestBody?.updates?.provider ?? '',
+					scriptOnly: false
+				}
+			}
+		});
+	});
+
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		await page.goto('/?project=none');
+		await openMobileProjects(page);
+		await page.locator('#project-drawer .project-select').filter({ hasText: 'Cron tasks' }).click();
+		await expect(page).toHaveURL(/project=none.*collection=cron/);
+		await expect(page.getByRole('heading', { name: 'Cron tasks' })).toBeVisible();
+		const row = page.getByRole('group', { name: 'Hermes cron job Daily review' });
+		await expect(row).toBeVisible();
+		const rowGeometry = await row.evaluate((element) => {
+			const button = element.querySelector('button')!;
+			return {
+				rowHeight: element.getBoundingClientRect().height,
+				buttonHeight: button.getBoundingClientRect().height,
+				buttonScrollWidth: button.scrollWidth,
+				buttonWidth: button.clientWidth
+			};
+		});
+		expect(rowGeometry.rowHeight).toBeGreaterThanOrEqual(rowGeometry.buttonHeight);
+		expect(rowGeometry.buttonScrollWidth).toBeLessThanOrEqual(rowGeometry.buttonWidth);
+		await row.getByRole('button').click();
+		const editor = page.getByRole('main', { name: 'Cron job editor' });
+		await expect(editor).toBeVisible();
+		await expect(editor.getByRole('heading', { name: 'Daily review' })).toBeVisible();
+		await expect(editor.getByLabel('Name', { exact: true })).toHaveValue('Daily review');
+		await expect(editor.getByLabel('Schedule')).toHaveValue('0 9 * * *');
+		await expect(editor.getByLabel('Prompt')).toHaveValue('Review progress');
+		await expect(editor.getByRole('button', { name: 'Save changes' })).toBeVisible();
+		if (viewport === viewports[0]) {
+			await editor.getByLabel('Name', { exact: true }).fill('Updated daily review');
+			await editor.getByRole('button', { name: 'Save changes' }).click();
+			await expect(editor.getByText('Saved', { exact: true })).toBeVisible();
+			await expect(editor.getByRole('heading', { name: 'Updated daily review' })).toBeVisible();
+		}
+		await editor.getByRole('button', { name: 'Remove job' }).click();
+		await expect(editor.getByText('Type af28bd12971a to confirm')).toBeVisible();
+		await expect(editor.getByRole('button', { name: 'Delete permanently' })).toBeDisabled();
+		await expect(page.getByRole('button', { name: 'Add new session' })).toHaveCount(0);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+	}
+	expect(browserErrors).toEqual([]);
+});
+
 test('retries a lost acknowledgement with the same complete envelope', async ({ page }) => {
 	const serverEnvelopes: Array<{ messageId: string; text: string }> = [];
 	let sessionLoads = 0;
@@ -6112,6 +6352,69 @@ test('mobile Project taps do not restore the previous desktop pane Session', asy
 	await expect(page.locator('#session-drawer')).toHaveAttribute('aria-hidden', 'false');
 	await expect(page.locator('.workspace')).toHaveClass(/mobile-sessions/);
 	await expect(page.getByRole('heading', { name: 'Desktop primary' })).toBeHidden();
+});
+
+test('mobile Session rows reveal edit archive and delete actions when swiped left', async ({
+	page
+}) => {
+	const browserErrors: string[] = [];
+	page.on(
+		'console',
+		(message) =>
+			message.type() === 'error' &&
+			browserErrors.push(`${message.text()} ${message.location().url}`.trim())
+	);
+	page.on('pageerror', (error) => browserErrors.push(error.message));
+	page.on('requestfailed', (request) => recordRequestFailure(browserErrors, request));
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) =>
+		route.fulfill({
+			json: {
+				sessions: [{ sessionId: 'swipe-target', cwd: '/work/hue', title: 'Swipe target' }]
+			}
+		})
+	);
+	await page.route(/\/api\/projects\/[^/]+\/sessions\/swipe-target$/, (route) =>
+		route.fulfill({
+			json: { transcript: [], messages: [], events: [], cursor: 0, activeTurn: null }
+		})
+	);
+	for (const viewport of [
+		{ width: 1440, height: 900 },
+		{ width: 1024, height: 768 }
+	]) {
+		await page.setViewportSize(viewport);
+		await addProject(page);
+		const row = page.locator('.session-row').filter({ hasText: 'Swipe target' });
+		await row.hover();
+		await expect(row.locator('.session-desktop-action').first()).toBeVisible();
+		await expect(row.locator('.session-swipe-actions')).toBeHidden();
+	}
+	for (const viewport of [
+		{ width: 390, height: 844 },
+		{ width: 320, height: 568 }
+	]) {
+		await page.setViewportSize(viewport);
+		await addProject(page);
+		const row = page.locator('.session-row').filter({ hasText: 'Swipe target' });
+		await expect(row).toBeVisible();
+		await page.waitForTimeout(300);
+		const box = (await row.boundingBox())!;
+		await touchDrag(
+			page,
+			{ x: box.x + box.width - 24, y: box.y + box.height / 2 },
+			{ x: box.x + box.width - 180, y: box.y + box.height / 2 }
+		);
+
+		const actions = row.locator('.session-swipe-actions');
+		await expect(actions.getByRole('button', { name: 'Edit Swipe target' })).toBeVisible();
+		await expect(actions.getByRole('button', { name: 'Archive Swipe target' })).toBeVisible();
+		await expect(actions.getByRole('button', { name: 'Delete Swipe target' })).toBeVisible();
+		await expectMinimumTouchTargets(actions.getByRole('button'));
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+	}
+	expect(browserErrors).toEqual([]);
 });
 
 test('short mobile chat contains hostile content and keeps core controls reachable', async ({

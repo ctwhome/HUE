@@ -120,7 +120,7 @@ export class MessageState {
 			if (accepted.workModeChanged || accepted.consumed) {
 				this.messageNotice = formatWorkModeAnnouncement(accepted.workMode);
 			}
-			if (accepted.workModeEvent) this.options.session.applyEvents([accepted.workModeEvent]);
+			if (accepted.workModeEvent) this.options.session.previewEvents([accepted.workModeEvent]);
 			if (!accepted.consumed) {
 				this.options.session.queuedMessages = [
 					...this.options.session.queuedMessages,
@@ -379,7 +379,7 @@ export class MessageState {
 			if (accepted.workModeChanged || accepted.consumed) {
 				this.messageNotice = formatWorkModeAnnouncement(accepted.workMode);
 			}
-			if (accepted.workModeEvent) this.options.session.applyEvents([accepted.workModeEvent]);
+			if (accepted.workModeEvent) this.options.session.previewEvents([accepted.workModeEvent]);
 			this.pendingEnvelope = null;
 			this.clearPendingEnvelope();
 			if (accepted.consumed) {

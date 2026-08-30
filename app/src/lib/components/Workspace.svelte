@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { formatElapsed, selectTranscriptTimeline } from '$lib';
+	import { formatElapsed, selectSessionArtifacts, selectTranscriptTimeline } from '$lib';
 	import { automaticSessionIcon } from '$lib/icon';
 	import { applyPreferences, readPreferences } from '$lib/preferences';
 	import type { CaptureInput } from '$lib/pwa/quick-capture';
@@ -20,6 +20,7 @@
 	import ProjectTerminalDock from './workbench/ProjectTerminalDock.svelte';
 	import QuickCapture from './pwa/QuickCapture.svelte';
 	import ContextPanel from './workspace/ContextPanel.svelte';
+	import ExternalCronJobView from './workspace/ExternalCronJobView.svelte';
 	import { MobileShellController } from './workspace/mobile-shell';
 	import { readProjectPanels, togglePanelState as togglePanel } from './workspace/panel-state';
 	import { workspaceApi } from './workspace/api';
@@ -54,11 +55,13 @@
 	let {
 		projects: initialProjects,
 		chatSessionCount: initialChatSessionCount = 0,
+		cronSessionCount: initialCronSessionCount = 0,
 		projectsCapability = 'available',
 		projectsError = '',
 		reconciliationIssues = []
 	}: WorkspaceProps = $props();
 	let chatSessionCount = $state(untrack(() => initialChatSessionCount));
+	let cronSessionCount = $state(untrack(() => initialCronSessionCount));
 	let loading = $state(false),
 		error = $state('');
 	let globalView = $state<GlobalView | null>(null),
@@ -181,6 +184,8 @@
 			getProjects: () => projectManagement.projects,
 			adjustChatSessionCount: (change) =>
 				(chatSessionCount = Math.max(0, chatSessionCount + change)),
+			adjustCronSessionCount: (change) =>
+				(cronSessionCount = Math.max(0, cronSessionCount + change)),
 			applyCreatedSession: async (body, preserveWorkMode = false) => {
 				const selectedSession = navigation.selectedSession;
 				if (!selectedSession) {
@@ -253,10 +258,24 @@
 		setShellPaneOpen('sessions', true);
 		void navigation.chooseProject(project);
 	}
+	function chooseSessionCollection(collection: 'chats' | 'cron', trigger?: HTMLElement) {
+		if (mobile) {
+			if (trigger) mobileShell?.rememberTrigger('sessions', trigger);
+			void navigation.chooseSessionCollection(collection);
+			return;
+		}
+		if (!selectedProject && navigation.sessionCollection === collection) {
+			setShellPaneOpen('sessions', !sessionsPanelOpen);
+			return;
+		}
+		setShellPaneOpen('sessions', true);
+		void navigation.chooseSessionCollection(collection);
+	}
 	let panelProjectId = $derived(selectedProject?.id ?? '');
 	let sessions = $derived(navigation.sessions);
 	let workflows = $derived(navigation.workflows);
 	let selectedSession = $derived(navigation.selectedSession);
+	let selectedExternalCronJob = $derived(navigation.selectedExternalCronJob);
 	let chatBackground = $state<ChatBackground | null>(null);
 	let chatBackgroundRevision = $state(0);
 	$effect(() => {
@@ -268,6 +287,7 @@
 	});
 	let timeline = $derived(sessionState.timeline);
 	let hasTranscript = $derived(selectTranscriptTimeline(timeline).length > 0);
+	let artifacts = $derived(selectSessionArtifacts(timeline));
 	let commands = $derived(sessionState.commands);
 	let runtime = $derived(sessionState.runtime);
 	let branch = $derived(sessionState.branch);
@@ -354,7 +374,11 @@
 			return;
 		}
 		globalView = null;
-		await navigation.openFinderSession(project, result.sessionId);
+		await navigation.openFinderSession(
+			project,
+			result.sessionId,
+			!project && result.folder === 'Schedules' ? 'cron' : 'chats'
+		);
 	}
 	function openFinderResult(result: SessionFinderResult) {
 		guarded(() => void navigateFromFinder(result));
@@ -480,8 +504,10 @@
 		open={navigation.mobileDrawer === 'projects'}
 		{mobile}
 		projects={projectManagement.projects}
-		chatSessionCount={chatSessionCount}
+		{chatSessionCount}
+		cronSessionCount={cronSessionCount + navigation.externalCronJobs.length}
 		{selectedProject}
+		sessionCollection={navigation.sessionCollection}
 		{unreadNotifications}
 		sessionsOpen={sessionsPanelOpen}
 		{projectsCapability}
@@ -510,6 +536,7 @@
 		selectedFolders={projectManagement.selectedFolders}
 		primaryFolder={projectManagement.primaryFolder}
 		onprojectless={navigation.createProjectlessSession}
+		oncollection={chooseSessionCollection}
 		onaddopen={projectManagement.openAddProject}
 		onchoose={chooseProjectFromRail}
 		onlocate={projectManagement.openLocateProject}
@@ -542,8 +569,12 @@
 		open={navigation.mobileDrawer === 'sessions'}
 		{mobile}
 		{selectedProject}
+		sessionCollection={navigation.sessionCollection}
 		{loading}
 		{sessions}
+		externalCronJobs={navigation.externalCronJobs}
+		externalCronError={navigation.externalCronError}
+		{selectedExternalCronJob}
 		{selectedSession}
 		selectedDelivery={delivery}
 		selectedStatus={selectedAttentionStatus}
@@ -552,10 +583,12 @@
 		{now}
 		oncreate={navigation.createSession}
 		onopen={(session) => navigation.openSession(session, 'push')}
+		onexternalopen={(job) => navigation.openExternalCronJob(job, 'push')}
 		onback={(trigger) => mobileShell?.open('projects', trigger)}
 		onedit={navigation.openEditSession}
 		onicon={navigation.openSessionIconEditor}
 		onarchive={navigation.archiveSession}
+		ondelete={navigation.deleteSessionFromRow}
 		onsearch={navigation.searchSessionList}
 		isImage={isImageIcon}
 		automaticIcon={automaticSessionIcon}
@@ -589,139 +622,164 @@
 		aria-hidden={mobile && navigation.mobileDrawer !== null ? 'true' : undefined}
 		style={`--terminal-panel-height: ${terminalHeight}px`}
 	>
-		<SessionPaneGrid
-			{sessions}
-			project={selectedProject}
-			projectId={selectedProject?.id ?? null}
-			sessionListLoaded={navigation.loadedSessionListProjectId === (selectedProject?.id ?? null)}
-			{workflows}
-			primarySession={selectedSession?.pending ? null : selectedSession}
-			allowDocking={!embedded}
-			restorePrimarySession={!mobile && !selectedSession?.pending}
-			onpanecount={(count) => {
-				sessionPaneCount = count;
-				if (count > 1 && innerWidth < 1600) browserOpen = false;
-			}}
-			onprimaryclose={navigation.openSession}
-			onsessionupdate={navigation.replaceSession}
-			onrunworkflow={navigation.runWorkflow}
-		>
-			<main
-				class="session-view chat-background-surface flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-				class:empty-session={!hasTranscript}
-				class:personal-background={chatBackground !== null}
-				style={chatBackgroundStyle(chatBackground)}
+		{#if selectedExternalCronJob}<ExternalCronJobView
+				job={selectedExternalCronJob}
+				{mobile}
+				onback={(trigger) => mobileShell?.open('sessions', trigger)}
+				onupdated={(updated) => {
+					navigation.externalCronJobs = navigation.externalCronJobs.map((job) =>
+						job.jobId === updated.jobId && job.profile === updated.profile
+							? { ...job, ...updated }
+							: job
+					);
+					navigation.selectedExternalCronJob = { ...selectedExternalCronJob, ...updated };
+				}}
+				ondeleted={(deleted) => {
+					navigation.externalCronJobs = navigation.externalCronJobs.filter(
+						(job) => job.jobId !== deleted.jobId || job.profile !== deleted.profile
+					);
+					navigation.selectedExternalCronJob = null;
+					if (mobile) navigation.setMobileDrawer('sessions', 'replace');
+				}}
+			/>
+		{:else}<SessionPaneGrid
+				{sessions}
+				project={selectedProject}
+				projectId={selectedProject?.id ?? null}
+				sessionListLoaded={navigation.loadedSessionListProjectId ===
+					(selectedProject?.id ?? navigation.sessionCollection)}
+				{workflows}
+				primarySession={selectedSession?.pending ? null : selectedSession}
+				allowDocking={!embedded}
+				restorePrimarySession={!mobile && !selectedSession?.pending}
+				onpanecount={(count) => {
+					sessionPaneCount = count;
+					if (count > 1 && innerWidth < 1600) browserOpen = false;
+				}}
+				onprimaryclose={navigation.openSession}
+				onsessionupdate={navigation.replaceSession}
+				onrunworkflow={navigation.runWorkflow}
 			>
-				<SessionHeader
-					session={selectedSession}
-					project={selectedProject}
-					{runtime}
-					{delivery}
-					{pendingInteraction}
-					contextPercent={runtimeState.contextPercent}
-					{projectTools}
-					{mobile}
-					{unreadNotifications}
-					onsessions={(trigger) => mobileShell?.open('sessions', trigger)}
-					onnotifications={() => setGlobalView('notifications')}
-					onprojecttools={(open) => (projectTools = open)}
-					onicon={(event) => {
-						if (selectedSession && !selectedSession.pending)
-							navigation.openSessionIconEditor(event, selectedSession);
-					}}
-					onmanage={(event) => {
-						if (selectedSession && !selectedSession.pending)
-							navigation.openEditSession(event, selectedSession);
-					}}
-				/>
-				{#if error}<div
-						class="error mx-5 mt-3 rounded-lg border border-destructive/40 bg-destructive/15 px-3 py-2.5 text-sm text-destructive"
-						role="alert"
-					>
-						{error}
-					</div>{/if}
-				{#if selectedProject?.rootAvailable && mobile && !selectedSession}<button
-						class="mobile-project-tools mx-3 mt-2 min-h-11 rounded-md border border-border px-3 text-sm"
-						aria-label={projectTools ? 'Back to chat' : 'Open Project tools'}
-						onclick={() => (projectTools = !projectTools)}
-						>{projectTools ? 'Back to chat' : 'Project tools'}</button
-					>{/if}
-				{#if selectedProject?.rootAvailable && navigation.ready && mobile && projectTools}
-					{#key selectedProject.id}
-						<ProjectWorkbench
-							projectId={selectedProject.id}
-							projectName={selectedProject.name}
-							compact={true}
-							onpreviewchange={(url) => (previewUrl = url)}
-							onbranch={(value) => (branch = value)}
-							onreviewcontext={messageState.addReviewContext}
-							{dirtyGuard}
-						/>
-					{/key}
-				{:else if selectedSession || (selectedProject?.rootAvailable && navigation.ready)}
-					<SessionSurface
-						controller={sessionController}
-						{navigation}
-						project={selectedProject}
+				<main
+					class="session-view chat-background-surface flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+					class:empty-session={!hasTranscript}
+					class:personal-background={chatBackground !== null}
+					style={chatBackgroundStyle(chatBackground)}
+				>
+					<SessionHeader
 						session={selectedSession}
-						{workflows}
-						sessionLabel={selectedSession?.title ||
-							selectedSession?.sessionId ||
-							'New Hermes Session'}
+						project={selectedProject}
+						{runtime}
+						{delivery}
+						{pendingInteraction}
+						contextPercent={runtimeState.contextPercent}
+						{artifacts}
 						mediaPath={selectedSession
 							? navigation.sessionApiPath(selectedSession.sessionId, '/media')
 							: ''}
-						onsubmit={submitDraft}
-						oninput={createSessionFromDraft}
-						onrunworkflow={navigation.runWorkflow}
-						unavailableRecovery={selectedSession?.available === false
-							? (selectedSession.recovery ?? 'Hermes Session is unavailable.')
-							: null}
-						showContextUsage={false}
-						ready={!selectedSession?.pending}
+						{projectTools}
+						{mobile}
+						{unreadNotifications}
+						onsessions={(trigger) => mobileShell?.open('sessions', trigger)}
+						onnotifications={() => setGlobalView('notifications')}
+						onprojecttools={(open) => (projectTools = open)}
+						onicon={(event) => {
+							if (selectedSession && !selectedSession.pending)
+								navigation.openSessionIconEditor(event, selectedSession);
+						}}
+						onmanage={(event) => {
+							if (selectedSession && !selectedSession.pending)
+								navigation.openEditSession(event, selectedSession);
+						}}
 					/>
-				{:else if selectedProject && !selectedProject.rootAvailable}
-					<section
-						class="mx-auto mt-[12vh] grid max-w-xl gap-4 p-8 text-center text-muted-foreground"
-						aria-label="Project folder unavailable"
-					>
-						<h2 class="text-foreground">Project folder unavailable</h2>
-						<p>
-							Primary folder {selectedProject.primaryPath} is unavailable. Choose an available Project
-							folder as primary before opening Sessions, Git, terminal, or preview tools.
-						</p>
-						<div class="flex flex-wrap justify-center gap-2">
-							<button
-								class="min-h-11 rounded-md bg-primary px-4 text-primary-foreground"
-								onclick={() => {
-									if (mobile) navigation.setMobileDrawer('projects', 'push');
-									projectManagement.openEditProject(null, selectedProject);
-								}}>Manage folders</button
-							>
-							<button
-								class="min-h-11 rounded-md border border-border px-4"
-								onclick={() => {
-									if (mobile) navigation.setMobileDrawer('projects', 'push');
-									projectManagement.requestRemoveStaleProject(selectedProject);
-								}}>Archive</button
-							>
-							<button
-								class="min-h-11 rounded-md border border-border px-4"
-								onclick={() => navigation.chooseProject(null)}>Open without Project</button
-							>
-						</div>
-					</section>
-				{:else}
-					<WorkspaceWelcome
-						projectCount={projectManagement.projects.length}
-						{projectsCapability}
-						{projectsError}
-						onadd={projectManagement.openAddProject}
-						onprojectless={navigation.createProjectlessSession}
-					/>
-				{/if}
-			</main>
-		</SessionPaneGrid>
+					{#if error}<div
+							class="error mx-5 mt-3 rounded-lg border border-destructive/40 bg-destructive/15 px-3 py-2.5 text-sm text-destructive"
+							role="alert"
+						>
+							{error}
+						</div>{/if}
+					{#if selectedProject?.rootAvailable && mobile && !selectedSession}<button
+							class="mobile-project-tools mx-3 mt-2 min-h-11 rounded-md border border-border px-3 text-sm"
+							aria-label={projectTools ? 'Back to chat' : 'Open Project tools'}
+							onclick={() => (projectTools = !projectTools)}
+							>{projectTools ? 'Back to chat' : 'Project tools'}</button
+						>{/if}
+					{#if selectedProject?.rootAvailable && navigation.ready && mobile && projectTools}
+						{#key selectedProject.id}
+							<ProjectWorkbench
+								projectId={selectedProject.id}
+								projectName={selectedProject.name}
+								compact={true}
+								onpreviewchange={(url) => (previewUrl = url)}
+								onbranch={(value) => (branch = value)}
+								onreviewcontext={messageState.addReviewContext}
+								{dirtyGuard}
+							/>
+						{/key}
+					{:else if selectedSession || (selectedProject?.rootAvailable && navigation.ready)}
+						<SessionSurface
+							controller={sessionController}
+							{navigation}
+							project={selectedProject}
+							session={selectedSession}
+							{workflows}
+							sessionLabel={selectedSession?.title ||
+								selectedSession?.sessionId ||
+								'New Hermes Session'}
+							mediaPath={selectedSession
+								? navigation.sessionApiPath(selectedSession.sessionId, '/media')
+								: ''}
+							onsubmit={submitDraft}
+							oninput={createSessionFromDraft}
+							onrunworkflow={navigation.runWorkflow}
+							unavailableRecovery={selectedSession?.available === false
+								? (selectedSession.recovery ?? 'Hermes Session is unavailable.')
+								: null}
+							showContextUsage={false}
+							ready={!selectedSession?.pending}
+						/>
+					{:else if selectedProject && !selectedProject.rootAvailable}
+						<section
+							class="mx-auto mt-[12vh] grid max-w-xl gap-4 p-8 text-center text-muted-foreground"
+							aria-label="Project folder unavailable"
+						>
+							<h2 class="text-foreground">Project folder unavailable</h2>
+							<p>
+								Primary folder {selectedProject.primaryPath} is unavailable. Choose an available Project
+								folder as primary before opening Sessions, Git, terminal, or preview tools.
+							</p>
+							<div class="flex flex-wrap justify-center gap-2">
+								<button
+									class="min-h-11 rounded-md bg-primary px-4 text-primary-foreground"
+									onclick={() => {
+										if (mobile) navigation.setMobileDrawer('projects', 'push');
+										projectManagement.openEditProject(null, selectedProject);
+									}}>Manage folders</button
+								>
+								<button
+									class="min-h-11 rounded-md border border-border px-4"
+									onclick={() => {
+										if (mobile) navigation.setMobileDrawer('projects', 'push');
+										projectManagement.requestRemoveStaleProject(selectedProject);
+									}}>Archive</button
+								>
+								<button
+									class="min-h-11 rounded-md border border-border px-4"
+									onclick={() => navigation.chooseProject(null)}>Open without Project</button
+								>
+							</div>
+						</section>
+					{:else}
+						<WorkspaceWelcome
+							projectCount={projectManagement.projects.length}
+							{projectsCapability}
+							{projectsError}
+							onadd={projectManagement.openAddProject}
+							onprojectless={navigation.createProjectlessSession}
+						/>
+					{/if}
+				</main>
+			</SessionPaneGrid>{/if}
 		{#if selectedProject?.rootAvailable && navigation.ready && !mobile}
 			{#key selectedProject.id}
 				<ProjectBrowserDock

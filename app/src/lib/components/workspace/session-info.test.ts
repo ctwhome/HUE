@@ -7,7 +7,12 @@ mock.module('$app/state', () => ({ page: { state: {} } }));
 const { WorkspaceNavigation } = await import('./navigation.svelte');
 
 function navigation(api: Api = (async () => ({})) as Api) {
-	return new WorkspaceNavigation(null, { api } as never);
+	return new WorkspaceNavigation(null, {
+		api,
+		adjustChatSessionCount() {},
+		adjustCronSessionCount() {},
+		setError() {}
+	} as never);
 }
 
 const infoEvent = (title: string): SessionEvent => ({
@@ -100,6 +105,7 @@ test('Session creation and archiving keep the standalone Chats count current', a
 	const state = new WorkspaceNavigation(null, {
 		api: async () => ({ session: { sessionId: 'existing', cwd: '/work', archived: true } }),
 		adjustChatSessionCount: (change: number) => (count += change),
+		adjustCronSessionCount: () => {},
 		setError() {}
 	} as never);
 	const existing = { sessionId: 'existing', cwd: '/work' } as Session;
@@ -109,6 +115,36 @@ test('Session creation and archiving keep the standalone Chats count current', a
 	expect(count).toBe(2);
 	await state.archiveSession({ stopPropagation() {} } as MouseEvent, existing);
 	expect(count).toBe(1);
+});
+
+test('removing a Session from its row preserves the delete impact confirmation', async () => {
+	const requests: string[] = [];
+	const state = navigation((async (path, options) => {
+		requests.push(`${options?.method} ${path}`);
+		return path.includes('confirm=true')
+			? { deleted: true }
+			: { impact: { messages: 2, events: 3, attachments: 1, activeDeliveries: 0 } };
+	}) as Api);
+	const session = { sessionId: 'remove-me', cwd: '/work', title: 'Remove me' } as Session;
+	state.sessions = [session];
+	const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+	Object.defineProperty(globalThis, 'window', {
+		configurable: true,
+		value: { confirm: () => true }
+	});
+
+	try {
+		await state.deleteSessionFromRow({ stopPropagation() {} } as MouseEvent, session);
+	} finally {
+		if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+		else Reflect.deleteProperty(globalThis, 'window');
+	}
+
+	expect(requests).toEqual([
+		'DELETE /api/sessions/remove-me',
+		'DELETE /api/sessions/remove-me?confirm=true'
+	]);
+	expect(state.sessions).toEqual([]);
 });
 
 test('workflow mutations remain scoped to the selected project', async () => {

@@ -128,3 +128,28 @@ test('shows cached Session titles while Hermes refreshes them', async () => {
 	await loading;
 	expect(state.sessions).toEqual([{ sessionId: 'fresh', cwd: '/work', title: 'Fresh title' }]);
 });
+
+test('loads cron tasks as a distinct projectless Session collection', async () => {
+	const requests: string[] = [];
+	const state = new WorkspaceNavigation(null, {
+		api: (async (path: string) => {
+			requests.push(path);
+			return { sessions: [{ sessionId: 'scheduled', cwd: '/work', title: 'Daily review' }] };
+		}) as Api,
+		guard: () => false,
+		isMobile: () => false,
+		endVoice() {},
+		cacheSession() {},
+		saveDraft() {},
+		stopPolling() {},
+		clearSession() {},
+		setError() {},
+		setLoading() {}
+	} as never);
+
+	await state.chooseSessionCollection('cron', 'none');
+
+	expect(state.sessionCollection).toBe('cron');
+	expect(state.sessions[0]?.title).toBe('Daily review');
+	expect(requests).toEqual(['/api/sessions?scope=scheduled']);
+});

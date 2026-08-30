@@ -98,6 +98,16 @@ describe('durable mobile navigation', () => {
 		});
 	});
 
+	test('restores the cron task collection from an explicit route', () => {
+		expect(
+			resolveLaunchDestination(
+				new URL('http://hue.local/?project=none&collection=cron'),
+				null,
+				projects
+			)
+		).toMatchObject({ projectId: null, collection: 'cron', source: 'explicit' });
+	});
+
 	test('shortcut and share intents beat remembered destination but not explicit deep links', () => {
 		const remembered = JSON.stringify({
 			version: 1,
@@ -159,7 +169,8 @@ describe('durable mobile navigation', () => {
 			version: 1,
 			projectId: 'project-1',
 			sessionId: 'session-1',
-			pane: 'sessions'
+			pane: 'sessions',
+			collection: 'chats'
 		});
 		expect(
 			resolveLaunchDestination(new URL('http://hue.local/'), remembered, projects)

@@ -17,7 +17,7 @@ build: install
 	bun run --cwd app build
 
 serve:
-	cd app && HOST="$(HOST)" PORT="$(PORT)" ORIGIN="$(ORIGIN)" HUE_DATABASE_PATH="$(HUE_DATABASE_PATH)" bun --env-file=.env run start
+	cd app && HOST="$(HOST)" PORT="$(PORT)" ORIGIN="$(ORIGIN)" HUE_DATABASE_PATH="$(HUE_DATABASE_PATH)" BODY_SIZE_LIMIT="$${BODY_SIZE_LIMIT:-60000000}" ../scripts/serve-build.sh build bun --env-file=.env
 
 stop-dev:
 	@./scripts/stop-services.sh dev
