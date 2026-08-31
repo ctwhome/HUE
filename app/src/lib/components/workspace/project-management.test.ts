@@ -140,6 +140,33 @@ describe('ProjectManagement Hermes authority', () => {
 		});
 	});
 
+	it('creates a folder in the open directory and refreshes the browser', async () => {
+		const requests: Array<{ url: string; options?: RequestInit }> = [];
+		const state = manager(async <T>(url: string, options?: RequestInit) => {
+			requests.push({ url, options });
+			return {
+				path: '/work/app',
+				name: 'app',
+				parent: '/work',
+				entries: [{ name: 'New project', path: '/work/app/New project' }]
+			} as T;
+		});
+		state.projectRoot = '/work/app';
+
+		await state.createDirectory('New project');
+
+		expect(requests[0]?.url).toBe('/api/directories');
+		expect(requests[0]?.options?.method).toBe('POST');
+		expect(JSON.parse(String(requests[0]?.options?.body))).toEqual({
+			parent: '/work/app',
+			name: 'New project',
+			hidden: false
+		});
+		expect(state.projectDirectories).toEqual([
+			{ name: 'New project', path: '/work/app/New project' }
+		]);
+	});
+
 	it('ignores stale out-of-order Project list responses', async () => {
 		const first = deferred<{ projects: Project[] }>();
 		const second = deferred<{ projects: Project[] }>();

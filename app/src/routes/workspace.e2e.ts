@@ -1887,13 +1887,29 @@ test('opens project creation from the Projects heading and dismisses it with Esc
 }) => {
 	const browserErrors: string[] = [];
 	let submittedProject: { name: string; folders: string[]; primaryPath: string } | undefined;
+	let createdFolder = '';
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
 	page.on('pageerror', (error) => browserErrors.push(error.message));
 	page.on('requestfailed', (request) => {
 		if (!(request.method() === 'HEAD' && request.url().includes('/_app/immutable/')))
 			browserErrors.push(`${request.method()} ${request.url()}`);
 	});
-	await page.route(/\/api\/directories/, (route) => {
+	await page.route(/\/api\/directories/, async (route) => {
+		if (route.request().method() === 'POST') {
+			const body = (await route.request().postDataJSON()) as { parent: string; name: string };
+			createdFolder = `${body.parent}/${body.name}`;
+			return route.fulfill({
+				json: {
+					path: body.parent,
+					name: body.parent.split('/').pop(),
+					parent: '/Users',
+					entries: [
+						{ name: 'Documents', path: `${body.parent}/Documents` },
+						{ name: body.name, path: createdFolder }
+					]
+				}
+			});
+		}
 		const url = new URL(route.request().url());
 		const requestedPath = url.searchParams.get('path');
 		const path = requestedPath || '/Users/example';
@@ -1978,7 +1994,9 @@ test('opens project creation from the Projects heading and dismisses it with Esc
 		await addButton.click();
 		await expect(dialog).toBeVisible();
 		await expect(dialog.getByRole('button', { name: 'Documents' })).toBeFocused();
-		await expect(dialog.getByText('/Users/example', { exact: true })).toBeVisible();
+		const pathInput = dialog.getByLabel('Folder path');
+		await expect(pathInput).toHaveValue('/Users/example');
+		await expect(dialog.locator('option[value="/Users/example/Documents"]')).toHaveCount(1);
 		const projectName = dialog.getByLabel('Project name');
 		const directoryBrowser = dialog.getByRole('region', { name: 'Directories' });
 		expect(
@@ -2006,8 +2024,18 @@ test('opens project creation from the Projects heading and dismisses it with Esc
 			expect(dialogBox!.y + dialogBox!.height).toBeLessThanOrEqual(viewport.height);
 		}
 		await dialog.getByRole('button', { name: 'Documents' }).click();
-		await expect(dialog.getByText('/Users/example/Documents', { exact: true })).toBeVisible();
+		await expect(pathInput).toHaveValue('/Users/example/Documents');
 		await dialog.getByRole('button', { name: 'Parent directory' }).click();
+		if (viewport.width === 1440) {
+			await pathInput.fill('/Users/example/Documents');
+			await pathInput.press('Enter');
+			await expect(pathInput).toHaveValue('/Users/example/Documents');
+			await dialog.getByRole('button', { name: 'Parent directory' }).click();
+			await dialog.getByLabel('New folder name').fill('Client');
+			await dialog.getByRole('button', { name: 'Create folder' }).click();
+			await expect(dialog.getByRole('button', { name: 'Client' })).toBeVisible();
+			expect(createdFolder).toBe('/Users/example/Client');
+		}
 		await dialog.getByLabel('Show hidden').check();
 		await expect(dialog.getByRole('button', { name: '.config' })).toBeVisible();
 		if (viewport.width <= 700)

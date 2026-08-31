@@ -70,6 +70,7 @@
 		onmove,
 		onhidden,
 		ondirectory,
+		oncreatedirectory,
 		ontogglefolder,
 		onprimarychoice,
 		oncreate,
@@ -134,6 +135,7 @@
 		onmove: (projectId: string, group: string | null) => Promise<boolean>;
 		onhidden: (event: Event) => void;
 		ondirectory: (path?: string) => void;
+		oncreatedirectory: (name: string) => Promise<boolean>;
 		ontogglefolder: (path?: string) => void;
 		onprimarychoice: (path: string) => void;
 		oncreate: (event: SubmitEvent) => void;
@@ -178,6 +180,8 @@
 	let sectionSubmitted = $state(false);
 	let draggedProjectId = $state<string | null>(null);
 	let draggedGroup = $state<string | null>(null);
+	let projectPathInput = $state('');
+	let newDirectoryName = $state('');
 	let dropGroup = $state<string | null>(null);
 	let dropProjectId = $state<string | null>(null);
 	let projectDropPosition = $state<'before' | 'after'>('before');
@@ -189,6 +193,15 @@
 	let touchX = 0;
 	let touchY = 0;
 	let touchDragTimer: ReturnType<typeof setTimeout> | null = null;
+
+	$effect(() => {
+		projectPathInput = projectRoot;
+	});
+
+	async function createDirectory(event: SubmitEvent) {
+		event.preventDefault();
+		if (await oncreatedirectory(newDirectoryName)) newDirectoryName = '';
+	}
 
 	onMount(() => {
 		collapsedGroups = new Set(readStringArray(localStorage, 'hue:project-groups:collapsed'));
@@ -758,16 +771,59 @@
 				/></label
 			>
 		{/if}
-		<div class="directory-location mb-3 flex min-w-0 items-center gap-2.5">
+		<form
+			class="directory-location mb-3 grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5"
+			onsubmit={(event) => {
+				event.preventDefault();
+				ondirectory(projectPathInput);
+			}}
+		>
 			<button
+				type="button"
 				class="grid size-11 shrink-0 place-items-center"
 				disabled={!projectDirectoryParent || directoryLoading}
 				onclick={() => projectDirectoryParent && ondirectory(projectDirectoryParent)}
 				aria-label="Parent directory"
 				title="Parent directory"><ArrowUp width={16} height={16} aria-hidden="true" /></button
 			>
-			<code class="min-w-0 overflow-hidden text-ellipsis">{projectRoot || 'Loading…'}</code>
-		</div>
+			<label class="min-w-0">
+				<span class="sr-only">Folder path</span>
+				<input
+					class="min-h-11 w-full font-mono text-sm"
+					list="project-directory-paths"
+					bind:value={projectPathInput}
+					spellcheck="false"
+					disabled={directoryLoading}
+				/>
+			</label>
+			<datalist id="project-directory-paths">
+				{#each projectDirectories as directory (directory.path)}
+					<option value={directory.path}></option>
+				{/each}
+			</datalist>
+			<button type="submit" class="grid size-11 shrink-0 place-items-center" disabled={directoryLoading}>
+				<ChevronRight width={16} height={16} aria-hidden="true" />
+				<span class="sr-only">Open path</span>
+			</button>
+		</form>
+		<form class="mb-3 grid grid-cols-[minmax(0,1fr)_auto] gap-2.5" onsubmit={createDirectory}>
+			<label class="min-w-0">
+				<span class="sr-only">New folder name</span>
+				<input
+					class="min-h-11 w-full"
+					placeholder="New folder name"
+					bind:value={newDirectoryName}
+					disabled={!projectRoot || directoryLoading}
+				/>
+			</label>
+			<button
+				type="submit"
+				class="min-h-11"
+				disabled={!projectRoot || !newDirectoryName.trim() || directoryLoading}
+			>
+				<FolderPlus width={16} height={16} aria-hidden="true" /> Create folder
+			</button>
+		</form>
 		<section
 			class="directory-browser max-h-80 min-h-56 overflow-auto rounded-xl border border-border bg-background p-2"
 			aria-label="Directories"
