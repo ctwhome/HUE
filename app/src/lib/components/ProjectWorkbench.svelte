@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, type Component } from 'svelte';
+	import { onMount, tick, type Component } from 'svelte';
 	import Code2 from '~icons/lucide/code-2';
 	import Files from '~icons/lucide/files';
 	import GitBranch from '~icons/lucide/git-branch';
@@ -11,12 +11,13 @@
 	import { api } from './workbench/api';
 	import type { DirtyGuard } from './workspace/dirty-guard';
 	import type { ReviewContextSeed } from '$lib/message-content';
+	import type { FileOpenRequest, FileRequest } from './workbench/file-types';
 
 	type TerminalProps = { projectId: string };
 	type RepositoryProps = {
 		projectId: string;
 		onbranch: (branch: string | null) => void;
-		onopenfile: (path: string) => void;
+		onopenfile: (request: FileOpenRequest) => void;
 		onchanges: (count: number) => void;
 		onreviewcontext?: (context: ReviewContextSeed) => void;
 	};
@@ -47,7 +48,7 @@
 		terminalOpen?: boolean;
 		onbrowser?: () => void;
 		onfiles?: () => void;
-		onopenfile?: (path: string) => void;
+		onopenfile?: (request: FileOpenRequest) => void;
 		onterminal?: () => void;
 		onpreviewchange?: (url: string) => void;
 		onbranch: (branch: string | null) => void;
@@ -67,7 +68,7 @@
 	let dockElement: HTMLElement;
 	let resizeStart: { x: number; width: number } | null = null;
 	let filesMounted = $state(false);
-	let fileRequest = $state<{ path: string; id: string } | null>(null);
+	let fileRequest = $state<FileRequest | null>(null);
 	let TerminalPanel = $state<Component<TerminalProps> | null>(null);
 	let RepositoryPanels = $state<Component<RepositoryProps> | null>(null);
 	let terminalLoading = $state(false);
@@ -110,11 +111,13 @@
 			gitChanges = 0;
 		}
 	}
-	function openFile(path: string) {
-		if (docked) return onopenfile(path);
+	function openFile(request: FileOpenRequest) {
+		if (docked) return onopenfile(request);
+		if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
 		filesMounted = true;
-		fileRequest = { path, id: crypto.randomUUID() };
+		fileRequest = { ...request, id: crypto.randomUUID() };
 		view = 'files';
+		void tick().then(() => dockElement.querySelector<HTMLElement>('.file-preview')?.focus());
 	}
 	function openFiles() {
 		filesMounted = true;

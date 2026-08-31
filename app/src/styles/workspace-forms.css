@@ -216,7 +216,7 @@
 }
 
 .add-project-dialog input:not([type='checkbox']),
-.workflow-form input,
+.workflow-form input:not([type='checkbox']),
 .workflow-form textarea {
 	width: 100%;
 	border: 1px solid var(--input);
@@ -228,7 +228,7 @@
 }
 
 .add-project-dialog input:focus,
-.workflow-form input:focus,
+.workflow-form input:not([type='checkbox']):focus,
 .workflow-form textarea:focus {
 	box-shadow: 0 0 0 2px var(--ring);
 }

@@ -19,6 +19,7 @@
 <script lang="ts">
 	import { mount, unmount } from 'svelte';
 	import Copy from '~icons/lucide/copy';
+	import ChevronUp from '~icons/lucide/chevron-up';
 	import Download from '~icons/lucide/download';
 	import GitFork from '~icons/lucide/git-fork';
 	import Pencil from '~icons/lucide/pencil';
@@ -132,6 +133,54 @@
 	const timestampTitle = (value: string) =>
 		new Date(value).toLocaleString([], { dateStyle: 'full', timeStyle: 'long' });
 	let transcriptTimeline = $derived(selectTranscriptTimeline(timeline));
+	let expandedUserMessages = $state<string[]>([]);
+	let truncatedUserMessages = $state<string[]>([]);
+	const userMessageKey = (message: Message & { messageId?: string; sequence: number }) =>
+		message.messageId ?? `${message.sequence}:${message.text}`;
+	function setUserMessageTruncated(key: string, truncated: boolean) {
+		if (truncated === truncatedUserMessages.includes(key)) return;
+		truncatedUserMessages = truncated
+			? [...truncatedUserMessages, key]
+			: truncatedUserMessages.filter((candidate) => candidate !== key);
+	}
+	function measureUserMessage(node: HTMLElement, key: string) {
+		let currentKey = key;
+		let frame = 0;
+		const measure = () => {
+			if (node.classList.contains('collapsed'))
+				setUserMessageTruncated(currentKey, node.scrollHeight > node.clientHeight + 1);
+		};
+		const observer = new ResizeObserver(measure);
+		observer.observe(node);
+		const paragraph = node.querySelector('p');
+		if (paragraph) observer.observe(paragraph);
+		frame = requestAnimationFrame(measure);
+		return {
+			update(nextKey: string) {
+				if (nextKey === currentKey) return;
+				setUserMessageTruncated(currentKey, false);
+				currentKey = nextKey;
+				cancelAnimationFrame(frame);
+				frame = requestAnimationFrame(measure);
+			},
+			destroy() {
+				cancelAnimationFrame(frame);
+				observer.disconnect();
+				setUserMessageTruncated(currentKey, false);
+			}
+		};
+	}
+	function expandUserMessage(event: MouseEvent | KeyboardEvent, key: string, collapsible: boolean) {
+		if (event instanceof KeyboardEvent && !['Enter', ' '].includes(event.key)) return;
+		if (getSelection()?.toString()) return;
+		if (!collapsible) return;
+		if (event instanceof KeyboardEvent) event.preventDefault();
+		if (!expandedUserMessages.includes(key)) expandedUserMessages = [...expandedUserMessages, key];
+	}
+	function collapseUserMessage(event: MouseEvent, key: string) {
+		event.stopPropagation();
+		expandedUserMessages = expandedUserMessages.filter((candidate) => candidate !== key);
+	}
 	function renderChatMarkdown(text: string) {
 		return renderMarkdown(text)
 			.replaceAll(
@@ -297,6 +346,9 @@
 		{#each transcriptTimeline as item, index (item.kind + ':' + item.sequence)}
 			{#if item.kind === 'message'}
 				{@const message = item}
+				{@const messageKey = userMessageKey(message)}
+				{@const messageCollapsible =
+					truncatedUserMessages.includes(messageKey) || Boolean(message.images?.length)}
 				<article
 					data-timeline-sequence={item.sequence}
 					data-message-id={message.messageId}
@@ -379,17 +431,52 @@
 							</div>
 						{:else}
 							<div
-								class="message user-message rounded-2xl rounded-tr-md border border-border bg-accent/60 px-4 py-3 leading-relaxed"
+								class="message user-message relative rounded-2xl rounded-br-md border bg-accent/60"
+								class:expanded={expandedUserMessages.includes(messageKey)}
 							>
-								{#if message.images?.length}<div
-										class="message-images mb-2 grid grid-cols-2 gap-1.5"
-									>
-										{#each message.images as image}<img
-												src={`data:${image.mimeType};base64,${image.data}`}
-												alt={image.name}
-											/>{/each}
-									</div>{/if}
-								{#if message.text}<p>{message.text}</p>{/if}
+								{#if expandedUserMessages.includes(messageKey)}<button
+										type="button"
+										class="collapse-user-message"
+										aria-label="Collapse message"
+										title="Collapse message"
+										onclick={(event) => collapseUserMessage(event, messageKey)}
+										><ChevronUp width={14} height={14} aria-hidden="true" /></button
+									>{/if}
+								<div
+									class="user-message-body"
+									class:collapsed={!expandedUserMessages.includes(messageKey)}
+									class:has-images={Boolean(message.images?.length)}
+									role={messageCollapsible && !expandedUserMessages.includes(messageKey)
+										? 'button'
+										: undefined}
+									tabindex={messageCollapsible && !expandedUserMessages.includes(messageKey)
+										? 0
+										: undefined}
+									aria-expanded={messageCollapsible
+										? expandedUserMessages.includes(messageKey)
+										: undefined}
+									aria-label={messageCollapsible && !expandedUserMessages.includes(messageKey)
+										? 'Expand full message'
+										: undefined}
+									onclick={(event) => expandUserMessage(event, messageKey, messageCollapsible)}
+									onkeydown={(event) => expandUserMessage(event, messageKey, messageCollapsible)}
+								>
+									{#if message.images?.length}<div
+											class="message-images mb-2 grid grid-cols-2 gap-1.5"
+										>
+											{#each message.images as image}<img
+													src={`data:${image.mimeType};base64,${image.data}`}
+													alt={image.name}
+												/>{/each}
+										</div>{/if}
+									{#if message.text}<div
+											class="user-message-content"
+											class:collapsed={!expandedUserMessages.includes(messageKey)}
+											use:measureUserMessage={messageKey}
+										>
+											<p>{message.text}</p>
+										</div>{/if}
+								</div>
 							</div>
 						{/if}
 						<div class="message-actions mt-1 flex gap-0.5">

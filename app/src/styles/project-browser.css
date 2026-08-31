@@ -21,10 +21,6 @@ dialog.global-panel {
 dialog.global-panel::backdrop {
 	background: rgb(0 0 0 / 48%);
 }
-.project-section-menu {
-	position-area: bottom span-left;
-	margin: 6px 0 0;
-}
 @media (max-width: 1200px) and (min-width: 701px) {
 	.project-panel-actions {
 		flex-direction: column;

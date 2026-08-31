@@ -54,7 +54,7 @@ HUE_DATABASE_PATH="$HOME/.hue/hue.db" \
 bun run start
 ```
 
-Open the HTTPS URL and enter the secret once. HUE stores only an HttpOnly, Secure, SameSite session cookie in the browser; the configured secret is not sent to client JavaScript. `POST /logout` clears that browser session. Changing `HUE_ACCESS_SECRET` invalidates all existing sessions.
+Open the HTTPS URL and enter the secret once. HUE stores only an HttpOnly, Secure, SameSite session cookie in the browser; the configured secret is not sent to client JavaScript. `POST /logout` clears that browser session. Changing `HUE_ACCESS_SECRET` invalidates all existing sessions. Project terminals use the same authenticated session and require same-origin requests for input, resize, and close operations.
 
 Do not expose HUE directly to the public internet or use remote access over plain HTTP. The secret grants access to local Projects, Sessions, files, terminals, and Hermes controls: use a unique generated value, keep it out of shell history and logs, restrict the proxy to a trusted LAN or tailnet, and set `ORIGIN` to the exact public HTTPS origin. This P0 mechanism does not provide accounts, per-device revocation, or brute-force rate limiting.
 

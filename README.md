@@ -39,6 +39,8 @@ make build
 make serve HOST=127.0.0.1 PORT=4173 HUE_DATABASE_PATH="$HOME/.hue/hue.db"
 ```
 
+Project terminals work on loopback and through an authenticated HTTPS tailnet or trusted reverse-proxy origin.
+
 Set `ORIGIN` to the exact public HTTPS origin when serving behind a trusted LAN or tailnet reverse proxy. Set `HUE_ACCESS_SECRET` for non-loopback browser access. Never expose HUE directly to the public internet.
 
 ## Verification

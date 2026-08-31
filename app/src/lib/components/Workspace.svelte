@@ -18,6 +18,7 @@
 	import ProjectWorkbench from './ProjectWorkbench.svelte';
 	import HealthStrip from './workbench/HealthStrip.svelte';
 	import ProjectTerminalDock from './workbench/ProjectTerminalDock.svelte';
+	import type { FileRequest } from './workbench/file-types';
 	import QuickCapture from './pwa/QuickCapture.svelte';
 	import ContextPanel from './workspace/ContextPanel.svelte';
 	import ExternalCronJobView from './workspace/ExternalCronJobView.svelte';
@@ -314,7 +315,7 @@
 	});
 	let browserOpen = $state(true),
 		filesOpen = $state(false);
-	let fileRequest = $state<{ path: string; id: string } | null>(null);
+	let fileRequest = $state<FileRequest | null>(null);
 	let previewUrl = $state('');
 	let terminalOpen = $state(false);
 	let terminalHeight = $state(300),
@@ -390,7 +391,7 @@
 			return;
 		}
 		if (
-			event.key.toLowerCase() === 'k' &&
+			event.key?.toLowerCase() === 'k' &&
 			(event.metaKey || event.ctrlKey) &&
 			!event.altKey &&
 			!event.shiftKey
@@ -816,8 +817,8 @@
 					onpreviewchange={(url) => (previewUrl = url)}
 					onbrowser={toggleBrowserPanel}
 					onfiles={toggleFilesPanel}
-					onopenfile={(path) => {
-						fileRequest = { path, id: crypto.randomUUID() };
+					onopenfile={(request) => {
+						fileRequest = { ...request, id: crypto.randomUUID() };
 						if (!filesOpen) toggleFilesPanel();
 					}}
 					onterminal={() =>

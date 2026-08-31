@@ -12,6 +12,7 @@
 	const latest = new LatestFollow();
 	const followLatest = latest.followLatest;
 	let summary = $derived(selectTaskSummary(plan));
+	let taskNumber = $derived(summary ? plan.indexOf(summary.entry) + 1 : 0);
 	let status = $derived(
 		summary?.entry.status === 'in_progress'
 			? 'In progress'
@@ -73,7 +74,7 @@
 			onclick={toggle}
 		>
 			<ListTodo width={16} height={16} aria-hidden="true" />
-			<span class="sr-only">Tasks</span>
+			<span class="task-label" aria-hidden="true">{taskNumber} - {summary.entry.content}</span>
 		</button>
 	</section>
 	{#if open}{@render entries()}{/if}{/if}

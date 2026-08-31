@@ -1,32 +1,48 @@
-.composer-activity {
+.composer-activity,
+.task-activity {
 	display: flex;
 	flex: 0 0 auto;
 	align-items: center;
 	gap: 4px;
 	pointer-events: none;
 }
-.composer-activity:empty {
+.composer-delivery {
+	z-index: 13;
+}
+.composer-activity:empty,
+.task-activity:empty {
 	display: none;
 }
 .current-task {
-	position: static;
-	width: 44px;
-	height: 44px;
-	flex: 0 0 44px;
+	position: absolute;
+	right: 8px;
+	bottom: calc(100% + 6px);
+	z-index: 11;
+	max-width: calc(50% - 12px);
 }
 .task-trigger {
 	display: flex;
-	width: 44px;
-	height: 44px;
+	max-width: 100%;
 	align-items: center;
-	justify-content: center;
 	gap: 7px;
-	border: 1px solid var(--border);
-	border-radius: var(--radius-control);
-	background: color-mix(in srgb, var(--card) 88%, transparent);
-	padding: 0;
+	border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--muted) 80%, transparent);
+	padding: 4px 10px;
 	color: var(--muted-foreground);
+	font-size: var(--font-size-meta);
+	font-weight: 500;
+	box-shadow: 0 1px 3px #0003;
 	pointer-events: auto;
+}
+.task-trigger > svg {
+	flex: none;
+}
+.task-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 .task-trigger:hover,
 .task-trigger[aria-expanded='true'] {
@@ -42,7 +58,7 @@
 	outline-offset: 3px;
 }
 .composer-activity > .thinking-panel,
-.composer-activity > .latest-follow-shell {
+.task-activity > .latest-follow-shell {
 	position: absolute;
 	right: 0;
 	bottom: calc(100% + 8px);
@@ -57,9 +73,12 @@
 	box-shadow: 0 18px 48px #000a;
 	pointer-events: auto;
 }
+.task-activity > .latest-follow-shell {
+	bottom: calc(100% + 42px);
+}
 .composer:has(.composer-delivery),
 .composer:has(.thinking-panel),
-.composer:has(.composer-activity > .latest-follow-shell) {
+.composer:has(.task-activity > .latest-follow-shell) {
 	overflow: visible;
 }
 .thinking-event-meta,
@@ -213,6 +232,12 @@
 	text-decoration: line-through;
 }
 @media (max-width: 700px) {
+	.task-trigger {
+		min-height: 44px;
+	}
+	.task-activity > .latest-follow-shell {
+		bottom: calc(100% + 60px);
+	}
 	.panel-scroll-latest {
 		min-height: 44px;
 	}

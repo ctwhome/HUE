@@ -14,7 +14,13 @@ export type Repository = {
 	repositoryPath?: string;
 	repositories?: Array<{ path: string; label?: string }>;
 	branch: string | null;
-	changes: Array<{ path: string; index: string; worktree: string; fileUrl: string | null }>;
+	changes: Array<{
+		path: string;
+		index: string;
+		worktree: string;
+		fileUrl: string | null;
+		diffUrl?: string;
+	}>;
 	worktrees: Array<{ path: string; branch: string | null; head: string }>;
 	remotes: Array<{ name: string; webUrl: string | null }>;
 };
@@ -41,6 +47,12 @@ export type CommitModelsResponse = {
 			models: string[];
 		}>;
 	};
+};
+
+export type FileDiffData = {
+	oldFile: { fileName: string };
+	newFile: { fileName: string };
+	hunks: string[];
 };
 
 export function parseUnifiedDiff(diff: string): DiffFile[] {
@@ -107,4 +119,50 @@ export function boundedDiffLineRange(lines: string[], start: number, end: number
 	const last = Math.min(lines.length - 1, Math.max(start, end));
 	const clipped = last - first + 1 > 200;
 	return { text: lines.slice(first, Math.min(last + 1, first + 200)).join('\n'), clipped };
+}
+
+export function fileDiffData(
+	diff: string,
+	path: string,
+	currentContent: string,
+	untracked: boolean
+): FileDiffData {
+	const files = parseUnifiedDiff(diff);
+	const file =
+		files.find((item) => item.path === path) ?? (files.length === 1 ? files[0] : undefined);
+	const hunks =
+		file?.hunks.map(({ header, lines }) =>
+			[`--- a/${path}`, `+++ b/${path}`, header, ...lines.map(({ raw }) => raw)].join('\n')
+		) ?? [];
+	if (untracked && !hunks.length && currentContent) {
+		const lines = currentContent.replace(/\r\n?/g, '\n').split('\n');
+		if (lines.at(-1) === '') lines.pop();
+		if (lines.length)
+			hunks.push(
+				`--- /dev/null\n+++ b/${path}\n@@ -0,0 +1,${lines.length} @@\n${lines.map((line) => `+${line}`).join('\n')}`
+			);
+	}
+	return {
+		oldFile: { fileName: path },
+		newFile: { fileName: path },
+		hunks
+	};
+}
+
+export function repositoryDiffUrl(
+	projectId: string,
+	request: {
+		scope: 'staged' | 'unstaged';
+		repository: string;
+		file: string;
+		currentFile: boolean;
+	}
+) {
+	const params = new URLSearchParams({
+		view: 'diff',
+		scope: request.scope,
+		repository: request.repository,
+		file: request.file
+	});
+	return `/api/projects/${encodeURIComponent(projectId)}/repository?${params}`;
 }

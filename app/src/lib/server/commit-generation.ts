@@ -39,6 +39,7 @@ export function normalizeCommitMessage(output: string): string {
 type CommitRuntime = {
 	createSession(cwd: string): Promise<{ sessionId: string; cwd: string }>;
 	setModel(sessionId: string, modelId: string): Promise<unknown>;
+	setConfigOption?(sessionId: string, configId: string, value: string | boolean): Promise<unknown>;
 };
 
 type CommitDispatcher = {
@@ -67,6 +68,7 @@ export function generateRepositoryCommitMessage(
 		diff: string;
 		modelId: string;
 		operationId: string;
+		reasoning?: 'default' | 'none';
 	},
 	dependencies: {
 		store: HUEStore;
@@ -79,7 +81,8 @@ export function generateRepositoryCommitMessage(
 		return Promise.reject(new Error('Invalid commit generation operation id'));
 	}
 	const prompt = commitGenerationPrompt(input.diff);
-	const promptHash = createHash('sha256').update(prompt).digest('hex');
+	const reasoning = input.reasoning ?? 'default';
+	const promptHash = createHash('sha256').update(`${prompt}\0${reasoning}`).digest('hex');
 	const identity = JSON.stringify([
 		input.projectId,
 		input.repositoryRoot,
@@ -92,7 +95,11 @@ export function generateRepositoryCommitMessage(
 			? active.promise
 			: Promise.reject(new Error('Commit generation operation id is already in use'));
 	}
-	const generation = runRepositoryCommitGeneration(input, { prompt, promptHash }, dependencies);
+	const generation = runRepositoryCommitGeneration(
+		{ ...input, reasoning },
+		{ prompt, promptHash },
+		dependencies
+	);
 	activeGenerations.set(input.operationId, { identity, promise: generation });
 	const clear = () => {
 		if (activeGenerations.get(input.operationId)?.promise === generation) {
@@ -110,6 +117,7 @@ async function runRepositoryCommitGeneration(
 		diff: string;
 		modelId: string;
 		operationId: string;
+		reasoning: 'default' | 'none';
 	},
 	request: { prompt: string; promptHash: string },
 	dependencies: {
@@ -183,6 +191,12 @@ async function runRepositoryCommitGeneration(
 		});
 		dependencies.store.attachCommitGeneration(input.operationId, session.sessionId);
 		await dependencies.runtime.setModel(session.sessionId, input.modelId);
+		if (input.reasoning === 'none') {
+			if (!dependencies.runtime.setConfigOption) {
+				throw new Error('Hermes does not support commit reasoning controls');
+			}
+			await dependencies.runtime.setConfigOption(session.sessionId, 'reasoning', 'none');
+		}
 	} catch (cause) {
 		const error = cause instanceof Error ? cause.message : String(cause);
 		dependencies.store.completeCommitGenerationReservation(input.operationId, 'failed', error);

@@ -19,13 +19,13 @@ HUE may expose development panels inside a trusted Project boundary:
 - sandboxed browser previews with an external-browser fallback.
 - a bounded file tree, path search, safe previews, explicit file mutations, and honest artifact/evidence classification rooted inside the trusted Project directory.
 
-Terminal access is loopback-only. The browser cannot supply a terminal working directory. PTYs are process-local, inherit an allowlisted environment, expire when idle, and are not persisted across server restarts. Git mutations require direct user actions and never run commands through a shell.
+Terminal access uses the same request-access boundary as the workspace. Loopback remains zero-configuration; remote terminal access requires an authenticated session through the configured HTTPS origin, and terminal mutations additionally require a same-origin browser request. The browser cannot supply a terminal working directory. PTYs are process-local, inherit an allowlisted environment, expire when idle, and are not persisted across server restarts. Git mutations require direct user actions and never run commands through a shell.
 
 Project file paths are untrusted input even when emitted by a tool. Server-side descriptor and no-follow validation must precede access or link activation. Mutations require loopback same-origin access, bounded payloads, atomic writes, optimistic concurrency, and exact recursive-delete impact confirmation. Filename heuristics may classify evidence but must never claim independent verification.
 
 ## Consequences
 
 - HUE remains a Projects, Workflows, and Hermes Sessions product; panels are tools attached to a Project.
-- Running HUE grants local shell capability to anyone who can access its terminal endpoint, so the production default remains `127.0.0.1`.
+- Running HUE grants local shell capability to authenticated remote clients, so the production default remains `127.0.0.1` behind a trusted HTTPS proxy and remote access requires a high-entropy secret.
 - Terminal sessions disappear on restart and are unsuitable for multi-replica hosting.
 - Push authentication remains owned by the user's existing Git credential configuration.

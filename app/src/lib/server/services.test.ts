@@ -437,6 +437,42 @@ test('reads staged, unstaged, and branch diffs without mixing scopes', () => {
 	expect(branch.diff).not.toContain('index only');
 });
 
+test('exposes staged and unstaged deleted files only through validated diff paths', () => {
+	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-deleted-diff-'));
+	temporaryDirectories.push(projectRoot);
+	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
+	writeFileSync(join(projectRoot, 'staged.txt'), 'staged deletion\n');
+	writeFileSync(join(projectRoot, 'unstaged.txt'), 'unstaged deletion\n');
+	Bun.spawnSync(['git', 'add', '.'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'commit', '-m', 'Initial'], { cwd: projectRoot });
+	rmSync(join(projectRoot, 'staged.txt'));
+	rmSync(join(projectRoot, 'unstaged.txt'));
+	Bun.spawnSync(['git', 'add', 'staged.txt'], { cwd: projectRoot });
+
+	expect(projectRepository(projectRoot).changes).toEqual([
+		{
+			path: 'staged.txt',
+			index: 'D',
+			worktree: ' ',
+			fileUrl: null,
+			diffUrl: 'staged.txt'
+		},
+		{
+			path: 'unstaged.txt',
+			index: ' ',
+			worktree: 'D',
+			fileUrl: null,
+			diffUrl: 'unstaged.txt'
+		}
+	]);
+	expect(
+		projectRepositoryDiff(projectRoot, { scope: 'staged', file: 'staged.txt' }).diff
+	).toContain('-staged deletion');
+	expect(
+		projectRepositoryDiff(projectRoot, { scope: 'unstaged', file: 'unstaged.txt' }).diff
+	).toContain('-unstaged deletion');
+});
+
 test('reports untracked paths that Git diff cannot include', () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-review-untracked-'));
 	temporaryDirectories.push(projectRoot);
@@ -452,6 +488,45 @@ test('reports untracked paths that Git diff cannot include', () => {
 	expect(result.diff).toBe('');
 	expect(result.untrackedPaths).toEqual(['--literal.txt']);
 	expect(result.untrackedPathsTruncated).toBe(false);
+});
+
+test('treats Git pathspec magic as a literal diff filename', () => {
+	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-review-literal-pathspec-'));
+	temporaryDirectories.push(projectRoot);
+	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'config', 'user.name', 'HUE Test'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'config', 'user.email', 'hue@example.test'], { cwd: projectRoot });
+	writeFileSync(join(projectRoot, ':(glob)*.txt'), 'base\n');
+	writeFileSync(join(projectRoot, 'other.txt'), 'base\n');
+	Bun.spawnSync(['git', 'add', '--all'], { cwd: projectRoot });
+	Bun.spawnSync(['git', 'commit', '-m', 'Initial'], { cwd: projectRoot });
+	writeFileSync(join(projectRoot, ':(glob)*.txt'), 'magic changed\n');
+	writeFileSync(join(projectRoot, 'other.txt'), 'other changed\n');
+
+	const tracked = projectRepositoryDiff(projectRoot, {
+		scope: 'unstaged',
+		file: ':(glob)*.txt'
+	});
+	expect(tracked.diff).toContain('magic changed');
+	expect(tracked.diff).not.toContain('other changed');
+
+	writeFileSync(join(projectRoot, ':(glob)*.log'), 'magic untracked\n');
+	writeFileSync(join(projectRoot, 'other.log'), 'other untracked\n');
+	const untracked = projectRepositoryDiff(projectRoot, {
+		scope: 'unstaged',
+		file: ':(glob)*.log'
+	});
+	expect(untracked.untrackedPaths).toEqual([':(glob)*.log']);
+});
+
+test('rejects control characters in repository diff filenames', () => {
+	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-review-control-path-'));
+	temporaryDirectories.push(projectRoot);
+	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
+
+	expect(() =>
+		projectRepositoryDiff(projectRoot, { scope: 'unstaged', file: 'bad\nname.txt' })
+	).toThrow('Invalid diff file');
 });
 
 test('only queries untracked paths for unstaged diffs', () => {

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount, type Component } from 'svelte';
 	import { marked } from 'marked';
 	import sanitizeHtml from 'sanitize-html';
 	import ArrowLeft from '~icons/lucide/arrow-left';
@@ -9,9 +10,11 @@
 	import Save from '~icons/lucide/save';
 	import Trash2 from '~icons/lucide/trash-2';
 	import { highlightFileSource } from '$lib/file-source-highlight';
+	import { isDarkTheme, type HUETheme } from '$lib/preferences';
 	import Button from '../ui/Button.svelte';
 	import Textarea from '../ui/Textarea.svelte';
 	import { formatFileSize, type FilePreview } from './file-types';
+	import type { FileDiffData } from './repository-diff';
 
 	let {
 		preview,
@@ -25,6 +28,10 @@
 		status,
 		externalChange,
 		movedDeleted,
+		diffData,
+		diffTruncated,
+		diffScope,
+		diffLoading,
 		onback,
 		onmove,
 		ondelete,
@@ -46,6 +53,10 @@
 		status: string;
 		externalChange: boolean;
 		movedDeleted: boolean;
+		diffData: FileDiffData | null;
+		diffTruncated: boolean;
+		diffScope: 'staged' | 'unstaged' | null;
+		diffLoading: boolean;
 		onback: () => void;
 		onmove: () => void;
 		ondelete: () => void;
@@ -61,15 +72,47 @@
 		sanitizeHtml(marked.parse(value, { async: false }), { parseStyleAttributes: false });
 	const breadcrumbs = () => (selectedPath ? selectedPath.split('/').slice(0, -1) : []);
 	let highlightElement = $state<HTMLPreElement>();
+	let diffTheme = $state<'light' | 'dark'>('light');
+	let DiffViewer = $state<Component<{ data: FileDiffData; theme: 'light' | 'dark' }> | null>(null);
+	let diffViewerLoading = $state(false);
 	function syncEditorScroll(event: Event) {
 		if (!highlightElement) return;
 		const textarea = event.currentTarget as HTMLTextAreaElement;
 		highlightElement.scrollTop = textarea.scrollTop;
 		highlightElement.scrollLeft = textarea.scrollLeft;
 	}
+	onMount(() => {
+		const root = document.documentElement;
+		const media = matchMedia('(prefers-color-scheme: dark)');
+		const update = () =>
+			(diffTheme = isDarkTheme((root.dataset.theme ?? 'system') as HUETheme, media.matches)
+				? 'dark'
+				: 'light');
+		const observer = new MutationObserver(update);
+		observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+		media.addEventListener('change', update);
+		update();
+		return () => {
+			observer.disconnect();
+			media.removeEventListener('change', update);
+		};
+	});
+	$effect(() => {
+		if (!diffData || DiffViewer || diffViewerLoading) return;
+		diffViewerLoading = true;
+		void import('./FileDiffViewer.svelte').then((module) => {
+			DiffViewer = module.default;
+			diffViewerLoading = false;
+		});
+	});
 </script>
 
-<article class="file-preview flex min-h-0 min-w-0 flex-col" class:open={Boolean(preview)}>
+<article
+	class="file-preview flex min-h-0 min-w-0 flex-col"
+	class:open={Boolean(preview || diffData)}
+	aria-busy={busy || diffLoading || diffViewerLoading}
+	tabindex="-1"
+>
 	<header class="flex min-h-11 items-center gap-2 border-b border-border px-3">
 		<Button
 			class="file-preview-back hidden"
@@ -80,10 +123,10 @@
 			onclick={onback}><ArrowLeft width={16} height={16} aria-hidden="true" /></Button
 		>
 		<nav class="file-breadcrumbs flex min-w-0 items-center text-xs" aria-label="File breadcrumbs">
-			{#if preview}<h2
+			{#if selectedPath}<h2
 					class="mr-2 min-w-0 overflow-hidden text-sm font-medium text-ellipsis whitespace-nowrap"
 				>
-					{preview.name}
+					{preview?.name ?? selectedPath.split('/').at(-1)}
 				</h2>{/if}<button onclick={onroot}>Project</button>
 			{#each breadcrumbs() as crumb, index}<span aria-hidden="true">/</span><button
 					onclick={() =>
@@ -144,7 +187,43 @@
 				onclick={onreload}>Load external version</Button
 			>
 		</div>{/if}
-	{#if preview}
+	{#if busy && !preview && !diffData}<div
+			class="grid flex-1 place-content-center text-sm text-muted-foreground"
+			role="status"
+		>
+			Loading file…
+		</div>{:else if diffData || diffLoading}
+		<div class="flex min-h-0 flex-1 flex-col overflow-auto p-3">
+			<section
+				class="file-diff min-h-0 flex-1 overflow-auto"
+				aria-label={diffScope === 'staged' ? 'Staged diff' : 'Unstaged diff'}
+			>
+				<strong class="mb-2 block text-xs"
+					>{diffScope === 'staged' ? 'Staged changes' : 'Unstaged changes'}</strong
+				>
+				{#if diffTruncated}<p
+						class="mb-2 rounded border border-[var(--warning)] p-2 text-xs"
+						role="status"
+					>
+						Diff output was limited; later changes may be omitted.
+					</p>{/if}
+				{#if diffLoading || diffViewerLoading}<p
+						class="text-xs text-muted-foreground"
+						role="status"
+					>
+						Loading diff…
+					</p>{:else if diffData?.hunks.length && DiffViewer}<DiffViewer
+						data={diffData}
+						theme={diffTheme}
+					/>{:else}<div
+						class="grid min-h-40 place-content-center text-center text-xs text-muted-foreground"
+					>
+						<strong class="text-foreground">No text diff available</strong>
+						<span>The file may be binary or unchanged in this Git scope.</span>
+					</div>{/if}
+			</section>
+		</div>
+	{:else if preview}
 		<div class="flex min-h-0 flex-1 flex-col overflow-auto p-3">
 			{#if !preview.version}<p class="mb-2 text-xs text-[var(--warning)]" role="status">
 					Concurrency-protected editing and moving unavailable: file exceeds hash limit.

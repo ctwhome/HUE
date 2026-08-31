@@ -127,6 +127,45 @@ describe('ACP commit generation', () => {
 		store.close();
 	});
 
+	it('disables reasoning before submitting a commit draft', async () => {
+		const store = new HUEStore(':memory:');
+		store.ensureProjectMetadata('hue', 'HUE');
+		const calls: string[] = [];
+
+		await generateRepositoryCommitMessage(
+			{
+				projectId: 'hue',
+				repositoryRoot: '/work/hue',
+				diff: 'diff',
+				modelId: 'openai-codex:gpt-5.6-luna',
+				operationId: 'no-reasoning',
+				reasoning: 'none'
+			},
+			{
+				store,
+				runtime: {
+					createSession: async (cwd) => ({ sessionId: 'commit-session', cwd }),
+					setModel: async () => calls.push('model'),
+					setConfigOption: async (_sessionId, configId, value) => calls.push(`${configId}:${value}`)
+				},
+				dispatcher: {
+					submit: (envelope) => {
+						calls.push('submit');
+						store.acceptMessage(envelope);
+						store.transitionMessage(envelope.id, 'failed', {
+							messageId: envelope.id,
+							error: 'expected'
+						});
+					},
+					whenIdle: async () => {}
+				}
+			}
+		);
+
+		expect(calls).toEqual(['model', 'reasoning:none', 'submit']);
+		store.close();
+	});
+
 	it('returns failed or unknown durable delivery state without inventing output', async () => {
 		for (const status of ['failed', 'unknown'] as const) {
 			const store = new HUEStore(':memory:');

@@ -6,7 +6,6 @@
 	import Bell from '~icons/lucide/bell';
 	import Check from '~icons/lucide/check';
 	import ChevronRight from '~icons/lucide/chevron-right';
-	import Ellipsis from '~icons/lucide/ellipsis';
 	import EllipsisVertical from '~icons/lucide/ellipsis-vertical';
 	import Folder from '~icons/lucide/folder';
 	import FolderPlus from '~icons/lucide/folder-plus';
@@ -173,8 +172,6 @@
 	);
 	let collapsedGroups = $state(new Set<string>());
 	let addSectionDialog = $state<HTMLDialogElement>();
-	let sectionMenu = $state<HTMLElement>();
-	let sectionMenuOpen = $state(false);
 	let sectionName = $state('');
 	let sectionProjectIds = $state<string[]>([]);
 	let sectionSubmitted = $state(false);
@@ -468,16 +465,6 @@
 					onclick={onsettings}><Menu width={20} height={20} aria-hidden="true" /></button
 				>{/if}
 			<button
-				class="icon-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-				aria-label="Project options"
-				aria-haspopup="menu"
-				aria-expanded={sectionMenuOpen}
-				popovertarget="project-section-menu"
-				title="Project options"
-				disabled={addDisabled || projects.length === 0}
-				><Ellipsis width={18} height={18} aria-hidden="true" /></button
-			>
-			<button
 				class="icon-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border bg-secondary hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
 				aria-label="Add Hermes Project"
 				title={addDisabled ? projectsError : 'Add Hermes Project'}
@@ -516,7 +503,9 @@
 				class="project-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md bg-transparent px-2 py-1 pr-8 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
 				class:active={!selectedProject && sessionCollection === 'chats'}
 				aria-current={!selectedProject && sessionCollection === 'chats' ? 'page' : undefined}
-				aria-controls={!selectedProject && sessionCollection === 'chats' ? 'session-drawer' : undefined}
+				aria-controls={!selectedProject && sessionCollection === 'chats'
+					? 'session-drawer'
+					: undefined}
 				aria-expanded={!selectedProject && sessionCollection === 'chats' ? sessionsOpen : undefined}
 				onclick={(event) => oncollection('chats', event.currentTarget)}
 			>
@@ -528,7 +517,7 @@
 				/>
 				<span class="project-name min-w-0 flex-1 truncate">Chats</span>
 				{#if chatSessionCount}<span
-						class="project-session-count shrink-0 text-xs tabular-nums text-muted-foreground"
+						class="project-session-count shrink-0 text-xs text-muted-foreground tabular-nums"
 						aria-label={`${chatSessionCount} non-archived Chats`}>{chatSessionCount}</span
 					>{/if}
 			</button>
@@ -544,7 +533,9 @@
 				class="project-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md bg-transparent px-2 py-1 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
 				class:active={!selectedProject && sessionCollection === 'cron'}
 				aria-current={!selectedProject && sessionCollection === 'cron' ? 'page' : undefined}
-				aria-controls={!selectedProject && sessionCollection === 'cron' ? 'session-drawer' : undefined}
+				aria-controls={!selectedProject && sessionCollection === 'cron'
+					? 'session-drawer'
+					: undefined}
 				aria-expanded={!selectedProject && sessionCollection === 'cron' ? sessionsOpen : undefined}
 				onclick={(event) => oncollection('cron', event.currentTarget)}
 			>
@@ -556,11 +547,19 @@
 				/>
 				<span class="project-name min-w-0 flex-1 truncate">Cron tasks</span>
 				{#if cronSessionCount}<span
-						class="project-session-count shrink-0 text-xs tabular-nums text-muted-foreground"
+						class="project-session-count shrink-0 text-xs text-muted-foreground tabular-nums"
 						aria-label={`${cronSessionCount} cron tasks`}>{cronSessionCount}</span
 					>{/if}
 			</button>
 		</div>
+		<button
+			class="mt-1 flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+			aria-label="Add Project section"
+			title="Add section"
+			disabled={addDisabled || projects.length === 0}
+			onclick={openSectionDialog}
+			><FolderPlus width={15} height={15} aria-hidden="true" /> Add section</button
+		>
 		{#if draggedProjectId && projects.find(({ id }) => id === draggedProjectId)?.group}<div
 				class={`mt-1 flex min-h-11 items-center rounded-md border border-dashed px-2 text-xs sm:min-h-8 ${dropGroup === '' ? 'border-ring bg-accent text-foreground ring-2 ring-ring' : 'border-border text-muted-foreground'}`}
 				data-project-group=""
@@ -660,28 +659,6 @@
 			{/if}
 		{/each}
 	</nav>
-	<div
-		bind:this={sectionMenu}
-		id="project-section-menu"
-		class="project-section-menu w-44 rounded-lg border border-border bg-card p-1 text-foreground shadow-xl"
-		popover="auto"
-		role="menu"
-		aria-label="Project options"
-		ontoggle={(event) =>
-			(sectionMenuOpen = (event.currentTarget as HTMLElement).matches(':popover-open'))}
-	>
-		<button
-			class="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-			role="menuitem"
-			aria-label="Add Project section"
-			onclick={() => {
-				sectionMenu?.hidePopover();
-				openSectionDialog();
-			}}
-			><FolderPlus width={15} height={15} aria-hidden="true" /> Add section</button
-		>
-	</div>
-
 	<dialog
 		bind:this={addSectionDialog}
 		class="add-project-dialog fixed m-0 w-[min(420px,calc(100vw-32px))] rounded-xl border border-border bg-card p-4 text-foreground shadow-2xl backdrop:bg-black/60"
@@ -801,7 +778,11 @@
 					<option value={directory.path}></option>
 				{/each}
 			</datalist>
-			<button type="submit" class="grid size-11 shrink-0 place-items-center" disabled={directoryLoading}>
+			<button
+				type="submit"
+				class="grid size-11 shrink-0 place-items-center"
+				disabled={directoryLoading}
+			>
 				<ChevronRight width={16} height={16} aria-hidden="true" />
 				<span class="sr-only">Open path</span>
 			</button>

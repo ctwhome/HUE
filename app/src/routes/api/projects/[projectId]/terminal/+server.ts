@@ -1,4 +1,6 @@
 import { json } from '@sveltejs/kit';
+import { requestAccessAllowed } from '$lib/server/access-auth';
+import { requestOriginMatches } from '$lib/server/same-origin';
 import { authoritativeProject, services } from '$lib/server/services';
 import type { RequestHandler } from './$types';
 
@@ -6,30 +8,11 @@ export function _terminalAllowed(
 	request: Request,
 	url: URL,
 	clientAddress: string,
-	mutation: boolean
+	mutation: boolean,
+	secret = process.env.HUE_ACCESS_SECRET
 ) {
-	const address = clientAddress.replace(/^::ffff:/, '');
-	const host = request.headers.get('host') ?? url.host;
-	let hostname = '';
-	try {
-		hostname = new URL(`http://${host}`).hostname;
-	} catch {
-		return false;
-	}
-	if (
-		!['127.0.0.1', '::1'].includes(address) ||
-		!['127.0.0.1', 'localhost', '[::1]'].includes(hostname)
-	) {
-		return false;
-	}
-	if (!mutation) return true;
-	const origin = request.headers.get('origin');
-	if (!origin) return false;
-	try {
-		return new URL(origin).host === host;
-	} catch {
-		return false;
-	}
+	if (mutation && !requestOriginMatches(request, url)) return false;
+	return requestAccessAllowed(request, url, clientAddress, secret);
 }
 
 export const GET: RequestHandler = async ({ params, request, url, getClientAddress }) => {

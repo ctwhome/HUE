@@ -19,6 +19,8 @@ let failCopy = false;
 let lockActive = false;
 let metadataMutated = false;
 let listCalls = 0;
+let runtimeState: Record<string, unknown> = { profile: 'default' };
+const runtimeUpdates: Array<{ kind: 'model' | 'mode'; value: string }> = [];
 let workModeCalls: Array<{
 	projectId: string;
 	sessionId: string;
@@ -109,7 +111,15 @@ mock.module('$lib/server/route-services', () => ({
 				return [];
 			},
 			getAvailableCommands: () => [],
-			getSessionState: () => ({ profile: 'default' })
+			getSessionState: () => runtimeState,
+			setModel: async (_sessionId: string, modelId: string) => {
+				runtimeUpdates.push({ kind: 'model', value: modelId });
+				return runtimeState;
+			},
+			setMode: async (_sessionId: string, modeId: string) => {
+				runtimeUpdates.push({ kind: 'mode', value: modeId });
+				return runtimeState;
+			}
 		},
 		dispatcher: {
 			withSessionLock: async (_sessionId: string, operation: () => Promise<unknown>) => {
@@ -128,6 +138,17 @@ test('returns stored turn state when the lightweight Hermes transcript read is u
 	associated = true;
 	transcriptCwd = '';
 	runtimeTranscriptCalls = 0;
+	runtimeState = {
+		profile: 'default',
+		models: {
+			currentModelId: 'openai:gpt-5.6',
+			availableModels: [{ modelId: 'openai:gpt-5.6', name: 'GPT 5.6' }]
+		},
+		modes: {
+			currentModeId: 'default',
+			availableModes: [{ id: 'default', name: 'Default' }]
+		}
+	};
 	const { GET } = await import('./+server');
 	const response = await GET({
 		params: { projectId: 'project-1', sessionId: 'session-1' }
@@ -140,8 +161,34 @@ test('returns stored turn state when the lightweight Hermes transcript read is u
 		transcript: [],
 		transcriptError: 'Hermes transcript read unavailable',
 		workMode: 'autonomous',
+		commands: [],
+		runtime: runtimeState,
+		branch: null,
 		...snapshot
 	});
+	runtimeState = { profile: 'default' };
+});
+
+test('rejects Hermes model and edit approval changes during an active turn', async () => {
+	associated = true;
+	snapshot.activeTurn = {
+		messageId: 'msg-1',
+		status: 'running',
+		output: 'Still working',
+		error: null
+	};
+	runtimeUpdates.length = 0;
+	const { PATCH } = await import('./+server');
+	for (const body of [{ modelId: 'anthropic:claude' }, { modeId: 'accept-edits' }]) {
+		const response = await PATCH({
+			params: { projectId: 'project-1', sessionId: 'session-1' },
+			request: new Request('http://hue.test', { method: 'PATCH', body: JSON.stringify(body) })
+		} as never);
+		expect(response.status).toBe(409);
+		expect(await response.json()).toEqual({ error: 'Wait for the active turn to finish' });
+	}
+
+	expect(runtimeUpdates).toEqual([]);
 });
 
 test('rejects a session not associated with the route project', async () => {

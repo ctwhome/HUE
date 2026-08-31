@@ -575,9 +575,12 @@
 							height={18}
 							aria-hidden="true"
 						/>
-						<div class="flex min-w-0 items-center gap-2 overflow-hidden self-end">
+						<div class="flex min-w-0 items-center gap-2 self-end overflow-hidden">
 							<strong class="block min-w-0 truncate text-sm leading-5">{job.name}</strong>
-							{#if job.unreadCount}<span class="size-2 shrink-0 rounded-full bg-destructive" aria-label={`${job.unreadCount} unread runs`}></span>{/if}
+							{#if job.unreadCount}<span
+									class="size-2 shrink-0 rounded-full bg-destructive"
+									aria-label={`${job.unreadCount} unread runs`}
+								></span>{/if}
 						</div>
 						<div class="flex min-w-0 items-center gap-2 self-start">
 							<small class="min-w-0 flex-1 truncate text-xs leading-4 text-muted-foreground"
@@ -585,7 +588,8 @@
 									? ` · Next ${new Date(job.nextRunAt).toLocaleString()}`
 									: ''}</small
 							>
-							<span class="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground"
+							<span
+								class="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground"
 								>{job.enabled ? job.state : 'paused'}</span
 							>
 						</div>

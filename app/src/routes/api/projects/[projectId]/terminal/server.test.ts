@@ -1,4 +1,5 @@
 import { beforeEach, expect, mock, test } from 'bun:test';
+import { ACCESS_COOKIE, createAccessSession } from '$lib/server/access-auth';
 import { serviceExportStubs } from '$lib/server/services-test-stubs';
 
 const terminalCalls: Array<{ method: string; projectId: string; args: unknown[] }> = [];
@@ -68,6 +69,25 @@ test('terminal access rejects DNS rebinding hosts', () => {
 	expect(_terminalAllowed(request, url, '127.0.0.1', true)).toBe(false);
 });
 
+test('terminal access accepts an authenticated same-origin HTTPS tailnet request', () => {
+	const { _terminalAllowed } = require('./+server');
+	const secret = 'terminal-test-secret';
+	const token = createAccessSession(secret);
+	const url = new URL('https://m3-max.tail33436f.ts.net:4010/api/projects/project-1/terminal');
+	const request = new Request(url, {
+		method: 'POST',
+		headers: {
+			host: url.host,
+			origin: url.origin,
+			cookie: `${ACCESS_COOKIE}=${token}`,
+			'x-forwarded-for': '100.64.0.2',
+			'x-forwarded-proto': 'https'
+		}
+	});
+
+	expect(_terminalAllowed(request, url, '127.0.0.1', true, secret)).toBe(true);
+});
+
 test('uses canonical Hermes id for every terminal operation reached by slug', async () => {
 	const { GET, POST } = await import('./+server');
 	const url = new URL('http://localhost/api/projects/project-slug/terminal?terminalId=t&after=2');
@@ -76,7 +96,7 @@ test('uses canonical Hermes id for every terminal operation reached by slug', as
 		url,
 		getClientAddress: () => '127.0.0.1'
 	};
-	await GET({ ...base, request: new Request(url) } as never);
+	await GET({ ...base, request: new Request(url, { headers: { host: url.host } }) } as never);
 	for (const body of [
 		{ action: 'create', cols: 80, rows: 24 },
 		{ action: 'input', terminalId: 't', sequence: 1, data: 'pwd\n' },
@@ -87,7 +107,7 @@ test('uses canonical Hermes id for every terminal operation reached by slug', as
 			...base,
 			request: new Request(url, {
 				method: 'POST',
-				headers: { origin: url.origin },
+				headers: { host: url.host, origin: url.origin },
 				body: JSON.stringify(body)
 			})
 		} as never);

@@ -1,9 +1,11 @@
 .session-pane-grid {
+	--chat-surface: var(--background);
 	position: relative;
 	display: grid;
 	overflow: hidden;
 }
 .session-pane-grid[data-pane-count='1'] {
+	--chat-surface: var(--card);
 	padding: var(--panel-gap) var(--panel-gap) 0;
 }
 .session-pane-grid[data-pane-count='1'] > .session-pane-primary {
