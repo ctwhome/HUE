@@ -4,7 +4,7 @@ export class LatestFollow {
 	private following = true;
 	private automaticScrollUntil = 0;
 
-	scrollToLatest = (behavior: ScrollBehavior = 'smooth') => {
+	scrollToLatest = (behavior: ScrollBehavior = 'auto') => {
 		if (!this.node) return;
 		this.following = true;
 		this.showLatest = false;

@@ -7,6 +7,14 @@ export type FileEntry = {
 };
 
 export type FileVersion = { hash: string; mtimeNs: string; size: number };
+export type FileDiffRequest = {
+	scope: 'staged' | 'unstaged';
+	repository: string;
+	file: string;
+	currentFile: boolean;
+};
+export type FileOpenRequest = { path: string; diff?: FileDiffRequest };
+export type FileRequest = FileOpenRequest & { id: string };
 export type DeleteImpact = {
 	confirmation: string;
 	files: number;

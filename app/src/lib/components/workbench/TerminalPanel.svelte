@@ -28,7 +28,6 @@
 	let terminalFit: FitAddon | null = null;
 	let terminalResizeObserver: ResizeObserver | null = null;
 	let terminalPollTimer: ReturnType<typeof setTimeout> | null = null;
-	let terminalPollFlight = Promise.resolve();
 	let terminalClosing = false;
 	let terminalThemeObserver: MutationObserver | null = null;
 	let terminalThemeMedia: MediaQueryList | null = null;
@@ -183,7 +182,7 @@
 	}
 	function startTerminalPolling() {
 		if (terminalPollTimer) clearTimeout(terminalPollTimer);
-		if (!terminalClosing) terminalPollFlight = pollTerminal();
+		if (!terminalClosing) void pollTerminal();
 	}
 	async function pollTerminal() {
 		const tab = activeTerminalTab();
@@ -220,10 +219,11 @@
 			}
 		}
 	}
-	async function closeTerminals() {
+	function closeTerminals(event?: PageTransitionEvent) {
+		if (event?.persisted) return;
+		if (terminalClosing) return;
 		terminalClosing = true;
 		if (terminalPollTimer) clearTimeout(terminalPollTimer);
-		await terminalPollFlight;
 		terminalResizeObserver?.disconnect();
 		terminalThemeObserver?.disconnect();
 		terminalThemeMedia?.removeEventListener('change', applyTerminalTheme);
@@ -232,17 +232,13 @@
 		terminalRenderer?.dispose();
 		terminalRenderer = null;
 		terminalFit = null;
-		const tabs = [...terminalTabs];
-		await Promise.all(
-			tabs.map((tab) =>
-				fetch(`/api/projects/${scopedProjectId}/terminal`, {
-					method: 'POST',
-					headers: { 'content-type': 'application/json' },
-					body: JSON.stringify({ action: 'close', terminalId: tab.terminalId }),
-					keepalive: true
-				}).catch(() => undefined)
-			)
-		);
+		for (const tab of terminalTabs)
+			void fetch(`/api/projects/${scopedProjectId}/terminal`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ action: 'close', terminalId: tab.terminalId }),
+				keepalive: true
+			}).catch(() => undefined);
 	}
 
 	onMount(() => {
@@ -256,8 +252,10 @@
 		terminalThemeMedia.addEventListener('change', applyTerminalTheme);
 		void addTerminalTab();
 	});
-	onDestroy(() => void closeTerminals());
+	onDestroy(closeTerminals);
 </script>
+
+<svelte:window onpagehide={closeTerminals} />
 
 <article class={`${panel} terminal-panel relative`} aria-label="Project terminal">
 	<header

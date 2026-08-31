@@ -40,8 +40,16 @@
 		type Artifact,
 		type DeleteImpact,
 		type FileEntry as Entry,
+		type FileOpenRequest,
+		type FileRequest,
 		type FilePreview as Preview
 	} from './file-types';
+	import {
+		fileDiffData,
+		repositoryDiffUrl,
+		type FileDiffData,
+		type RepositoryDiffResponse
+	} from './repository-diff';
 
 	let {
 		projectId,
@@ -50,7 +58,7 @@
 		onclose
 	}: {
 		projectId: string;
-		fileRequest: { path: string; id: string } | null;
+		fileRequest: FileRequest | null;
 		dirtyGuard: DirtyGuard;
 		onclose?: () => void;
 	} = $props();
@@ -65,6 +73,10 @@
 	let selectedPath = $state('');
 	let focusedPath = $state('');
 	let preview = $state<Preview | null>(null);
+	let diffData = $state<FileDiffData | null>(null);
+	let diffTruncated = $state(false);
+	let diffScope = $state<'staged' | 'unstaged' | null>(null);
+	let diffLoading = $state(false);
 	let editor = $state('');
 	let loadedContent = $state('');
 	let markdownMode = $state<'preview' | 'edit'>('preview');
@@ -102,6 +114,10 @@
 	function clearPreviewSelection() {
 		previewRequests.cancel();
 		preview = null;
+		diffData = null;
+		diffTruncated = false;
+		diffScope = null;
+		diffLoading = false;
 		selectedPath = '';
 	}
 	function guarded(action: () => void) {
@@ -141,6 +157,7 @@
 		const request = previewRequests.begin(projectId, selectedPath);
 		try {
 			const current = await request.result;
+			if (!current) return;
 			if (!previewRequests.isCurrent(request, selectedPath) || current.path !== request.path)
 				return;
 			movedDeleted = false;
@@ -152,31 +169,63 @@
 			if (previewRequests.isCurrent(request, selectedPath)) movedDeleted = true;
 		}
 	}
-	function requestSelect(path: string) {
-		if (path === selectedPath && preview) return;
-		guarded(() => void selectFile(path));
+	function requestSelect(request: FileOpenRequest) {
+		if (request.path === selectedPath && preview && !request.diff && !diffData) return;
+		guarded(() => void selectFile(request));
 	}
 	function requestClosePreview() {
 		guarded(clearPreviewSelection);
 	}
-	async function selectFile(path: string) {
-		const request = previewRequests.begin(projectId, path);
+	async function selectFile(selection: FileOpenRequest) {
+		const request = previewRequests.begin(
+			projectId,
+			selection.path,
+			selection.diff?.currentFile !== false
+		);
 		busy = true;
 		error = '';
-		selectedPath = path;
+		selectedPath = selection.path;
+		preview = null;
+		diffData = null;
+		diffTruncated = false;
+		diffScope = selection.diff?.scope ?? null;
+		diffLoading = Boolean(selection.diff);
 		movedDeleted = externalChange = false;
+		const diffRequest = selection.diff
+			? api<RepositoryDiffResponse>(repositoryDiffUrl(projectId, selection.diff), {
+					signal: request.controller.signal
+				})
+					.then((value) => ({ value }))
+					.catch((cause: unknown) => ({ cause }))
+			: null;
 		try {
 			const value = await request.result;
 			if (!previewRequests.isCurrent(request, selectedPath)) return;
-			if (value.path !== request.path)
+			if (value && value.path !== request.path)
 				throw new Error('Preview response path does not match selection');
-			applyPreview(value);
+			if (value) applyPreview(value);
+			if (diffRequest && selection.diff) {
+				const diff = await diffRequest;
+				if (!previewRequests.isCurrent(request, selectedPath)) return;
+				if ('cause' in diff) {
+					error = `Diff unavailable: ${diff.cause instanceof Error ? diff.cause.message : String(diff.cause)}`;
+					diffScope = null;
+					return;
+				}
+				diffData = fileDiffData(
+					diff.value.diff,
+					selection.diff.file,
+					value?.content ?? '',
+					diff.value.untrackedPaths.includes(selection.diff.file)
+				);
+				diffTruncated = diff.value.truncated;
+			}
 		} catch (cause) {
 			if (!previewRequests.isCurrent(request, selectedPath)) return;
 			preview = null;
 			error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
-			if (previewRequests.isLatest(request)) busy = false;
+			if (previewRequests.isLatest(request)) busy = diffLoading = false;
 		}
 	}
 	function applyPreview(value: Preview) {
@@ -261,7 +310,7 @@
 			status = action === 'move' ? 'File moved' : 'Created';
 			selectedPath = actionPath;
 			await loadTree();
-			if (action !== 'folder') await selectFile(actionPath);
+			if (action !== 'folder') await selectFile({ path: actionPath });
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
@@ -332,7 +381,7 @@
 	$effect(() => {
 		if (fileRequest && fileRequest.id !== handledFileRequest) {
 			handledFileRequest = fileRequest.id;
-			requestSelect(fileRequest.path);
+			requestSelect(fileRequest);
 		}
 	});
 	onMount(() => {
@@ -384,11 +433,15 @@
 		{status}
 		{externalChange}
 		{movedDeleted}
+		{diffData}
+		{diffTruncated}
+		{diffScope}
+		{diffLoading}
 		onback={requestClosePreview}
 		onmove={() => openAction('move')}
 		ondelete={openDelete}
 		onsave={saveFile}
-		onreload={() => guarded(() => void selectFile(selectedPath))}
+		onreload={() => guarded(() => void selectFile({ path: selectedPath }))}
 		onroot={() => guarded(clearPreviewSelection)}
 		onbreadcrumb={(path) => {
 			expanded.add(path);
@@ -501,7 +554,9 @@
 						onfocus={() => (focusedPath = entry.path)}
 						onclick={() => {
 							focusedPath = entry.path;
-							entry.type === 'directory' ? toggleFolder(entry.path) : requestSelect(entry.path);
+							entry.type === 'directory'
+								? toggleFolder(entry.path)
+								: requestSelect({ path: entry.path });
 						}}
 						onkeydown={(event) => treeKey(event, entry)}
 					>
@@ -530,7 +585,7 @@
 							style="min-height: 44px"
 							onclick={() => {
 								view = 'files';
-								requestSelect(artifact.path);
+								requestSelect({ path: artifact.path });
 							}}
 							><strong>{artifact.path}</strong><span
 								class="mt-1 flex justify-between text-muted-foreground"

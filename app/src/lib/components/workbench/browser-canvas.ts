@@ -17,6 +17,11 @@ const ELEMENT_TYPES = new Set([
 ]);
 
 export type BrowserDevice = 'desktop' | 'tablet' | 'mobile';
+export const browserDeviceSizes = {
+	desktop: { width: 1440, height: 900 },
+	tablet: { width: 768, height: 1024 },
+	mobile: { width: 390, height: 844 }
+} as const satisfies Record<BrowserDevice, { width: number; height: number }>;
 export type BrowserEmbedSpec = {
 	id: string;
 	device: BrowserDevice;
@@ -125,18 +130,12 @@ export function createBrowserEmbedSpec(
 	elements: ReadonlyArray<Pick<BrowserEmbedSpec, 'x' | 'y' | 'width' | 'height'>>,
 	id: string = crypto.randomUUID()
 ): BrowserEmbedSpec {
-	const size =
-		device === 'desktop'
-			? { width: 1440, height: 900 }
-			: device === 'tablet'
-				? { width: 768, height: 1024 }
-				: { width: 390, height: 844 };
 	return {
 		id,
 		device,
 		url: normalizeBrowserUrl(url),
 		...nextBrowserEmbedPosition(elements),
-		...size
+		...browserDeviceSizes[device]
 	};
 }
 

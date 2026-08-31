@@ -62,7 +62,10 @@ export function resolveLaunchDestination(
 ): LaunchDestination {
 	const params = _url.searchParams;
 	const explicit =
-		params.has('project') || params.has('session') || params.has('pane') || params.has('collection');
+		params.has('project') ||
+		params.has('session') ||
+		params.has('pane') ||
+		params.has('collection');
 	const memory = parseNavigationMemory(_rawMemory);
 	const requestedIntent = explicit
 		? null
@@ -171,7 +174,8 @@ export function resolveLaunchDestination(
 		sessionId: explicit ? params.get('session') : (memory?.sessionId ?? null),
 		pane,
 		collection:
-			requestedProject === null && (explicit ? params.get('collection') : memory?.collection) === 'cron'
+			requestedProject === null &&
+			(explicit ? params.get('collection') : memory?.collection) === 'cron'
 				? 'cron'
 				: 'chats',
 		explicit,

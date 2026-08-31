@@ -7,6 +7,7 @@ import { localSameOriginMutationAllowed } from '$lib/server/same-origin';
 import {
 	_projectFolderRepositories,
 	_commitModelSelection,
+	_commitReasoningSelection,
 	_repositoryDiffOptions,
 	_selectedRepositoryPath
 } from './+server';
@@ -104,4 +105,7 @@ test('repository mutations require a loopback same-origin request', () => {
 test('commit generation requires and combines the selected ACP model', () => {
 	expect(_commitModelSelection('openai', 'gpt-5')).toBe('openai:gpt-5');
 	expect(() => _commitModelSelection('openai')).toThrow('Commit model is required');
+	expect(_commitReasoningSelection('none')).toBe('none');
+	expect(_commitReasoningSelection()).toBe('default');
+	expect(() => _commitReasoningSelection('high')).toThrow('Invalid commit reasoning');
 });

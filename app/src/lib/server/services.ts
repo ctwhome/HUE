@@ -392,7 +392,13 @@ export function projectBranch(projectRoot: string): string | null {
 export type ProjectRepository = {
 	isRepository: boolean;
 	branch: string | null;
-	changes: Array<{ path: string; index: string; worktree: string; fileUrl: string | null }>;
+	changes: Array<{
+		path: string;
+		index: string;
+		worktree: string;
+		fileUrl: string | null;
+		diffUrl?: string;
+	}>;
 	worktrees: Array<{ path: string; branch: string | null; head: string }>;
 	remotes: Array<{ name: string; webUrl: string | null }>;
 };
@@ -571,7 +577,13 @@ export function projectRepository(projectRoot: string): ProjectRepository {
 		} catch {
 			// Tool output becomes clickable only after descriptor-safe server validation.
 		}
-		changes.push({ path, index: entry[0], worktree: entry[1], fileUrl });
+		changes.push({
+			path,
+			index: entry[0],
+			worktree: entry[1],
+			fileUrl,
+			...((entry[0] === 'D' || entry[1] === 'D') && validDiffFile(path) ? { diffUrl: path } : {})
+		});
 		if (entry[0] === 'R' || entry[0] === 'C' || entry[1] === 'R' || entry[1] === 'C') index += 1;
 	}
 	changes.sort((left, right) => left.path.localeCompare(right.path));
@@ -635,6 +647,16 @@ function validBaseRef(base: string) {
 	return /^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$/.test(base);
 }
 
+function validDiffFile(file: string) {
+	return Boolean(
+		file &&
+		!isAbsolute(file) &&
+		!file.includes('\\') &&
+		!/[\0-\x1f\x7f]/.test(file) &&
+		!file.split('/').some((part) => !part || part === '.' || part === '..')
+	);
+}
+
 function branchDiffBase(projectRoot: string, supplied?: string) {
 	if (supplied && !validBaseRef(supplied)) throw new Error('Invalid base ref');
 	const current = projectBranch(projectRoot);
@@ -670,12 +692,7 @@ export function projectRepositoryDiff(
 	}
 	if (!['staged', 'unstaged', 'branch'].includes(options.scope))
 		throw new Error('Invalid diff scope');
-	if (
-		options.file &&
-		(isAbsolute(options.file) ||
-			options.file.split(/[\\/]/).includes('..') ||
-			options.file.includes('\0'))
-	) {
+	if (options.file && !validDiffFile(options.file)) {
 		throw new Error('Invalid diff file');
 	}
 
@@ -691,10 +708,14 @@ export function projectRepositoryDiff(
 	if (options.scope === 'unstaged') {
 		const untrackedArgs = ['ls-files', '--others', '--exclude-standard', '-z'];
 		if (options.file) untrackedArgs.push('--', options.file);
-		const untrackedResult = spawnSync('git', ['-C', projectRoot, ...untrackedArgs], {
-			timeout: 10_000,
-			maxBuffer: maxBytes + 1
-		});
+		const untrackedResult = spawnSync(
+			'git',
+			['--literal-pathspecs', '-C', projectRoot, ...untrackedArgs],
+			{
+				timeout: 10_000,
+				maxBuffer: maxBytes + 1
+			}
+		);
 		const untrackedOutput = Buffer.isBuffer(untrackedResult.stdout)
 			? untrackedResult.stdout
 			: Buffer.from(untrackedResult.stdout);
@@ -712,7 +733,7 @@ export function projectRepositoryDiff(
 		}
 		if (untrackedPaths.at(-1) === '') untrackedPaths.pop();
 	}
-	const result = spawnSync('git', ['-C', projectRoot, ...args], {
+	const result = spawnSync('git', ['--literal-pathspecs', '-C', projectRoot, ...args], {
 		timeout: 10_000,
 		maxBuffer: maxBytes + 1
 	});

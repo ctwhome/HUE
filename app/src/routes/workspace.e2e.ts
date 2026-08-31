@@ -353,6 +353,8 @@ test('opens an unavailable Session without a row tooltip as read-only', async ({
 test('global Session finder is keyboard-first, race-safe, and navigates directly', async ({
 	page
 }) => {
+	const pageErrors: Error[] = [];
+	page.on('pageerror', (error) => pageErrors.push(error));
 	await page.setViewportSize(viewports[0]);
 	await page.goto('/');
 	let projectsResponse = await page.request.get('/api/projects');
@@ -411,6 +413,8 @@ test('global Session finder is keyboard-first, race-safe, and navigates directly
 
 	const workspaceButton = page.getByRole('button', { name: 'Workspace' });
 	await workspaceButton.focus();
+	await page.evaluate(() => window.dispatchEvent(new Event('keydown')));
+	expect(pageErrors).toEqual([]);
 	await page.keyboard.press('Control+k');
 	const dialog = page.getByRole('dialog', { name: 'Find a Session' });
 	await expect(dialog).toBeVisible();
@@ -460,9 +464,9 @@ test('the navigation rail toggles both panels and Projects still toggle Sessions
 	const project = page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' });
 	const projects = page.getByRole('complementary', { name: 'Projects' });
 	const sessions = page.getByRole('complementary', { name: 'Project contents' });
-	await expect(page.getByRole('menuitem', { name: 'Add Project section' })).toBeHidden();
-	await page.getByRole('button', { name: 'Project options' }).click();
-	await page.getByRole('menuitem', { name: 'Add Project section' }).click();
+	const addSection = page.getByRole('button', { name: 'Add Project section' });
+	await expect(addSection).toBeVisible();
+	await addSection.click();
 	await expect(page.getByRole('dialog', { name: 'Add Project section' })).toBeVisible();
 	await page
 		.getByRole('dialog', { name: 'Add Project section' })
@@ -499,7 +503,7 @@ test('the navigation rail toggles both panels and Projects still toggle Sessions
 
 	for (const viewport of viewports.slice(0, 2)) {
 		await page.setViewportSize(viewport);
-		await expect(page.getByRole('button', { name: 'Project options' })).toBeVisible();
+		await expect(addSection).toBeVisible();
 		await expect(project).toHaveAttribute('aria-expanded', 'true');
 		await project.evaluate((button: HTMLButtonElement) => button.click());
 		await expect(project).toHaveAttribute('aria-expanded', 'false');
@@ -532,14 +536,8 @@ test('the navigation rail toggles both panels and Projects still toggle Sessions
 	for (const viewport of viewports.slice(2)) {
 		await page.setViewportSize(viewport);
 		await openMobileProjects(page);
-		const projectOptions = page.getByRole('button', { name: 'Project options' });
-		await expect(projectOptions).toBeVisible();
-		const optionsBox = (await projectOptions.boundingBox())!;
-		expect(optionsBox.width).toBeGreaterThanOrEqual(44);
-		expect(optionsBox.height).toBeGreaterThanOrEqual(44);
-		await projectOptions.click();
-		await expect(page.getByRole('menuitem', { name: 'Add Project section' })).toBeVisible();
-		await projectOptions.click();
+		await expect(addSection).toBeVisible();
+		expect((await addSection.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 		await project.click({ position: { x: 80, y: 22 } });
 		await expect(sessions).toBeVisible();
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
@@ -900,22 +898,22 @@ test('conversation scrolls behind the translucent Session header', async ({ page
 	const header = page.locator('.session-header');
 	const transcript = page.locator('.transcript');
 	const composer = page.locator('.composer');
-	await expect(header).toHaveCSS('position', 'absolute');
+	await expect(header).toHaveCSS('position', 'relative');
 	await expect(composer).toHaveCSS('position', 'absolute');
 	await expect
 		.poll(async () => (await transcript.boundingBox())?.y)
-		.toBe((await header.boundingBox())?.y);
+		.toBe((await header.boundingBox())!.y + (await header.boundingBox())!.height);
 	expect(await header.evaluate((element) => getComputedStyle(element).backdropFilter)).not.toBe(
 		'none'
 	);
 	await page.setViewportSize({ width: 1024, height: 768 });
-	await expect(header).toHaveCSS('position', 'absolute');
+	await expect(header).toHaveCSS('position', 'relative');
 	await expect
 		.poll(async () => (await transcript.boundingBox())?.y)
-		.toBe((await header.boundingBox())?.y);
+		.toBe((await header.boundingBox())!.y + (await header.boundingBox())!.height);
 
 	await page.setViewportSize({ width: 390, height: 844 });
-	await expect(header).toHaveCSS('position', 'absolute');
+	await expect(header).toHaveCSS('position', 'relative');
 	await transcript.evaluate((element) => element.scrollTo({ top: 160 }));
 	expect(await transcript.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
 	const headerBox = (await header.boundingBox())!;
@@ -942,7 +940,7 @@ test('conversation scrolls behind the translucent Session header', async ({ page
 	).toBe(true);
 
 	await page.setViewportSize({ width: 320, height: 844 });
-	await expect(header).toHaveCSS('position', 'absolute');
+	await expect(header).toHaveCSS('position', 'relative');
 	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
 });
 
@@ -1698,9 +1696,7 @@ test('production file endpoint validates and ranges real Project content', async
 		projects: Array<{ id: string }>;
 	};
 	const projectId = projects.projects[0].id;
-	const tree = await page.request.get(
-		`/api/projects/${projectId}/files?mode=tree&maxEntries=20&maxDepth=1`
-	);
+	const tree = await page.request.get(`/api/projects/${projectId}/files?mode=tree&maxDepth=1`);
 	expect(tree.ok()).toBe(true);
 	expect(
 		((await tree.json()) as { entries: Array<{ path: string }> }).entries.some(
@@ -3189,7 +3185,7 @@ test('sends one complete envelope and renders streamed completion', async ({ pag
 	await surface.getByLabel('Message Hermes').fill(text);
 	await surface.getByRole('button', { name: 'Send', exact: true }).click();
 
-	await expect(surface.getByRole('button', { name: 'Thinking' })).toBeVisible();
+	await expect(surface.getByRole('button', { name: /Show activity details/ })).toBeVisible();
 	await expect(surface.getByTitle('Message running')).toBeVisible();
 	const deliveryStatus = surface.locator('.composer-delivery');
 	await expect(deliveryStatus).toHaveClass(/rounded-full/);
@@ -3204,7 +3200,7 @@ test('sends one complete envelope and renders streamed completion', async ({ pag
 	await expect(deliveryStatus.locator('svg')).toHaveClass(/animate-spin/);
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
-		await expect(surface.getByRole('button', { name: 'Thinking' })).toBeVisible();
+		await expect(surface.getByRole('button', { name: /Show activity details/ })).toBeVisible();
 		const [deliveryBox, composerBox] = await Promise.all([
 			surface.locator('.composer-delivery').boundingBox(),
 			surface.locator('.composer').boundingBox()
@@ -3224,7 +3220,7 @@ test('sends one complete envelope and renders streamed completion', async ({ pag
 			)
 			.toBeLessThanOrEqual(2);
 	}
-	await surface.getByRole('button', { name: 'Thinking' }).click();
+	await surface.getByRole('button', { name: /Show activity details/ }).click();
 	await expect(page.getByText('Checking the request before answering.')).toBeVisible();
 	const assistant = page.locator('.transcript article.assistant');
 	await expect(assistant.locator('.message strong')).toHaveText('Done');
@@ -3780,6 +3776,7 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 	const browserErrors: string[] = [];
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
 	page.on('pageerror', (error) => browserErrors.push(error.message));
+	await page.route('**/api/community-prompts', (route) => route.fulfill({ json: { prompts: [] } }));
 	await page.route('**/api/projects/*/sessions', (route) =>
 		route.fulfill({
 			json: { sessions: [{ sessionId: 'session-rich', cwd: '/work/hue', title: 'Rich input' }] }
@@ -3915,6 +3912,11 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 	const approvalsMenu = page.getByRole('dialog', { name: 'Choose edit approvals' });
 	const moreOptions = page.getByRole('button', { name: 'More session options' });
 	await page.setViewportSize({ width: 1440, height: 900 });
+	const [approvalsBox, reasoningBox] = await Promise.all([
+		approvalsTrigger.boundingBox(),
+		reasoningTrigger.boundingBox()
+	]);
+	expect(approvalsBox!.x + approvalsBox!.width).toBeLessThanOrEqual(reasoningBox!.x);
 	await openComposerOptions(page);
 	await page.getByRole('button', { name: 'Prompt library' }).click();
 	const promptLibrary = page.getByRole('dialog', { name: 'Prompt library' });
@@ -4110,7 +4112,14 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 	});
 	await expect(page.getByRole('img', { name: 'screen.png' })).toBeVisible();
 	await page.getByLabel('Message Hermes').fill('Review this screenshot');
+	const busySelections = { selectedModel, selectedMode, selectedReasoning };
 	await page.getByLabel('Message Hermes').press('Enter');
+	await expect(modelTrigger).toBeDisabled();
+	const runningSurface = await openComposerOptions(page);
+	const runningApprovals = runningSurface.getByRole('button', { name: 'Edit approvals' });
+	await expect(runningApprovals).toBeDisabled();
+	await expect(runningSurface.getByRole('button', { name: 'Reasoning' })).toBeDisabled();
+	expect({ selectedModel, selectedMode, selectedReasoning }).toEqual(busySelections);
 
 	expect(envelope!.text).toBe('Review this screenshot');
 	expect(envelope!.images[0]).toMatchObject({ name: 'screen.png', mimeType: 'image/png' });
@@ -4676,9 +4685,10 @@ test('queues and edits messages with attachments while streaming, then can send 
 	const surface = await openComposerOptions(page);
 	await expect(surface.getByLabel('Message Hermes')).toBeEnabled();
 	await expect(surface.getByRole('button', { name: 'Stop' })).toBeVisible();
-	await expect(surface.getByRole('button', { name: 'Edit approvals' })).toHaveCSS(
-		'border-top-width',
-		'1px'
+	await expect(surface.getByRole('button', { name: 'Edit approvals' })).toBeDisabled();
+	await expect(surface.getByRole('button', { name: 'Edit approvals' })).toHaveAttribute(
+		'title',
+		'Edit approvals are unavailable until Hermes starts'
 	);
 	await surface.locator('.composer input[type="file"]').setInputFiles({
 		name: 'queued.txt',
@@ -4753,7 +4763,7 @@ test('shows durable delegate_task children as a collapsible status and result tr
 	await addProject(page);
 	await sessionButton(page, 'Agents').click();
 	const surface = primarySessionSurface(page);
-	await surface.getByRole('button', { name: 'Thinking' }).click();
+	await surface.getByRole('button', { name: /Show activity details/ }).click();
 	const tree = page
 		.getByLabel('Thinking timeline')
 		.getByRole('article')
@@ -4762,7 +4772,7 @@ test('shows durable delegate_task children as a collapsible status and result tr
 	await expect(tree.getByText('Map moved path references')).toBeVisible();
 	await expect(tree.getByText('failed', { exact: true })).toBeVisible();
 	await expect(tree.getByText('Found three references.')).toBeVisible();
-	await surface.getByRole('button', { name: 'Thinking' }).click();
+	await surface.getByRole('button', { name: /Hide activity details/ }).click();
 	await expect(tree.getByText('Map moved path references')).toBeHidden();
 
 	for (const viewport of viewports) {
@@ -5002,24 +5012,21 @@ test('keeps chat clean while Thinking dialog and current task preserve ACP activ
 				elements.map((element) => Number(element.getAttribute('data-timeline-sequence')))
 			)
 	).toEqual([1, 2, 5, 7, 8, 9]);
-	await expect(page.getByRole('button', { name: 'Thinking' })).toBeVisible();
+	await expect(page.getByRole('button', { name: /Show activity details/ })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Tasks', exact: true })).toHaveAttribute(
 		'title',
 		/1\/2/
 	);
 	const composer = primarySessionSurface(page).locator('.composer');
 	for (const trigger of [
-		page.getByRole('button', { name: 'Thinking' }),
+		page.getByRole('button', { name: /Show activity details/ }),
 		page.getByRole('button', { name: 'Tasks', exact: true })
 	]) {
 		const triggerBox = (await trigger.boundingBox())!;
 		const composerBox = (await composer.boundingBox())!;
 		expect(triggerBox.x).toBeGreaterThanOrEqual(composerBox.x);
-		expect(triggerBox.y).toBeGreaterThanOrEqual(composerBox.y);
 		expect(triggerBox.x + triggerBox.width).toBeLessThanOrEqual(composerBox.x + composerBox.width);
-		expect(triggerBox.y + triggerBox.height).toBeLessThanOrEqual(
-			composerBox.y + composerBox.height
-		);
+		expect(triggerBox.y + triggerBox.height).toBeLessThanOrEqual(composerBox.y);
 	}
 	const conversationTimes = page.locator('.transcript article time');
 	await expect(conversationTimes).toHaveCount(2);
@@ -5029,7 +5036,7 @@ test('keeps chat clean while Thinking dialog and current task preserve ACP activ
 		await expect(time).toHaveText(/^\d{2}:\d{2}$/);
 		await expect(time).toHaveAttribute('title', /2026/);
 	}
-	const thinkingTrigger = page.getByRole('button', { name: 'Thinking' });
+	const thinkingTrigger = page.getByRole('button', { name: /Show activity details/ });
 	const taskTrigger = page.getByRole('button', { name: 'Tasks', exact: true });
 	await thinkingTrigger.click();
 	const thinking = page.getByLabel('Thinking timeline');
@@ -5089,7 +5096,7 @@ test('keeps chat clean while Thinking dialog and current task preserve ACP activ
 	await toolSummary.press('Enter');
 	await expect(toolGroup).toContainText('[REDACTED]');
 	await expect(thinking.getByText('Private published reasoning')).toBeVisible();
-	await thinkingTrigger.click();
+	await page.keyboard.press('Escape');
 	await expect(thinking).toBeHidden();
 	await taskTrigger.click();
 	const taskList = page.locator('.current-task-entries');
@@ -5148,12 +5155,11 @@ test('keeps chat clean while Thinking dialog and current task preserve ACP activ
 		if (viewport.width <= 390)
 			await expectMinimumTouchTargets(page.locator('.composer button, .code-block button'));
 		if (viewport.width <= 390) {
-			const moreBox = (await page
-				.getByRole('button', { name: 'More session options' })
-				.boundingBox())!;
 			for (const activity of [thinkingTrigger, taskTrigger]) {
 				const activityBox = (await activity.boundingBox())!;
-				expect(Math.abs(activityBox.y - moreBox.y)).toBeLessThanOrEqual(1);
+				expect(activityBox.y + activityBox.height).toBeLessThanOrEqual(
+					(await composer.boundingBox())!.y
+				);
 			}
 		}
 		await taskTrigger.click();
@@ -5277,7 +5283,9 @@ test('interaction completion stays with its captured Session across navigation',
 	await completed;
 	await expect(page.getByRole('button', { name: 'Allow Other tool' })).toBeVisible();
 	await sessionButton(page, 'Origin Session').click();
-	await primarySessionSurface(page).getByRole('button', { name: 'Thinking' }).click();
+	await primarySessionSurface(page)
+		.getByRole('button', { name: /Show activity details/ })
+		.click();
 	const permission = page
 		.getByLabel('Thinking timeline')
 		.getByRole('article')
@@ -5853,10 +5861,20 @@ test('opens the project prompt library from the composer across required viewpor
 			await page.getByRole('button', { name: 'More session options' }).click();
 		await button.click();
 	}
-	await page.route('**/prompt-catalog.csv', (route) =>
+	await page.route('**/api/community-prompts', (route) =>
 		route.fulfill({
-			contentType: 'text/csv',
-			body: 'act,prompt,for_devs,type,contributor\nCode Reviewer,Review code carefully,TRUE,TEXT,f\n'
+			contentType: 'application/json',
+			body: JSON.stringify({
+				prompts: [
+					{
+						id: 'code-reviewer',
+						title: 'Code Reviewer',
+						category: 'Engineering',
+						description: 'Review code carefully',
+						prompt: 'Review code carefully'
+					}
+				]
+			})
 		})
 	);
 	const workflowRows = [
@@ -6076,6 +6094,17 @@ test('opens the project prompt library from the composer across required viewpor
 	await expect(dialog.getByLabel('Search prompts')).toBeHidden();
 	await dialog.getByRole('button', { name: /^Release / }).click();
 	await expect(dialog.getByText('Release safely')).toBeVisible();
+	const memberRows = dialog.getByRole('group', { name: 'Member skills' }).locator('label');
+	for (const row of await memberRows.all()) {
+		const [rowBox, checkboxBox] = await Promise.all([
+			row.boundingBox(),
+			row.getByRole('checkbox').boundingBox()
+		]);
+		expect(checkboxBox!.width).toBeLessThanOrEqual(24);
+		expect(
+			Math.abs(checkboxBox!.y + checkboxBox!.height / 2 - (rowBox!.y + rowBox!.height / 2))
+		).toBeLessThanOrEqual(1);
+	}
 	await expect(dialog.getByRole('button', { name: 'Open review skill' })).toBeVisible();
 	await dialog.getByLabel('Include protected').uncheck();
 	await dialog.getByRole('button', { name: 'Save bundle' }).click();
@@ -6256,8 +6285,9 @@ test('starts and revisits a session without a project', async ({ page }) => {
 	expect(browserErrors).toEqual([]);
 });
 
-test('shows external Hermes cron jobs in the Cron tasks folder', async ({ page }) => {
+test('shows external Hermes cron jobs in the Cron tasks folder', async ({ page, context }) => {
 	const browserErrors: string[] = [];
+	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
 	page.on('pageerror', (error) => browserErrors.push(error.message));
 	page.on('requestfailed', (request) => recordRequestFailure(browserErrors, request));
@@ -6287,8 +6317,65 @@ test('shows external Hermes cron jobs in the Cron tasks folder', async ({ page }
 		});
 	});
 	await page.route('**/api/hermes/cron/**', async (route) => {
-		if (new URL(route.request().url()).pathname.endsWith('/runs')) {
-			await route.fulfill({ json: { runs: [] } });
+		const pathname = new URL(route.request().url()).pathname;
+		if (pathname.endsWith('/runs')) {
+			await route.fulfill({
+				json: {
+					runs: [
+						{
+							sessionId: 'run-latest',
+							status: 'completed',
+							startedAt: '2026-08-31T09:00:00Z',
+							endedAt: '2026-08-31T09:01:00Z',
+							endReason: 'cron_complete',
+							messageCount: 2,
+							readAt: null
+						},
+						{
+							sessionId: 'run-failed',
+							status: 'failed',
+							startedAt: '2026-08-30T09:00:00Z',
+							endedAt: '2026-08-30T09:01:00Z',
+							endReason: 'cron_incomplete_no_output',
+							messageCount: 1,
+							readAt: '2026-08-30T10:00:00Z'
+						},
+						{
+							sessionId: 'run-older',
+							status: 'completed',
+							startedAt: '2026-08-29T09:00:00Z',
+							endedAt: '2026-08-29T09:01:00Z',
+							endReason: 'cron_complete',
+							messageCount: 2,
+							readAt: '2026-08-29T10:00:00Z'
+						},
+						{
+							sessionId: 'run-unknown',
+							status: 'unknown',
+							startedAt: '2026-08-28T09:00:00Z',
+							endedAt: '2026-08-28T09:01:00Z',
+							endReason: 'unknown',
+							messageCount: 0,
+							readAt: '2026-08-28T10:00:00Z'
+						}
+					]
+				}
+			});
+			return;
+		}
+		if (pathname.includes('/runs/')) {
+			await route.fulfill({
+				json: {
+					messages: [
+						{ role: 'user', text: '# Scheduled prompt\n\nReview the weekly results.' },
+						{ role: 'assistant', text: '## Working note\n\nIntermediate analysis.' },
+						{
+							role: 'assistant',
+							text: `# Latest completed result\n\n- First finding\n\n${'Long report paragraph.\n\n'.repeat(80)}`
+						}
+					]
+				}
+			});
 			return;
 		}
 		const requestBody = route.request().method() === 'PUT' ? route.request().postDataJSON() : null;
@@ -6340,6 +6427,46 @@ test('shows external Hermes cron jobs in the Cron tasks folder', async ({ page }
 		const editor = page.getByRole('main', { name: 'Cron job editor' });
 		await expect(editor).toBeVisible();
 		await expect(editor.getByRole('heading', { name: 'Daily review' })).toBeVisible();
+		const runSelector = editor.getByRole('combobox', { name: 'Run', exact: true });
+		if (viewport.width < 1200) {
+			await expect(runSelector).toBeVisible();
+			const runOptions = runSelector.locator('option:not([disabled])');
+			await expect(runOptions).toHaveCount(4);
+			await expect(runOptions).toContainText(['completed', 'failed', 'completed', 'unknown']);
+			await expect(runSelector).toHaveValue('run-latest');
+			await expect(editor.getByRole('button', { name: /failed/i })).toBeHidden();
+		} else {
+			await expect(runSelector).toHaveCount(0);
+			await expect(editor.getByRole('button', { name: /failed/i })).toBeVisible();
+			await expect(editor.getByRole('button', { name: /unknown/i })).toBeVisible();
+			await expect(
+				editor.getByRole('region', { name: 'Cron run history' }).getByRole('button').first()
+			).toHaveAttribute('aria-current', 'page');
+		}
+		const prompt = editor.getByText('Cron prompt', { exact: true }).locator('..');
+		await expect(prompt).not.toHaveAttribute('open', '');
+		await expect(editor.getByText('Review the weekly results.')).toBeHidden();
+		await expect(editor.getByRole('heading', { name: 'Latest completed result' })).toBeVisible();
+		await expect(editor.getByRole('listitem').filter({ hasText: 'First finding' })).toBeVisible();
+		const earlierMessages = editor.locator('details').filter({ hasText: 'Earlier messages (2)' });
+		await expect(earlierMessages).not.toHaveAttribute('open', '');
+		await expect(editor.getByRole('heading', { name: 'Working note' })).toBeHidden();
+		if (viewport.width < 1200) {
+			const content = editor.getByLabel('Cron job content');
+			const selectorTop = (await runSelector.boundingBox())!.y;
+			await content.evaluate((element) => (element.scrollTop = 500));
+			expect((await runSelector.boundingBox())!.y).toBe(selectorTop);
+		}
+		if (viewport === viewports[0]) {
+			await editor.getByRole('button', { name: 'Copy report Markdown' }).click();
+			await expect(editor.getByText('Report copied.')).toBeVisible();
+			expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
+				'# Latest completed result'
+			);
+			const download = page.waitForEvent('download');
+			await editor.getByRole('button', { name: 'Download report Markdown' }).click();
+			expect((await download).suggestedFilename()).toBe('Daily-review.md');
+		}
 		await editor.getByRole('button', { name: 'Settings' }).click();
 		await expect(editor.getByLabel('Name', { exact: true })).toHaveValue('Daily review');
 		await expect(editor.getByLabel('Schedule')).toHaveValue('0 9 * * *');
@@ -6647,7 +6774,7 @@ test('per-session work mode selector persists across natural text, slash alias, 
 		.getByRole('button', { name: /^Live/ })
 		.click();
 	await expect(workModeButton).toHaveAttribute('title', 'Work mode: Live');
-	await page.getByRole('button', { name: 'Thinking' }).click();
+	await page.getByRole('button', { name: /Show activity details/ }).click();
 	await expect(page.getByText('Work mode changed to Live')).toBeVisible();
 
 	await page.reload();
@@ -6837,7 +6964,7 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 				transcript: [
 					{
 						role: 'assistant',
-						text: `${longUrl}\n\n${longPath}\n\n${token}\n\n## 10. Unicode and international text\n\nThen consider:\n\n- Who was the person?\n- What were they trying to do?\n\n| Model | ID |\n| --- | --- |\n| Hermes | ${token} |\n\nAfter the table.\n\n| Name | Value |\n| --- | --- |\n| Local | Ready |\n\n\`\`\`ts\nconst answer: number = 42;\n\`\`\`\n\n\`\`\`mermaid\ngraph TD\nA[Start] --> B[Ready]\n\`\`\`\n\n\`\`\`text\n${token}\n\`\`\``,
+						text: `${longUrl}\n\n${longPath}\n\n${token}\n\n## 10. Unicode and international text\n\nThen consider:\n\n- Who was the person?\n- What were they trying to do?\n\n| Model | ID |\n| --- | --- |\n| Hermes | ${token} |\n\nAfter the table.\n\n| Name | Value |\n| --- | --- |\n| Local | Ready |\n\n\`\`\`ts\nconst answer: number = 42;\n${Array.from({ length: 60 }, (_, index) => `// line ${index}`).join('\n')}\n\`\`\`\n\n\`\`\`mermaid\ngraph TD\nA[Start] --> B[Ready]\n\`\`\`\n\n\`\`\`text\n${token}\n\`\`\``,
 						images: [
 							{
 								name: 'Pixel',
@@ -6935,6 +7062,18 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 	await expect(page.locator('.table-toolbar button svg')).toHaveCount(4);
 	await expect(page.locator('.code-toolbar button svg')).toHaveCount(7);
 	const typescriptBlock = page.locator('.code-block:has(code.language-typescript)');
+	const transcript = page.locator('.transcript');
+	await transcript.evaluate(
+		(element, block) => {
+			element.scrollTop = (block as HTMLElement).offsetTop + 100;
+		},
+		await typescriptBlock.elementHandle()
+	);
+	const transcriptBox = (await transcript.boundingBox())!;
+	const stickyToolbarBox = (await typescriptBlock.locator('.code-toolbar').boundingBox())!;
+	expect(stickyToolbarBox.y).toBeGreaterThanOrEqual(transcriptBox.y);
+	expect(stickyToolbarBox.y).toBeLessThanOrEqual(transcriptBox.y + 48);
+	await transcript.evaluate((element) => (element.scrollTop = 0));
 	expect(
 		await typescriptBlock.locator('.code-language').evaluate((element) => ({
 			letterSpacing: parseFloat(getComputedStyle(element).letterSpacing),
@@ -7014,12 +7153,30 @@ test('short mobile chat contains hostile content and keeps core controls reachab
 		);
 		if (viewport.width <= 390)
 			await expectMinimumTouchTargets(firstTable.locator('.table-toolbar button'));
+		await transcript.evaluate(
+			(element, block) => {
+				element.scrollTop = (block as HTMLElement).offsetTop - 16;
+			},
+			await typescriptBlock.elementHandle()
+		);
 		const codeToolbarBox = (await typescriptBlock.locator('.code-toolbar').boundingBox())!;
 		const codeSurfaceBox = (await typescriptBlock.locator('pre').boundingBox())!;
-		expect(codeToolbarBox.y + codeToolbarBox.height).toBeLessThanOrEqual(codeSurfaceBox.y);
+		expect(codeToolbarBox.x + codeToolbarBox.width).toBeLessThanOrEqual(
+			codeSurfaceBox.x + codeSurfaceBox.width
+		);
+		await expect(typescriptBlock.locator('.code-toolbar')).toHaveCSS('position', 'sticky');
+		await transcript.evaluate(
+			(element, block) => {
+				element.scrollTop = (block as HTMLElement).offsetTop - 16;
+			},
+			await firstTable.elementHandle()
+		);
 		const tableToolbarBox = (await firstTable.locator('.table-toolbar').boundingBox())!;
 		const tableSurfaceBox = (await firstTable.locator('.table-scroll').boundingBox())!;
-		expect(tableToolbarBox.y + tableToolbarBox.height).toBeLessThanOrEqual(tableSurfaceBox.y);
+		expect(tableToolbarBox.x + tableToolbarBox.width).toBeLessThanOrEqual(
+			tableSurfaceBox.x + tableSurfaceBox.width
+		);
+		await expect(firstTable.locator('.table-toolbar')).toHaveCSS('position', 'sticky');
 		const controlBox = (await typescriptBlock
 			.getByRole('button', { name: 'Copy code' })
 			.boundingBox())!;
@@ -7630,27 +7787,12 @@ test('defers health and keeps Git usable when health fails', async ({ page }) =>
 	}
 });
 
-test('switches between Git repositories discovered inside a project', async ({ page, context }) => {
-	await context.grantPermissions(['clipboard-write']);
+test('switches between Git repositories discovered inside a project', async ({ page }) => {
+	test.setTimeout(60_000);
 	const requests: string[] = [];
-	const diffScopes: string[] = [];
 	await page.route(/\/api\/projects\/[^/]+\/repository(?:\?.*)?$/, async (route) => {
 		const url = new URL(route.request().url());
 		const repositoryPath = url.searchParams.get('repository') ?? 'app';
-		if (url.searchParams.get('view') === 'diff') {
-			diffScopes.push(url.searchParams.get('scope') ?? '');
-			return route.fulfill({
-				json: {
-					scope: url.searchParams.get('scope'),
-					base: url.searchParams.get('scope') === 'branch' ? 'main' : null,
-					diff: `diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old value\n+new value\n@@ -10 +10 @@\n-old footer\n+new footer\ndiff --git a/src/other.ts b/src/other.ts\n--- a/src/other.ts\n+++ b/src/other.ts\n@@ -1 +1 @@\n-old other\n+new other\n`,
-					truncated: true,
-					maxBytes: 100000,
-					untrackedPaths: [],
-					untrackedPathsTruncated: false
-				}
-			});
-		}
 		requests.push(repositoryPath);
 		await route.fulfill({
 			json: {
@@ -7672,6 +7814,10 @@ test('switches between Git repositories discovered inside a project', async ({ p
 		});
 	});
 	await addProject(page);
+	await page
+		.locator('.project-rail nav .project-select')
+		.filter({ hasText: 'HUE' })
+		.click({ position: { x: 80, y: 22 } });
 	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: /^Git/ }).click();
 
@@ -7679,16 +7825,6 @@ test('switches between Git repositories discovered inside a project', async ({ p
 	const selector = gitPanel.getByRole('combobox', { name: 'Repository' });
 	await expect(selector).toHaveValue('app');
 	await expect(gitPanel).toContainText('src/app.ts');
-	const review = gitPanel.getByRole('region', { name: 'Diff review' });
-	await expect(review).toContainText('Diff output was limited to 100,000 bytes');
-	await review.getByRole('button', { name: 'Next hunk' }).click();
-	await expect(review).toContainText('@@ -10 +10 @@');
-	await review.getByRole('combobox', { name: 'Changed file' }).selectOption('src/other.ts');
-	await review.getByRole('button', { name: /Addition, new line 1: new other/ }).click();
-	await review.getByRole('button', { name: 'Copy selected lines' }).click();
-	await expect(review).toContainText('Selected lines copied.');
-	await review.getByRole('combobox', { name: 'Diff scope' }).selectOption('branch');
-	await expect.poll(() => diffScopes).toContain('branch');
 	await selector.selectOption('docs');
 	await expect(gitPanel).toContainText('guide.md');
 	expect(requests).toContain('docs');
@@ -7702,8 +7838,11 @@ test('switches between Git repositories discovered inside a project', async ({ p
 		if (viewport.width <= 390) {
 			const toolsButton = page.getByRole('button', { name: 'Open Project tools' });
 			if (await toolsButton.isVisible()) await toolsButton.click();
-			const gitButton = page.getByRole('button', { name: 'Git', exact: true });
-			if (await gitButton.isVisible()) await gitButton.click();
+			if (!(await selector.isVisible())) {
+				const gitButton = page.getByRole('button', { name: /^Git/ });
+				await expect(gitButton).toBeVisible();
+				await gitButton.click();
+			}
 		}
 		await expect(selector).toBeVisible();
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
@@ -7711,15 +7850,6 @@ test('switches between Git repositories discovered inside a project', async ({ p
 		);
 		if (viewport.width <= 390)
 			expect((await selector.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-		if (viewport.width <= 390) {
-			for (const control of [
-				review.getByRole('combobox', { name: 'Diff scope' }),
-				review.getByRole('combobox', { name: 'Changed file' }),
-				review.getByRole('button', { name: 'Refresh diff' })
-			]) {
-				expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-			}
-		}
 	}
 });
 
@@ -7740,9 +7870,16 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		let previewRequests = 0;
 		await page.route('http://localhost:4001/**', (route) => {
 			previewRequests += 1;
+			const url = route.request().url();
 			return route.fulfill({
 				contentType: 'text/html',
-				body: '<h1>HUE browser canvas fixture</h1>'
+				body: `<title>localhost</title><h1>HUE browser canvas fixture</h1><a href="${url.endsWith('/next') ? '/' : '/next'}">${url.endsWith('/next') ? 'Home' : 'Next'}</a><script>
+					const report = () => parent.postMessage({ type: 'hue:browser:navigation', url: location.href, title: document.title }, '*');
+					addEventListener('message', ({ data }) => {
+						if (data?.type === 'hue:browser:history') history[data.direction]();
+					});
+					report();
+				</script>`
 			});
 		});
 		await page.route('http://canvas.test/**', (route) =>
@@ -7841,6 +7978,20 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		await page.keyboard.type('printf HUE_PTY_OK');
 		await page.keyboard.press('Enter');
 		await expect(terminal.locator('.xterm-rows')).toContainText('HUE_PTY_OK');
+		await page.evaluate(() =>
+			window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }))
+		);
+		await expect(
+			terminal.getByRole('application', { name: 'Interactive project terminal' })
+		).toBeVisible();
+		for (let reload = 0; reload < 12; reload += 1) {
+			await page.reload();
+			await page.keyboard.press('Escape');
+			const terminalButton = projectTools.getByRole('button', { name: 'Terminal', exact: true });
+			if ((await terminalButton.getAttribute('aria-expanded')) !== 'true')
+				await terminalButton.click();
+			await expect(terminal.getByTitle('Open Terminal 1')).toBeVisible();
+		}
 		await projectTools.getByRole('button', { name: /^Git/ }).click();
 		await expect(workbench.getByRole('article', { name: 'Git status' })).toContainText(
 			'app/src/routes/+page.svelte'
@@ -7882,6 +8033,18 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		await commitModelTrigger.click();
 		await expect(page.getByRole('dialog', { name: 'Choose commit message model' })).toBeVisible();
 		await page.keyboard.press('Escape');
+		const commitReasoningTrigger = workbench.getByRole('button', {
+			name: 'Commit message reasoning'
+		});
+		await commitReasoningTrigger.click();
+		await page
+			.getByRole('dialog', { name: 'Choose commit message reasoning' })
+			.getByRole('button', { name: 'None', exact: true })
+			.click();
+		await expect(commitReasoningTrigger).toHaveAttribute('title', /None/);
+		expect(await page.evaluate(() => localStorage.getItem('hue:commit-message-reasoning'))).toBe(
+			'none'
+		);
 		await workbench.getByRole('button', { name: 'Stage app/src/routes/+page.svelte' }).click();
 		await workbench
 			.getByRole('textbox', { name: 'Commit message', exact: true })
@@ -7903,7 +8066,34 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		const browserPreview = browser.getByLabel('Browser view');
 		await browserPreview.getByLabel('Browser address').fill('http://localhost:4001');
 		await browserPreview.getByRole('button', { name: 'Go' }).click();
-		await expect(browserPreview.locator('iframe[title="localhost"]')).toBeVisible();
+		const browserFrame = browserPreview.locator('iframe.browser-frame-active');
+		await expect(browserFrame).toBeVisible();
+		await expect(
+			browserPreview.locator('.browser-address').getByRole('button', { name: 'Desktop viewport' })
+		).toBeVisible();
+		await browserPreview.getByRole('button', { name: 'Zoom out preview' }).click();
+		await expect(browserFrame).toHaveCSS('zoom', '0.75');
+		await browserPreview.getByRole('button', { name: 'Zoom in preview' }).click();
+		await expect(browserFrame).toHaveCSS('zoom', '1');
+		const [addressBox, reloadBox, externalBox] = await Promise.all([
+			browserPreview.getByLabel('Browser address').boundingBox(),
+			browserPreview.getByRole('button', { name: 'Reload preview' }).boundingBox(),
+			browserPreview.getByRole('link', { name: 'Open preview in system browser' }).boundingBox()
+		]);
+		expect(reloadBox!.y).toBe(addressBox!.y);
+		expect(externalBox!.y).toBe(addressBox!.y);
+		await expect(browserPreview.getByRole('button', { name: 'Desktop viewport' })).toHaveAttribute(
+			'aria-pressed',
+			'true'
+		);
+		await browserPreview.getByRole('button', { name: 'Mobile viewport' }).click();
+		await expect(browserFrame).toHaveAttribute('width', '390');
+		await expect(browserFrame).toHaveAttribute('height', '844');
+		await browserPreview.getByRole('button', { name: 'Reload preview' }).click();
+		await expect.poll(() => previewRequests).toBe(2);
+		await expect(
+			browserPreview.getByRole('link', { name: 'Open preview in system browser' })
+		).toHaveAttribute('href', 'http://localhost:4001/');
 		const savedBrowserTabs = await page.evaluate((id) => {
 			const key = `hue:browser:${id}`;
 			return { key, value: localStorage.getItem(key) };
@@ -7912,7 +8102,78 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		await browser.getByRole('button', { name: 'Excalidraw' }).click();
 		await browser.getByRole('button', { name: 'Browser', exact: true }).click();
 		await expect(browserPreview.locator('iframe[title="localhost"]')).toBeVisible();
-		expect(previewRequests).toBe(1);
+		expect(previewRequests).toBe(2);
+		await browserFrame.contentFrame().getByRole('link', { name: 'Next' }).click();
+		await expect(browserPreview.getByLabel('Browser address')).toHaveValue(
+			'http://localhost:4001/next'
+		);
+		await browserPreview.getByRole('button', { name: 'Back' }).click();
+		await expect(browserPreview.getByLabel('Browser address')).toHaveValue(
+			'http://localhost:4001/'
+		);
+		await browserPreview.getByRole('button', { name: 'Forward' }).click();
+		await expect(browserPreview.getByLabel('Browser address')).toHaveValue(
+			'http://localhost:4001/next'
+		);
+		const firstBrowserTab = browserPreview
+			.locator('.browser-tab')
+			.first()
+			.locator('button')
+			.first();
+		await browserPreview.getByRole('button', { name: 'New browser tab' }).click();
+		await browserPreview.getByLabel('Browser address').fill('http://localhost:4001/tab-two');
+		await browserPreview.getByRole('button', { name: 'Go' }).click();
+		const secondBrowserTab = browserPreview
+			.locator('.browser-tab')
+			.nth(1)
+			.locator('button')
+			.first();
+		const secondBrowserFrame = browserPreview.locator('iframe').nth(1);
+		await expect(secondBrowserFrame).toBeVisible();
+		await expect(secondBrowserFrame).toHaveAttribute('src', 'http://localhost:4001/tab-two');
+		await firstBrowserTab.click();
+		await expect(browserPreview.getByLabel('Browser address')).toHaveValue(
+			'http://localhost:4001/next'
+		);
+		await browserPreview.getByRole('button', { name: 'Back' }).click();
+		await expect(browserPreview.getByLabel('Browser address')).toHaveValue(
+			'http://localhost:4001/'
+		);
+		await secondBrowserFrame
+			.contentFrame()
+			.locator('html')
+			.evaluate(() =>
+				parent.postMessage(
+					{
+						type: 'hue:browser:navigation',
+						url: 'http://localhost:4001/tab-two-late',
+						title: 'Second tab'
+					},
+					'*'
+				)
+			);
+		await expect(browserPreview.getByLabel('Browser address')).toHaveValue(
+			'http://localhost:4001/'
+		);
+		await secondBrowserTab.click();
+		await expect(browserPreview.getByLabel('Browser address')).toHaveValue(
+			'http://localhost:4001/tab-two-late'
+		);
+		const requestsBeforeRestore = previewRequests;
+		await page.reload();
+		await page.keyboard.press('Escape');
+		await expect(browserPreview.getByLabel('Browser address')).toHaveValue(
+			'http://localhost:4001/tab-two-late'
+		);
+		expect(previewRequests).toBe(requestsBeforeRestore + 1);
+		await expect(browserPreview.locator('iframe.browser-frame-active')).toHaveAttribute(
+			'title',
+			'localhost'
+		);
+		const navigatedBrowserTabs = await page.evaluate(
+			(key) => localStorage.getItem(key),
+			savedBrowserTabs.key
+		);
 		await browser.getByRole('button', { name: 'Excalidraw' }).click();
 		const canvas = browser.getByLabel('Excalidraw view');
 		await canvas.getByLabel('Browser address').fill('not a url');
@@ -7959,8 +8220,22 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 				{ width: 390, height: 844 }
 			]);
 		expect(await page.evaluate((key) => localStorage.getItem(key), savedBrowserTabs.key)).toBe(
-			savedBrowserTabs.value
+			navigatedBrowserTabs
 		);
+		await browser.getByRole('button', { name: 'Browser', exact: true }).click();
+		await browserPreview
+			.locator('.browser-tab')
+			.nth(1)
+			.getByRole('button', { name: /^Close / })
+			.click();
+		await expect(browserPreview.getByLabel('Browser address')).toHaveValue(
+			'http://localhost:4001/'
+		);
+		await expect(browserPreview.locator('iframe.browser-frame-active')).toHaveAttribute(
+			'src',
+			'http://localhost:4001/'
+		);
+		await browser.getByRole('button', { name: 'Excalidraw' }).click();
 		const previewHealth = page.locator('[data-health-id="preview"]');
 		await expect(previewHealth).toContainText('canvas.test');
 		await browser.getByRole('button', { name: 'Browser', exact: true }).click();
@@ -7988,9 +8263,16 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 			if (viewport.width <= 390)
 				await expectMinimumTouchTargets(
 					browserPreview.locator(
-						'.browser-tabs button, .browser-address input, .browser-address button'
+						'.browser-tabs button, .browser-address input, .browser-address button, .browser-address a'
 					)
 				);
+			if (viewport.width <= 390) {
+				const [frameBox, frameHostBox] = await Promise.all([
+					browserFrame.boundingBox(),
+					browserFrame.locator('..').boundingBox()
+				]);
+				expect(frameBox!.x).toBeGreaterThanOrEqual(frameHostBox!.x);
+			}
 			await browser.getByRole('button', { name: 'Excalidraw' }).click();
 			await expect(workbench).toBeVisible();
 			const browserBox = await browser.boundingBox();

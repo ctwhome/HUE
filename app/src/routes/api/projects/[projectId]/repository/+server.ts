@@ -30,7 +30,11 @@ function repositoryResponse(
 			fileUrl:
 				change.fileUrl && repositoryPath !== '.'
 					? `${repositoryPath}/${change.fileUrl}`
-					: change.fileUrl
+					: change.fileUrl,
+			diffUrl:
+				change.diffUrl && repositoryPath !== '.'
+					? `${repositoryPath}/${change.diffUrl}`
+					: change.diffUrl
 		})),
 		repositoryPath,
 		repositories
@@ -76,6 +80,12 @@ export function _commitModelSelection(provider?: string, model?: string): string
 	return commitModelId(provider, model);
 }
 
+export function _commitReasoningSelection(value?: string): 'default' | 'none' {
+	if (value === undefined || value === 'default') return 'default';
+	if (value === 'none') return value;
+	throw new Error('Invalid commit reasoning');
+}
+
 export const GET: RequestHandler = async ({ params, url }) => {
 	try {
 		const project = await authoritativeProject(params.projectId);
@@ -111,6 +121,7 @@ export const POST: RequestHandler = async ({ params, request, url, getClientAddr
 					action: 'generateCommitMessage';
 					provider?: string;
 					model?: string;
+					reasoning?: string;
 					repository?: string;
 					operationId?: string;
 			  };
@@ -131,7 +142,8 @@ export const POST: RequestHandler = async ({ params, request, url, getClientAddr
 						repositoryRoot,
 						diff: projectStagedDiff(repositoryRoot),
 						modelId: _commitModelSelection(operation.provider, operation.model),
-						operationId: operation.operationId
+						operationId: operation.operationId,
+						reasoning: _commitReasoningSelection(operation.reasoning)
 					},
 					state
 				)

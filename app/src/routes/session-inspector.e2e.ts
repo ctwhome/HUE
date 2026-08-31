@@ -160,6 +160,18 @@ test('permission consequences and the Session inspector fit the browser matrix',
 			contentType: 'image/png'
 		});
 		await inspector.getByRole('button', { name: 'Close Session inspector' }).click();
+		const taskButton = page.getByRole('button', { name: 'Tasks', exact: true });
+		await expect(taskButton).toContainText('2 - Run checks');
+		await taskButton.click();
+		const taskPopover = page.locator('.current-task-entries');
+		await expect(taskPopover).toContainText('Inspect changes');
+		const taskPopoverBox = (await taskPopover.boundingBox())!;
+		expect(taskPopoverBox.width).toBeLessThanOrEqual(viewport.width);
+		await testInfo.attach(`task-popover-${viewport.width}x${viewport.height}`, {
+			body: await page.screenshot(),
+			contentType: 'image/png'
+		});
+		await taskButton.click();
 		if (viewport.width <= 390) {
 			const tools = page.getByRole('button', { name: 'Open Project tools' });
 			const settings = page.getByRole('button', { name: 'Session settings for Review control' });
@@ -168,13 +180,14 @@ test('permission consequences and the Session inspector fit the browser matrix',
 				expect(controlBox.width).toBeGreaterThanOrEqual(44);
 				expect(controlBox.height).toBeGreaterThanOrEqual(44);
 			}
-			const moreBox = (await page
-				.getByRole('button', { name: 'More session options' })
+			const composerBox = (await page.locator('.composer').boundingBox())!;
+			const statusBox = (await page.locator('.composer-delivery').boundingBox())!;
+			expect(statusBox.y + statusBox.height).toBeLessThan(composerBox.y);
+			const taskBox = (await page
+				.getByRole('button', { name: 'Tasks', exact: true })
 				.boundingBox())!;
-			for (const activity of ['Thinking', 'Tasks']) {
-				const activityBox = (await page.getByRole('button', { name: activity }).boundingBox())!;
-				expect(Math.abs(activityBox.y - moreBox.y)).toBeLessThanOrEqual(1);
-			}
+			expect(taskBox.height).toBeGreaterThanOrEqual(44);
+			expect(taskBox.y + taskBox.height).toBeLessThan(composerBox.y);
 			if (viewport.width === 390) {
 				await tools.click();
 				await expect(page.getByRole('navigation', { name: 'Project tools' })).toBeVisible();

@@ -38,12 +38,7 @@ export const PUT: RequestHandler = async ({ params, request, url, getClientAddre
 		const profile = url.searchParams.get('profile') ?? '';
 		const job =
 			typeof input.enabled === 'boolean'
-				? await setExternalHermesCronEnabled(
-						services().admin,
-						profile,
-						params.jobId,
-						input.enabled
-					)
+				? await setExternalHermesCronEnabled(services().admin, profile, params.jobId, input.enabled)
 				: await updateExternalHermesCron(
 						services().admin,
 						profile,

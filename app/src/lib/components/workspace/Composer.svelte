@@ -325,10 +325,35 @@
 	}}
 />
 
+{#snippet approvalPicker()}
+	{#if runtime.modes}<SessionOptionPicker
+			options={runtime.modes.availableModes.map((mode) => ({
+				value: mode.id,
+				name: mode.name,
+				description: `${mode.description ?? 'Choose how Hermes handles file edits.'} Other permission requests still ask.`
+			}))}
+			value={runtime.modes.currentModeId}
+			ariaLabel="Edit approvals"
+			kind="mode"
+			showLabel={true}
+			disabled={busy || runtimeChanging || !ready}
+			onselect={(value) => onruntime('modeId', value)}
+		/>{:else}<button
+			type="button"
+			class="context-chip session-option-trigger inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-lg px-1.5 text-xs text-muted-foreground sm:min-h-8 sm:min-w-8"
+			aria-label="Edit approvals"
+			title="Edit approvals are unavailable until Hermes starts"
+			disabled
+		>
+			<CircleHelp width={16} height={16} aria-hidden="true" />
+			<span class="max-w-24 truncate">Unavailable</span>
+		</button>{/if}
+{/snippet}
+
 <form
 	class="composer sticky bottom-0 mx-[clamp(10px,2vw,40px)] mb-4 rounded-lg border border-border bg-card/95 px-2.5 py-2 shadow-lg backdrop-blur-xl"
 	class:dragging={draggingImages}
-	class:mt-8={Boolean(activityStatus)}
+	class:mt-8={Boolean(activityStatus || plan.length)}
 	use:reserveComposerSpace
 	{onsubmit}
 	ondragover={(event) => {
@@ -552,6 +577,9 @@
 				aria-hidden="true"
 			/>{activityStatus.includes('unknown') ? 'Delivery status unknown' : activityStatus}</button
 		>{/if}
+	<div class="task-activity">
+		<CurrentTask {plan} bind:open={tasksOpen} onopen={() => (thinkingOpen = false)} />
+	</div>
 	<div class="composer-input">
 		<textarea
 			bind:this={composerElement}
@@ -594,7 +622,6 @@
 				{busy}
 				bind:open={thinkingOpen}
 			/>
-			<CurrentTask {plan} bind:open={tasksOpen} onopen={() => (thinkingOpen = false)} />
 		</div>
 		<div
 			bind:this={optionsMenu}
@@ -671,28 +698,9 @@
 				<BookOpenText width={20} height={20} aria-hidden="true" />
 				<span class="mobile-option-label">Prompt library</span></button
 			>
-			{#if runtime.modes}<SessionOptionPicker
-					options={runtime.modes.availableModes.map((mode) => ({
-						value: mode.id,
-						name: mode.name,
-						description: `${mode.description ?? 'Choose how Hermes handles file edits.'} Other permission requests still ask.`
-					}))}
-					value={runtime.modes.currentModeId}
-					ariaLabel="Edit approvals"
-					kind="mode"
-					showLabel={true}
-					disabled={runtimeChanging || busy || !ready}
-					onselect={(value) => onruntime('modeId', value)}
-				/>{:else}<button
-					type="button"
-					class="context-chip session-option-trigger inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-lg px-1.5 text-xs text-muted-foreground sm:min-h-8 sm:min-w-8"
-					aria-label="Edit approvals"
-					title="Edit approvals are unavailable until Hermes starts"
-					disabled
-				>
-					<CircleHelp width={16} height={16} aria-hidden="true" />
-					<span class="max-w-24 truncate">Unavailable</span>
-				</button>{/if}
+			<div class="mobile-approval-option">
+				{@render approvalPicker()}
+			</div>
 			{#if reasoning}<div class="mobile-reasoning-option">
 					<SessionOptionPicker
 						options={flattenOptions(reasoning.options)}
@@ -700,7 +708,7 @@
 						ariaLabel="Reasoning"
 						kind="reasoning"
 						showLabel={true}
-						disabled={runtimeChanging || busy || !ready}
+						disabled={busy || runtimeChanging || !ready}
 						onselect={(value) => onconfig(reasoning!.id, value)}
 					/>
 				</div>{/if}
@@ -709,6 +717,9 @@
 			class="composer-context ml-auto flex min-w-0 items-center gap-1"
 			aria-label="Hermes session context"
 		>
+			<div class="desktop-context-option">
+				{@render approvalPicker()}
+			</div>
 			{#if reasoning}<div class="desktop-context-option">
 					<SessionOptionPicker
 						options={flattenOptions(reasoning.options)}
@@ -716,14 +727,14 @@
 						ariaLabel="Reasoning"
 						kind="reasoning"
 						showLabel={true}
-						disabled={runtimeChanging || busy || !ready}
+						disabled={busy || runtimeChanging || !ready}
 						onselect={(value) => onconfig(reasoning!.id, value)}
 					/>
 				</div>{/if}
 			{#if runtime.models}<ModelPicker
 					models={runtime.models.availableModels}
 					value={runtime.models.currentModelId}
-					disabled={runtimeChanging || busy || !ready}
+					disabled={busy || runtimeChanging || !ready}
 					onselect={onmodel}
 				/>{/if}
 			<SessionOptionPicker

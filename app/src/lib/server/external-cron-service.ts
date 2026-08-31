@@ -53,7 +53,9 @@ export class ExternalCronService {
 			return;
 		}
 		const jobs = await listExternalHermesCron(this.dependencies.transport);
-		const job = jobs.find((candidate) => candidate.profile === profile && candidate.jobId === jobId);
+		const job = jobs.find(
+			(candidate) => candidate.profile === profile && candidate.jobId === jobId
+		);
 		if (!job) throw new Error('Hermes cron job not found');
 		const runs = await listExternalHermesCronRuns(this.dependencies.transport, profile, jobId);
 		const created = await this.record(job, runs, false);
@@ -65,11 +67,7 @@ export class ExternalCronService {
 		const histories = await Promise.all(
 			jobs.map(async (job) => ({
 				job,
-				runs: await listExternalHermesCronRuns(
-					this.dependencies.transport,
-					job.profile,
-					job.jobId
-				)
+				runs: await listExternalHermesCronRuns(this.dependencies.transport, job.profile, job.jobId)
 			}))
 		);
 		const baseline = !this.dependencies.store.externalCronInitialized();

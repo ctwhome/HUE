@@ -5,24 +5,26 @@ type PreviewRequest = {
 	path: string;
 	generation: number;
 	controller: AbortController;
-	result: Promise<FilePreview>;
+	result: Promise<FilePreview | null>;
 };
 
 export function createPreviewRequests() {
 	let generation = 0;
 	let controller: AbortController | null = null;
 	return {
-		begin(projectId: string, path: string): PreviewRequest {
+		begin(projectId: string, path: string, currentFile = true): PreviewRequest {
 			controller?.abort();
 			controller = new AbortController();
 			return {
 				path,
 				generation: ++generation,
 				controller,
-				result: api<FilePreview>(
-					`/api/projects/${projectId}/files?mode=preview&path=${encodeURIComponent(path)}`,
-					{ signal: controller.signal }
-				)
+				result: currentFile
+					? api<FilePreview>(
+							`/api/projects/${projectId}/files?mode=preview&path=${encodeURIComponent(path)}`,
+							{ signal: controller.signal }
+						)
+					: Promise.resolve(null)
 			};
 		},
 		isCurrent(request: PreviewRequest, selectedPath: string) {

@@ -83,6 +83,9 @@ export async function getSession(projectId: string | null, { params, url }: Sess
 				transcript: [],
 				transcriptError: cause instanceof Error ? cause.message : String(cause),
 				workMode: session.workMode,
+				commands: services().runtime.getAvailableCommands(params.sessionId),
+				runtime: services().runtime.getSessionState(params.sessionId),
+				branch: scope.project ? projectBranch(scope.project.primary_path) : null,
 				...snapshot
 			});
 		}

@@ -387,7 +387,7 @@
 		display: inline;
 	}
 	.workflow-card button,
-	.workflow-form input,
+	.workflow-form input:not([type='checkbox']),
 	.workflow-form textarea,
 	.workflow-form button,
 	.composer button,
@@ -410,13 +410,6 @@
 		grid-column: 1;
 		width: 44px;
 		height: 44px;
-	}
-	.composer-activity {
-		grid-column: 2;
-		grid-row: 1;
-	}
-	.composer-toolbar:has(.current-task) {
-		grid-template-columns: 44px auto minmax(0, 1fr) 44px;
 	}
 	.composer-options-menu {
 		display: none;
@@ -447,6 +440,7 @@
 	}
 	.composer-options-menu > .attach-button,
 	.composer-options-menu > .session-option-trigger,
+	.mobile-approval-option > .session-option-trigger,
 	.mobile-reasoning-option > .session-option-trigger {
 		display: flex;
 		width: 100%;
@@ -457,6 +451,7 @@
 	}
 	.composer-options-menu > .session-option-trigger > span,
 	.mobile-option-label,
+	.mobile-approval-option,
 	.mobile-reasoning-option {
 		display: initial;
 	}
@@ -471,9 +466,6 @@
 		width: 100%;
 		margin-left: 0;
 		justify-content: flex-start;
-	}
-	.composer-toolbar:has(.current-task) .composer-context {
-		grid-column: 3;
 	}
 	.composer-context .desktop-context-option {
 		display: none;
@@ -495,9 +487,6 @@
 		grid-row: 1;
 		width: 44px;
 		height: 44px;
-	}
-	.composer-toolbar:has(.current-task) > .composer-send {
-		grid-column: 4;
 	}
 	.composer-toolbar > .retry-message {
 		grid-column: 1 / -1;

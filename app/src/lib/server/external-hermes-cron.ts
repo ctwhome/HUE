@@ -204,9 +204,7 @@ function detail(value: unknown, profile: string): ExternalHermesCronDetail {
 		lastRunAt: timestamp(job.last_run_at),
 		lastStatus: rawString(job.last_status, 64),
 		prompt:
-			typeof job.prompt === 'string' &&
-			job.prompt.length <= 100_000 &&
-			!job.prompt.includes('\0')
+			typeof job.prompt === 'string' && job.prompt.length <= 100_000 && !job.prompt.includes('\0')
 				? job.prompt
 				: '',
 		deliver: rawString(job.deliver, 1_000) ?? 'local',

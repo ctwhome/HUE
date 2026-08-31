@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import FilesPanel from './workbench/FilesPanel.svelte';
 	import type { DirtyGuard } from './workspace/dirty-guard';
+	import type { FileRequest } from './workbench/file-types';
 
 	let {
 		projectId,
@@ -12,7 +13,7 @@
 	}: {
 		projectId: string;
 		open: boolean;
-		fileRequest: { path: string; id: string } | null;
+		fileRequest: FileRequest | null;
 		dirtyGuard: DirtyGuard;
 		onclose: () => void;
 	} = $props();

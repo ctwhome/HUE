@@ -1,14 +1,36 @@
 <script lang="ts">
 	import type { Component } from 'svelte';
 	import { onMount } from 'svelte';
+	import ArrowLeft from '~icons/lucide/arrow-left';
+	import ArrowRight from '~icons/lucide/arrow-right';
 	import ExternalLink from '~icons/lucide/external-link';
+	import Monitor from '~icons/lucide/monitor';
 	import Plus from '~icons/lucide/plus';
+	import RefreshCw from '~icons/lucide/refresh-cw';
+	import Smartphone from '~icons/lucide/smartphone';
+	import Tablet from '~icons/lucide/tablet';
 	import X from '~icons/lucide/x';
+	import ZoomIn from '~icons/lucide/zoom-in';
+	import ZoomOut from '~icons/lucide/zoom-out';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
-	import { normalizeBrowserUrl, restoreBrowserTabId, restoreBrowserView } from './browser-canvas';
+	import {
+		browserDeviceSizes,
+		normalizeBrowserUrl,
+		restoreBrowserTabId,
+		restoreBrowserView,
+		type BrowserDevice
+	} from './browser-canvas';
 
-	type BrowserTab = { id: string; title: string; url: string; draft: string };
+	type BrowserTab = {
+		id: string;
+		title: string;
+		url: string;
+		draft: string;
+		source: string;
+		reload: number;
+		mounted: boolean;
+	};
 	type View = 'browser' | 'excalidraw';
 
 	let {
@@ -24,8 +46,12 @@
 	let browserTabs = $state<BrowserTab[]>([]);
 	let activeBrowserTabId = $state('');
 	let browserError = $state('');
+	let browserDevice = $state<BrowserDevice>('desktop');
+	let browserZoom = $state(1);
 	let excalidrawUrl = $state('');
+	const browserFrames = new Map<string, HTMLIFrameElement>();
 	let currentBrowserTab = $derived(activeBrowserTab());
+	let browserSize = $derived(browserDeviceSizes[browserDevice]);
 	const panel =
 		'workbench-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card';
 
@@ -36,7 +62,10 @@
 		id: crypto.randomUUID(),
 		title: 'New tab',
 		url: '',
-		draft: ''
+		draft: '',
+		source: '',
+		reload: 0,
+		mounted: true
 	});
 	function restoreBrowserTabs() {
 		try {
@@ -50,7 +79,7 @@
 					return [];
 				try {
 					const url = tab.url ? normalizeBrowserUrl(tab.url) : '';
-					return [{ ...tab, url, draft: url }];
+					return [{ ...tab, url, draft: url, source: url, reload: 0, mounted: false }];
 				} catch {
 					return [];
 				}
@@ -60,6 +89,9 @@
 		}
 		if (!browserTabs.length) browserTabs = [newBrowserTab()];
 		activeBrowserTabId = restoreBrowserTabId(browserTabs, localStorage.getItem(activeStorageKey()));
+		browserTabs = browserTabs.map((tab) =>
+			tab.id === activeBrowserTabId ? { ...tab, mounted: true } : tab
+		);
 		view = restoreBrowserView(localStorage.getItem(viewStorageKey()));
 		excalidrawMounted = view === 'excalidraw';
 		if (excalidrawMounted) void loadExcalidraw();
@@ -118,7 +150,15 @@
 		}
 		browserTabs = browserTabs.map((item) =>
 			item.id === tab.id
-				? { ...item, title: url.hostname || 'Browser', url: url.href, draft: url.href }
+				? {
+						...item,
+						title: url.hostname || 'Browser',
+						url: url.href,
+						draft: url.href,
+						source: url.href,
+						reload: item.reload + 1,
+						mounted: true
+					}
 				: item
 		);
 		browserError = '';
@@ -135,19 +175,108 @@
 	}
 	function closeBrowserTab(event: MouseEvent | KeyboardEvent, id: string) {
 		event.stopPropagation();
+		const closingActiveTab = activeBrowserTabId === id;
 		const remaining = browserTabs.filter((tab) => tab.id !== id);
 		browserTabs = remaining.length ? remaining : [newBrowserTab()];
-		if (activeBrowserTabId === id) activeBrowserTabId = browserTabs[0].id;
+		if (closingActiveTab) {
+			activeBrowserTabId = browserTabs[0].id;
+			browserTabs = browserTabs.map((tab, index) =>
+				index === 0 ? { ...tab, mounted: true } : tab
+			);
+		}
 		saveBrowserTabs();
 		onpreviewchange(activeBrowserTab()?.url ?? '');
 	}
 	function selectBrowserTab(tab: BrowserTab) {
 		activeBrowserTabId = tab.id;
+		if (!tab.mounted)
+			browserTabs = browserTabs.map((item) =>
+				item.id === tab.id ? { ...item, mounted: true } : item
+			);
 		saveBrowserTabs();
 		onpreviewchange(tab.url);
 	}
+	function reloadBrowser() {
+		if (!currentBrowserTab?.url) return;
+		browserTabs = browserTabs.map((tab) =>
+			tab.id === activeBrowserTabId ? { ...tab, source: tab.url, reload: tab.reload + 1 } : tab
+		);
+	}
+	function syncBrowserNavigation(tabId: string, value: string, title?: string) {
+		const tab = browserTabs.find(({ id }) => id === tabId);
+		if (!tab) return;
+		let url: URL;
+		try {
+			url = new URL(normalizeBrowserUrl(value));
+		} catch {
+			return;
+		}
+		browserTabs = browserTabs.map((item) =>
+			item.id === tabId
+				? { ...item, title: title || url.hostname || 'Browser', url: url.href, draft: url.href }
+				: item
+		);
+		saveBrowserTabs();
+		if (tabId === activeBrowserTabId && view === 'browser') onpreviewchange(url.href);
+	}
+	function trackBrowserFrame(node: HTMLIFrameElement, tabId: string) {
+		browserFrames.set(tabId, node);
+		return {
+			destroy() {
+				if (browserFrames.get(tabId) === node) browserFrames.delete(tabId);
+			}
+		};
+	}
+	function syncBrowserFrame(event: Event, tabId: string) {
+		const frame = event.currentTarget as HTMLIFrameElement;
+		if (browserFrames.get(tabId) !== frame) return;
+		try {
+			if (frame.contentWindow)
+				syncBrowserNavigation(
+					tabId,
+					frame.contentWindow.location.href,
+					frame.contentDocument?.title
+				);
+		} catch {
+			// Cross-origin previews can report navigation through hue:browser:navigation.
+		}
+	}
+	function navigateBrowserHistory(direction: 'back' | 'forward') {
+		const frameWindow = browserFrames.get(activeBrowserTabId)?.contentWindow;
+		if (!frameWindow || !currentBrowserTab?.url) return;
+		if (new URL(currentBrowserTab.url).origin === window.location.origin) {
+			frameWindow.history[direction]();
+			return;
+		}
+		frameWindow.postMessage(
+			{ type: 'hue:browser:history', direction },
+			new URL(currentBrowserTab.url).origin
+		);
+	}
 
-	onMount(restoreBrowserTabs);
+	onMount(() => {
+		restoreBrowserTabs();
+		const receiveNavigation = (event: MessageEvent) => {
+			if (event.data?.type !== 'hue:browser:navigation') return;
+			const tabId = [...browserFrames].find(
+				([, frame]) => event.source === frame.contentWindow
+			)?.[0];
+			if (!tabId) return;
+			if (typeof event.data.url !== 'string') return;
+			try {
+				if (new URL(event.data.url).origin !== event.origin) return;
+			} catch {
+				return;
+			}
+			syncBrowserNavigation(
+				tabId,
+				event.data.url,
+				typeof event.data.title === 'string' ? event.data.title : undefined
+			);
+		};
+		window.addEventListener('message', receiveNavigation);
+		return () => window.removeEventListener('message', receiveNavigation);
+	});
 </script>
 
 <article class={`${panel} browser-panel`} aria-label="Project browser">
@@ -218,23 +347,100 @@
 				>
 			</div>
 			<form
-				class="browser-address grid grid-cols-[minmax(0,1fr)_auto_auto] gap-1.5 p-1.5"
+				class="browser-address grid items-center gap-1.5 overflow-x-auto p-1.5"
+				style="grid-template-columns: auto auto minmax(8rem, 1fr) auto auto auto auto auto"
 				onsubmit={navigateBrowser}
 			>
+				<Button
+					size="icon"
+					variant="ghost"
+					disabled={!currentBrowserTab?.url}
+					aria-label="Back"
+					title="Back"
+					onclick={() => navigateBrowserHistory('back')}
+					><ArrowLeft width={15} height={15} aria-hidden="true" /></Button
+				>
+				<Button
+					size="icon"
+					variant="ghost"
+					disabled={!currentBrowserTab?.url}
+					aria-label="Forward"
+					title="Forward"
+					onclick={() => navigateBrowserHistory('forward')}
+					><ArrowRight width={15} height={15} aria-hidden="true" /></Button
+				>
 				<Input
-					class="h-8 text-xs"
+					class="h-8 min-w-32 text-xs"
 					value={currentBrowserTab?.draft ?? ''}
 					oninput={updateBrowserDraft}
 					aria-label="Browser address"
 					placeholder="http://localhost:5173"
 				/>
 				<Button size="sm" type="submit" title="Open address">Go</Button>
+				<div class="browser-preset-actions" role="group" aria-label="Preview viewport">
+					<Button
+						size="icon"
+						variant={browserDevice === 'desktop' ? 'secondary' : 'ghost'}
+						aria-label="Desktop viewport"
+						aria-pressed={browserDevice === 'desktop'}
+						title="Desktop viewport"
+						onclick={() => (browserDevice = 'desktop')}
+						><Monitor width={15} height={15} aria-hidden="true" /></Button
+					>
+					<Button
+						size="icon"
+						variant={browserDevice === 'tablet' ? 'secondary' : 'ghost'}
+						aria-label="Tablet viewport"
+						aria-pressed={browserDevice === 'tablet'}
+						title="Tablet viewport (768 × 1024)"
+						onclick={() => (browserDevice = 'tablet')}
+						><Tablet width={15} height={15} aria-hidden="true" /></Button
+					>
+					<Button
+						size="icon"
+						variant={browserDevice === 'mobile' ? 'secondary' : 'ghost'}
+						aria-label="Mobile viewport"
+						aria-pressed={browserDevice === 'mobile'}
+						title="Mobile viewport (390 × 844)"
+						onclick={() => (browserDevice = 'mobile')}
+						><Smartphone width={15} height={15} aria-hidden="true" /></Button
+					>
+				</div>
+				<div class="browser-preset-actions" role="group" aria-label="Preview zoom">
+					<Button
+						size="icon"
+						variant="ghost"
+						disabled={browserZoom <= 0.5}
+						aria-label="Zoom out preview"
+						title={`Zoom out preview (${browserZoom * 100}%)`}
+						onclick={() => (browserZoom -= 0.25)}
+						><ZoomOut width={15} height={15} aria-hidden="true" /></Button
+					>
+					<Button
+						size="icon"
+						variant="ghost"
+						disabled={browserZoom >= 1.5}
+						aria-label="Zoom in preview"
+						title={`Zoom in preview (${browserZoom * 100}%)`}
+						onclick={() => (browserZoom += 0.25)}
+						><ZoomIn width={15} height={15} aria-hidden="true" /></Button
+					>
+				</div>
+				<Button
+					size="icon"
+					variant="ghost"
+					disabled={!currentBrowserTab?.url}
+					aria-label="Reload preview"
+					title="Reload preview"
+					onclick={reloadBrowser}><RefreshCw width={15} height={15} aria-hidden="true" /></Button
+				>
 				{#if currentBrowserTab?.url}<a
 						class="grid h-8 min-w-8 place-items-center rounded-md border border-border"
 						href={currentBrowserTab.url}
 						target="_blank"
 						rel="noopener noreferrer"
-						title="Open browser tab externally"
+						aria-label="Open preview in system browser"
+						title="Open preview in system browser"
 						><ExternalLink width={15} height={15} aria-hidden="true" /></a
 					>{/if}
 			</form>
@@ -242,12 +448,31 @@
 					>{browserError}</small
 				>{/if}
 		</header>
-		{#if currentBrowserTab?.url}<iframe
-				class="min-h-0 w-full flex-1 border-0 bg-white"
-				title={currentBrowserTab.title}
-				src={currentBrowserTab.url}
-				sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
-			></iframe>{:else}<div
+		<div
+			class="min-h-0 min-w-0 flex-1 justify-center overflow-auto bg-muted/20"
+			class:flex={Boolean(currentBrowserTab?.url)}
+			class:hidden={!currentBrowserTab?.url}
+		>
+			{#each browserTabs.filter(({ mounted, url }) => mounted && url) as tab (tab.id)}
+				{#key tab.reload}<iframe
+						use:trackBrowserFrame={tab.id}
+						class="max-w-none shrink-0 border-0 bg-white"
+						class:browser-frame-active={tab.id === activeBrowserTabId}
+						class:hidden={tab.id !== activeBrowserTabId}
+						class:h-full={browserDevice === 'desktop'}
+						class:w-full={browserDevice === 'desktop'}
+						width={browserSize.width}
+						height={browserSize.height}
+						style:zoom={browserZoom}
+						title={tab.title}
+						src={tab.source}
+						aria-hidden={tab.id !== activeBrowserTabId}
+						onload={(event) => syncBrowserFrame(event, tab.id)}
+						sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
+					></iframe>{/key}
+			{/each}
+		</div>
+		{#if !currentBrowserTab?.url}<div
 				class="panel-empty grid min-h-32 place-content-center gap-1.5 p-5 text-center text-xs text-muted-foreground"
 			>
 				<strong class="text-foreground">Preview a local app or web page</strong><span

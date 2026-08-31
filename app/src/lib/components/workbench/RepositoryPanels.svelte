@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import ChevronDown from '~icons/lucide/chevron-down';
 	import ChevronRight from '~icons/lucide/chevron-right';
+	import FolderGit2 from '~icons/lucide/folder-git-2';
 	import GitBranch from '~icons/lucide/git-branch';
 	import GitFork from '~icons/lucide/git-fork';
 	import Minus from '~icons/lucide/minus';
@@ -11,10 +12,10 @@
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
 	import ModelPicker from '../ModelPicker.svelte';
+	import SessionOptionPicker from '../SessionOptionPicker.svelte';
 	import { api } from './api';
 	import GitHubPanels from './GitHubPanels.svelte';
 	import GitPanelResizer from './GitPanelResizer.svelte';
-	import RepositoryDiff from './RepositoryDiff.svelte';
 	import {
 		defaultRepositoryLayout,
 		readRepositoryLayout,
@@ -22,21 +23,19 @@
 		saveRepositorySelection,
 		toggleRepositoryPanel
 	} from './repository-layout';
-	import type { ReviewContextSeed } from '$lib/message-content';
 	import type { CommitModelsResponse, GitHubItems, Repository } from './repository-diff';
+	import type { FileOpenRequest } from './file-types';
 
 	let {
 		projectId,
 		onbranch,
 		onopenfile,
-		onchanges,
-		onreviewcontext
+		onchanges
 	}: {
 		projectId: string;
 		onbranch: (branch: string | null) => void;
-		onopenfile: (path: string) => void;
+		onopenfile: (request: FileOpenRequest) => void;
 		onchanges: (count: number) => void;
-		onreviewcontext?: (context: ReviewContextSeed) => void;
 	} = $props();
 	let repository = $state<Repository | null>(null);
 	let repositoryLoading = $state(false);
@@ -51,6 +50,11 @@
 	let commitMessage = $state('');
 	let layout = $state(defaultRepositoryLayout());
 	let commitModel = $state('openai-codex:gpt-5.6-luna');
+	let commitReasoning = $state<'default' | 'none'>('default');
+	const commitReasoningOptions = [
+		{ value: 'default', name: 'Default' },
+		{ value: 'none', name: 'None' }
+	];
 	let commitModels = $state([
 		{ modelId: 'openai-codex:gpt-5.6-luna', name: 'Codex · GPT-5.6 Luna' }
 	]);
@@ -120,8 +124,17 @@
 		repository?.changes.filter(({ index }) => index !== ' ' && index !== '?') ?? [];
 	const unstagedChanges = () =>
 		repository?.changes.filter(({ index, worktree }) => index === '?' || worktree !== ' ') ?? [];
-	function openValidated(change: Repository['changes'][number]) {
-		if (change.fileUrl) onopenfile(change.fileUrl);
+	function openValidated(change: Repository['changes'][number], scope: 'staged' | 'unstaged') {
+		if (!change.fileUrl && !change.diffUrl) return;
+		onopenfile({
+			path: change.fileUrl ?? change.diffUrl!,
+			diff: {
+				scope,
+				repository: repository?.repositoryPath ?? layout.selectedRepository ?? '.',
+				file: change.path,
+				currentFile: Boolean(change.fileUrl)
+			}
+		});
 	}
 	async function mutateRepository(operation: Record<string, string>) {
 		if (repositoryBusy) return false;
@@ -174,6 +187,7 @@
 					repository: layout.selectedRepository,
 					provider: commitModel.slice(0, separator),
 					model: commitModel.slice(separator + 1),
+					reasoning: commitReasoning,
 					operationId: commitOperationId
 				})
 			});
@@ -223,9 +237,14 @@
 		commitModel = modelId;
 		localStorage.setItem('hue:commit-message-model', modelId);
 	}
+	function selectCommitReasoning(value: string) {
+		commitReasoning = value === 'none' ? 'none' : 'default';
+		localStorage.setItem('hue:commit-message-reasoning', commitReasoning);
+	}
 	onMount(() => {
 		mounted = true;
 		commitModel = localStorage.getItem('hue:commit-message-model') || commitModel;
+		selectCommitReasoning(localStorage.getItem('hue:commit-message-reasoning') ?? 'default');
 		layout = readRepositoryLayout(localStorage, projectId);
 		void loadRepository();
 		void loadCommitModels();
@@ -279,7 +298,15 @@
 				aria-label="Refresh Git status"
 				disabled={repositoryBusy}
 				onclick={refreshRepository}><RefreshCw width={15} height={15} aria-hidden="true" /></Button
-			>
+			>{#each repositoryLinks().slice(0, 1) as link}<a
+					class="grid size-8 shrink-0 place-items-center rounded-md border border-border bg-background hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring max-[700px]:size-11"
+					href={link.url}
+					target="_blank"
+					rel="noopener noreferrer"
+					title={`Open ${link.label}`}
+					aria-label={`Open ${link.label}`}
+					><FolderGit2 width={15} height={15} aria-hidden="true" /></a
+				>{/each}
 		</div>
 		<button
 			type="button"
@@ -310,23 +337,6 @@
 					>
 				</div>
 			{:else if repository?.isRepository}
-				<nav class="repository-links flex flex-wrap gap-1 pb-2" aria-label="Repository options">
-					{#each repositoryLinks().slice(0, 1) as link}<a
-							class="rounded-md border border-border px-2 py-1.5 text-[0.68rem]"
-							href={link.url}
-							target="_blank"
-							rel="noopener noreferrer"
-							title={`Open ${link.label}`}>{link.label}</a
-						>{/each}
-				</nav>
-				<RepositoryDiff
-					{projectId}
-					repositoryPath={layout.selectedRepository}
-					revision={repository.changes
-						.map(({ path, index, worktree }) => `${path}:${index}${worktree}`)
-						.join('|')}
-					onselect={onreviewcontext}
-				/>
 				<section class="git-section mt-2" aria-label="Staged changes">
 					<header class="flex min-h-8 items-center gap-2 px-1">
 						<strong class="text-xs">Staged changes</strong><span
@@ -349,10 +359,11 @@
 									disabled={repositoryBusy}
 									onclick={() => mutateRepository({ action: 'unstage', path: change.path })}
 									><Minus width={14} height={14} aria-hidden="true" /></button
-								><code class="text-amber-300">{change.index}</code>{#if change.fileUrl}<button
+								><code class="text-amber-300">{change.index}</code
+								>{#if change.fileUrl || change.diffUrl}<button
 										class="overflow-hidden text-left text-ellipsis whitespace-nowrap hover:underline"
 										title={`Open ${change.path}`}
-										onclick={() => openValidated(change)}>{change.path}</button
+										onclick={() => openValidated(change, 'staged')}>{change.path}</button
 									>{:else}<span class="overflow-hidden text-ellipsis whitespace-nowrap"
 										>{change.path}</span
 									>{/if}
@@ -381,10 +392,11 @@
 									disabled={repositoryBusy}
 									onclick={() => mutateRepository({ action: 'stage', path: change.path })}
 									><Plus width={14} height={14} aria-hidden="true" /></button
-								><code class="text-amber-300">{change.worktree}</code>{#if change.fileUrl}<button
+								><code class="text-amber-300">{change.worktree}</code
+								>{#if change.fileUrl || change.diffUrl}<button
 										class="overflow-hidden text-left text-ellipsis whitespace-nowrap hover:underline"
 										title={`Open ${change.path}`}
-										onclick={() => openValidated(change)}>{change.path}</button
+										onclick={() => openValidated(change, 'unstaged')}>{change.path}</button
 									>{:else}<span class="overflow-hidden text-ellipsis whitespace-nowrap"
 										>{change.path}</span
 									>{/if}
@@ -412,6 +424,13 @@
 					ariaLabel="Commit message model"
 					ellipsis={true}
 					onselect={selectCommitModel}
+				/>
+				<SessionOptionPicker
+					options={commitReasoningOptions}
+					value={commitReasoning}
+					ariaLabel="Commit message reasoning"
+					kind="reasoning"
+					onselect={selectCommitReasoning}
 				/>
 				<div class="commit-message-field relative min-w-0 flex-1">
 					<Input
