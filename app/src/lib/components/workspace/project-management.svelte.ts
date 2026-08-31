@@ -87,10 +87,7 @@ export class ProjectManagement {
 			const query = new URLSearchParams({ hidden: String(showHidden) });
 			if (path) query.set('path', path);
 			const directory = await this.options.api<DirectoryListing>(`/api/directories?${query}`);
-			this.projectRoot = directory.path;
-			this.projectDirectoryName = directory.name;
-			this.projectDirectoryParent = directory.parent;
-			this.projectDirectories = directory.entries;
+			this.applyDirectory(directory);
 			this.directoryLoading = false;
 			await tick();
 			this.addProjectDialog
@@ -98,6 +95,29 @@ export class ProjectManagement {
 				?.focus();
 		} catch (cause) {
 			this.directoryError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			this.directoryLoading = false;
+		}
+	};
+
+	createDirectory = async (name: string) => {
+		if (!this.projectRoot || !name.trim()) return false;
+		this.directoryLoading = true;
+		this.directoryError = '';
+		try {
+			const directory = await this.options.api<DirectoryListing>('/api/directories', {
+				method: 'POST',
+				body: JSON.stringify({
+					parent: this.projectRoot,
+					name: name.trim(),
+					hidden: this.showHiddenDirectories
+				})
+			});
+			this.applyDirectory(directory);
+			return true;
+		} catch (cause) {
+			this.directoryError = cause instanceof Error ? cause.message : String(cause);
+			return false;
 		} finally {
 			this.directoryLoading = false;
 		}
@@ -445,6 +465,13 @@ export class ProjectManagement {
 	};
 
 	private directoryErrorSetter = (message: string) => (this.directoryError = message);
+
+	private applyDirectory(directory: DirectoryListing) {
+		this.projectRoot = directory.path;
+		this.projectDirectoryName = directory.name;
+		this.projectDirectoryParent = directory.parent;
+		this.projectDirectories = directory.entries;
+	}
 
 	private async mutateProject(
 		project: Project,

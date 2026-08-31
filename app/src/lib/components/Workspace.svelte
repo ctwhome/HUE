@@ -549,6 +549,7 @@
 		onmove={projectManagement.moveProjectToSection}
 		onhidden={projectManagement.toggleHiddenDirectories}
 		ondirectory={projectManagement.loadDirectory}
+		oncreatedirectory={projectManagement.createDirectory}
 		ontogglefolder={projectManagement.toggleSelectedFolder}
 		onprimarychoice={projectManagement.choosePrimaryFolder}
 		oncreate={projectManagement.createProject}
