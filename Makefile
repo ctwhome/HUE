@@ -9,9 +9,10 @@ install:
 	bun install --frozen-lockfile
 
 dev: install
-	@./scripts/stop-services.sh dev
+	@launchctl bootout "gui/$$(id -u)/com.ctw.hue-production" 2>/dev/null || true
+	@./scripts/stop-services.sh all
 	HUE_DOCS_BASE=/docs HUE_DOCS_OUT_DIR=../app/static/docs bun run --cwd docs build
-	cd app && HUE_DATABASE_PATH="$(HOME)/.hue/hue-dev.db" bun --env-file=.env --bun vite dev
+	cd app && trap 'launchctl bootstrap "gui/$$(id -u)" "$(HOME)/Library/LaunchAgents/com.ctw.hue-production.plist" 2>/dev/null || launchctl kickstart -k "gui/$$(id -u)/com.ctw.hue-production"' EXIT; HUE_DATABASE_PATH="$(HUE_DATABASE_PATH)" bun --env-file=.env --bun vite dev
 
 build: install
 	HUE_DOCS_BASE=/docs HUE_DOCS_OUT_DIR=../app/static/docs bun run --cwd docs build
@@ -22,7 +23,7 @@ serve:
 	cd app && HOST="$(HOST)" PORT="$(PORT)" ORIGIN="$(ORIGIN)" HUE_DATABASE_PATH="$(HUE_DATABASE_PATH)" BODY_SIZE_LIMIT="$${BODY_SIZE_LIMIT:-60000000}" ../scripts/serve-build.sh build bun --env-file=.env
 
 restart: build
-	launchctl kickstart -k "gui/$$(id -u)/com.ctw.hue-production"
+	launchctl bootstrap "gui/$$(id -u)" "$(HOME)/Library/LaunchAgents/com.ctw.hue-production.plist" 2>/dev/null || launchctl kickstart -k "gui/$$(id -u)/com.ctw.hue-production"
 
 stop-dev:
 	@./scripts/stop-services.sh dev

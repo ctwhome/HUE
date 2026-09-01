@@ -169,6 +169,9 @@ export type ProjectView = {
 	folders: Array<{ path: string; label: string | null; isPrimary: boolean; available: boolean }>;
 	rootAvailable: boolean;
 	sessionCount: number;
+	runningCount: number;
+	attentionCount: number;
+	unreadCount: number;
 };
 
 function directoryAvailable(path: string) {
@@ -183,7 +186,8 @@ export function projectView(
 	project: HermesProject,
 	color: string | null = null,
 	group: string | null = null,
-	sessionCount = 0
+	sessionCount = 0,
+	indicators = { running: 0, attention: 0, unread: 0 }
 ): ProjectView {
 	return {
 		id: project.id,
@@ -199,7 +203,10 @@ export function projectView(
 			available: directoryAvailable(folder.path)
 		})),
 		rootAvailable: directoryAvailable(project.primary_path),
-		sessionCount
+		sessionCount,
+		runningCount: indicators.running,
+		attentionCount: indicators.attention,
+		unreadCount: indicators.unread
 	};
 }
 
@@ -214,7 +221,8 @@ export async function loadProjectViews() {
 					project,
 					state.store.getProjectColor(project.id),
 					state.store.getProjectGroup(project.id),
-					state.store.countSessions(project.id)
+					state.store.countSessions(project.id),
+					state.store.getSessionIndicatorCounts(project.id)
 				)
 			),
 		chatSessionCount: state.store.countSessions(null, 'unscheduled'),

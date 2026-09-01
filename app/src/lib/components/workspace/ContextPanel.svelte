@@ -478,6 +478,11 @@
 							{:else}<CircleCheck width={12} height={12} />{/if}
 						</span>
 					</button>
+					{#if session.unreadAttention}<span
+							class="session-unread-badge"
+							aria-label="Unread activity"
+							title="Unread activity"
+						></span>{/if}
 					<button
 						class="session-select flex min-h-(--control-height) w-full cursor-grab items-center gap-2 rounded-md border border-transparent bg-transparent px-2 py-1 pr-2 pl-8 text-left hover:border-border hover:bg-accent active:cursor-grabbing [&.active]:border-border [&.active]:bg-accent"
 						class:active={selectedSession?.sessionId === session.sessionId}
@@ -612,3 +617,17 @@
 			</p>{/if}
 	</div>
 </aside>
+
+<style>
+	.session-unread-badge {
+		position: absolute;
+		top: 4px;
+		left: 25px;
+		z-index: 2;
+		width: 10px;
+		height: 10px;
+		border: 2px solid var(--navigation-surface);
+		border-radius: 999px;
+		background: var(--destructive);
+	}
+</style>

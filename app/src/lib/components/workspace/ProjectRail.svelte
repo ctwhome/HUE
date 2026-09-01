@@ -12,6 +12,7 @@
 	import CalendarClock from '~icons/lucide/calendar-clock';
 	import MessageSquare from '~icons/lucide/message-square';
 	import Menu from '~icons/lucide/menu';
+	import LoaderCircle from '~icons/lucide/loader-circle';
 	import Plus from '~icons/lucide/plus';
 	import X from '~icons/lucide/x';
 	import { dropBefore, moveBefore, moveBy, readStringArray, sortByOrder } from '$lib/drag-order';
@@ -552,14 +553,6 @@
 					>{/if}
 			</button>
 		</div>
-		<button
-			class="mt-1 flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-			aria-label="Add Project section"
-			title="Add section"
-			disabled={addDisabled || projects.length === 0}
-			onclick={openSectionDialog}
-			><FolderPlus width={15} height={15} aria-hidden="true" /> Add section</button
-		>
 		{#if draggedProjectId && projects.find(({ id }) => id === draggedProjectId)?.group}<div
 				class={`mt-1 flex min-h-11 items-center rounded-md border border-dashed px-2 text-xs sm:min-h-8 ${dropGroup === '' ? 'border-ring bg-accent text-foreground ring-2 ring-ring' : 'border-border text-muted-foreground'}`}
 				data-project-group=""
@@ -626,21 +619,44 @@
 							ontouchstart={(event) => startProjectTouch(event, project.id)}
 							onclick={(event) => onchoose(project, event.currentTarget)}
 						>
-							{#if isImage(project.icon)}<img
-									class="project-icon project-icon-image size-8 rounded-md object-cover"
-									src={project.icon ?? ''}
-									alt=""
-								/>{:else if project.icon}<span
-									class="project-icon grid size-8 place-items-center rounded-md text-2xl"
-									>{project.icon}</span
-								>{:else}<Folder
-									class="project-icon project-icon-default size-8 text-muted-foreground"
-									width={18}
-									height={18}
-									aria-hidden="true"
-								/>{/if}
+							<span class="project-icon-wrap relative shrink-0">
+								{#if isImage(project.icon)}<img
+										class="project-icon project-icon-image size-8 rounded-md object-cover"
+										src={project.icon ?? ''}
+										alt=""
+									/>{:else if project.icon}<span
+										class="project-icon grid size-8 place-items-center rounded-md text-2xl"
+										>{project.icon}</span
+									>{:else}<Folder
+										class="project-icon project-icon-default size-8 text-muted-foreground"
+										width={18}
+										height={18}
+										aria-hidden="true"
+									/>{/if}
+								{#if project.unreadCount}<span
+										class="project-unread-badge"
+										aria-label={`${project.unreadCount} unread Sessions`}
+										title={`${project.unreadCount} unread Sessions`}
+										>{project.unreadCount > 99 ? '99+' : project.unreadCount}</span
+									>{/if}
+							</span>
 							<span class="project-name min-w-0 flex-1 truncate">{project.name}</span>
 							{#if !project.rootAvailable}<small class="text-[var(--warning)]">Missing</small>{/if}
+							{#if project.runningCount}<span
+									class="project-running-count flex shrink-0 items-center gap-1 text-xs text-sky-500 tabular-nums"
+									aria-label={`${project.runningCount} running Sessions`}
+									title={`${project.runningCount} running Sessions`}
+									><LoaderCircle
+										class="animate-spin"
+										width={13}
+										height={13}
+										aria-hidden="true"
+									/>{project.runningCount}</span
+								>{:else if project.attentionCount && !project.unreadCount}<span
+									class="project-attention-count shrink-0 font-bold text-[var(--warning)]"
+									aria-label={`${project.attentionCount} Sessions require attention`}
+									title={`${project.attentionCount} Sessions require attention`}>!</span
+								>{/if}
 							{#if project.sessionCount}<span
 									class="project-session-count shrink-0 text-xs text-muted-foreground tabular-nums"
 									aria-label={`${project.sessionCount} non-archived Sessions`}
@@ -1056,3 +1072,23 @@
 		</div>
 	</dialog>
 </aside>
+
+<style>
+	.project-unread-badge {
+		position: absolute;
+		top: -5px;
+		right: -7px;
+		display: grid;
+		min-width: 18px;
+		height: 18px;
+		place-items: center;
+		padding: 0 4px;
+		border: 2px solid var(--navigation-surface);
+		border-radius: 999px;
+		background: var(--destructive);
+		color: var(--destructive-foreground);
+		font-size: 10px;
+		font-weight: 700;
+		line-height: 1;
+	}
+</style>

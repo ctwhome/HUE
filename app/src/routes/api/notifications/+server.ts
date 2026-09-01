@@ -35,7 +35,10 @@ export const GET: RequestHandler = async ({ url }) => {
 		return json({
 			...notifications,
 			items: _withAuthoritativeProjectNames(notifications.items, projects?.projects ?? []),
-			counts: state.store.notificationCounts()
+			counts: state.store.notificationCounts(),
+			projectIndicators: Object.fromEntries(
+				(projects?.projects ?? []).map(({ id }) => [id, state.store.getSessionIndicatorCounts(id)])
+			)
 		});
 	} catch {
 		return json({ error: 'Unable to list notifications' }, { status: 400 });

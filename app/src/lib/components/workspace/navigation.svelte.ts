@@ -26,6 +26,7 @@ type NavigationEffects = {
 	getProjects: () => Project[];
 	adjustChatSessionCount: (change: number) => void;
 	adjustCronSessionCount: (change: number) => void;
+	refreshProjects: () => Promise<void>;
 	endVoice: () => void;
 	cacheSession: () => void;
 	saveDraft: () => void;
@@ -458,6 +459,23 @@ export class WorkspaceNavigation {
 				workMode: body.workMode ?? this.selectedSession.workMode
 			});
 			this.effects.applyLoadedSession(body);
+			if (session.unreadAttention) {
+				await this.effects
+					.api(this.sessionApiPath(session.sessionId), {
+						method: 'PATCH',
+						body: JSON.stringify({ read: true })
+					})
+					.then(() => {
+						if (
+							this.selectedSession?.sessionId !== session.sessionId ||
+							(this.selectedProject?.id ?? '') !== request.projectId
+						)
+							return;
+						this.replaceSession({ ...this.selectedSession, unreadAttention: false });
+						return this.effects.refreshProjects();
+					})
+					.catch(() => undefined);
+			}
 			if (session.available === false)
 				this.effects.setError(session.recovery ?? 'Hermes Session is unavailable.');
 			this.effects.restoreDraft();

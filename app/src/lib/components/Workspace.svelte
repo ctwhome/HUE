@@ -187,6 +187,7 @@
 				(chatSessionCount = Math.max(0, chatSessionCount + change)),
 			adjustCronSessionCount: (change) =>
 				(cronSessionCount = Math.max(0, cronSessionCount + change)),
+			refreshProjects: projectManagement.refreshProjects,
 			applyCreatedSession: async (body, preserveWorkMode = false) => {
 				const selectedSession = navigation.selectedSession;
 				if (!selectedSession) {
@@ -487,6 +488,7 @@
 		sessionId={selectedSession?.pending ? null : (selectedSession?.sessionId ?? null)}
 		onclose={() => setGlobalView(null)}
 		oncounts={(count) => (unreadNotifications = count)}
+		onindicators={projectManagement.applyIndicators}
 	/>
 	{#if globalView && globalView !== 'notifications'}{#key globalView}<HermesPanel
 				view={globalView}

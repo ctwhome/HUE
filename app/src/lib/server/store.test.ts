@@ -751,6 +751,44 @@ describe('HUEStore project and workflow boundaries', () => {
 		store.close();
 	});
 
+	it('aggregates running, attention, and unread Sessions for a Project', () => {
+		const store = makeStore();
+		store.ensureProjectMetadata('hue', 'HUE');
+		store.upsertSession('hue', { sessionId: 'running', cwd: '/work/hue' });
+		store.upsertSession('hue', { sessionId: 'finished', cwd: '/work/hue' });
+		store.acceptMessage({ id: 'msg-running', projectId: 'hue', sessionId: 'running', text: 'Run' });
+		store.transitionMessage('msg-running', 'running', { messageId: 'msg-running' });
+		store.acceptMessage({
+			id: 'msg-finished',
+			projectId: 'hue',
+			sessionId: 'finished',
+			text: 'Run'
+		});
+		store.transitionMessage('msg-finished', 'running', { messageId: 'msg-finished' });
+		store.transitionMessage('msg-finished', 'completed', { messageId: 'msg-finished' });
+
+		expect(store.getSessionIndicatorCounts('hue')).toEqual({
+			running: 1,
+			attention: 0,
+			unread: 1
+		});
+		store.close();
+	});
+
+	it('marks unread notifications for only the opened Session as read', () => {
+		const store = makeStore();
+		store.ensureProjectMetadata('hue', 'HUE');
+		store.upsertSession('hue', { sessionId: 'opened', cwd: '/work/hue' });
+		store.upsertSession('hue', { sessionId: 'other', cwd: '/work/hue' });
+		store.appendEvent('hue', 'opened', 'message.completed', { messageId: 'opened-message' });
+		store.appendEvent('hue', 'other', 'message.completed', { messageId: 'other-message' });
+
+		expect(store.markSessionNotificationsRead('hue', 'opened')).toBe(1);
+		expect(store.getSessionIndicators('hue').opened?.unreadAttention).toBe(false);
+		expect(store.getSessionIndicators('hue').other?.unreadAttention).toBe(true);
+		store.close();
+	});
+
 	it('stores a session and its delivery state without a project', () => {
 		const store = makeStore();
 		store.upsertSession(null, { sessionId: 'session-1', cwd: '/work/topics' });

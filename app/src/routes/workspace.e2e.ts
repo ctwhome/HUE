@@ -465,13 +465,7 @@ test('the navigation rail toggles both panels and Projects still toggle Sessions
 	const projects = page.getByRole('complementary', { name: 'Projects' });
 	const sessions = page.getByRole('complementary', { name: 'Project contents' });
 	const addSection = page.getByRole('button', { name: 'Add Project section' });
-	await expect(addSection).toBeVisible();
-	await addSection.click();
-	await expect(page.getByRole('dialog', { name: 'Add Project section' })).toBeVisible();
-	await page
-		.getByRole('dialog', { name: 'Add Project section' })
-		.getByRole('button', { name: 'Cancel' })
-		.click();
+	await expect(addSection).toHaveCount(0);
 	const navigationToggle = page.getByRole('button', { name: 'Collapse navigation' });
 	const toggleBox = (await navigationToggle.boundingBox())!;
 	const globalRailBox = (await page
@@ -503,7 +497,7 @@ test('the navigation rail toggles both panels and Projects still toggle Sessions
 
 	for (const viewport of viewports.slice(0, 2)) {
 		await page.setViewportSize(viewport);
-		await expect(addSection).toBeVisible();
+		await expect(addSection).toHaveCount(0);
 		await expect(project).toHaveAttribute('aria-expanded', 'true');
 		await project.evaluate((button: HTMLButtonElement) => button.click());
 		await expect(project).toHaveAttribute('aria-expanded', 'false');
@@ -536,8 +530,7 @@ test('the navigation rail toggles both panels and Projects still toggle Sessions
 	for (const viewport of viewports.slice(2)) {
 		await page.setViewportSize(viewport);
 		await openMobileProjects(page);
-		await expect(addSection).toBeVisible();
-		expect((await addSection.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+		await expect(addSection).toHaveCount(0);
 		await project.click({ position: { x: 80, y: 22 } });
 		await expect(sessions).toBeVisible();
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(

@@ -170,6 +170,7 @@ export async function patchSession(projectId: string | null, { params, request }
 			archived?: unknown;
 			folder?: unknown;
 			tags?: unknown;
+			read?: unknown;
 		};
 		const modelId = body.modelId?.trim();
 		const modeId = body.modeId?.trim();
@@ -177,6 +178,7 @@ export async function patchSession(projectId: string | null, { params, request }
 		const hasConfig = 'configId' in body || 'configValue' in body;
 		const hasWorkMode = 'workMode' in body;
 		const hasIcon = 'icon' in body;
+		const hasRead = 'read' in body;
 		const metadataKeys = ['title', 'pinned', 'archived', 'folder', 'tags'].filter(
 			(key) => key in body
 		);
@@ -185,6 +187,7 @@ export async function patchSession(projectId: string | null, { params, request }
 				(modeId ? 1 : 0) +
 				(hasConfig ? 1 : 0) +
 				(hasWorkMode ? 1 : 0) +
+				(hasRead ? 1 : 0) +
 				(hasIcon || metadataKeys.length ? 1 : 0) !==
 			1
 		) {
@@ -209,6 +212,12 @@ export async function patchSession(projectId: string | null, { params, request }
 				'selector'
 			);
 			return json({ session, workMode: session.workMode, ...(event ? { event } : {}) });
+		}
+		if (hasRead) {
+			if (body.read !== true) return json({ error: 'Invalid Session read state' }, { status: 400 });
+			return json({
+				updated: services().store.markSessionNotificationsRead(scope.projectId, params.sessionId)
+			});
 		}
 		if (metadataKeys.length) {
 			if (

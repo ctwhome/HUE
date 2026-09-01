@@ -131,6 +131,14 @@
 		if (next === 'terminal') void activateTerminal();
 		if (next === 'git') void loadRepositoryPanels();
 	}
+	function openDevelopView(next: 'browser' | 'terminal' | 'git') {
+		if (view === 'develop') return chooseDevelopView(next);
+		const activate = () => {
+			chooseDevelopView(next);
+			view = 'develop';
+		};
+		if (!dirtyGuard.block(activate)) activate();
+	}
 	function toggleTool(tool: Tool) {
 		if (open && activeTool === tool) {
 			open = false;
@@ -246,14 +254,29 @@
 	>
 		<nav
 			class="workbench-tabs flex gap-1 border-b border-border px-2.5 py-1.5"
-			aria-label="Project workbench views"
+			class:compact-workbench-tabs={compact}
+			aria-label={compact ? 'Project tools' : 'Project workbench views'}
 		>
-			<button
-				class="flex min-h-9 items-center gap-2 rounded-md px-3 text-xs"
-				class:bg-secondary={view === 'develop'}
-				aria-pressed={view === 'develop'}
-				onclick={openDevelop}><Code2 width={15} height={15} aria-hidden="true" />Develop</button
-			>
+			{#if compact}
+				<button
+					aria-pressed={view === 'develop' && developView === 'browser'}
+					onclick={() => openDevelopView('browser')}
+					><Globe width={17} height={17} aria-hidden="true" />Browser</button
+				><button
+					aria-pressed={view === 'develop' && developView === 'terminal'}
+					onclick={() => openDevelopView('terminal')}
+					><TerminalSquare width={17} height={17} aria-hidden="true" />Terminal</button
+				><button
+					aria-pressed={view === 'develop' && developView === 'git'}
+					onclick={() => openDevelopView('git')}
+					><GitBranch width={17} height={17} aria-hidden="true" />Git</button
+				>
+			{:else}<button
+					class="flex min-h-9 items-center gap-2 rounded-md px-3 text-xs"
+					class:bg-secondary={view === 'develop'}
+					aria-pressed={view === 'develop'}
+					onclick={openDevelop}><Code2 width={15} height={15} aria-hidden="true" />Develop</button
+				>{/if}
 			<button
 				class="flex min-h-9 items-center gap-2 rounded-md px-3 text-xs"
 				class:bg-secondary={view === 'files'}
@@ -277,19 +300,6 @@
 				class:pointer-events-none={view !== 'develop'}
 				aria-hidden={view !== 'develop'}
 			>
-				{#if compact}<nav class="compact-workbench-tabs" aria-label="Project tools">
-						<button
-							aria-pressed={developView === 'browser'}
-							onclick={() => chooseDevelopView('browser')}
-							><Globe width={17} height={17} aria-hidden="true" />Browser</button
-						><button
-							aria-pressed={developView === 'terminal'}
-							onclick={() => chooseDevelopView('terminal')}
-							><TerminalSquare width={17} height={17} aria-hidden="true" />Terminal</button
-						><button aria-pressed={developView === 'git'} onclick={() => chooseDevelopView('git')}
-							><GitBranch width={17} height={17} aria-hidden="true" />Git</button
-						>
-					</nav>{/if}
 				{#if !docked && (!compact || developView === 'browser')}<BrowserPanel
 						{projectId}
 						{onpreviewchange}
