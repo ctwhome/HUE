@@ -165,7 +165,9 @@
 		try {
 			const result = await api<{ backup: Record<string, any> }>('/api/runtime', { method: 'POST' });
 			data = { ...data, backup: result.backup };
-			notice = `Validated HUE backup created at ${result.backup.path}`;
+			notice = result.backup.attachmentsPath
+				? `Validated HUE database and image backup created at ${result.backup.path}`
+				: `Validated HUE backup created at ${result.backup.path}`;
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : String(cause);
 		} finally {

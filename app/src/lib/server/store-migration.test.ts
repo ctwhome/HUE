@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { lstatSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { validateHueBackup } from './runtime-reliability';
@@ -91,6 +91,7 @@ function createHistoricalCancelledSchema(path: string): void {
 		);
 	expect(store.getMessage('message-1')?.status).toBe('unknown');
 	store.close();
+	rmSync(`${path}.attachments`, { recursive: true, force: true });
 
 	const database = new Database(path, { strict: true });
 	expect(database.query('SELECT id, status FROM messages').all()).toEqual([
@@ -145,7 +146,7 @@ function createHistoricalCancelledSchema(path: string): void {
 			attachment.position,
 			attachment.name,
 			attachment.mime_type,
-			attachment.data,
+			'aGVsbG8=',
 			attachment.size
 		);
 	database.close();
@@ -347,6 +348,13 @@ describe('HUEStore versioned migrations', () => {
 			reviewContexts: [expect.objectContaining({ id: 'review-1', comment: 'Verified.' })],
 			images: [expect.objectContaining({ name: 'proof.png' })]
 		});
+		const attachment = store.database
+			.query('SELECT data, file_path FROM message_attachments WHERE message_id = ?')
+			.get('message-1') as { data: string; file_path: string };
+		expect(attachment.data).toBe('');
+		expect(readFileSync(join(`${path}.attachments`, attachment.file_path)).toString()).toBe(
+			'hello'
+		);
 		expect(store.listWorkflows('hue')).toEqual([
 			expect.objectContaining({
 				id: 'release',

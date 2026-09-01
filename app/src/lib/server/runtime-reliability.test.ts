@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { chmodSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { HUEStore } from './store';
@@ -18,6 +18,7 @@ describe('HUE runtime reliability', () => {
 		const source = join(root, 'hue.db');
 		paths.push(root);
 		const store = new HUEStore(source);
+		store.database.exec('PRAGMA journal_mode = WAL');
 		store.ensureProjectMetadata('hue', 'HUE');
 		store.createWorkflow({
 			id: 'release',
@@ -26,6 +27,13 @@ describe('HUE runtime reliability', () => {
 			prompt: 'Run checks.'
 		});
 		store.upsertSession(null, { sessionId: 'schedule-session', cwd: '/work/sessions' });
+		store.acceptMessage({
+			id: 'message-with-image',
+			projectId: null,
+			sessionId: 'schedule-session',
+			text: 'Preserve this image.',
+			images: [{ name: 'proof.png', mimeType: 'image/png', data: 'aGVsbG8=' }]
+		});
 		store.createSchedule({
 			id: 'daily',
 			name: 'Daily review',
@@ -39,6 +47,7 @@ describe('HUE runtime reliability', () => {
 		const backup = createHueBackup(store, join(root, 'backups'));
 
 		expect(backup.validated).toBe(true);
+		expect(backup.attachmentsPath).toBe(`${backup.path}.attachments`);
 		expect(backup.filename).toMatch(/^hue-\d{4}-\d{2}-\d{2}T.*\.sqlite$/);
 		expect(validateHueBackup(backup.path)).toEqual({ ok: true });
 		const restored = new Database(backup.path, { readonly: true });
@@ -48,6 +57,12 @@ describe('HUE runtime reliability', () => {
 		expect(restored.query('SELECT name FROM workflows WHERE id = ?').get('release')).toEqual({
 			name: 'Release'
 		});
+		const attachment = restored
+			.query('SELECT file_path FROM message_attachments WHERE message_id = ?')
+			.get('message-with-image') as { file_path: string };
+		expect(readFileSync(join(`${backup.path}.attachments`, attachment.file_path)).toString()).toBe(
+			'hello'
+		);
 		expect(
 			restored.query('SELECT name, session_id FROM schedules WHERE id = ?').get('daily')
 		).toEqual({
@@ -55,6 +70,8 @@ describe('HUE runtime reliability', () => {
 			session_id: 'schedule-session'
 		});
 		restored.close();
+		rmSync(join(`${backup.path}.attachments`, attachment.file_path));
+		expect(validateHueBackup(backup.path).ok).toBe(false);
 		store.close();
 	});
 

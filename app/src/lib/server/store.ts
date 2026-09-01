@@ -1,6 +1,15 @@
 import { createRequire } from 'node:module';
-import { chmodSync, lstatSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import {
+	chmodSync,
+	lstatSync,
+	mkdirSync,
+	readFileSync,
+	readdirSync,
+	rmSync,
+	writeFileSync
+} from 'node:fs';
+import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import type { Database as BunDatabase } from 'bun:sqlite';
 import { validateIcon } from '$lib/icon';
 import { DEFAULT_BUNDLE, parseBundleReference } from '$lib/bundle';
@@ -406,9 +415,15 @@ const allowedTransitions: Record<MessageStatus, ReadonlySet<MessageStatus>> = {
 export class HUEStore {
 	readonly database: BunDatabase;
 	readonly filename: string;
+	readonly attachmentDirectory: string;
+	private readonly temporaryAttachmentDirectory: boolean;
 
 	constructor(filename: string, options: { migrationFault?: () => void } = {}) {
 		this.filename = filename;
+		this.temporaryAttachmentDirectory = filename === ':memory:';
+		this.attachmentDirectory = this.temporaryAttachmentDirectory
+			? join(tmpdir(), `hue-${crypto.randomUUID()}.attachments`)
+			: `${filename}.attachments`;
 		if (filename !== ':memory:') secureDatabasePath(filename);
 		const { Database } = runtimeRequire('bun:sqlite') as typeof import('bun:sqlite');
 		this.database = new Database(filename, { create: true, strict: true });
@@ -419,8 +434,11 @@ export class HUEStore {
 		this.database.exec('PRAGMA secure_delete = ON');
 		try {
 			this.migrate(options.migrationFault);
+			this.removeOrphanedAttachments();
 		} catch (cause) {
 			this.database.close();
+			if (this.temporaryAttachmentDirectory)
+				rmSync(this.attachmentDirectory, { recursive: true, force: true });
 			throw cause;
 		}
 	}
@@ -437,7 +455,8 @@ export class HUEStore {
 			currentVersion !== 3 &&
 			currentVersion !== 4 &&
 			currentVersion !== 5 &&
-			currentVersion !== 6
+			currentVersion !== 6 &&
+			currentVersion !== 7
 		) {
 			throw new Error(
 				`HUE schema migration ${currentVersion} -> ${HUE_SCHEMA_VERSION} is unsupported. Stop HUE and use an application version that supports this database.`
@@ -463,9 +482,22 @@ export class HUEStore {
 		const migratesWorkflowBundle =
 			workflowColumns.some(({ name }) => name === 'work_mode') &&
 			!workflowColumns.some(({ name }) => name === 'bundle');
+		const attachmentColumns = this.database
+			.query("PRAGMA table_info('message_attachments')")
+			.all() as Array<{ name: string }>;
+		const externalizesAttachments =
+			attachmentColumns.length > 0 &&
+			!attachmentColumns.some(({ name }) => name === 'file_path') &&
+			(
+				this.database
+					.query("SELECT COUNT(*) AS count FROM message_attachments WHERE data <> ''")
+					.get() as { count: number }
+			).count > 0;
 		const destructiveMigration = rebuildsMessages || rebuildsProjectSessions;
-		const requiresBackup = destructiveMigration || migratesWorkflowBundle;
+		const requiresBackup =
+			destructiveMigration || migratesWorkflowBundle || externalizesAttachments;
 		let backup: { filename: string } | null = null;
+		const createdAttachmentPaths: string[] = [];
 		if (this.filename !== ':memory:' && requiresBackup) {
 			try {
 				backup = createHueDatabaseBackup(this.database, this.filename, undefined, true);
@@ -478,11 +510,12 @@ export class HUEStore {
 		if (destructiveMigration) this.database.exec('PRAGMA foreign_keys = OFF');
 		try {
 			this.database.transaction(() => {
-				this.migrateUnversionedSchema();
+				this.migrateUnversionedSchema(createdAttachmentPaths);
 				migrationFault?.();
 				this.database.exec(`PRAGMA user_version = ${HUE_SCHEMA_VERSION}`);
 			})();
 		} catch {
+			for (const path of createdAttachmentPaths) rmSync(path, { force: true });
 			const filename = backup?.filename ?? 'no backup created';
 			throw new Error(
 				`HUE schema migration ${currentVersion} -> ${HUE_SCHEMA_VERSION} failed. Backup: ${filename}. Stop HUE and restore the backup to a fresh HUE database path before retrying.`
@@ -492,7 +525,7 @@ export class HUEStore {
 		}
 	}
 
-	private migrateUnversionedSchema() {
+	private migrateUnversionedSchema(createdAttachmentPaths: string[]) {
 		this.database.exec(`
 			CREATE TABLE IF NOT EXISTS projects (
 				id TEXT PRIMARY KEY,
@@ -561,6 +594,7 @@ export class HUEStore {
 				name TEXT NOT NULL,
 				mime_type TEXT NOT NULL,
 				data TEXT NOT NULL,
+				file_path TEXT,
 				PRIMARY KEY (message_id, position)
 			);
 
@@ -807,6 +841,9 @@ export class HUEStore {
 		if (!attachmentColumns.some((column) => column.name === 'size')) {
 			this.database.exec('ALTER TABLE message_attachments ADD COLUMN size INTEGER');
 		}
+		if (!attachmentColumns.some((column) => column.name === 'file_path')) {
+			this.database.exec('ALTER TABLE message_attachments ADD COLUMN file_path TEXT');
+		}
 		const messagesSchema = this.database
 			.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'messages'")
 			.get() as { sql: string } | null;
@@ -833,13 +870,34 @@ export class HUEStore {
 							mime_type TEXT NOT NULL,
 							data TEXT NOT NULL,
 							size INTEGER,
+							file_path TEXT,
 							PRIMARY KEY (message_id, position)
 						);
-						INSERT INTO message_attachments SELECT message_id, position, name, mime_type, data, size
+						INSERT INTO message_attachments SELECT message_id, position, name, mime_type, data, size, file_path
 							FROM message_attachments_before_cancelled;
 						DROP TABLE message_attachments_before_cancelled;
 						DROP TABLE messages_before_cancelled;
 					`);
+		}
+		const storedPayloads = this.database
+			.query(
+				"SELECT message_id, position, mime_type, data FROM message_attachments WHERE data <> ''"
+			)
+			.all() as Array<{
+			message_id: string;
+			position: number;
+			mime_type: string;
+			data: string;
+		}>;
+		for (const attachment of storedPayloads) {
+			const filePath = attachment.mime_type.startsWith('image/')
+				? this.writeAttachment(attachment.data, createdAttachmentPaths)
+				: null;
+			this.database
+				.query(
+					'UPDATE message_attachments SET data = ?, file_path = ? WHERE message_id = ? AND position = ?'
+				)
+				.run('', filePath, attachment.message_id, attachment.position);
 		}
 		const eventColumns = this.database.query('PRAGMA table_info(session_events)').all() as Array<{
 			name: string;
@@ -1607,7 +1665,7 @@ export class HUEStore {
 				'INSERT INTO messages (id, project_id, session_id, text, review_contexts, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
 			);
 			const insertAttachment = this.database.query(
-				'INSERT INTO message_attachments (message_id, position, name, mime_type, data, size) VALUES (?, ?, ?, ?, ?, ?)'
+				'INSERT INTO message_attachments (message_id, position, name, mime_type, data, size, file_path) VALUES (?, ?, ?, ?, ?, ?, ?)'
 			);
 			for (const message of messages) {
 				const targetMessageId = ids.get(message.id)!;
@@ -1638,7 +1696,8 @@ export class HUEStore {
 						attachment.name,
 						attachment.mime_type,
 						'',
-						attachment.size
+						attachment.size,
+						null
 					);
 				}
 			}
@@ -1783,7 +1842,14 @@ export class HUEStore {
 		const impact = this.previewSessionDelete(projectId, sessionId);
 		if (!impact) return false;
 		if (impact.activeDeliveries) throw new Error('Session has active message deliveries');
-		return this.database.transaction(() => {
+		const filePaths = this.database
+			.query(
+				`SELECT a.file_path FROM message_attachments a JOIN messages m ON m.id = a.message_id
+				 WHERE m.project_id IS ? AND m.session_id = ? AND a.file_path IS NOT NULL`
+			)
+			.all(projectId, sessionId)
+			.map((row) => (row as { file_path: string }).file_path);
+		const deleted = this.database.transaction(() => {
 			this.database
 				.query(
 					'INSERT OR REPLACE INTO dismissed_sessions (project_scope, session_id, dismissed_at) VALUES (?, ?, ?)'
@@ -1801,6 +1867,8 @@ export class HUEStore {
 					.run(projectId, sessionId).changes > 0
 			);
 		})();
+		if (deleted) for (const filePath of filePaths) this.deleteAttachment(filePath);
+		return deleted;
 	}
 
 	isSessionDismissed(projectId: string | null, sessionId: string): boolean {
@@ -2636,46 +2704,60 @@ export class HUEStore {
 		}
 
 		const now = new Date().toISOString();
-		this.database.transaction(() => {
-			this.database
-				.query(
-					'INSERT INTO messages (id, project_id, session_id, text, review_contexts, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-				)
-				.run(
-					input.id,
-					input.projectId,
-					input.sessionId,
-					input.text,
-					JSON.stringify(input.reviewContexts ?? []),
-					'queued',
-					now,
-					now
+		const createdAttachmentPaths: string[] = [];
+		try {
+			const storedAttachments = attachments.map((attachment) => ({
+				...attachment,
+				filePath:
+					attachment.data && attachment.mimeType.startsWith('image/')
+						? this.writeAttachment(attachment.data, createdAttachmentPaths)
+						: null
+			}));
+			this.database.transaction(() => {
+				this.database
+					.query(
+						'INSERT INTO messages (id, project_id, session_id, text, review_contexts, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+					)
+					.run(
+						input.id,
+						input.projectId,
+						input.sessionId,
+						input.text,
+						JSON.stringify(input.reviewContexts ?? []),
+						'queued',
+						now,
+						now
+					);
+				const insertAttachment = this.database.query(
+					'INSERT INTO message_attachments (message_id, position, name, mime_type, data, size, file_path) VALUES (?, ?, ?, ?, ?, ?, ?)'
 				);
-			const insertAttachment = this.database.query(
-				'INSERT INTO message_attachments (message_id, position, name, mime_type, data, size) VALUES (?, ?, ?, ?, ?, ?)'
-			);
-			for (const [position, attachment] of attachments.entries()) {
-				insertAttachment.run(
-					input.id,
-					position,
-					attachment.name,
-					attachment.mimeType,
-					attachment.data ?? '',
-					attachment.size
-				);
-			}
-			this.database
-				.query(
-					'INSERT INTO session_events (project_id, session_id, type, payload, created_at) VALUES (?, ?, ?, ?, ?)'
-				)
-				.run(
-					input.projectId,
-					input.sessionId,
-					'message.accepted',
-					JSON.stringify({ messageId: input.id }),
-					now
-				);
-		})();
+				for (const [position, attachment] of storedAttachments.entries()) {
+					insertAttachment.run(
+						input.id,
+						position,
+						attachment.name,
+						attachment.mimeType,
+						'',
+						attachment.size,
+						attachment.filePath
+					);
+				}
+				this.database
+					.query(
+						'INSERT INTO session_events (project_id, session_id, type, payload, created_at) VALUES (?, ?, ?, ?, ?)'
+					)
+					.run(
+						input.projectId,
+						input.sessionId,
+						'message.accepted',
+						JSON.stringify({ messageId: input.id }),
+						now
+					);
+			})();
+		} catch (cause) {
+			for (const path of createdAttachmentPaths) rmSync(path, { force: true });
+			throw cause;
+		}
 		return { duplicate: false, status: 'queued' };
 	}
 
@@ -2736,39 +2818,63 @@ export class HUEStore {
 		}
 		if (message.status !== 'queued') throw new Error(`Message ${id} is no longer queued`);
 		const updatedAt = new Date().toISOString();
-		this.database.transaction(() => {
-			this.database
-				.query(
-					'UPDATE messages SET text = ?, review_contexts = ?, updated_at = ? WHERE id = ? AND status = ?'
-				)
-				.run(
-					input.text,
-					JSON.stringify(input.reviewContexts ?? message.reviewContexts),
-					updatedAt,
-					id,
-					'queued'
-				);
-			if (input.attachments !== undefined || input.images.length) {
-				this.database.query('DELETE FROM message_attachments WHERE message_id = ?').run(id);
-				const insert = this.database.query(
-					'INSERT INTO message_attachments (message_id, position, name, mime_type, data, size) VALUES (?, ?, ?, ?, ?, ?)'
-				);
-				for (const [position, attachment] of normalizeStoredAttachments(
-					input.images,
-					input.attachments ?? []
-				).entries()) {
-					insert.run(
+		const replacesAttachments = input.attachments !== undefined || input.images.length > 0;
+		const oldFilePaths = replacesAttachments
+			? (
+					this.database
+						.query(
+							'SELECT file_path FROM message_attachments WHERE message_id = ? AND file_path IS NOT NULL'
+						)
+						.all(id) as Array<{ file_path: string }>
+				).map(({ file_path }) => file_path)
+			: [];
+		const createdAttachmentPaths: string[] = [];
+		try {
+			const attachments = replacesAttachments
+				? normalizeStoredAttachments(input.images, input.attachments ?? []).map((attachment) => ({
+						...attachment,
+						filePath:
+							attachment.data && attachment.mimeType.startsWith('image/')
+								? this.writeAttachment(attachment.data, createdAttachmentPaths)
+								: null
+					}))
+				: [];
+			this.database.transaction(() => {
+				this.database
+					.query(
+						'UPDATE messages SET text = ?, review_contexts = ?, updated_at = ? WHERE id = ? AND status = ?'
+					)
+					.run(
+						input.text,
+						JSON.stringify(input.reviewContexts ?? message.reviewContexts),
+						updatedAt,
 						id,
-						position,
-						attachment.name,
-						attachment.mimeType,
-						attachment.data ?? '',
-						attachment.size
+						'queued'
 					);
+				if (replacesAttachments) {
+					this.database.query('DELETE FROM message_attachments WHERE message_id = ?').run(id);
+					const insert = this.database.query(
+						'INSERT INTO message_attachments (message_id, position, name, mime_type, data, size, file_path) VALUES (?, ?, ?, ?, ?, ?, ?)'
+					);
+					for (const [position, attachment] of attachments.entries()) {
+						insert.run(
+							id,
+							position,
+							attachment.name,
+							attachment.mimeType,
+							'',
+							attachment.size,
+							attachment.filePath
+						);
+					}
 				}
-			}
-			this.appendEvent(input.projectId, input.sessionId, 'message.edited', { messageId: id });
-		})();
+				this.appendEvent(input.projectId, input.sessionId, 'message.edited', { messageId: id });
+			})();
+		} catch (cause) {
+			for (const path of createdAttachmentPaths) rmSync(path, { force: true });
+			throw cause;
+		}
+		for (const filePath of oldFilePaths) this.deleteAttachment(filePath);
 		return this.getMessage(id)!;
 	}
 
@@ -2908,7 +3014,7 @@ export class HUEStore {
 	}): StoredMessage {
 		const attachments = this.database
 			.query(
-				'SELECT name, mime_type, data, size FROM message_attachments WHERE message_id = ? ORDER BY position'
+				'SELECT name, mime_type, data, size, file_path FROM message_attachments WHERE message_id = ? ORDER BY position'
 			)
 			.all(row.id)
 			.map((attachment) => {
@@ -2917,12 +3023,14 @@ export class HUEStore {
 					mime_type: string;
 					data: string;
 					size: number | null;
+					file_path: string | null;
 				};
+				const data = value.file_path ? this.readAttachment(value.file_path) : value.data;
 				return {
 					name: value.name,
 					mimeType: value.mime_type,
-					data: value.data,
-					size: value.size ?? Buffer.from(value.data, 'base64').byteLength
+					data,
+					size: value.size ?? Buffer.from(data, 'base64').byteLength
 				};
 			});
 		return {
@@ -3127,7 +3235,84 @@ export class HUEStore {
 
 	close() {
 		this.database.close();
+		if (this.temporaryAttachmentDirectory)
+			rmSync(this.attachmentDirectory, { recursive: true, force: true });
 	}
+
+	private writeAttachment(data: string, createdPaths: string[]): string {
+		secureAttachmentDirectory(this.attachmentDirectory);
+		const filePath = crypto.randomUUID();
+		const path = join(this.attachmentDirectory, filePath);
+		writeFileSync(path, Buffer.from(data, 'base64'), { flag: 'wx', mode: 0o600 });
+		createdPaths.push(path);
+		return filePath;
+	}
+
+	private readAttachment(filePath: string): string {
+		const path = attachmentPath(this.attachmentDirectory, filePath);
+		if (!path) return '';
+		try {
+			const stat = lstatSync(path);
+			if (!stat.isFile() || stat.isSymbolicLink()) return '';
+			return readFileSync(path).toString('base64');
+		} catch {
+			return '';
+		}
+	}
+
+	private deleteAttachment(filePath: string): void {
+		const path = attachmentPath(this.attachmentDirectory, filePath);
+		if (path) rmSync(path, { force: true });
+	}
+
+	private removeOrphanedAttachments(): void {
+		let stat;
+		try {
+			stat = lstatSync(this.attachmentDirectory);
+		} catch (cause) {
+			if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return;
+			throw cause;
+		}
+		if (!stat.isDirectory() || stat.isSymbolicLink()) {
+			throw new Error('HUE attachment directory must be a real directory');
+		}
+		if ((stat.mode & 0o777) !== 0o700) chmodSync(this.attachmentDirectory, 0o700);
+		const referenced = new Set(
+			(
+				this.database
+					.query('SELECT file_path FROM message_attachments WHERE file_path IS NOT NULL')
+					.all() as Array<{ file_path: string }>
+			).map(({ file_path }) => file_path)
+		);
+		for (const filePath of readdirSync(this.attachmentDirectory)) {
+			if (validAttachmentFilePath(filePath) && !referenced.has(filePath)) {
+				rmSync(join(this.attachmentDirectory, filePath), { force: true });
+			} else if (referenced.has(filePath)) {
+				const path = join(this.attachmentDirectory, filePath);
+				const fileStat = lstatSync(path);
+				if (fileStat.isFile() && !fileStat.isSymbolicLink() && (fileStat.mode & 0o777) !== 0o600) {
+					chmodSync(path, 0o600);
+				}
+			}
+		}
+	}
+}
+
+function attachmentPath(directory: string, filePath: string): string | null {
+	return validAttachmentFilePath(filePath) ? join(directory, filePath) : null;
+}
+
+function validAttachmentFilePath(filePath: string): boolean {
+	return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(filePath);
+}
+
+function secureAttachmentDirectory(directory: string): void {
+	mkdirSync(directory, { recursive: true, mode: 0o700 });
+	const stat = lstatSync(directory);
+	if (!stat.isDirectory() || stat.isSymbolicLink()) {
+		throw new Error('HUE attachment directory must be a real directory');
+	}
+	if ((stat.mode & 0o777) !== 0o700) chmodSync(directory, 0o700);
 }
 
 function secureDatabasePath(filename: string): void {
