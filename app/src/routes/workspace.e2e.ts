@@ -3138,16 +3138,28 @@ test('sends one complete envelope and renders streamed completion', async ({ pag
 					},
 					{
 						sequence: 3,
-						type: 'agent.chunk',
-						payload: { messageId: captured.envelope?.messageId, text: '**Done** ' }
+						type: 'agent.tool',
+						payload: {
+							messageId: captured.envelope?.messageId,
+							id: 'skill-1',
+							name: 'skill_view',
+							title: 'skill view (humanizer)',
+							status: 'completed',
+							args: { name: 'humanizer' }
+						}
 					},
 					{
 						sequence: 4,
 						type: 'agent.chunk',
-						payload: { messageId: captured.envelope?.messageId, text: '`safely`.' }
+						payload: { messageId: captured.envelope?.messageId, text: '**Done** ' }
 					},
 					{
 						sequence: 5,
+						type: 'agent.chunk',
+						payload: { messageId: captured.envelope?.messageId, text: '`safely`.' }
+					},
+					{
+						sequence: 6,
 						type: 'agent.image',
 						payload: {
 							messageId: captured.envelope?.messageId,
@@ -3162,13 +3174,13 @@ test('sends one complete envelope and renders streamed completion', async ({ pag
 			}
 		});
 	});
-	await page.route(/\/sessions\/session-send\/events\?after=5$/, async (route) => {
+	await page.route(/\/sessions\/session-send\/events\?after=6$/, async (route) => {
 		await completion;
 		await route.fulfill({
 			json: {
 				events: [
 					{
-						sequence: 6,
+						sequence: 7,
 						type: 'message.completed',
 						payload: { messageId: captured.envelope?.messageId }
 					}
@@ -3185,6 +3197,12 @@ test('sends one complete envelope and renders streamed completion', async ({ pag
 	await surface.getByLabel('Message Hermes').fill(text);
 	await surface.getByRole('button', { name: 'Send', exact: true }).click();
 
+	await expect(
+		surface.getByRole('status').filter({ hasText: 'Using skill: humanizer · completed' })
+	).toBeVisible();
+	const activityMatrix = surface.locator('.turn-activity-matrix');
+	await expect(activityMatrix.locator('i')).toHaveCount(9);
+	await expect(activityMatrix.locator('i').first()).toHaveCSS('animation-name', 'none');
 	await expect(surface.getByRole('button', { name: /Show activity details/ })).toBeVisible();
 	await expect(surface.getByTitle('Message running')).toBeVisible();
 	const deliveryStatus = surface.locator('.composer-delivery');
@@ -3226,6 +3244,7 @@ test('sends one complete envelope and renders streamed completion', async ({ pag
 	await expect(assistant.locator('.message strong')).toHaveText('Done');
 	await expect(assistant.locator('code')).toHaveText('safely');
 	await expect(assistant.getByRole('img', { name: 'Hermes image' })).toBeVisible();
+	await expect(assistant.getByText('Skill used: humanizer')).toBeVisible();
 	finishCompletion();
 	await expect(deliveryStatus).toHaveText('completed');
 	await expect(deliveryStatus.locator('[data-status-icon="completed"]')).toBeVisible();
@@ -3768,7 +3787,9 @@ test('shows a live timer beside each busy session', async ({ page }) => {
 	expect(browserErrors).toEqual([]);
 });
 
-test('discovers Hermes slash commands and sends an attached image', async ({ page }, testInfo) => {
+test('discovers Hermes slash commands and leaves attached image count to Hermes', async ({
+	page
+}, testInfo) => {
 	let envelope: { text: string; images: Array<{ name: string; mimeType: string; data: string }> };
 	let selectedModel = 'openai:gpt-5.6';
 	let selectedReasoning = 'balanced';
@@ -4105,12 +4126,15 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 	await expect(page.getByLabel('Message Hermes')).toHaveValue('/compress ');
 
 	const imageBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-	await page.getByLabel('Attach images and files').setInputFiles({
-		name: 'screen.png',
-		mimeType: 'image/png',
-		buffer: imageBytes
-	});
-	await expect(page.getByRole('img', { name: 'screen.png' })).toBeVisible();
+	await page.getByLabel('Attach images and files').setInputFiles(
+		Array.from({ length: 5 }, (_, index) => ({
+			name: `screen-${index}.png`,
+			mimeType: 'image/png',
+			buffer: imageBytes
+		}))
+	);
+	await expect(page.locator('.attachment-list img')).toHaveCount(5);
+	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
 	await page.getByLabel('Message Hermes').fill('Review this screenshot');
 	const busySelections = { selectedModel, selectedMode, selectedReasoning };
 	await page.getByLabel('Message Hermes').press('Enter');
@@ -4122,8 +4146,10 @@ test('discovers Hermes slash commands and sends an attached image', async ({ pag
 	expect({ selectedModel, selectedMode, selectedReasoning }).toEqual(busySelections);
 
 	expect(envelope!.text).toBe('Review this screenshot');
-	expect(envelope!.images[0]).toMatchObject({ name: 'screen.png', mimeType: 'image/png' });
-	expect(Buffer.from(envelope!.images[0].data, 'base64')).toEqual(imageBytes);
+	expect(envelope!.images).toHaveLength(5);
+	expect(envelope!.images[0]).toMatchObject({ name: 'screen-0.png', mimeType: 'image/png' });
+	for (const image of envelope!.images)
+		expect(Buffer.from(image.data, 'base64')).toEqual(imageBytes);
 	expect(browserErrors).toEqual([]);
 });
 
@@ -4653,7 +4679,27 @@ test('queues and edits messages with attachments while streaming, then can send 
 					output: 'Working',
 					error: null
 				},
-				runtime: { profile: 'default' }
+				runtime: {
+					profile: 'default',
+					models: {
+						currentModelId: 'openai:gpt-5.6',
+						availableModels: [{ modelId: 'openai:gpt-5.6', name: 'GPT 5.6' }]
+					},
+					modes: {
+						currentModeId: 'accept-edits',
+						availableModes: [{ id: 'accept-edits', name: 'Accept edits' }]
+					},
+					configOptions: [
+						{
+							type: 'select',
+							id: 'reasoning',
+							name: 'Reasoning',
+							category: 'thought_level',
+							currentValue: 'balanced',
+							options: [{ value: 'balanced', name: 'Balanced' }]
+						}
+					]
+				}
 			}
 		})
 	);
@@ -4682,14 +4728,24 @@ test('queues and edits messages with attachments while streaming, then can send 
 
 	await addProject(page);
 	await sessionButton(page, 'Queue').click();
-	const surface = await openComposerOptions(page);
+	let surface = await openComposerOptions(page);
 	await expect(surface.getByLabel('Message Hermes')).toBeEnabled();
 	await expect(surface.getByRole('button', { name: 'Stop' })).toBeVisible();
-	await expect(surface.getByRole('button', { name: 'Edit approvals' })).toBeDisabled();
-	await expect(surface.getByRole('button', { name: 'Edit approvals' })).toHaveAttribute(
-		'title',
-		'Edit approvals are unavailable until Hermes starts'
-	);
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		surface = await openComposerOptions(page);
+		await expect(surface.getByRole('button', { name: 'Edit approvals' })).toBeDisabled();
+		await expect(surface.getByRole('button', { name: 'Edit approvals' })).toContainText(
+			'Accept edits'
+		);
+		await expect(surface.getByRole('button', { name: 'Reasoning' })).toBeDisabled();
+		await expect(surface.getByRole('button', { name: 'Hermes model' })).toBeDisabled();
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+	}
+	await page.setViewportSize(viewports[0]);
+	surface = await openComposerOptions(page);
 	await surface.locator('.composer input[type="file"]').setInputFiles({
 		name: 'queued.txt',
 		mimeType: 'text/plain',
@@ -5792,7 +5848,9 @@ test('starts a new session without the previous session output', async ({ page }
 	await expect(surface.getByRole('button', { name: 'Edit approvals' })).toBeVisible();
 	await expect(surface.getByRole('button', { name: 'Edit approvals' })).toBeDisabled();
 	await expect(page.getByText('Previous session wall of text')).toBeHidden();
-	await expect(page.getByText('Delivery status unknown', { exact: true })).toBeHidden();
+	await expect(
+		page.getByText('Delivery unconfirmed · Hermes may still be working', { exact: true })
+	).toBeHidden();
 	await expect(page.getByRole('region', { name: 'Conversation' })).toHaveCSS('contain', 'none');
 	await expect(page.getByRole('region', { name: 'Conversation' })).toHaveCSS('overflow', 'visible');
 	for (const viewport of viewports) {
@@ -6533,7 +6591,9 @@ test('retries a lost acknowledgement with the same complete envelope', async ({ 
 	await sessionButton(page, 'Retry').click();
 	await page.getByLabel('Message Hermes').fill('Execute this exactly once.');
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
-	await expect(page.getByText('Delivery status unknown', { exact: true }).last()).toBeVisible();
+	await expect(
+		page.getByText('Delivery unconfirmed · Hermes may still be working', { exact: true }).last()
+	).toBeVisible();
 	await expect(page.getByLabel('Message Hermes')).toHaveValue('Execute this exactly once.');
 	for (const viewport of mobileViewports) {
 		await page.setViewportSize(viewport);

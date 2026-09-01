@@ -23,6 +23,15 @@ done
 
 if [ -n "$pids" ]; then
 	kill $pids 2>/dev/null || true
+	for _ in 1 2 3 4 5 6 7 8 9 10; do
+		survivors=""
+		for pid in $pids; do
+			kill -0 "$pid" 2>/dev/null && survivors="$survivors $pid"
+		done
+		[ -z "$survivors" ] && break
+		sleep 0.1
+	done
+	[ -z "${survivors:-}" ] || kill -KILL $survivors 2>/dev/null || true
 fi
 
 printf 'HUE %s processes stopped.\n' "$mode"

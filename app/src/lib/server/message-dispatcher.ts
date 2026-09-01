@@ -70,6 +70,7 @@ export type BrowserInteractionResponse =
 	| { kind: 'clarify'; action: 'cancel' };
 
 export interface PromptRuntime {
+	hasSessionState(sessionId: string): boolean;
 	resumeSession(cwd: string, sessionId: string): Promise<void>;
 	prompt(input: {
 		sessionId: string;
@@ -158,12 +159,12 @@ export class MessageDispatcher {
 		accepted: { duplicate: boolean; status: import('./store').MessageStatus }
 	) {
 		if (this.closed) throw new Error('Message dispatcher is shutting down');
-		const workMode = (this.store.getSession(envelope.projectId, envelope.sessionId)?.workMode ??
-			DEFAULT_WORK_MODE) as WorkMode;
+		const session = this.store.getSession(envelope.projectId, envelope.sessionId);
+		const workMode = (session?.workMode ?? DEFAULT_WORK_MODE) as WorkMode;
 		if (accepted.duplicate) return { ...accepted, workMode };
 		if (envelope.attachments?.length) this.turnAttachments.set(envelope.id, envelope.attachments);
 
-		this.enqueue(envelope);
+		this.enqueue(envelope, session?.cwd);
 		return { ...accepted, workMode };
 	}
 
@@ -312,7 +313,9 @@ export class MessageDispatcher {
 			if (queued.attachments.length && !attachments?.length) {
 				throw new Error('Attachments unavailable after restart; reattach required');
 			}
-			if (resumeCwd) await this.runtime.resumeSession(resumeCwd, envelope.sessionId);
+			if (resumeCwd && !this.runtime.hasSessionState(envelope.sessionId)) {
+				await this.runtime.resumeSession(resumeCwd, envelope.sessionId);
+			}
 			const current = {
 				...envelope,
 				text: queued.text,

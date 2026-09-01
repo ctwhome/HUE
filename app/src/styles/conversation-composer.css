@@ -99,6 +99,67 @@
 .transcript-spacer {
 	pointer-events: none;
 }
+.turn-activity {
+	display: flex;
+	width: 100%;
+	align-items: center;
+	gap: 9px;
+	margin: 2px auto 20px;
+	color: var(--muted-foreground);
+	font-size: var(--font-size-ui);
+}
+.turn-activity-matrix {
+	display: grid;
+	flex: none;
+	grid-template-columns: repeat(3, 3px);
+	gap: 2px;
+}
+.turn-activity-matrix i {
+	width: 3px;
+	height: 3px;
+	border-radius: 50%;
+	background: currentColor;
+	animation: turn-activity-echo 1.2s ease-in-out infinite;
+	animation-delay: calc(var(--activity-ring) * 120ms - 1.2s);
+}
+.message-skills {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 5px;
+	margin-top: 7px;
+}
+.message-skills span {
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--muted) 70%, transparent);
+	padding: 3px 8px;
+	color: var(--muted-foreground);
+	font-size: var(--font-size-meta);
+}
+@keyframes turn-activity-echo {
+	0%,
+	100% {
+		opacity: 0.2;
+		transform: scale(0.75);
+	}
+	25% {
+		opacity: 1;
+		transform: scale(1.15);
+	}
+	55% {
+		opacity: 0.35;
+		transform: scale(1);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.turn-activity-matrix i {
+		animation: none;
+		opacity: 0.45;
+	}
+	.turn-activity-matrix i:nth-child(5) {
+		opacity: 1;
+	}
+}
 :root[data-limit-chat-width='true'] .transcript-content {
 	width: min(100%, 48rem);
 	margin-inline: auto;

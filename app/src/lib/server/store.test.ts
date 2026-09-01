@@ -35,6 +35,37 @@ describe('HUEStore project and workflow boundaries', () => {
 		store.close();
 	});
 
+	it('waits for a brief competing write instead of failing with database locked', async () => {
+		const path = join(tmpdir(), `hue-contention-${crypto.randomUUID()}.sqlite`);
+		temporaryDatabases.push(path);
+		const store = new HUEStore(path);
+		const blocker = new Database(path);
+		blocker.exec('BEGIN IMMEDIATE');
+
+		const writer = Bun.spawn(
+			[
+				Bun.which('bun')!,
+				'-e',
+				`import { HUEStore } from './src/lib/server/store.ts';
+				 const store = new HUEStore(process.env.TEST_DATABASE!);
+				 store.ensureProjectMetadata('hue', 'HUE');
+				 store.close();`
+			],
+			{
+				cwd: import.meta.dir.replace('/src/lib/server', ''),
+				env: { ...process.env, TEST_DATABASE: path },
+				stderr: 'pipe'
+			}
+		);
+		await Bun.sleep(100);
+		blocker.exec('COMMIT');
+
+		expect(await writer.exited, await new Response(writer.stderr).text()).toBe(0);
+		expect(store.hasProjectMetadata('hue')).toBe(true);
+		blocker.close();
+		store.close();
+	});
+
 	it('persists an optional local group label without changing Project identity', () => {
 		const store = makeStore();
 		store.ensureProjectMetadata('hue', 'HUE');

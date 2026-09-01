@@ -17,12 +17,22 @@ class RecordingRuntime implements PromptRuntime {
 		workMode?: string;
 	}> = [];
 	resumes: Array<{ cwd: string; sessionId: string }> = [];
+	loadedSessions: Set<string>;
 	active = 0;
 	maxActive = 0;
 	failure: Error | null = null;
 
+	constructor(loaded = true) {
+		this.loadedSessions = new Set(loaded ? ['session-1'] : []);
+	}
+
+	hasSessionState(sessionId: string): boolean {
+		return this.loadedSessions.has(sessionId);
+	}
+
 	async resumeSession(cwd: string, sessionId: string): Promise<void> {
 		this.resumes.push({ cwd, sessionId });
+		this.loadedSessions.add(sessionId);
 	}
 
 	async prompt(input: Parameters<PromptRuntime['prompt']>[0]): Promise<void> {
@@ -76,6 +86,23 @@ function makeStore() {
 }
 
 describe('MessageDispatcher', () => {
+	it('loads an uncached existing Session before delivering a new message', async () => {
+		const store = makeStore();
+		const runtime = new RecordingRuntime(false);
+		const dispatcher = new MessageDispatcher(store, runtime);
+
+		dispatcher.submit({
+			id: 'existing-session-message',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Continue'
+		});
+		await dispatcher.whenIdle('session-1');
+
+		expect(runtime.resumes).toEqual([{ cwd: '/work/hue', sessionId: 'session-1' }]);
+		store.close();
+	});
+
 	it('delivers stored review contexts separately from user text', async () => {
 		const store = makeStore();
 		const runtime = new RecordingRuntime();
@@ -127,7 +154,7 @@ describe('MessageDispatcher', () => {
 		);
 		insert.run('queued', 'session-1', 'Resume me', 'queued', now, now);
 		insert.run('running', 'session-1', 'Do not retry me', 'running', now, now);
-		const runtime = new RecordingRuntime();
+		const runtime = new RecordingRuntime(false);
 		const dispatcher = new MessageDispatcher(store, runtime);
 
 		store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
@@ -193,7 +220,7 @@ describe('MessageDispatcher', () => {
 			text: 'Never retry me'
 		});
 		store.updateMessageStatus('running', 'running');
-		const runtime = new RecordingRuntime();
+		const runtime = new RecordingRuntime(false);
 
 		const dispatcher = new MessageDispatcher(store, runtime);
 		await dispatcher.whenIdle('session-1');
@@ -272,7 +299,7 @@ describe('MessageDispatcher', () => {
 			sessionId: 'session-1',
 			text: 'Resume safely'
 		});
-		const runtime = new RecordingRuntime();
+		const runtime = new RecordingRuntime(false);
 		runtime.resumeSession = async () => {
 			throw new Error('resume unavailable');
 		};
@@ -906,6 +933,7 @@ describe('MessageDispatcher', () => {
 		const store = makeStore();
 		let rejectActive!: (error: Error) => void;
 		const runtime: PromptRuntime = {
+			hasSessionState: () => true,
 			resumeSession: async () => {},
 			prompt: () => new Promise((_resolve, reject) => (rejectActive = reject))
 		};

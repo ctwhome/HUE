@@ -414,6 +414,7 @@ export class HUEStore {
 		this.database = new Database(filename, { create: true, strict: true });
 		if (filename !== ':memory:' && (lstatSync(filename).mode & 0o777) !== 0o600)
 			chmodSync(filename, 0o600);
+		this.database.exec('PRAGMA busy_timeout = 5000');
 		this.database.exec('PRAGMA foreign_keys = ON');
 		this.database.exec('PRAGMA secure_delete = ON');
 		try {

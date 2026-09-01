@@ -74,8 +74,8 @@ test('rejects signature mismatch, invalid UTF-8, NUL text, and script MIME', () 
 		expect(() => validateAttachments([candidate])).toThrow();
 });
 
-test('enforces one count and aggregate budget across images and files', () => {
-	const images = Array.from({ length: 4 }, (_, index) => ({
+test('leaves attachment count to Hermes while enforcing the aggregate byte budget', () => {
+	const images = Array.from({ length: 5 }, (_, index) => ({
 		name: `${index}.png`,
 		mimeType: 'image/png',
 		data: png
@@ -86,9 +86,7 @@ test('enforces one count and aggregate budget across images and files', () => {
 		size: 5,
 		data: encoded('hello')
 	}));
-	expect(() => validateMessageAttachments(images, attachments)).toThrow(
-		`Attach no more than ${attachmentLimits.maxCount} files`
-	);
+	expect(validateMessageAttachments(images, attachments)).toEqual({ images, attachments });
 	const half = Math.floor(attachmentLimits.maxTotalBytes / 2) + 1;
 	const largeVideo = Buffer.concat([
 		Buffer.from('000000186674797069736f6d', 'hex'),
@@ -116,22 +114,12 @@ test('rejects unsafe names and mismatched or executable types', () => {
 	}
 });
 
-test('enforces declared, decoded, per-file, count, and aggregate attachment limits', () => {
+test('enforces declared, decoded, per-file, and aggregate attachment limits', () => {
 	expect(Math.ceil((attachmentLimits.maxTotalBytes * 4) / 3)).toBeLessThan(60_000_000);
 	const data = 'aGVsbG8=';
 	expect(() =>
 		validateAttachments([{ name: 'notes.txt', mimeType: 'text/plain', size: 4, data }])
 	).toThrow('does not match');
-	expect(() =>
-		validateAttachments(
-			Array.from({ length: attachmentLimits.maxCount + 1 }, (_, index) => ({
-				name: `notes-${index}.txt`,
-				mimeType: 'text/plain',
-				size: 5,
-				data
-			}))
-		)
-	).toThrow(`no more than ${attachmentLimits.maxCount}`);
 	const oversized = Buffer.concat([
 		Buffer.from('%PDF-'),
 		Buffer.alloc(attachmentLimits.maxDocumentBytes - 4)

@@ -138,8 +138,9 @@ test('updates queued message under canonical Hermes id inside Project operation 
 	});
 });
 
-test('rejects combined image and generic attachment count before dispatch', async () => {
+test('leaves combined image and generic attachment count to Hermes', async () => {
 	submitted = false;
+	negotiatedImageCapability = true;
 	const png = Buffer.from('89504e470d0a1a0a', 'hex').toString('base64');
 	const text = Buffer.from('hello').toString('base64');
 	const { POST } = await import('./+server');
@@ -164,9 +165,8 @@ test('rejects combined image and generic attachment count before dispatch', asyn
 			})
 		})
 	} as never);
-	expect(response.status).toBe(400);
-	expect(await response.json()).toEqual({ error: 'Attach no more than 8 files' });
-	expect(submitted).toBe(false);
+	expect(response.status).toBe(202);
+	expect(submitted).toBe(true);
 });
 
 test('rejects an unsupported image before HUE dispatch persistence', async () => {

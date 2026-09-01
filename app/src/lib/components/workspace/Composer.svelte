@@ -566,7 +566,7 @@
 			aria-expanded={thinkingOpen}
 			aria-label={`${thinkingOpen ? 'Hide' : 'Show'} activity details for message ${activityStatus}`}
 			title={activityStatus.includes('unknown')
-				? 'Hermes delivery acknowledgement was not confirmed · Toggle activity details'
+				? 'Delivery is unconfirmed; Hermes may still be working · Toggle activity details'
 				: `Message ${activityStatus} · Toggle activity details`}
 			onclick={toggleThinking}
 			><DeliveryIcon
@@ -575,7 +575,9 @@
 				width={14}
 				height={14}
 				aria-hidden="true"
-			/>{activityStatus.includes('unknown') ? 'Delivery status unknown' : activityStatus}</button
+			/>{activityStatus.includes('unknown')
+				? 'Delivery unconfirmed · Hermes may still be working'
+				: activityStatus}</button
 		>{/if}
 	<div class="task-activity">
 		<CurrentTask {plan} bind:open={tasksOpen} onopen={() => (thinkingOpen = false)} />

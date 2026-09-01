@@ -29,11 +29,9 @@ export type MediaOutput = {
 };
 
 const supportedImageTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
-const maxImages = 4;
 const maxImageBytes = 10 * 1024 * 1024;
 
 export const attachmentLimits = {
-	maxCount: 8,
 	maxTotalBytes: 40 * 1024 * 1024,
 	maxImageBytes,
 	maxDocumentBytes: 25 * 1024 * 1024,
@@ -246,9 +244,7 @@ function validateAttachmentTotal(attachments: Array<{ size: number }>) {
 }
 
 export function validateAttachmentBytes(input: ByteAttachment[]): ByteAttachment[] {
-	if (!Array.isArray(input) || input.length > attachmentLimits.maxCount) {
-		throw new Error(`Attach no more than ${attachmentLimits.maxCount} files`);
-	}
+	if (!Array.isArray(input)) throw new Error('Invalid attachments');
 	const attachments = input.map(({ name, mimeType, size, bytes }) => ({
 		...validateAttachment(name, mimeType, size, bytes),
 		bytes
@@ -329,9 +325,7 @@ export function attachmentMatchesDeclaredType(mimeType: string, bytes: Uint8Arra
 
 export function validateAttachments(input: unknown): InputAttachment[] {
 	if (input == null) return [];
-	if (!Array.isArray(input) || input.length > attachmentLimits.maxCount) {
-		throw new Error(`Attach no more than ${attachmentLimits.maxCount} files`);
-	}
+	if (!Array.isArray(input)) throw new Error('Invalid attachments');
 	const attachments = input.map((candidate) => {
 		if (!candidate || typeof candidate !== 'object') throw new Error('Invalid attachment');
 		const { name, mimeType, size, data } = candidate as Record<string, unknown>;
@@ -346,9 +340,6 @@ export function validateAttachments(input: unknown): InputAttachment[] {
 export function validateMessageAttachments(images: unknown, attachments: unknown) {
 	const validImages = validateImageAttachments(images);
 	const validAttachments = validateAttachments(attachments);
-	if (validImages.length + validAttachments.length > attachmentLimits.maxCount) {
-		throw new Error(`Attach no more than ${attachmentLimits.maxCount} files`);
-	}
 	const total =
 		validImages.reduce((sum, image) => sum + decodedBytes(image.data), 0) +
 		validAttachments.reduce((sum, attachment) => sum + attachment.size, 0);
@@ -401,9 +392,7 @@ export function mimeTypeForFile(name: string): string | null {
 
 export function validateImageAttachments(input: unknown): ImageAttachment[] {
 	if (input == null) return [];
-	if (!Array.isArray(input) || input.length > maxImages) {
-		throw new Error(`Attach no more than ${maxImages} images`);
-	}
+	if (!Array.isArray(input)) throw new Error('Invalid image attachments');
 	return input.map((candidate) => {
 		if (!candidate || typeof candidate !== 'object') throw new Error('Invalid image attachment');
 		const { name, mimeType, data } = candidate as Record<string, unknown>;

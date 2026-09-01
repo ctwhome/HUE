@@ -20,6 +20,27 @@ test('the floating delivery status toggles thinking details without a toolbar tr
 	expect(styles).toContain('.composer-delivery:focus-visible');
 });
 
+test('unknown delivery explains that Hermes may still be working', () => {
+	const composer = read('Composer.svelte');
+
+	expect(composer).toContain('Delivery unconfirmed · Hermes may still be working');
+});
+
+test('chat activity uses an attributed reduced-motion-safe 3x3 matrix loader', () => {
+	const conversation = read('Conversation.svelte');
+	const styles = read('../../../styles/conversation-composer.css');
+	const notices = readFileSync(
+		join(import.meta.dir, '../../../../../THIRD_PARTY_NOTICES.md'),
+		'utf8'
+	);
+
+	expect(conversation).toContain('class="turn-activity-matrix"');
+	expect(conversation).toContain('[2, 1, 2, 1, 0, 1, 2, 1, 2]');
+	expect(styles).toContain('@keyframes turn-activity-echo');
+	expect(styles).toMatch(/prefers-reduced-motion:[^{]+\{[^}]*\.turn-activity-matrix/s);
+	expect(notices).toContain('zzzzshawn/matrix');
+});
+
 test('the current task is a floating pill with its plan position and title', () => {
 	const currentTask = read('CurrentTask.svelte');
 	const styles = read('../../../styles/thinking-task.css');

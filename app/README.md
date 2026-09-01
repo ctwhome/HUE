@@ -32,13 +32,12 @@ The real ACP test creates and resumes a Hermes Session but uses the local `/vers
 ## Production
 
 ```bash
-make build
-make serve HOST=127.0.0.1 PORT=4174 ORIGIN=https://m3-max.tail33436f.ts.net:4173
+make restart
 ```
 
-`make build` rebuilds the docs and production app without starting it. `make serve` runs an immutable build snapshot on `127.0.0.1:4174`, so later builds cannot remove assets from the live process. The configured Tailscale Serve route exposes it at `https://m3-max.tail33436f.ts.net:4173`. Set `HUE_ACCESS_SECRET`, `HUE_DATABASE_PATH`, and optionally `HUE_HERMES_PROFILE` in `app/.env`.
+Production runs continuously under the `com.ctw.hue-production` KeepAlive LaunchAgent. `make restart` rebuilds the docs and app, then restarts production onto an immutable snapshot on `127.0.0.1:4174`. The configured Tailscale Serve route exposes it at `https://m3-max.tail33436f.ts.net:4173`. Set `HUE_ACCESS_SECRET`, `HUE_DATABASE_PATH`, and optionally `HUE_HERMES_PROFILE` in `app/.env`.
 
-Development and production can run together. `make dev` uses `http://127.0.0.1:4010` and the isolated `~/.hue/hue-dev.db`; its Tailscale URL is `https://m3-max.tail33436f.ts.net:4010`. Restarting either target leaves the other running. `make stop` stops both.
+Development and production can run together. `make dev` starts only a foreground server on `http://127.0.0.1:4010` with the isolated `~/.hue/hue-dev.db`; its Tailscale URL is `https://m3-max.tail33436f.ts.net:4010`. Stopping development leaves production running. `make build` compiles without restarting production, and `make serve` is the lower-level foreground command used by the production LaunchAgent.
 
 ### Authenticated LAN or tailnet access
 
