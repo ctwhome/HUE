@@ -8,6 +8,17 @@ const viewports = [
 ];
 
 test('keeps Project and Session status visible while switching panes', async ({ page }) => {
+	const pageErrors: string[] = [];
+	const requestFailures: string[] = [];
+	page.on('pageerror', (error) => pageErrors.push(error.message));
+	page.on('requestfailed', (request) => {
+		if (
+			request.method() === 'HEAD' &&
+			/\/_app\/immutable\/assets\/data\.[^/]+\.json$/.test(request.url())
+		)
+			return;
+		requestFailures.push(`${request.method()} ${request.url()}`);
+	});
 	const created = await page.request.post('/api/projects', {
 		data: { name: 'Status project', folders: [process.cwd()], primaryPath: process.cwd() }
 	});
@@ -62,12 +73,15 @@ test('keeps Project and Session status visible while switching panes', async ({ 
 		await page.setViewportSize(viewport);
 		await page.goto(`/?project=${project.id}`);
 		if (viewport.width <= 700) {
-			if ((await page.locator('#session-drawer').getAttribute('aria-hidden')) === 'true')
+			if ((await page.locator('#session-drawer').getAttribute('aria-hidden')) === 'true') {
 				await page.getByRole('button', { name: 'Back to Sessions' }).click();
-		} else {
-			await expect(page.getByLabel('1 running Sessions')).toBeVisible();
-			await expect(page.getByLabel('2 unread Sessions')).toBeVisible();
+			}
+			await page.getByRole('button', { name: 'Back to Projects' }).click();
 		}
+		await expect(page.getByLabel('1 running Sessions')).toBeVisible();
+		await expect(page.getByLabel('2 unread Sessions')).toBeVisible();
+		if (viewport.width <= 700)
+			await page.locator('[data-project-id]').filter({ hasText: 'Status project' }).click();
 		await expect(page.getByLabel('Unread activity')).toBeVisible();
 		await expect(page.getByRole('button', { name: /Running work, Running/ })).toBeVisible();
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
@@ -78,4 +92,6 @@ test('keeps Project and Session status visible while switching panes', async ({ 
 	await page.getByRole('button', { name: /Finished work, Idle/ }).click();
 	await expect.poll(() => markedRead).toBe(true);
 	await expect(page.getByLabel('Unread activity')).toHaveCount(0);
+	expect(pageErrors).toEqual([]);
+	expect(requestFailures).toEqual([]);
 });
