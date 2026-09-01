@@ -1,8 +1,4 @@
-import {
-	attachmentLimits,
-	validateAttachmentBytes,
-	type InputAttachment
-} from '$lib/message-content';
+import { validateAttachmentBytes, type InputAttachment } from '$lib/message-content';
 
 export type ShareIntake = { text: string; attachments: InputAttachment[] };
 
@@ -31,8 +27,6 @@ export async function parseShareForm(form: FormData): Promise<ShareIntake> {
 		if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Shared URL is invalid');
 	}
 	const values = form.getAll('files');
-	if (values.length > attachmentLimits.maxCount)
-		throw new Error(`Attach no more than ${attachmentLimits.maxCount} files`);
 	if (values.some((value) => !(value instanceof File))) throw new Error('Invalid shared file');
 	const attachments = validateAttachmentBytes(
 		await Promise.all(

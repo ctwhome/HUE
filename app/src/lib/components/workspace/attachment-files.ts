@@ -20,11 +20,11 @@ export const unavailableAttachmentMetadata = ({ name, mimeType, size }: InputAtt
 	reattachRequired: true
 });
 
-export async function readAttachmentFiles(files: FileList | File[], available: number) {
+export async function readAttachmentFiles(files: FileList | File[]) {
 	const images: ImageAttachment[] = [],
 		attachments: InputAttachment[] = [],
 		errors: string[] = [];
-	for (const file of Array.from(files).slice(0, available))
+	for (const file of Array.from(files))
 		try {
 			const [item] = validateAttachments([
 				{ name: file.name, mimeType: file.type, size: file.size, data: await data(file) }

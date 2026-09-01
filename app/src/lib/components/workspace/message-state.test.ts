@@ -228,3 +228,32 @@ test('unsupported image capability rejects only images and preserves file attach
 	]);
 	expect(errors.at(-1)).toBe('Hermes does not support image prompts');
 });
+
+test('leaves image count to Hermes', async () => {
+	class TestFileReader {
+		result: string | null = null;
+		onload: (() => void) | null = null;
+		onerror: (() => void) | null = null;
+		readAsDataURL(file: File) {
+			queueMicrotask(() => {
+				this.result = `data:${file.type};base64,${Buffer.from('89504e470d0a1a0a', 'hex').toString('base64')}`;
+				this.onload?.();
+			});
+		}
+	}
+	Reflect.set(globalThis, 'FileReader', TestFileReader);
+	const errors: string[] = [];
+	const state = new MessageState({
+		session: { runtime: { profile: 'default', capabilities: { promptImage: true } } },
+		setError: (message: string) => errors.push(message)
+	} as never);
+	const files = Array.from(
+		{ length: 5 },
+		(_, index) => ({ name: `${index}.png`, type: 'image/png', size: 8 }) as File
+	);
+
+	await state.addFiles(files);
+
+	expect(state.images).toHaveLength(5);
+	expect(errors.at(-1)).toBe('');
+});

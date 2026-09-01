@@ -84,6 +84,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			externalCronError,
 			sessions: page.sessions.map((stored) => {
 				const runtime = runtimeById.get(stored.sessionId);
+				const available = !!runtime || sessionMatchesProjectRoot(root, stored.cwd);
 				const title = stored.title ?? runtime?.title ?? 'Untitled Hermes Session';
 				return {
 					...runtime,
@@ -91,8 +92,8 @@ export const GET: RequestHandler = async ({ url }) => {
 					title,
 					icon: stored.icon ?? automaticSessionIcon(title),
 					customIcon: stored.icon,
-					available: !!runtime,
-					recovery: runtime ? null : `Restore the Session folder at ${stored.cwd} to resume it.`,
+					available,
+					recovery: available ? null : `Restore the Session folder at ${stored.cwd} to resume it.`,
 					busySince: busyStarts[stored.sessionId] ?? null,
 					attention: indicators[stored.sessionId]?.attention ?? false,
 					error: indicators[stored.sessionId]?.error ?? false,

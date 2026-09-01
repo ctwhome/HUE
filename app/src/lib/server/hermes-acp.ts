@@ -882,6 +882,10 @@ export class HermesACP implements PromptRuntime {
 		};
 	}
 
+	hasSessionState(sessionId: string): boolean {
+		return this.sessionStates.has(sessionId);
+	}
+
 	async setModel(sessionId: string, modelId: string): Promise<HermesSessionState> {
 		const context = await this.context();
 		await this.requestRaw(context, 'session/set_model', { sessionId, modelId });

@@ -31,13 +31,13 @@ Open [http://127.0.0.1:4010](http://127.0.0.1:4010). Development uses `~/.hue/hu
 
 ## Build and serve
 
-`make build` compiles documentation and the production app without starting a process.
-`make serve` runs an immutable snapshot of that build so later builds cannot invalidate a live server's assets.
+Production runs continuously under its KeepAlive LaunchAgent. `make restart` builds documentation and the app, then restarts production onto an immutable snapshot of that build. `make dev` starts only the foreground development server with `~/.hue/hue-dev.db`; stopping it does not affect production.
 
 ```bash
-make build
-make serve HOST=127.0.0.1 PORT=4173 HUE_DATABASE_PATH="$HOME/.hue/hue.db"
+make restart
 ```
+
+`make build` compiles without restarting production. `make serve` is the lower-level foreground production command used by the LaunchAgent.
 
 Project terminals work on loopback and through an authenticated HTTPS tailnet or trusted reverse-proxy origin.
 

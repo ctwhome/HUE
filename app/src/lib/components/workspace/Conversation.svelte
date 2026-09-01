@@ -40,6 +40,7 @@
 	import GeneratedOutputs from './GeneratedOutputs.svelte';
 	import MarkdownControls from './MarkdownControls.svelte';
 	import { permissionDetails } from './permission-consequence';
+	import { activeTurnStatus, skillsUsed } from './thinking-state';
 	import {
 		selectTranscriptTimeline,
 		type WorkspaceActivity,
@@ -133,6 +134,7 @@
 	const timestampTitle = (value: string) =>
 		new Date(value).toLocaleString([], { dateStyle: 'full', timeStyle: 'long' });
 	let transcriptTimeline = $derived(selectTranscriptTimeline(timeline));
+	let turnStatus = $derived(activeTurnStatus(timeline, busy));
 	let expandedUserMessages = $state<string[]>([]);
 	let truncatedUserMessages = $state<string[]>([]);
 	const userMessageKey = (message: Message & { messageId?: string; sequence: number }) =>
@@ -347,6 +349,7 @@
 			{#if item.kind === 'message'}
 				{@const message = item}
 				{@const messageKey = userMessageKey(message)}
+				{@const messageSkills = skillsUsed(timeline, message.messageId)}
 				{@const messageCollapsible =
 					truncatedUserMessages.includes(messageKey) || Boolean(message.images?.length)}
 				<article
@@ -479,6 +482,12 @@
 								</div>
 							</div>
 						{/if}
+						{#if message.role === 'assistant' && messageSkills.length}<div
+								class="message-skills"
+								aria-label="Skills used"
+							>
+								{#each messageSkills as skill}<span>Skill used: {skill}</span>{/each}
+							</div>{/if}
 						<div class="message-actions mt-1 flex gap-0.5">
 							{#if message.role === 'user'}<button
 									type="button"
@@ -611,6 +620,13 @@
 				</form>
 			{/if}
 		{/each}
+		{#if turnStatus}<div class="turn-activity" role="status" aria-live="polite">
+				<span class="turn-activity-matrix" aria-hidden="true">
+					{#each [2, 1, 2, 1, 0, 1, 2, 1, 2] as ring}<i style={`--activity-ring: ${ring}`}
+						></i>{/each}
+				</span>
+				<span>{turnStatus}</span>
+			</div>{/if}
 		{#if transcriptTimeline.length === 0}<div
 				class="welcome mx-auto max-w-2xl text-center text-muted-foreground"
 			>
