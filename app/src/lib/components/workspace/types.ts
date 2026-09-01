@@ -17,6 +17,9 @@ export type Project = {
 	folders: Array<{ path: string; label: string | null; isPrimary: boolean; available: boolean }>;
 	rootAvailable: boolean;
 	sessionCount: number;
+	runningCount?: number;
+	attentionCount?: number;
+	unreadCount?: number;
 };
 
 export type WorkspaceProps = {

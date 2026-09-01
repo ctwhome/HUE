@@ -27,11 +27,11 @@ bun install --frozen-lockfile
 make dev
 ```
 
-Open [http://127.0.0.1:4010](http://127.0.0.1:4010). Development uses `~/.hue/hue-dev.db` by default.
+Open [http://127.0.0.1:4010](http://127.0.0.1:4010). Development uses the canonical `~/.hue/hue.db`.
 
 ## Build and serve
 
-Production runs continuously under its KeepAlive LaunchAgent. `make restart` builds documentation and the app, then restarts production onto an immutable snapshot of that build. `make dev` starts only the foreground development server with `~/.hue/hue-dev.db`; stopping it does not affect production.
+Production runs continuously under its KeepAlive LaunchAgent. `make restart` builds documentation and the app, then restarts production onto an immutable snapshot of that build. `make dev` hands the canonical database from production to the foreground development server, then restores production when development stops.
 
 ```bash
 make restart

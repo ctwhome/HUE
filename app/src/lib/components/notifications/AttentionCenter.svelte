@@ -47,13 +47,17 @@
 		projectId,
 		sessionId,
 		onclose,
-		oncounts
+		oncounts,
+		onindicators
 	}: {
 		open: boolean;
 		projectId: string | null;
 		sessionId: string | null;
 		onclose: () => void;
 		oncounts: (unread: number) => void;
+		onindicators: (
+			indicators: Record<string, { running: number; attention: number; unread: number }>
+		) => void;
 	} = $props();
 
 	let items = $state<Item[]>([]);
@@ -146,6 +150,7 @@
 				items: Item[];
 				nextCursor: string | null;
 				counts: { unread: number; all: number };
+				projectIndicators: Record<string, { running: number; attention: number; unread: number }>;
 			}>(`/api/notifications?${query}`);
 			if (request !== refreshGeneration) return;
 			const incoming = body.items.filter((item) => !known.has(item.id));
@@ -156,6 +161,7 @@
 			nextCursor = body.nextCursor;
 			unread = body.counts.unread;
 			oncounts(unread);
+			onindicators(body.projectIndicators ?? {});
 			updateBadge(unread);
 		} catch {
 			if (request === refreshGeneration && !background) error = 'Unable to load notifications';

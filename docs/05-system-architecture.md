@@ -30,7 +30,7 @@ flowchart LR
 
 `database is locked` was caused by stale production processes and a KeepAlive development server sharing the same `HUE_DATABASE_PATH`, not by SQLite reaching a product limit. Those processes also duplicated HUE schedulers, so replacing SQLite with Turso would have moved write arbitration elsewhere without fixing the unsafe runtime topology. Local SQLite remains the smaller correct persistence layer for HUE's single-user control plane.
 
-Keep exactly one long-lived HUE process per database file. Production startup stops prior serve processes and force-terminates any that ignore graceful shutdown; SQLite waits briefly for transient competing writes. Development and production must use separate database paths, and any process supervisor or LaunchAgent must be checked for duplicate owners before it is enabled. Diagnose recurrence with `lsof "$HUE_DATABASE_PATH"`; do not add hosted persistence unless multi-user or hosted-sync requirements justify a new decision.
+Keep exactly one long-lived HUE process per database file. Production startup stops prior serve processes and force-terminates any that ignore graceful shutdown; SQLite waits briefly for transient competing writes. Development and production use the same canonical database through an exclusive process handoff: `make dev` unloads production before starting and restores it on exit. Any process supervisor or LaunchAgent must be checked for duplicate owners before it is enabled. Diagnose recurrence with `lsof "$HUE_DATABASE_PATH"`; do not add hosted persistence unless multi-user or hosted-sync requirements justify a new decision.
 
 ## Ownership
 

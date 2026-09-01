@@ -431,6 +431,22 @@ export class ProjectManagement {
 		}
 	};
 
+	applyIndicators = (
+		indicators: Record<string, { running: number; attention: number; unread: number }>
+	) => {
+		this.projects = this.projects.map((project) => {
+			const status = indicators[project.id];
+			return status
+				? {
+						...project,
+						runningCount: status.running,
+						attentionCount: status.attention,
+						unreadCount: status.unread
+					}
+				: project;
+		});
+	};
+
 	requestRemoveProject = () => {
 		this.projectEditError = '';
 		if (this.editingProject) this.removeProjectDialog?.showModal();

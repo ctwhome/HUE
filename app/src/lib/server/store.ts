@@ -1286,6 +1286,17 @@ export class HUEStore {
 		);
 	}
 
+	markSessionNotificationsRead(projectId: string | null, sessionId: string): number {
+		return Number(
+			this.database
+				.query(
+					`UPDATE notifications SET read_at = ?
+					 WHERE project_id IS ? AND session_id = ? AND read_at IS NULL AND dismissed_at IS NULL`
+				)
+				.run(new Date().toISOString(), projectId, sessionId).changes
+		);
+	}
+
 	getNotification(id: string): StoredNotification | null {
 		const row = this.database
 			.query(
@@ -2870,6 +2881,19 @@ export class HUEStore {
 				}
 			])
 		);
+	}
+
+	getSessionIndicatorCounts(projectId: string | null): {
+		running: number;
+		attention: number;
+		unread: number;
+	} {
+		const indicators = Object.values(this.getSessionIndicators(projectId));
+		return {
+			running: indicators.filter(({ status }) => status === 'running').length,
+			attention: indicators.filter(({ attention }) => attention).length,
+			unread: indicators.filter(({ unreadAttention }) => unreadAttention).length
+		};
 	}
 
 	private mapMessage(row: {

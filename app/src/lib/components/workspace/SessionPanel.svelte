@@ -49,6 +49,7 @@
 		getProjects: () => (fixedProject ? [fixedProject] : []),
 		adjustChatSessionCount: () => {},
 		adjustCronSessionCount: () => {},
+		refreshProjects: async () => {},
 		applyCreatedSession: () => {},
 		guard: () => false,
 		isMobile: () => false,

@@ -49,6 +49,15 @@ test('unread completion notifications do not make healthy session rows look brok
 	const panel = readFileSync(new URL('./ContextPanel.svelte', import.meta.url), 'utf8');
 	expect(panel).toContain('unreadAttention: session.attention,');
 	expect(panel).not.toContain('session.attention || session.unreadAttention');
+	expect(panel).toContain('class="session-unread-badge"');
+	expect(panel).toContain('aria-label="Unread activity"');
+});
+
+test('Project rows expose running and unread Session counts', () => {
+	const rail = readFileSync(new URL('./ProjectRail.svelte', import.meta.url), 'utf8');
+	expect(rail).toContain('project.runningCount');
+	expect(rail).toContain('project.unreadCount');
+	expect(rail).toContain('class="project-unread-badge"');
 });
 
 test('session row icons are larger than navigation icons', () => {
