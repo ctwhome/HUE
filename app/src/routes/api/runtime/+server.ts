@@ -12,7 +12,7 @@ type RuntimeHandler = (event: {
 
 export function _createRuntimeHandlers(dependencies: {
 	diagnostics: () => Promise<unknown>;
-	backup: () => { filename: string; path: string; validated: true };
+	backup: () => { filename: string; path: string; attachmentsPath: string | null; validated: true };
 }): { GET: RuntimeHandler; POST: RuntimeHandler } {
 	const allowed = ({ request, url, getClientAddress }: Parameters<RuntimeHandler>[0]) =>
 		requestAccessAllowed(request, url, getClientAddress());

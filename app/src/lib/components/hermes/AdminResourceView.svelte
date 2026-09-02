@@ -115,16 +115,21 @@
 			<div class="mr-auto">
 				<strong>HUE data backup</strong>
 				<p class="text-sm text-muted-foreground">
-					Includes HUE-owned SQLite state only. Hermes data is not included.
+					Includes HUE-owned SQLite state and referenced image files. Hermes data is not included.
 				</p>
 			</div>
 			<Button variant="outline" onclick={onbackup}>Create validated backup</Button>
 			{#if data.backup?.path}<p class="w-full text-sm break-all" role="status">
-					Validated backup: {data.backup.path}
+					Validated database backup: {data.backup.path}
+				</p>{/if}
+			{#if data.backup?.attachmentsPath}<p class="w-full text-sm break-all" role="status">
+					Validated image backup: {data.backup.attachmentsPath}
 				</p>{/if}
 			<p class="w-full text-sm text-muted-foreground">
-				Offline restore: stop HUE, preserve the current database, then replace it with a validated
-				backup before restarting. Live restore is intentionally unavailable.
+				Offline restore: stop HUE and preserve the current data. Replace the database with the
+				validated database backup and, when an image backup is shown, copy it to the restored
+				database path plus <code>.attachments</code> before restarting. Live restore is intentionally
+				unavailable.
 			</p>
 		</article>
 		<article class={card}>

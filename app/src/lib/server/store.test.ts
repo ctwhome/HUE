@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { rmSync } from 'node:fs';
+import { chmodSync, lstatSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { HUEStore, MessageConflictError } from './store';
@@ -8,7 +8,10 @@ import { HUEStore, MessageConflictError } from './store';
 const temporaryDatabases: string[] = [];
 
 afterEach(() => {
-	for (const path of temporaryDatabases.splice(0)) rmSync(path, { force: true });
+	for (const path of temporaryDatabases.splice(0)) {
+		rmSync(path, { force: true });
+		rmSync(`${path}.attachments`, { recursive: true, force: true });
+	}
 });
 
 function makeStore() {
@@ -1185,6 +1188,59 @@ describe('HUEStore acknowledged message transport', () => {
 			unavailable
 		]);
 		store.close();
+	});
+	it('stores image payloads in private files instead of SQLite', () => {
+		const filename = join(tmpdir(), `hue-store-${crypto.randomUUID()}.db`);
+		temporaryDatabases.push(filename);
+		const store = new HUEStore(filename);
+		store.ensureProjectMetadata('hue', 'HUE');
+		store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
+		store.acceptMessage({
+			id: 'msg-image',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Review this image',
+			images: [{ name: 'proof.png', mimeType: 'image/png', data: 'aGVsbG8=' }]
+		});
+
+		const row = store.database
+			.query('SELECT data, file_path FROM message_attachments WHERE message_id = ?')
+			.get('msg-image') as { data: string; file_path: string };
+		expect(row.data).toBe('');
+		const attachmentPath = join(`${filename}.attachments`, row.file_path);
+		expect(readFileSync(attachmentPath).toString()).toBe('hello');
+		expect(lstatSync(`${filename}.attachments`).mode & 0o777).toBe(0o700);
+		expect(lstatSync(attachmentPath).mode & 0o777).toBe(0o600);
+		store.updateQueuedMessage('msg-image', {
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Review the replacement image',
+			images: [{ name: 'replacement.png', mimeType: 'image/png', data: 'd29ybGQ=' }],
+			attachments: []
+		});
+		expect(() => lstatSync(attachmentPath)).toThrow();
+		const replacement = store.database
+			.query('SELECT file_path FROM message_attachments WHERE message_id = ?')
+			.get('msg-image') as { file_path: string };
+		const replacementPath = join(`${filename}.attachments`, replacement.file_path);
+		expect(readFileSync(replacementPath).toString()).toBe('world');
+		store.close();
+		const orphanPath = join(`${filename}.attachments`, crypto.randomUUID());
+		writeFileSync(orphanPath, 'orphan', { mode: 0o600 });
+		chmodSync(`${filename}.attachments`, 0o777);
+		chmodSync(replacementPath, 0o666);
+
+		const reopened = new HUEStore(filename);
+		expect(() => lstatSync(orphanPath)).toThrow();
+		expect(lstatSync(`${filename}.attachments`).mode & 0o777).toBe(0o700);
+		expect(lstatSync(replacementPath).mode & 0o777).toBe(0o600);
+		expect(reopened.getMessage('msg-image')?.images).toEqual([
+			{ name: 'replacement.png', mimeType: 'image/png', data: 'd29ybGQ=' }
+		]);
+		reopened.updateMessageStatus('msg-image', 'failed');
+		expect(reopened.deleteSession('hue', 'session-1')).toBe(true);
+		expect(() => lstatSync(replacementPath)).toThrow();
+		reopened.close();
 	});
 
 	it('keeps the running message active when a follow-up is queued', () => {

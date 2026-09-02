@@ -76,7 +76,7 @@ These may be reconsidered only through a new product decision; they are not impl
 - The implemented surface matches the actual need and can remain fast.
 - Hermes capabilities are reused without importing its Python dashboard.
 - Message integrity is materially stronger than PTY input.
-- HUE metadata stays small, local, inspectable, and independently migratable.
+- HUE metadata stays small, local, inspectable, and independently migratable; image payloads live in private files beside the database rather than as base64 SQLite text.
 - On-demand Project → Session loading is inherent in the API boundary.
 
 ### Trade-offs
@@ -102,7 +102,7 @@ This change belongs in Hermes Agent, not HUE. HUE must keep its capability gate 
 
 ### Issue 65 capability and file boundaries
 
-Installed Hermes Agent v0.20.5 reads ACP `resource_link` content only from local file paths or `file://` URIs. HUE therefore stages validated non-image bytes in a private per-turn temporary directory, deletes it after every terminal prompt outcome, and persists only attachment metadata. Reloaded metadata is explicitly unavailable until reattached.
+Installed Hermes Agent v0.20.5 reads ACP `resource_link` content only from local file paths or `file://` URIs. HUE therefore stages validated non-image bytes in a private per-turn temporary directory, deletes it after every terminal prompt outcome, and persists only attachment metadata. Reloaded metadata is explicitly unavailable until reattached. Validated image bytes required for durable message delivery are stored as private `0600` files referenced by SQLite; existing inline image rows are externalized after a validated pre-migration backup. Backups copy and validate every referenced image sidecar alongside the SQLite snapshot.
 
 Current ACP exposes full-Session `session/fork`, but no selected-message fork, Session import, authoritative model cost, or compression-state seam. HUE labels these controls unavailable and must not substitute full-Session duplication or inferred usage. Revisit only after Hermes advertises and proves matching ACP behavior.
 

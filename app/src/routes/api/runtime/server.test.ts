@@ -19,7 +19,12 @@ describe('runtime reliability API boundary', () => {
 	it('returns proven read-only diagnostics to a local same-origin request', async () => {
 		const handlers = _createRuntimeHandlers({
 			diagnostics: async () => diagnostics,
-			backup: () => ({ filename: 'hue.sqlite', path: '/tmp/hue.sqlite', validated: true })
+			backup: () => ({
+				filename: 'hue.sqlite',
+				path: '/tmp/hue.sqlite',
+				attachmentsPath: null,
+				validated: true
+			})
 		});
 		const request = new Request('http://localhost/api/runtime', { headers: { host: 'localhost' } });
 
@@ -32,7 +37,12 @@ describe('runtime reliability API boundary', () => {
 	it('rejects remote and cross-origin diagnostics and backup requests', async () => {
 		const handlers = _createRuntimeHandlers({
 			diagnostics: async () => diagnostics,
-			backup: () => ({ filename: 'hue.sqlite', path: '/tmp/hue.sqlite', validated: true })
+			backup: () => ({
+				filename: 'hue.sqlite',
+				path: '/tmp/hue.sqlite',
+				attachmentsPath: null,
+				validated: true
+			})
 		});
 		for (const [request, address] of [
 			[
@@ -59,6 +69,7 @@ describe('runtime reliability API boundary', () => {
 			backup: () => ({
 				filename: 'hue-2026.sqlite',
 				path: '/data/backups/hue-2026.sqlite',
+				attachmentsPath: '/data/backups/hue-2026.sqlite.attachments',
 				validated: true
 			})
 		});
@@ -74,6 +85,7 @@ describe('runtime reliability API boundary', () => {
 			backup: {
 				filename: 'hue-2026.sqlite',
 				path: '/data/backups/hue-2026.sqlite',
+				attachmentsPath: '/data/backups/hue-2026.sqlite.attachments',
 				validated: true
 			}
 		});
