@@ -57,6 +57,8 @@ The browser submits one complete envelope with a client-generated ID. HUE persis
 
 Composer prompt improvement is a one-time refinement backed by a temporary Hermes Session and durable envelope. The Session stays archived while delivery is pending and is removed from HUE once terminal, so it is not retained as a Chat. HUE preserves only the delivery state needed for safe retries; Hermes retains its own transcript. The operation returns an editable draft plus only material clarification questions, never changes or sends the active composer text automatically, and does not add scaffolding to the active Session transcript.
 
+Quick Ask provides one answer in a temporary surface rather than a fourth object or retained Chat. HUE archives its projectless Hermes Session during delivery, promotes that same Session only when the user chooses Keep as Chat, and otherwise deletes its HUE transcript when the surface closes. Complete-envelope idempotency and explicit unknown state still apply, Hermes retains its transcript, and normal Hermes capabilities remain subject to HUE's explicit permission boundary.
+
 Scheduled prompts follow the same invariant through a dedicated projectless Session per schedule. The Projects rail surfaces those Sessions together under Cron tasks without turning schedules into a fourth user-facing object. HUE coalesces downtime catch-up to one durable run. Existing external Hermes cron jobs may appear as Hermes-owned rows and accept explicit authenticated edits or deletion. HUE polls their run history after a read baseline and projects unread terminal outcomes and best-effort notifications, but does not import their execution, persist their transcripts, or claim HUE delivery guarantees.
 
 ## Trust boundary

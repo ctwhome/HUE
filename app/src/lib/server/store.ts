@@ -91,6 +91,13 @@ export type CommitGeneration = {
 	error: string | null;
 };
 
+export type StoredQuickAsk = {
+	operationId: string;
+	questionHash: string;
+	sessionId: string | null;
+	status: 'creating' | 'active' | 'kept' | 'dismissed';
+};
+
 export type StoredMessage = {
 	id: string;
 	projectId: string | null;
@@ -456,7 +463,8 @@ export class HUEStore {
 			currentVersion !== 4 &&
 			currentVersion !== 5 &&
 			currentVersion !== 6 &&
-			currentVersion !== 7
+			currentVersion !== 7 &&
+			currentVersion !== 8
 		) {
 			throw new Error(
 				`HUE schema migration ${currentVersion} -> ${HUE_SCHEMA_VERSION} is unsupported. Stop HUE and use an application version that supports this database.`
@@ -720,6 +728,15 @@ export class HUEStore {
 				session_id TEXT REFERENCES project_sessions(session_id),
 				status TEXT NOT NULL CHECK (status IN ('creating', 'submitted', 'failed')),
 				error TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			);
+
+			CREATE TABLE IF NOT EXISTS quick_asks (
+				operation_id TEXT PRIMARY KEY,
+				question_hash TEXT NOT NULL,
+				session_id TEXT UNIQUE,
+				status TEXT NOT NULL CHECK (status IN ('creating', 'active', 'kept', 'dismissed')),
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL
 			);
@@ -2388,6 +2405,114 @@ export class HUEStore {
 				'UPDATE commit_generations SET status = ?, error = ?, updated_at = ? WHERE operation_id = ?'
 			)
 			.run(status, error, new Date().toISOString(), operationId);
+	}
+
+	reserveQuickAsk(operationId: string, questionHash: string): {
+		created: boolean;
+		quickAsk: StoredQuickAsk;
+	} {
+		const now = new Date().toISOString();
+		const created =
+			this.database
+				.query(
+					`INSERT OR IGNORE INTO quick_asks
+					 (operation_id, question_hash, status, created_at, updated_at)
+					 VALUES (?, ?, 'creating', ?, ?)`
+				)
+				.run(operationId, questionHash, now, now).changes > 0;
+		return { created, quickAsk: this.getQuickAsk(operationId)! };
+	}
+
+	getQuickAsk(operationId: string): StoredQuickAsk | null {
+		const row = this.database
+			.query('SELECT operation_id, question_hash, session_id, status FROM quick_asks WHERE operation_id = ?')
+			.get(operationId) as {
+			operation_id: string;
+			question_hash: string;
+			session_id: string | null;
+			status: StoredQuickAsk['status'];
+		} | null;
+		return row
+			? {
+					operationId: row.operation_id,
+					questionHash: row.question_hash,
+					sessionId: row.session_id,
+					status: row.status
+				}
+			: null;
+	}
+
+	isKeptQuickAskSession(sessionId: string): boolean {
+		return !!this.database
+			.query("SELECT 1 FROM quick_asks WHERE session_id = ? AND status = 'kept'")
+			.get(sessionId);
+	}
+
+	attachQuickAsk(operationId: string, sessionId: string): void {
+		const result = this.database
+			.query(
+				"UPDATE quick_asks SET session_id = ?, status = 'active', updated_at = ? WHERE operation_id = ? AND status = 'creating'"
+			)
+			.run(sessionId, new Date().toISOString(), operationId);
+		if (!result.changes) throw new Error('Quick Ask reservation is unavailable');
+	}
+
+	promoteQuickAsk(operationId: string): StoredSession {
+		return this.database.transaction(() => {
+			const quickAsk = this.getQuickAsk(operationId);
+			if (quickAsk?.sessionId && quickAsk.status === 'kept') {
+				const session = this.getSession(null, quickAsk.sessionId);
+				if (session) return session;
+			}
+			if (!quickAsk?.sessionId || quickAsk.status !== 'active') throw new Error('Quick Ask not found');
+			const message = this.getMessage(operationId);
+			if (!message || message.sessionId !== quickAsk.sessionId || message.status !== 'completed')
+				throw new Error('Quick Ask is not ready to keep');
+			const now = new Date().toISOString();
+			const updated = this.database
+				.query(
+					"UPDATE project_sessions SET title = 'Quick Ask', title_custom = 1, archived = 0, updated_at = ? WHERE project_id IS NULL AND session_id = ?"
+				)
+				.run(now, quickAsk.sessionId);
+			if (!updated.changes) throw new Error('Quick Ask Session not found');
+			this.database
+				.query("UPDATE quick_asks SET status = 'kept', updated_at = ? WHERE operation_id = ?")
+				.run(now, operationId);
+			return this.getSession(null, quickAsk.sessionId)!;
+		})();
+	}
+
+	dismissQuickAsk(operationId: string): void {
+		this.database.transaction(() => {
+			const quickAsk = this.getQuickAsk(operationId);
+			if (!quickAsk) throw new Error('Quick Ask not found');
+			if (quickAsk.status === 'dismissed') return;
+			if (quickAsk.status !== 'active' && quickAsk.status !== 'creating')
+				throw new Error('Quick Ask not found');
+			const now = new Date().toISOString();
+			if (quickAsk.sessionId) {
+				this.database
+					.query(
+						'INSERT OR REPLACE INTO dismissed_sessions (project_scope, session_id, dismissed_at) VALUES (?, ?, ?)'
+					)
+					.run('', quickAsk.sessionId, now);
+				this.database
+					.query('DELETE FROM notifications WHERE project_id IS NULL AND session_id = ?')
+					.run(quickAsk.sessionId);
+				this.database
+					.query('DELETE FROM session_events WHERE project_id IS NULL AND session_id = ?')
+					.run(quickAsk.sessionId);
+				this.database
+					.query('DELETE FROM messages WHERE project_id IS NULL AND session_id = ?')
+					.run(quickAsk.sessionId);
+				this.database
+					.query('DELETE FROM project_sessions WHERE project_id IS NULL AND session_id = ?')
+					.run(quickAsk.sessionId);
+			}
+			this.database
+				.query("UPDATE quick_asks SET status = 'dismissed', updated_at = ? WHERE operation_id = ?")
+				.run(now, operationId);
+		})();
 	}
 
 	externalCronInitialized(): boolean {

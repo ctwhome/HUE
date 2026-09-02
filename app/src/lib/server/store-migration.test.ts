@@ -333,6 +333,25 @@ describe('HUEStore versioned migrations', () => {
 		expect(readdirSync(root)).toEqual(['hue.db']);
 	});
 
+	it('adds Quick Ask provenance to version 8 databases without rewriting existing data', () => {
+		const { root, path } = temporaryDatabase('quick-ask-migration');
+		const store = new HUEStore(path);
+		store.upsertSession(null, { sessionId: 'existing', cwd: '/work/existing', title: 'Existing' });
+		store.close();
+		const historical = new Database(path);
+		historical.exec('DROP TABLE quick_asks; PRAGMA user_version = 8;');
+		historical.close();
+
+		const migrated = new HUEStore(path);
+		expect(migrated.getSession(null, 'existing')?.title).toBe('Existing');
+		expect(migrated.reserveQuickAsk('quick-1', 'hash')).toMatchObject({
+			created: true,
+			quickAsk: { operationId: 'quick-1', questionHash: 'hash', status: 'creating' }
+		});
+		migrated.close();
+		expect(readdirSync(root)).toEqual(['hue.db']);
+	});
+
 	it('backs up and migrates the cancelled-status schema without losing HUE state', () => {
 		const { root, path } = temporaryDatabase('historical-migration');
 		createHistoricalCancelledSchema(path);

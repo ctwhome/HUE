@@ -142,6 +142,12 @@ export function unprojectedSessionRoot(): string {
 	return realpathSync(root);
 }
 
+export function quickAskSessionRoot(): string {
+	const root = join(unprojectedSessionRoot(), '.quick-ask');
+	mkdirSync(root, { recursive: true });
+	return realpathSync(root);
+}
+
 export function trustedProjectRoot(input: string): string {
 	const candidate = input.trim();
 	if (!candidate || !isAbsolute(candidate)) {

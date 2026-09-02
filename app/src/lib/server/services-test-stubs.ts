@@ -2,6 +2,7 @@
 export const serviceExportStubs = {
 	services: () => ({}),
 	unprojectedSessionRoot: () => '/tmp',
+	quickAskSessionRoot: () => '/tmp/.quick-ask',
 	trustedProjectRoot: (path: string) => path,
 	projectView: (project: unknown) => project,
 	loadProjectViews: async () => ({ projects: [], reconciliationIssues: [] }),

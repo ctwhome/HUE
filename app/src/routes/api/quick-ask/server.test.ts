@@ -5,7 +5,7 @@ let generated: Record<string, unknown> | null = null;
 
 mock.module('$lib/server/route-services', () => ({
 	...serviceExportStubs,
-	unprojectedSessionRoot: () => '/work/quick',
+	quickAskSessionRoot: () => '/work/quick',
 	services: () => ({ store: {}, runtime: {}, dispatcher: {} })
 }));
 
@@ -36,7 +36,7 @@ test('submits a bounded same-origin Quick Ask', async () => {
 	const response = await POST(event('http://hue.test', { question: 'What is HUE?', operationId: 'quick-1' }));
 
 	expect(response.status).toBe(200);
-	expect(generated).toEqual({
+	expect(generated as Record<string, unknown> | null).toEqual({
 		question: 'What is HUE?',
 		operationId: 'quick-1',
 		sessionRoot: '/work/quick'
