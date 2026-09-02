@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 
-const port = Number(process.env.HUE_E2E_PORT ?? 4173);
+const port = Number(process.env.HUE_E2E_PORT ?? 44014);
 const testHome = mkdtempSync(join(tmpdir(), 'hue-playwright-home-'));
 const hermesHome = join(testHome, '.hermes');
 const buildDir = join(process.cwd(), `.hue-e2e-build-${crypto.randomUUID()}`);

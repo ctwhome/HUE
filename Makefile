@@ -1,7 +1,7 @@
 .PHONY: install dev build serve restart stop stop-dev stop-build
 
 HOST ?= 127.0.0.1
-PORT ?= 4173
+PORT ?= 44011
 ORIGIN ?= http://$(HOST):$(PORT)
 HUE_DATABASE_PATH ?= $(HOME)/.hue/hue.db
 

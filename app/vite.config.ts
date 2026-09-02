@@ -43,9 +43,14 @@ export default defineConfig({
 	],
 	server: {
 		host: '127.0.0.1',
-		port: 4010,
+		port: 44010,
 		strictPort: true,
 		allowedHosts: ['m3-max.tail33436f.ts.net']
+	},
+	preview: {
+		host: '127.0.0.1',
+		port: 44014,
+		strictPort: true
 	},
 	optimizeDeps: {
 		rolldownOptions: { plugins: [disableSanitizeHtmlPostcss] }

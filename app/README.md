@@ -35,9 +35,9 @@ The real ACP test creates and resumes a Hermes Session but uses the local `/vers
 make restart
 ```
 
-Production runs continuously under the `com.ctw.hue-production` KeepAlive LaunchAgent. `make restart` rebuilds the docs and app, then restarts production onto an immutable snapshot on `127.0.0.1:4174`. The configured Tailscale Serve route exposes it at `https://m3-max.tail33436f.ts.net:4173`. Set `HUE_ACCESS_SECRET`, `HUE_DATABASE_PATH`, and optionally `HUE_HERMES_PROFILE` in `app/.env`.
+Production runs continuously under the `com.ctw.hue-production` KeepAlive LaunchAgent. `make restart` rebuilds the docs and app, then restarts production onto an immutable snapshot on `127.0.0.1:44011`. The configured Tailscale Serve route exposes it at `https://m3-max.tail33436f.ts.net:44011`. Set `HUE_ACCESS_SECRET`, `HUE_DATABASE_PATH`, and optionally `HUE_HERMES_PROFILE` in `app/.env`.
 
-`make dev` hands the canonical `~/.hue/hue.db` from production to a foreground server on `http://127.0.0.1:4010`; its Tailscale URL is `https://m3-max.tail33436f.ts.net:4010`. Stopping development restores production. `make build` compiles without restarting production, and `make serve` is the lower-level foreground command used by the production LaunchAgent.
+`make dev` hands the canonical `~/.hue/hue.db` from production to a foreground server on `http://127.0.0.1:44010`. Stopping development restores production. `make build` compiles without restarting production, and `make serve` is the lower-level foreground command used by the production LaunchAgent. App preview and Playwright use `44014`, docs development and preview use `44015`, and Android proof uses `44016`.
 
 ### Authenticated LAN or tailnet access
 
@@ -46,7 +46,7 @@ Loopback access remains zero-configuration. For remote browser access, keep HUE 
 ```bash
 bun run build
 HOST=127.0.0.1 \
-PORT=4173 \
+PORT=44011 \
 ORIGIN=https://hue.example.ts.net \
 HUE_ACCESS_SECRET='<output of: openssl rand -base64 32>' \
 HUE_DATABASE_PATH="$HOME/.hue/hue.db" \

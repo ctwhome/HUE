@@ -7,7 +7,7 @@ hue_repo_dir=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
 hue_avd=${HUE_ANDROID_AVD:-Medium_Phone_API_36}
 hue_serial=${ANDROID_SERIAL:-emulator-5554}
-hue_port=${HUE_ANDROID_PORT:-4186}
+hue_port=${HUE_ANDROID_PORT:-44016}
 hue_https_origin=${HUE_ANDROID_HTTPS_ORIGIN:-}
 if [ -n "$hue_https_origin" ]; then
 	hue_origin=$hue_https_origin
@@ -32,7 +32,7 @@ cleanup() {
 		adb -s "$hue_serial" emu kill >/dev/null 2>&1 || true
 		wait "$hue_emulator_pid" 2>/dev/null || true
 	fi
-	HUE_SERVER_URL=http://10.0.2.2:4173 "$hue_repo_dir/scripts/android-sync.sh" >/dev/null 2>&1 || true
+	HUE_SERVER_URL=http://10.0.2.2:44011 "$hue_repo_dir/scripts/android-sync.sh" >/dev/null 2>&1 || true
 	rm -rf "$hue_temp"
 }
 trap cleanup EXIT INT TERM

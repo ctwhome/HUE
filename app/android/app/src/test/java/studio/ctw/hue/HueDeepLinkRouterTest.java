@@ -37,7 +37,7 @@ public class HueDeepLinkRouterTest {
         assertThrows(IllegalArgumentException.class, () -> new HueDeepLinkRouter("https://HUE.INVALID.", false));
         assertThrows(IllegalArgumentException.class, () -> new HueDeepLinkRouter("https://hue.invalid...", false));
         assertThrows(IllegalArgumentException.class, () -> new HueDeepLinkRouter("http://lan.example:4173", true));
-        assertEquals("http://10.0.2.2:4173/", new HueDeepLinkRouter("http://10.0.2.2:4173", true).rootUrl());
+        assertEquals("http://10.0.2.2:44011/", new HueDeepLinkRouter("http://10.0.2.2:44011", true).rootUrl());
         assertEquals("https://hue.example/", new HueDeepLinkRouter("https://HUE.Example...", false).rootUrl());
     }
 
