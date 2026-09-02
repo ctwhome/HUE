@@ -5,11 +5,17 @@ import {
 	type ExternalHermesCronJob
 } from '$lib/server/external-hermes-cron';
 import { redactHermesValue } from '$lib/server/redaction';
-import { services, sessionMatchesProjectRoot, unprojectedSessionRoot } from '$lib/server/services';
+import {
+	quickAskSessionRoot,
+	services,
+	sessionMatchesProjectRoot,
+	unprojectedSessionRoot
+} from '$lib/server/services';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ url }) => {
 	const root = unprojectedSessionRoot();
+	const quickRoot = quickAskSessionRoot();
 	try {
 		const requestedSessionId = url.searchParams.get('sessionId');
 		if (requestedSessionId) {
@@ -21,7 +27,10 @@ export const GET: RequestHandler = async ({ url }) => {
 			const busyStarts = services().store.getBusySessionStarts(null);
 			const indicators = services().store.getSessionIndicators(null);
 			const title = stored.title ?? 'Untitled Hermes Session';
-			const available = sessionMatchesProjectRoot(root, stored.cwd);
+			const available =
+				sessionMatchesProjectRoot(root, stored.cwd) ||
+				(services().store.isKeptQuickAskSession(stored.sessionId) &&
+					sessionMatchesProjectRoot(quickRoot, stored.cwd));
 			return json({
 				sessions: [
 					{
@@ -43,11 +52,18 @@ export const GET: RequestHandler = async ({ url }) => {
 				hasMore: false
 			});
 		}
-		const sessions = (await services().runtime.listSessions(root)).filter(
-			(session) =>
-				sessionMatchesProjectRoot(root, session.cwd) &&
-				!services().store.isSessionDismissed(null, session.sessionId)
-		);
+		const sessions = [
+			...(await services().runtime.listSessions(root)).filter(
+				(session) =>
+					sessionMatchesProjectRoot(root, session.cwd) &&
+					!services().store.isSessionDismissed(null, session.sessionId)
+			),
+			...(await services().runtime.listSessions(quickRoot)).filter(
+				(session) =>
+					sessionMatchesProjectRoot(quickRoot, session.cwd) &&
+					services().store.isKeptQuickAskSession(session.sessionId)
+			)
+		];
 		for (const session of sessions) services().store.upsertSession(null, session);
 		services().dispatcher.recover();
 		const busyStarts = services().store.getBusySessionStarts(null);
@@ -84,7 +100,11 @@ export const GET: RequestHandler = async ({ url }) => {
 			externalCronError,
 			sessions: page.sessions.map((stored) => {
 				const runtime = runtimeById.get(stored.sessionId);
-				const available = !!runtime || sessionMatchesProjectRoot(root, stored.cwd);
+				const available =
+					!!runtime ||
+					sessionMatchesProjectRoot(root, stored.cwd) ||
+					(services().store.isKeptQuickAskSession(stored.sessionId) &&
+						sessionMatchesProjectRoot(quickRoot, stored.cwd));
 				const title = stored.title ?? runtime?.title ?? 'Untitled Hermes Session';
 				return {
 					...runtime,

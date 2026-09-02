@@ -7,6 +7,7 @@
 	import { renderMessageMarkdown } from '$lib/message-markdown';
 	import { workspaceApi } from './api';
 	import { copyCode } from './copy-code';
+	import { ApiError } from './message-state.svelte';
 
 	type QuickAskResult = {
 		status: 'completed' | 'pending' | 'failed' | 'unknown';
@@ -28,6 +29,7 @@
 	let error = $state('');
 	let notice = $state('');
 	let confirmingStop = $state(false);
+	let keepOpenButton = $state<HTMLButtonElement>();
 
 	export async function open() {
 		question = '';
@@ -61,6 +63,7 @@
 			sessionPath = result.path ?? '';
 			error = result.error ?? '';
 		} catch (cause) {
+			if (!(cause instanceof ApiError) && operationId) status = 'unknown';
 			error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
 			busy = false;
@@ -91,10 +94,16 @@
 	function close() {
 		if (busy) return;
 		if (status === 'pending') {
-			confirmingStop = true;
+			void confirmStop();
 			return;
 		}
 		void remove();
+	}
+
+	async function confirmStop() {
+		confirmingStop = true;
+		await tick();
+		keepOpenButton?.focus();
 	}
 
 	async function keep() {
@@ -106,8 +115,8 @@
 				method: 'PATCH',
 				body: JSON.stringify({ operationId })
 			});
-			dialog.close();
 			await goto(result.path);
+			dialog.close();
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
@@ -136,7 +145,7 @@
 		<button
 			type="button"
 			class="grid size-11 shrink-0 place-items-center rounded-lg hover:bg-accent"
-			aria-label={operationId ? 'Close and remove' : 'Close Quick Ask'}
+			aria-label="Close Quick Ask"
 			title={operationId ? 'Close and remove' : 'Close'}
 			disabled={busy}
 			onclick={close}><X width={18} height={18} aria-hidden="true" /></button
@@ -157,10 +166,10 @@
 		</label>
 		<p class="text-xs text-muted-foreground">Hermes still keeps a transcript in its session history.</p>
 
-		{#if answer}<section class="grid gap-3 rounded-xl border border-border bg-background p-4" aria-label="Quick Ask answer">
+		<div aria-live="polite">{#if answer}<section class="grid gap-3 rounded-xl border border-border bg-background p-4" aria-label="Quick Ask answer">
 				<div class="message-markdown min-w-0 text-sm">{@html renderMessageMarkdown(answer)}</div>
 				{#if notice}<p class="text-xs text-muted-foreground" role="status">{notice}</p>{/if}
-			</section>{/if}
+			</section>{/if}</div>
 		{#if status === 'pending'}<p class="rounded-lg bg-accent p-3 text-sm" role="status">
 				Hermes is still answering.
 				{#if sessionPath}<a class="ml-1 underline" href={sessionPath}>Open Session</a>{/if}
@@ -170,13 +179,13 @@
 			</p>{/if}
 		{#if error}<p class="rounded-lg bg-destructive/15 p-3 text-sm text-destructive" role="alert">{error}</p>{/if}
 
-		{#if confirmingStop}<div class="grid gap-3 rounded-xl border border-[var(--warning)] bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] p-3">
+		{#if confirmingStop}<div class="grid gap-3 rounded-xl border border-[var(--warning)] bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] p-3" role="alertdialog" aria-labelledby="quick-ask-stop-title">
 				<div>
-					<strong class="text-sm">Stop this Quick Ask?</strong>
+					<strong id="quick-ask-stop-title" class="text-sm">Stop this Quick Ask?</strong>
 					<p class="text-sm text-muted-foreground">The answer may be incomplete.</p>
 				</div>
 				<div class="flex flex-wrap justify-end gap-2">
-					<button type="button" class="min-h-11 rounded-lg border border-border px-4" onclick={() => (confirmingStop = false)}>Keep open</button>
+					<button bind:this={keepOpenButton} type="button" class="min-h-11 rounded-lg border border-border px-4" onclick={() => (confirmingStop = false)}>Keep open</button>
 					<button type="button" class="min-h-11 rounded-lg bg-destructive px-4 text-destructive-foreground" onclick={remove}>Stop and remove</button>
 				</div>
 			</div>{:else}<footer class="flex flex-wrap justify-end gap-2">
@@ -190,6 +199,7 @@
 					<button type="button" class="min-h-11 rounded-lg bg-primary px-4 text-primary-foreground disabled:opacity-50" disabled={busy} onclick={close}>Close and remove</button>
 				{:else if status === 'pending'}<button type="button" class="min-h-11 rounded-lg border border-border px-4" disabled={busy} onclick={close}>Close and remove</button>
 					<button type="button" class="min-h-11 rounded-lg bg-primary px-4 text-primary-foreground disabled:opacity-50" disabled={busy} onclick={() => ask()}>{busy ? 'Checking…' : 'Check again'}</button>
+				{:else if status === 'unknown' || status === 'failed'}<button type="button" class="min-h-11 rounded-lg bg-primary px-4 text-primary-foreground disabled:opacity-50" disabled={busy} onclick={close}>Close and remove</button>
 				{:else}<button type="button" class="min-h-11 rounded-lg border border-border px-4" disabled={busy} onclick={close}>Close</button>
 					<button type="submit" class="min-h-11 rounded-lg bg-primary px-4 text-primary-foreground disabled:opacity-50" disabled={busy || !question.trim()}>{busy ? 'Asking…' : 'Ask Hermes'}</button>
 				{/if}

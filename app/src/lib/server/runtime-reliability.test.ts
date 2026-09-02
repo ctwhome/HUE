@@ -84,6 +84,19 @@ describe('HUE runtime reliability', () => {
 		expect(validateHueBackup(path).ok).toBe(false);
 	});
 
+	it('rejects a current-version backup without Quick Ask provenance', () => {
+		const root = join(tmpdir(), `hue-quick-ask-backup-${crypto.randomUUID()}`);
+		paths.push(root);
+		const store = new HUEStore(join(root, 'hue.db'));
+		const backup = createHueBackup(store, join(root, 'backups'));
+		store.close();
+		const incomplete = new Database(backup.path);
+		incomplete.exec('DROP TABLE quick_asks');
+		incomplete.close();
+
+		expect(validateHueBackup(backup.path).ok).toBe(false);
+	});
+
 	it('rejects a readable two-table database as an incomplete HUE backup', () => {
 		const path = join(tmpdir(), `hue-incomplete-${crypto.randomUUID()}.sqlite`);
 		paths.push(path);

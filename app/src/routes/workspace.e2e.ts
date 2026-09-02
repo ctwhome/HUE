@@ -6528,8 +6528,8 @@ test('answers a Quick Ask without adding a Chat', async ({ page }) => {
 		await page.setViewportSize(viewport);
 		await page.goto('/');
 		await openMobileProjects(page);
-		const before = page.url();
 		await page.getByRole('button', { name: 'Quick Ask' }).click();
+		const before = page.url();
 		const dialog = page.getByRole('dialog', { name: 'Quick Ask' });
 		await expect(dialog).toBeVisible();
 		await expect(dialog).toContainText('Ask a one-off question. It won’t appear in Chats.');
