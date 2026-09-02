@@ -12,6 +12,7 @@
 		nativeArtifactOpenAllowed
 	} from '$lib/artifact';
 	import CsvPreview from './CsvPreview.svelte';
+	import ArtifactTextPreview from './ArtifactTextPreview.svelte';
 
 	let {
 		paths,
@@ -90,7 +91,8 @@
 					<img class="block max-h-[min(55vh,560px)] max-w-full object-contain" {src} alt={name} />
 				</div>
 			{:else if kind === 'csv'}<CsvPreview {src} {name} />
-			{:else if kind === 'pdf' || kind === 'text' || kind === 'html'}<iframe
+			{:else if kind === 'text'}<ArtifactTextPreview {src} {name} />
+			{:else if kind === 'pdf' || kind === 'html'}<iframe
 					class="h-[min(55vh,520px)] min-h-64 w-full border-0 bg-white"
 					title={`Inline preview of ${name}`}
 					aria-label={`Inline preview of ${name}`}

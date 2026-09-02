@@ -27,6 +27,16 @@ import type {
 import { copyCode } from './copy-code';
 import { readAttachmentFiles, unavailableAttachmentMetadata } from './attachment-files';
 import { MessagePersistence } from './message-persistence';
+export type PromptImprovementAnswer = { id: string; question: string; answer: string };
+export type PromptImprovementResult = {
+	status: 'completed' | 'pending' | 'failed' | 'unknown';
+	sessionId: string;
+	messageId: string;
+	path?: string;
+	prompt?: string;
+	questions?: Array<{ id: string; question: string }>;
+	error?: string;
+};
 type MessageStateOptions = {
 	api: Api;
 	getProject: () => Project | null;
@@ -56,6 +66,7 @@ export class MessageState {
 	private pollTimer: ReturnType<typeof setInterval> | null = null;
 	private pollFlight: { current: Promise<void> | null } = { current: null };
 	private persistence: MessagePersistence;
+	private promptImprovementOperation: { identity: string; id: string } | null = null;
 	constructor(private options: MessageStateOptions) {
 		this.persistence = new MessagePersistence(options.getProject, options.getSession);
 	}
@@ -243,7 +254,9 @@ export class MessageState {
 				body: JSON.stringify({ path, action })
 			});
 			this.messageNotice =
-				action === 'reveal' ? 'Revealed generated file' : 'Opened generated file';
+				action === 'reveal'
+					? 'Opened containing folder with generated file selected'
+					: 'Opened generated file';
 		} catch (cause) {
 			this.report(cause);
 		}
@@ -520,6 +533,42 @@ export class MessageState {
 	removeReviewContext = (id: string) => {
 		this.reviewContexts = this.reviewContexts.filter((context) => context.id !== id);
 		this.persistence.contexts(this.reviewContexts);
+	};
+	promptImproving = $state(false);
+	improvePrompt = async (
+		answers: PromptImprovementAnswer[],
+		modelId?: string
+	): Promise<PromptImprovementResult | null> => {
+		const navigation = this.options.getNavigation();
+		const selection = navigation.captureSessionSelection();
+		const text = this.composer;
+		if (!selection || !text.trim() || this.promptImproving) return null;
+		const identity = JSON.stringify([selection.projectId, selection.sessionId, text, answers, modelId]);
+		if (this.promptImprovementOperation?.identity !== identity) {
+			this.promptImprovementOperation = { identity, id: crypto.randomUUID() };
+		}
+		this.promptImproving = true;
+		try {
+			const result = await this.options.api<PromptImprovementResult>(
+				this.sessionPath(selection.sessionId, '/prompt-improvement'),
+				{
+					method: 'POST',
+					body: JSON.stringify({
+						text,
+						answers,
+						modelId,
+						operationId: this.promptImprovementOperation.id
+					})
+				}
+			);
+			if (result.status !== 'pending') this.promptImprovementOperation = null;
+			return navigation.isCurrentSessionSelection(selection) ? result : null;
+		} catch (cause) {
+			if (navigation.isCurrentSessionSelection(selection)) this.report(cause);
+			return null;
+		} finally {
+			this.promptImproving = false;
+		}
 	};
 	updateDraft = (event: Event) => {
 		this.composer = (event.currentTarget as HTMLTextAreaElement).value;

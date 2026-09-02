@@ -64,12 +64,15 @@ export class ProjectManagement {
 
 	openAddProject = () => {
 		this.locatingProject = null;
+		this.editingProject = null;
 		this.projectName = '';
+		this.projectIcon = null;
+		this.projectColor = '#007acc';
+		this.projectGroup = '';
 		this.selectedFolders = [];
 		this.primaryFolder = '';
 		this.directoryError = '';
 		this.addProjectDialog?.showModal();
-		void this.loadDirectory();
 	};
 
 	openLocateProject = (project: Project) => {
@@ -77,7 +80,29 @@ export class ProjectManagement {
 		this.editingProject = project;
 		this.directoryError = '';
 		this.addProjectDialog?.showModal();
-		void this.loadDirectory();
+	};
+
+	pickFolder = async () => {
+		this.directoryLoading = true;
+		this.directoryError = '';
+		try {
+			const selected = await this.options.api<{ path: string | null; name: string | null }>(
+				'/api/directories/pick',
+				{ method: 'POST' }
+			);
+			if (!selected.path) return;
+			this.projectRoot = selected.path;
+			this.projectDirectoryName = selected.name ?? '';
+			if (!this.locatingProject && !this.selectedFolders.includes(selected.path)) {
+				this.selectedFolders = [...this.selectedFolders, selected.path];
+				if (!this.primaryFolder) this.primaryFolder = selected.path;
+				if (!this.projectName) this.projectName = selected.name ?? '';
+			}
+		} catch (cause) {
+			this.directoryError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			this.directoryLoading = false;
+		}
 	};
 
 	loadDirectory = async (path?: string, showHidden = this.showHiddenDirectories) => {
@@ -154,6 +179,9 @@ export class ProjectManagement {
 				method: 'POST',
 				body: JSON.stringify({
 					name: this.projectName.trim(),
+					icon: this.projectIcon,
+					color: this.projectColor,
+					group: this.projectGroup.trim() || null,
 					folders: this.selectedFolders,
 					primaryPath: this.primaryFolder
 				})
@@ -249,6 +277,16 @@ export class ProjectManagement {
 		}
 		const insideSettings = (event.currentTarget as HTMLElement).closest('.project-manager-popover');
 		(insideSettings ? this.projectSettingsIconPopover : this.projectIconPopover)?.showPopover();
+	};
+
+	openNewProjectIcon = (event: MouseEvent) => {
+		this.projectIconAnchor = event.currentTarget as HTMLElement;
+		this.projectIconPopover?.showPopover();
+	};
+
+	selectProjectIcon = async (icon: string | null) => {
+		this.projectIcon = icon;
+		if (this.editingProject) await this.saveProjectIcon(icon);
 	};
 
 	saveProjectIcon = async (icon: string | null) => {

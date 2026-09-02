@@ -184,7 +184,7 @@
 	margin-bottom: auto;
 }
 
-.transcript article {
+.transcript-content > article {
 	display: flex;
 	width: 100%;
 	min-width: 0;

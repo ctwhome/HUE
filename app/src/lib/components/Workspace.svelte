@@ -28,6 +28,7 @@
 	import { WorkspaceNavigation } from './workspace/navigation.svelte';
 	import { isImageIcon, ProjectManagement } from './workspace/project-management.svelte';
 	import ProjectRail from './workspace/ProjectRail.svelte';
+	import QuickAskDialog from './workspace/QuickAskDialog.svelte';
 	import SessionHeader from './workspace/SessionHeader.svelte';
 	import SessionFinder from './workspace/SessionFinder.svelte';
 	import SessionManagerOverlay from './workspace/SessionManagerOverlay.svelte';
@@ -56,12 +57,14 @@
 	let {
 		projects: initialProjects,
 		chatSessionCount: initialChatSessionCount = 0,
+		chatIndicators: initialChatIndicators = { running: 0, attention: 0, unread: 0 },
 		cronSessionCount: initialCronSessionCount = 0,
 		projectsCapability = 'available',
 		projectsError = '',
 		reconciliationIssues = []
 	}: WorkspaceProps = $props();
 	let chatSessionCount = $state(untrack(() => initialChatSessionCount));
+	let chatIndicators = $state(untrack(() => initialChatIndicators));
 	let cronSessionCount = $state(untrack(() => initialCronSessionCount));
 	let loading = $state(false),
 		error = $state('');
@@ -86,6 +89,7 @@
 	let gestureActive = $state(false);
 	let mobileShell: MobileShellController | null = null;
 	let quickCapture: { open: (intent: 'capture' | 'share', token: string | null) => Promise<void> };
+	let quickAsk: { open: () => Promise<void> };
 	const dirtyGuard = new DirtyGuard((guard) => {
 		dirtyGuardOpen = guard.open;
 		dirtyGuardDirty = guard.dirty;
@@ -488,7 +492,10 @@
 		sessionId={selectedSession?.pending ? null : (selectedSession?.sessionId ?? null)}
 		onclose={() => setGlobalView(null)}
 		oncounts={(count) => (unreadNotifications = count)}
-		onindicators={projectManagement.applyIndicators}
+		onindicators={(projectIndicators, incomingChatIndicators) => {
+			projectManagement.applyIndicators(projectIndicators);
+			chatIndicators = incomingChatIndicators;
+		}}
 	/>
 	{#if globalView && globalView !== 'notifications'}{#key globalView}<HermesPanel
 				view={globalView}
@@ -508,6 +515,7 @@
 		{mobile}
 		projects={projectManagement.projects}
 		{chatSessionCount}
+		{chatIndicators}
 		cronSessionCount={cronSessionCount + navigation.externalCronJobs.length}
 		{selectedProject}
 		sessionCollection={navigation.sessionCollection}
@@ -524,9 +532,6 @@
 		projectIconAnchor={projectManagement.projectIconAnchor}
 		editingProject={projectManagement.editingProject}
 		projectRoot={projectManagement.projectRoot}
-		projectDirectories={projectManagement.projectDirectories}
-		projectDirectoryParent={projectManagement.projectDirectoryParent}
-		showHiddenDirectories={projectManagement.showHiddenDirectories}
 		directoryLoading={projectManagement.directoryLoading}
 		directoryError={projectManagement.directoryError}
 		bind:projectName={projectManagement.projectName}
@@ -539,20 +544,20 @@
 		selectedFolders={projectManagement.selectedFolders}
 		primaryFolder={projectManagement.primaryFolder}
 		onprojectless={navigation.createProjectlessSession}
+		onquickask={() => quickAsk.open()}
 		oncollection={chooseSessionCollection}
 		onaddopen={projectManagement.openAddProject}
 		onchoose={chooseProjectFromRail}
 		onlocate={projectManagement.openLocateProject}
 		onedit={projectManagement.openEditProject}
 		onicon={projectManagement.openProjectIcon}
-		oniconselect={projectManagement.saveProjectIcon}
+		onnewicon={projectManagement.openNewProjectIcon}
+		oniconselect={projectManagement.selectProjectIcon}
 		oncolor={projectManagement.saveProjectColor}
 		ongroup={projectManagement.saveProjectGroup}
 		onsection={projectManagement.createProjectSection}
 		onmove={projectManagement.moveProjectToSection}
-		onhidden={projectManagement.toggleHiddenDirectories}
-		ondirectory={projectManagement.loadDirectory}
-		oncreatedirectory={projectManagement.createDirectory}
+		onpickfolder={projectManagement.pickFolder}
 		ontogglefolder={projectManagement.toggleSelectedFolder}
 		onprimarychoice={projectManagement.choosePrimaryFolder}
 		oncreate={projectManagement.createProject}
@@ -697,6 +702,7 @@
 						onsessions={(trigger) => mobileShell?.open('sessions', trigger)}
 						onnotifications={() => setGlobalView('notifications')}
 						onprojecttools={(open) => (projectTools = open)}
+						onmedia={messageState.openMedia}
 						onicon={(event) => {
 							if (selectedSession && !selectedSession.pending)
 								navigation.openSessionIconEditor(event, selectedSession);
@@ -849,6 +855,7 @@
 	{/if}
 </div>
 <SessionManagerOverlay {navigation} canDuplicate={runtime.capabilities?.sessionFork === true} />
+<QuickAskDialog bind:this={quickAsk} />
 <QuickCapture
 	bind:this={quickCapture}
 	projects={projectManagement.projects}

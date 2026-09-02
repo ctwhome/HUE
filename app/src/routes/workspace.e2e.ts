@@ -1278,6 +1278,101 @@ test('typing in an empty Project chat creates a Session without losing the draft
 	await expect(composer).toHaveValue('Plan the release');
 });
 
+test('improves a draft, resolves clarification questions, and keeps the result editable', async ({
+	page
+}, testInfo) => {
+	const browserErrors: string[] = [];
+	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
+	page.on('pageerror', (error) => browserErrors.push(error.message));
+	page.on('requestfailed', (request) => recordRequestFailure(browserErrors, request));
+	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, async (route) => {
+		if (route.request().method() !== 'POST') return route.fulfill({ json: { sessions: [] } });
+		return route.fulfill({
+			status: 201,
+			json: {
+				session: { sessionId: 'prompt-source', cwd: '/work/hue', title: 'New Session' },
+				commands: [],
+				runtime: {
+					profile: 'default',
+					models: {
+						currentModelId: 'openai:gpt-5',
+						availableModels: [{ modelId: 'openai:gpt-5', name: 'GPT-5' }]
+					}
+				}
+			}
+		});
+	});
+	const requests: Array<Record<string, unknown>> = [];
+	let releaseFirstImprovement!: () => void;
+	const firstImprovement = new Promise<void>((resolve) => (releaseFirstImprovement = resolve));
+	await page.route('**/sessions/prompt-source/prompt-improvement', async (route) => {
+		const body = (await route.request().postDataJSON()) as Record<string, unknown>;
+		requests.push(body);
+		const answered = Array.isArray(body.answers) && body.answers.length > 0;
+		if (!answered) await firstImprovement;
+		return route.fulfill({
+			json: {
+				status: 'completed',
+				prompt: answered
+					? 'Create a conversion-focused landing page for a family bakery aimed at local parents.'
+					: 'Create a polished landing page for a family bakery.',
+				questions: answered
+					? []
+					: [{ id: 'audience', question: 'Who is the primary audience?' }],
+				sessionId: answered ? 'prompt-improvement-2' : 'prompt-improvement-1',
+				messageId: String(body.operationId)
+			}
+		});
+	});
+	await page.setViewportSize(viewports[0]);
+	await addProject(page);
+	const composer = page.getByLabel('Message Hermes');
+	await composer.fill('make bakery website better');
+	await expect(page).toHaveURL(/session=prompt-source/);
+
+	await page.getByRole('button', { name: 'Improve prompt with AI' }).click();
+	await expect(page.getByRole('status')).toHaveText('Improving prompt…');
+	releaseFirstImprovement();
+	const dialog = page.getByRole('dialog', { name: 'Improve prompt' });
+	await expect(dialog).toBeVisible();
+	await expect(dialog.getByLabel('Improved prompt')).toHaveValue(
+		'Create a polished landing page for a family bakery.'
+	);
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		const box = (await dialog.boundingBox())!;
+		expect(box.x).toBeGreaterThanOrEqual(0);
+		expect(box.y).toBeGreaterThanOrEqual(0);
+		expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+		expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		if (viewport.width <= 390) await expectMinimumTouchTargets(dialog.locator('button, input, textarea'));
+		await testInfo.attach(`prompt-improvement-${viewport.width}x${viewport.height}`, {
+			body: await page.screenshot(),
+			contentType: 'image/png'
+		});
+	}
+	await page.setViewportSize(viewports[0]);
+	await dialog.getByLabel('Who is the primary audience?').fill('Local parents');
+	await dialog.getByRole('button', { name: 'Refine prompt' }).click();
+	await expect(dialog.getByLabel('Improved prompt')).toHaveValue(
+		'Create a conversion-focused landing page for a family bakery aimed at local parents.'
+	);
+	await dialog.getByRole('button', { name: 'Use prompt' }).click();
+
+	await expect(dialog).not.toBeVisible();
+	await expect(composer).toHaveValue(
+		'Create a conversion-focused landing page for a family bakery aimed at local parents.'
+	);
+	expect(requests).toHaveLength(2);
+	expect(requests[1].answers).toEqual([
+		{ id: 'audience', question: 'Who is the primary audience?', answer: 'Local parents' }
+	]);
+	expect(browserErrors).toEqual([]);
+});
+
 test('Project file workspace stays usable across required viewports', async ({
 	page
 }, testInfo) => {
@@ -1871,53 +1966,31 @@ test('keeps workspace scrolling inside its panes', async ({ page }) => {
 	}
 });
 
-test('opens project creation from the Projects heading and dismisses it with Escape', async ({
+test('opens project creation from the Projects heading and closes it only from the X', async ({
 	page
 }) => {
 	const browserErrors: string[] = [];
-	let submittedProject: { name: string; folders: string[]; primaryPath: string } | undefined;
-	let createdFolder = '';
+	let submittedProject:
+		| {
+				name: string;
+				icon: string | null;
+				color: string;
+				group: string | null;
+				folders: string[];
+				primaryPath: string;
+		  }
+		| undefined;
+	let folderPickCount = 0;
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
 	page.on('pageerror', (error) => browserErrors.push(error.message));
 	page.on('requestfailed', (request) => {
 		if (!(request.method() === 'HEAD' && request.url().includes('/_app/immutable/')))
 			browserErrors.push(`${request.method()} ${request.url()}`);
 	});
-	await page.route(/\/api\/directories/, async (route) => {
-		if (route.request().method() === 'POST') {
-			const body = (await route.request().postDataJSON()) as { parent: string; name: string };
-			createdFolder = `${body.parent}/${body.name}`;
-			return route.fulfill({
-				json: {
-					path: body.parent,
-					name: body.parent.split('/').pop(),
-					parent: '/Users',
-					entries: [
-						{ name: 'Documents', path: `${body.parent}/Documents` },
-						{ name: body.name, path: createdFolder }
-					]
-				}
-			});
-		}
-		const url = new URL(route.request().url());
-		const requestedPath = url.searchParams.get('path');
-		const path = requestedPath || '/Users/example';
-		return route.fulfill({
-			json: {
-				path,
-				name: path.split('/').pop(),
-				parent: path === '/Users/example' ? '/Users' : '/Users/example',
-				entries:
-					path === '/Users/example'
-						? [
-								...(url.searchParams.get('hidden') === 'true'
-									? [{ name: '.config', path: `${path}/.config` }]
-									: []),
-								{ name: 'Documents', path: `${path}/Documents` }
-							]
-						: []
-			}
-		});
+	await page.route('/api/directories/pick', async (route) => {
+		folderPickCount += 1;
+		const path = folderPickCount === 3 ? '/Users/example/Documents' : '/Users/example';
+		return route.fulfill({ json: { path, name: path.split('/').pop() } });
 	});
 	await page.route('/api/projects', async (route) => {
 		if (route.request().method() !== 'POST') return route.continue();
@@ -1982,26 +2055,50 @@ test('opens project creation from the Projects heading and dismisses it with Esc
 		await expect(dialog).toBeHidden();
 		await addButton.click();
 		await expect(dialog).toBeVisible();
-		await expect(dialog.getByRole('button', { name: 'Documents' })).toBeFocused();
-		const pathInput = dialog.getByLabel('Folder path');
-		await expect(pathInput).toHaveValue('/Users/example');
-		await expect(dialog.locator('option[value="/Users/example/Documents"]')).toHaveCount(1);
+		const chooseFolder = dialog.getByRole('button', { name: 'Choose folder…' });
+		await expect(chooseFolder).toBeVisible();
 		const projectName = dialog.getByLabel('Project name');
-		const directoryBrowser = dialog.getByRole('region', { name: 'Directories' });
+		await expect(dialog.getByLabel('Section optional')).toBeVisible();
+		const colorControl = dialog.getByLabel('Project color');
+		await expect(colorControl).toBeVisible();
 		expect(
 			await dialog.evaluate((element) => {
-				const input = element.querySelector('input[required]');
-				const browser = element.querySelector('[aria-label="Directories"]');
-				return Boolean(
-					input &&
-					browser &&
-					input.compareDocumentPosition(browser) & Node.DOCUMENT_POSITION_FOLLOWING
-				);
+				const folder = element.querySelector<HTMLElement>('.project-create-control');
+				const color = element.querySelector<HTMLElement>('.project-color-input');
+				if (!folder || !color) return null;
+				const folderStyle = getComputedStyle(folder);
+				const colorStyle = getComputedStyle(color);
+				return {
+					heights: [folder.offsetHeight, color.offsetHeight],
+					borders: [folderStyle.borderWidth, colorStyle.borderWidth],
+					radii: [folderStyle.borderRadius, colorStyle.borderRadius]
+				};
 			})
-		).toBe(true);
+		).toEqual({ heights: [48, 48], borders: ['1px', '1px'], radii: ['6px', '6px'] });
+		await expect(dialog.getByRole('button', { name: 'Choose icon (optional)' })).toBeVisible();
 		expect(
-			await directoryBrowser.evaluate((browser) => getComputedStyle(browser).maxHeight)
-		).not.toBe('none');
+			await dialog.evaluate((element) => {
+				const actions = [...element.querySelectorAll<HTMLElement>('.project-create-button')];
+				const submit = element.querySelector<HTMLElement>('.project-create-submit');
+					const primary = document.createElement('span');
+					primary.style.background = 'var(--primary)';
+					element.append(primary);
+					const primaryBackground = getComputedStyle(primary).backgroundColor;
+					primary.remove();
+					return {
+						count: actions.length,
+						borders: actions.map((action) => getComputedStyle(action).borderWidth),
+						submitBackground: submit ? getComputedStyle(submit).backgroundColor : null,
+						primaryBackground
+					};
+			})
+		).toEqual({
+			count: 3,
+			borders: ['1px', '1px', '1px'],
+			submitBackground: 'rgb(17, 17, 17)',
+			primaryBackground: 'rgb(17, 17, 17)'
+		});
+		await expect(dialog.getByRole('region', { name: 'Directories' })).toHaveCount(0);
 		const dialogBox = await dialog.boundingBox();
 		if (viewport.width > 700) {
 			expect(Math.abs(dialogBox!.x + dialogBox!.width / 2 - viewport.width / 2)).toBeLessThan(2);
@@ -2012,39 +2109,35 @@ test('opens project creation from the Projects heading and dismisses it with Esc
 			expect(dialogBox!.x + dialogBox!.width).toBeLessThanOrEqual(viewport.width);
 			expect(dialogBox!.y + dialogBox!.height).toBeLessThanOrEqual(viewport.height);
 		}
-		await dialog.getByRole('button', { name: 'Documents' }).click();
-		await expect(pathInput).toHaveValue('/Users/example/Documents');
-		await dialog.getByRole('button', { name: 'Parent directory' }).click();
-		if (viewport.width === 1440) {
-			await pathInput.fill('/Users/example/Documents');
-			await pathInput.press('Enter');
-			await expect(pathInput).toHaveValue('/Users/example/Documents');
-			await dialog.getByRole('button', { name: 'Parent directory' }).click();
-			await dialog.getByLabel('New folder name').fill('Client');
-			await dialog.getByRole('button', { name: 'Create folder' }).click();
-			await expect(dialog.getByRole('button', { name: 'Client' })).toBeVisible();
-			expect(createdFolder).toBe('/Users/example/Client');
-		}
-		await dialog.getByLabel('Show hidden').check();
-		await expect(dialog.getByRole('button', { name: '.config' })).toBeVisible();
+		await chooseFolder.click();
+		await expect(dialog.getByText('/Users/example', { exact: true })).toBeVisible();
+		await expect(projectName).toHaveValue('example');
 		if (viewport.width <= 700)
 			expect((await addButton.boundingBox())?.height).toBeGreaterThanOrEqual(44);
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			viewport.width
 		);
+		await dialog.evaluate((element) => (element as HTMLElement).click());
+		await expect(dialog).toBeVisible();
 		await page.keyboard.press('Escape');
+		await expect(dialog).toBeVisible();
+		await dialog.getByRole('button', { name: 'Close Project folder browser' }).click();
 		await expect(dialog).toBeHidden();
 		if (viewport.width === 1440) {
 			await addButton.click();
-			await dialog.getByRole('button', { name: 'Select current folder' }).click();
-			await dialog.getByRole('button', { name: 'Documents' }).click();
-			await dialog.getByRole('button', { name: 'Select current folder' }).click();
+			await dialog.getByRole('button', { name: 'Choose folder…' }).click();
+			await dialog.getByRole('button', { name: 'Add another folder…' }).click();
 			await dialog.getByRole('radio', { name: '/Users/example/Documents' }).check();
 			await dialog.getByLabel('Project name').fill('example');
+			await dialog.getByLabel('Section optional').fill('Writing');
+			await dialog.getByLabel('Project color').fill('#7aa2f7');
 			await dialog.getByRole('button', { name: 'Create Project' }).click();
 			await expect(dialog).toBeHidden();
 			expect(submittedProject).toEqual({
 				name: 'example',
+				icon: null,
+				color: '#7aa2f7',
+				group: 'Writing',
 				folders: ['/Users/example', '/Users/example/Documents'],
 				primaryPath: '/Users/example/Documents'
 			});
@@ -4260,6 +4353,7 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 }, testInfo) => {
 	let sent = false;
 	let posts = 0;
+	let mediaAction: unknown;
 	let envelope: {
 		attachments: Array<{ name: string; mimeType: string; size: number; data: string }>;
 	};
@@ -4340,6 +4434,10 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 	await page.route(/\/sessions\/files\/events\?after=0$/, (route) =>
 		route.fulfill({ json: { events: [] } })
 	);
+	await page.route(/\/sessions\/files\/media$/, async (route) => {
+		mediaAction = await route.request().postDataJSON();
+		return route.fulfill({ json: { success: true } });
+	});
 	await page.route(/\/sessions\/files\/media\?.*$/, (route) => {
 		const path = new URL(route.request().url()).searchParams.get('path');
 		if (path?.endsWith('.svg'))
@@ -4428,6 +4526,15 @@ test('keeps generic attachment bytes transient and restores explicit reattach pl
 	const artifactsGallery = page.getByRole('dialog', { name: 'Session artifacts gallery' });
 	await expect(artifactsGallery).toBeVisible();
 	await expect(artifactsGallery.getByText('1 / 3')).toBeVisible();
+	const folderButton = artifactsGallery.getByRole('button', {
+		name: 'Open containing folder for output/report.pdf in Finder'
+	});
+	await folderButton.hover();
+	const folderTooltip = page.getByRole('tooltip');
+	await expect(folderTooltip).toHaveText('Open containing folder in Finder');
+	expect(await folderTooltip.evaluate((element) => element.matches(':popover-open'))).toBe(true);
+	await folderButton.click();
+	expect(mediaAction).toEqual({ path: 'output/report.pdf', action: 'reveal' });
 	await artifactsGallery.getByRole('link', { name: 'Download output/report.pdf' }).focus();
 	await artifactsGallery
 		.getByRole('link', { name: 'Download output/report.pdf' })
@@ -4532,7 +4639,7 @@ test('previews CSV and sandboxed interactive HTML outputs inline', async ({ page
 				transcript: [
 					{
 						role: 'assistant',
-						text: 'Outputs ready.\nMEDIA: output/report.csv\nMEDIA: output/empty.csv\nMEDIA: output/dashboard.html'
+						text: 'Outputs ready.\nMEDIA: output/report.csv\nMEDIA: output/empty.csv\nMEDIA: output/dashboard.html\nMEDIA: output/report.json\nMEDIA: output/README.md'
 					}
 				],
 				messages: [],
@@ -4552,6 +4659,16 @@ test('previews CSV and sandboxed interactive HTML outputs inline', async ({ page
 						"default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; connect-src 'none'; sandbox"
 				},
 				body: '<details><summary>Dashboard controls</summary><label>Scenario <input></label></details><script>document.body.dataset.script="unsafe"</script>'
+			});
+		if (path?.endsWith('.json'))
+			return route.fulfill({
+				headers: { 'content-type': 'application/json' },
+				body: '{"version":1,"ready":true}'
+			});
+		if (path?.endsWith('.md'))
+			return route.fulfill({
+				headers: { 'content-type': 'text/markdown; charset=utf-8' },
+				body: '# Release notes\n\n**Ready for review.**'
 			});
 		csvRanges.push(route.request().headers().range ?? '');
 		return route.fulfill({
@@ -4589,6 +4706,11 @@ test('previews CSV and sandboxed interactive HTML outputs inline', async ({ page
 	await outputs.getByRole('button', { name: 'Select dashboard.html' }).click();
 	const html = outputs.getByLabel('Inline preview of dashboard.html');
 	await expect(html).toBeVisible();
+	const [previewBox, htmlBox] = await Promise.all([
+		outputs.locator('.generated-output-preview').boundingBox(),
+		html.boundingBox()
+	]);
+	expect(htmlBox!.width).toBeGreaterThanOrEqual(previewBox!.width - 2);
 	await expect(html).toHaveAttribute('sandbox', '');
 	await expect(html.contentFrame().locator('body')).not.toHaveAttribute('data-script', 'unsafe');
 	const details = html.contentFrame().locator('details');
@@ -4600,13 +4722,30 @@ test('previews CSV and sandboxed interactive HTML outputs inline', async ({ page
 	).toBe(true);
 	await html.contentFrame().getByLabel('Scenario').fill('Release');
 	await expect(html.contentFrame().getByLabel('Scenario')).toHaveValue('Release');
+	await outputs.getByRole('button', { name: 'Select report.json' }).click();
+	const jsonSource = outputs.getByLabel('Source preview of report.json');
+	await expect(jsonSource.locator('.token.property').first()).toContainText('version');
+	await outputs.getByRole('button', { name: 'Select README.md' }).click();
+	await expect(outputs.getByRole('heading', { name: 'Release notes' })).toBeVisible();
+	await outputs.getByRole('button', { name: 'Source' }).click();
+	await expect(
+		outputs.getByLabel('Source preview of README.md').locator('.syntax-heading')
+	).toContainText('Release notes');
+	await outputs.getByRole('button', { name: 'Expand output/README.md' }).click();
+	const markdownShowcase = page.getByRole('dialog', { name: 'README.md' });
+	await expect(markdownShowcase.getByRole('heading', { name: 'Release notes' })).toBeVisible();
+	await markdownShowcase.getByRole('button', { name: 'Source' }).click();
+	await expect(markdownShowcase.getByLabel('Source preview of README.md')).toContainText(
+		'Release notes'
+	);
+	await markdownShowcase.getByRole('button', { name: 'Close preview' }).click();
 	expect(errors).toEqual([]);
 	await expect(
 		page.getByRole('button', { name: 'Open output/dashboard.html', exact: true })
 	).toHaveCount(0);
 
 	const artifactsButton = page.getByRole('button', {
-		name: 'Open artifacts gallery, 3 artifacts'
+		name: 'Open artifacts gallery, 5 artifacts'
 	});
 	await artifactsButton.click();
 	const gallery = page.getByRole('dialog', { name: 'Session artifacts gallery' });
@@ -4619,9 +4758,11 @@ test('previews CSV and sandboxed interactive HTML outputs inline', async ({ page
 	await expect(galleryCsv.getByRole('cell', { name: 'ready' })).toBeVisible();
 	await gallery.locator('.csv-preview').focus();
 	await gallery.locator('.csv-preview').press('ArrowRight');
-	await expect(gallery.getByText('1 / 3')).toBeVisible();
+	await expect(gallery.getByText('1 / 5')).toBeVisible();
 	await gallery.getByRole('button', { name: 'Select dashboard.html' }).click();
 	await expect(gallery.getByTitle('Preview of dashboard.html')).toHaveAttribute('sandbox', '');
+	await gallery.getByRole('button', { name: 'Select README.md' }).click();
+	await expect(gallery.getByRole('heading', { name: 'Release notes' })).toBeVisible();
 	await gallery.getByRole('button', { name: 'Close artifacts gallery' }).click();
 
 	for (const viewport of viewports) {
@@ -4641,6 +4782,29 @@ test('previews CSV and sandboxed interactive HTML outputs inline', async ({ page
 			body: await page.screenshot(),
 			contentType: 'image/png'
 		});
+		await outputs.getByRole('button', { name: 'Select README.md' }).click();
+		await expect(outputs.locator('.artifact-text-preview')).toContainText('Release notes');
+		await expect(outputs.getByRole('heading', { name: 'Release notes' })).toBeVisible();
+		if (viewport.width <= 390)
+			await expectMinimumTouchTargets(outputs.getByLabel('Markdown view').getByRole('button'));
+		await testInfo.attach(`markdown-preview-${viewport.width}x${viewport.height}`, {
+			body: await page.screenshot(),
+			contentType: 'image/png'
+		});
+		await outputs.getByRole('button', { name: 'Expand output/README.md' }).click();
+		await expect(markdownShowcase.getByRole('heading', { name: 'Release notes' })).toBeVisible();
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			viewport.width
+		);
+		if (viewport.width <= 390)
+			await expectMinimumTouchTargets(
+				markdownShowcase.getByLabel('Markdown view').getByRole('button')
+			);
+		await testInfo.attach(`expanded-markdown-${viewport.width}x${viewport.height}`, {
+			body: await page.screenshot(),
+			contentType: 'image/png'
+		});
+		await markdownShowcase.getByRole('button', { name: 'Close preview' }).click();
 	}
 	expect(errors).toEqual([]);
 });
@@ -6333,6 +6497,62 @@ test('starts and revisits a session without a project', async ({ page }) => {
 			viewport.width
 		);
 	}
+	expect(browserErrors).toEqual([]);
+});
+
+test('answers a Quick Ask without adding a Chat', async ({ page }) => {
+	const browserErrors: string[] = [];
+	const operations: string[] = [];
+	let removals = 0;
+	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
+	page.on('pageerror', (error) => browserErrors.push(error.message));
+	page.on('requestfailed', (request) => recordRequestFailure(browserErrors, request));
+	await page.route('**/api/quick-ask', async (route) => {
+		const body = (await route.request().postDataJSON()) as Record<string, unknown>;
+		if (route.request().method() === 'DELETE') {
+			removals += 1;
+			return route.fulfill({ json: { removed: true, hermesTranscriptRetained: true } });
+		}
+		operations.push(String(body.operationId));
+		return route.fulfill({
+			json: {
+				status: 'completed',
+				answer: 'HUE organizes Projects, Workflows, and Hermes Sessions.',
+				sessionId: `quick-${operations.length}`,
+				messageId: String(body.operationId)
+			}
+		});
+	});
+
+	for (const viewport of viewports) {
+		await page.setViewportSize(viewport);
+		await page.goto('/');
+		await openMobileProjects(page);
+		const before = page.url();
+		await page.getByRole('button', { name: 'Quick Ask' }).click();
+		const dialog = page.getByRole('dialog', { name: 'Quick Ask' });
+		await expect(dialog).toBeVisible();
+		await expect(dialog).toContainText('Ask a one-off question. It won’t appear in Chats.');
+		await expect(dialog).toContainText('Hermes still keeps a transcript in its session history.');
+		await dialog.getByLabel('Your question').fill('What is HUE?');
+		await dialog.getByRole('button', { name: 'Ask Hermes' }).click();
+		await expect(dialog).toContainText('HUE organizes Projects, Workflows, and Hermes Sessions.');
+		await expect(dialog.getByRole('button', { name: 'Copy' })).toBeVisible();
+		await expect(dialog.getByRole('button', { name: 'Keep as Chat' })).toBeVisible();
+		expect(page.url()).toBe(before);
+		const box = (await dialog.boundingBox())!;
+		expect(box.x).toBeGreaterThanOrEqual(0);
+		expect(box.y).toBeGreaterThanOrEqual(0);
+		expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+		expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+		if (viewport.width <= 390) await expectMinimumTouchTargets(dialog.locator('button, textarea'));
+		await dialog.getByRole('button', { name: 'Close and remove' }).click();
+		await expect(dialog).not.toBeVisible();
+	}
+
+	expect(operations).toHaveLength(viewports.length);
+	expect(new Set(operations).size).toBe(viewports.length);
+	expect(removals).toBe(viewports.length);
 	expect(browserErrors).toEqual([]);
 });
 

@@ -597,9 +597,20 @@ describe('HUEStore project and workflow boundaries', () => {
 					limit: 100,
 					offset: 0,
 					scope: 'unscheduled'
-				})
-				.sessions.map(({ sessionId }) => sessionId)
+			})
+			.sessions.map(({ sessionId }) => sessionId)
 		).toEqual(['chat']);
+		store.acceptMessage({ id: 'chat-message', projectId: null, sessionId: 'chat', text: 'Run' });
+		store.transitionMessage('chat-message', 'running', { messageId: 'chat-message' });
+		store.acceptMessage({
+			id: 'scheduled-message',
+			projectId: null,
+			sessionId: 'scheduled',
+			text: 'Run'
+		});
+		store.transitionMessage('scheduled-message', 'running', { messageId: 'scheduled-message' });
+		expect(store.getSessionIndicatorCounts(null, 'unscheduled').running).toBe(1);
+		expect(store.getSessionIndicatorCounts(null, 'scheduled').running).toBe(1);
 		store.close();
 	});
 

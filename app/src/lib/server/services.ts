@@ -226,6 +226,7 @@ export async function loadProjectViews() {
 				)
 			),
 		chatSessionCount: state.store.countSessions(null, 'unscheduled'),
+		chatIndicators: state.store.getSessionIndicatorCounts(null, 'unscheduled'),
 		cronSessionCount: state.store.countSessions(null, 'scheduled'),
 		reconciliationIssues: reconciled.issues
 	};

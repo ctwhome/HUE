@@ -127,6 +127,9 @@ describe('ProjectManagement Hermes authority', () => {
 			return { project: original } as T;
 		});
 		state.projectName = 'Workspace';
+		state.projectIcon = '📚';
+		state.projectColor = '#7aa2f7';
+		state.projectGroup = 'Writing';
 		state.selectedFolders = ['/work/app', '/work/docs'];
 		state.primaryFolder = '/work/docs';
 
@@ -135,9 +138,27 @@ describe('ProjectManagement Hermes authority', () => {
 		expect(requests[0]?.url).toBe('/api/projects');
 		expect(JSON.parse(String(requests[0]?.options?.body))).toEqual({
 			name: 'Workspace',
+			icon: '📚',
+			color: '#7aa2f7',
+			group: 'Writing',
 			folders: ['/work/app', '/work/docs'],
 			primaryPath: '/work/docs'
 		});
+	});
+
+	it('opens the system folder picker and selects its result', async () => {
+		const requests: Array<{ url: string; options?: RequestInit }> = [];
+		const state = manager(async <T>(url: string, options?: RequestInit) => {
+			requests.push({ url, options });
+			return { path: '/work/new-project', name: 'new-project' } as T;
+		});
+
+		await state.pickFolder();
+
+		expect(requests[0]).toMatchObject({ url: '/api/directories/pick', options: { method: 'POST' } });
+		expect(state.selectedFolders).toEqual(['/work/new-project']);
+		expect(state.primaryFolder).toBe('/work/new-project');
+		expect(state.projectName).toBe('new-project');
 	});
 
 	it('creates a folder in the open directory and refreshes the browser', async () => {

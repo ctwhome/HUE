@@ -36,6 +36,7 @@
 	} from '$lib/message-content';
 	import BrandMark from '$lib/components/BrandMark.svelte';
 	import { artifactKind, artifactName, artifactUrl } from '$lib/artifact';
+	import ArtifactTextPreview from './ArtifactTextPreview.svelte';
 	import CsvPreview from './CsvPreview.svelte';
 	import GeneratedOutputs from './GeneratedOutputs.svelte';
 	import MarkdownControls from './MarkdownControls.svelte';
@@ -709,6 +710,10 @@
 							><track kind="captions" /></audio
 						>
 					</div>{:else if mediaKind(showcasePath) === 'csv'}<CsvPreview
+						src={mediaUrl(showcasePath)}
+						name={mediaName(showcasePath)}
+						full
+					/>{:else if mediaKind(showcasePath) === 'text'}<ArtifactTextPreview
 						src={mediaUrl(showcasePath)}
 						name={mediaName(showcasePath)}
 						full

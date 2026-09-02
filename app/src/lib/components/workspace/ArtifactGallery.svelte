@@ -3,13 +3,23 @@
 	import ChevronRight from '~icons/lucide/chevron-right';
 	import Download from '~icons/lucide/download';
 	import File from '~icons/lucide/file';
+	import FolderOpen from '~icons/lucide/folder-open';
 	import Images from '~icons/lucide/images';
 	import Music from '~icons/lucide/music';
 	import X from '~icons/lucide/x';
 	import { artifactKind, artifactName, artifactUrl } from '$lib/artifact';
+	import ArtifactTextPreview from './ArtifactTextPreview.svelte';
 	import CsvPreview from './CsvPreview.svelte';
 
-	let { artifacts, mediaPath }: { artifacts: string[]; mediaPath: string } = $props();
+	let {
+		artifacts,
+		mediaPath,
+		onmedia
+	}: {
+		artifacts: string[];
+		mediaPath: string;
+		onmedia: (path: string, action: 'open' | 'reveal') => void;
+	} = $props();
 	let trigger: HTMLButtonElement;
 	let dialog: HTMLDialogElement;
 	let index = $state(0);
@@ -59,6 +69,14 @@
 		<header class="flex min-h-14 items-center gap-2 border-b border-border px-3">
 			<strong class="min-w-0 flex-1 truncate">{name(artifact)}</strong>
 			<span class="text-sm text-muted-foreground">{index + 1} / {artifacts.length}</span>
+			<button
+				type="button"
+				class="grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-accent"
+				onclick={() => onmedia(artifact, 'reveal')}
+				aria-label={`Open containing folder for ${artifact} in Finder`}
+				title="Open containing folder in Finder"
+				><FolderOpen width={18} height={18} aria-hidden="true" /></button
+			>
 			<a
 				class="grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-accent"
 				href={`${url(artifact)}&download=true`}
@@ -91,7 +109,11 @@
 					src={url(artifact)}
 					name={name(artifact)}
 					full
-				/>{:else if kind(artifact) === 'pdf' || kind(artifact) === 'text' || kind(artifact) === 'html'}<iframe
+				/>{:else if kind(artifact) === 'text'}<ArtifactTextPreview
+					src={url(artifact)}
+					name={name(artifact)}
+					full
+				/>{:else if kind(artifact) === 'pdf' || kind(artifact) === 'html'}<iframe
 					class="size-full border-0 bg-white"
 					title={`Preview of ${name(artifact)}`}
 					src={url(artifact)}

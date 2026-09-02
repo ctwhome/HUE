@@ -257,3 +257,41 @@ test('leaves image count to Hermes', async () => {
 	expect(state.images).toHaveLength(5);
 	expect(errors.at(-1)).toBe('');
 });
+
+test('improvePrompt returns the result without replacing the editable draft', async () => {
+	const requests: Array<{ path: string; body: Record<string, unknown> }> = [];
+	const state = new MessageState({
+		api: async (path: string, init: RequestInit) => {
+			requests.push({ path, body: JSON.parse(String(init.body)) });
+			return {
+				status: 'completed',
+				prompt: 'Build a responsive portfolio for a documentary photographer.',
+				questions: [{ id: 'audience', question: 'Who should the portfolio attract?' }],
+				sessionId: 'improvement-session',
+				messageId: 'operation'
+			};
+		},
+		getProject: () => ({ id: 'hue' }),
+		getSession: () => ({ sessionId: 'source' }),
+		getNavigation: () => ({
+			captureSessionSelection: () => ({ generation: 1, projectId: 'hue', sessionId: 'source' }),
+			isCurrentSessionSelection: () => true,
+			sessionApiPath: (id: string, suffix = '') => `/api/projects/hue/sessions/${id}${suffix}`
+		}),
+		setError() {}
+	} as never);
+	state.composer = 'make photographer site';
+
+	const result = await state.improvePrompt([], 'openai:gpt-5');
+
+	expect(result).toMatchObject({ status: 'completed', prompt: 'Build a responsive portfolio for a documentary photographer.' });
+	expect(state.composer).toBe('make photographer site');
+	expect(requests).toHaveLength(1);
+	expect(requests[0].path).toBe('/api/projects/hue/sessions/source/prompt-improvement');
+	expect(requests[0].body).toMatchObject({
+		text: 'make photographer site',
+		answers: [],
+		modelId: 'openai:gpt-5'
+	});
+	expect(requests[0].body.operationId).toBeString();
+});

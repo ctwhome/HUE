@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { validateIcon } from '$lib/icon';
+import { validateProjectColor } from '$lib/project-color';
 import { HermesProjectsCapabilityError } from '$lib/server/hermes-projects';
 import {
 	loadProjectViews,
@@ -31,6 +32,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		const body = (await request.json()) as {
 			name?: unknown;
 			icon?: unknown;
+			color?: unknown;
+			group?: unknown;
 			folders?: unknown;
 			primaryPath?: unknown;
 		};
@@ -50,6 +53,14 @@ export const POST: RequestHandler = async ({ request }) => {
 		if (!folders.includes(primaryPath))
 			throw new Error('Primary folder must be one selected folder');
 		const icon = body.icon === undefined ? undefined : validateIcon(body.icon);
+		const color = body.color == null ? null : validateProjectColor(body.color);
+		if (body.group != null && typeof body.group !== 'string') {
+			throw new Error('Project section must be text');
+		}
+		const group = typeof body.group === 'string' ? body.group.trim() || null : null;
+		if (group && (group.length > 100 || group.includes('\0'))) {
+			throw new Error('Project section must be 100 characters or fewer');
+		}
 		const project = await services().projects.create({
 			name: body.name.trim(),
 			icon,
@@ -57,7 +68,9 @@ export const POST: RequestHandler = async ({ request }) => {
 			primaryPath
 		});
 		services().store.ensureProjectMetadata(project.id, project.name);
-		return json({ project: projectView(project, null, null) }, { status: 201 });
+		if (color) services().store.updateProjectColor(project.id, color);
+		if (group) services().store.updateProjectGroup(project.id, group);
+		return json({ project: projectView(project, color, group) }, { status: 201 });
 	} catch (cause) {
 		return json(
 			{ error: cause instanceof Error ? cause.message : String(cause) },

@@ -98,12 +98,13 @@
 	.projectless-row .project-select {
 		padding-right: 10px;
 	}
-	.projectless-row .workspace-session-add {
+	.projectless-row .workspace-session-actions {
 		position: relative;
 		top: auto;
 		right: auto;
 		margin-left: 0;
 		translate: none;
+		flex-direction: column;
 	}
 	.project-select {
 		justify-content: center;
@@ -274,6 +275,7 @@
 	}
 	.projectless-row .project-select {
 		min-height: 56px;
+		padding-right: 88px;
 	}
 	.projectless-row .project-select > .project-icon {
 		width: 32px;

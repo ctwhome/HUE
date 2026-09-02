@@ -27,14 +27,15 @@ test('keeps Project and Session status visible while switching panes', async ({ 
 	let markedRead = false;
 
 	await page.route('**/api/notifications?**', (route) =>
-		route.fulfill({
-			json: {
-				items: [],
-				nextCursor: null,
-				counts: { unread: 2, all: 2 },
-				projectIndicators: { [project.id]: { running: 1, attention: 0, unread: 2 } }
-			}
-		})
+			route.fulfill({
+				json: {
+					items: [],
+					nextCursor: null,
+					counts: { unread: 2, all: 2 },
+					chatIndicators: { running: 1, attention: 0, unread: 1 },
+					projectIndicators: { [project.id]: { running: 1, attention: 0, unread: 2 } }
+				}
+			})
 	);
 	await page.route(new RegExp(`/api/projects/${project.id}/sessions(?:\\?.*)?$`), (route) =>
 		route.fulfill({
@@ -78,8 +79,13 @@ test('keeps Project and Session status visible while switching panes', async ({ 
 			}
 			await page.getByRole('button', { name: 'Back to Projects' }).click();
 		}
+		const chats = page.locator('.projectless-row').filter({ hasText: 'Chats' });
+		await expect(chats.getByLabel('1 running Chat')).toBeVisible();
+		await expect(chats.getByLabel('1 unread Chat')).toBeVisible();
 		await expect(page.getByLabel('1 running Sessions')).toBeVisible();
-		await expect(page.getByLabel('2 unread Sessions')).toBeVisible();
+		const unreadBadge = page.getByLabel('2 unread Sessions');
+		await expect(unreadBadge).toBeVisible();
+		await expect(unreadBadge).toHaveCSS('color', 'rgb(255, 255, 255)');
 		if (viewport.width <= 700)
 			await page.locator('[data-project-id]').filter({ hasText: 'Status project' }).click();
 		await expect(page.getByLabel('Unread activity')).toBeVisible();

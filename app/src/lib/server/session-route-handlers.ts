@@ -3,7 +3,7 @@ import { validateIcon } from '$lib/icon';
 import { validateMessageAttachments, validateReviewContexts } from '$lib/message-content';
 import { authoritativeProject, projectBranch, services } from '$lib/server/route-services';
 import type { BrowserInteractionResponse } from '$lib/server/message-dispatcher';
-import { localSameOriginMutationAllowed } from '$lib/server/same-origin';
+import { localSameOriginMutationAllowed, sameOriginMutationAllowed } from '$lib/server/same-origin';
 import {
 	closeSessionMedia,
 	resolveSessionMedia,
@@ -12,6 +12,10 @@ import {
 import { exportSession } from '$lib/server/session-transfer';
 import { MessageConflictError } from '$lib/server/store';
 import { applyExplicitWorkMode, submitMessageWithWorkMode } from '$lib/server/work-mode-context';
+import {
+	generatePromptImprovement,
+	type PromptImprovementAnswer
+} from '$lib/server/prompt-improvement';
 
 type SessionEvent = Pick<RequestEvent, 'request' | 'url' | 'getClientAddress'> & {
 	params: { sessionId: string };
@@ -30,6 +34,44 @@ async function scopeOrNotFound(projectId: string | null, sessionId: string) {
 		return await resolveSessionScope(projectId, sessionId);
 	} catch (cause) {
 		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 404 });
+	}
+}
+
+export async function improvePrompt(projectId: string | null, event: SessionEvent) {
+	if (!sameOriginMutationAllowed(event.request, event.url)) {
+		return json({ error: 'Prompt improvement requires a same-origin request' }, { status: 403 });
+	}
+	const scope = await scopeOrNotFound(projectId, event.params.sessionId);
+	if (scope instanceof Response) return scope;
+	try {
+		const body = (await event.request.json()) as {
+			text?: unknown;
+			answers?: unknown;
+			modelId?: unknown;
+			operationId?: unknown;
+		};
+		if (
+			typeof body.text !== 'string' ||
+			!Array.isArray(body.answers) ||
+			(body.modelId !== undefined && typeof body.modelId !== 'string') ||
+			typeof body.operationId !== 'string'
+		)
+			throw new Error('Invalid prompt improvement request');
+		return json(
+			await generatePromptImprovement(
+				{
+					projectId: scope.projectId,
+					sourceSessionId: event.params.sessionId,
+					text: body.text,
+					answers: body.answers as PromptImprovementAnswer[],
+					modelId: body.modelId,
+					operationId: body.operationId
+				},
+				services()
+			)
+		);
+	} catch (cause) {
+		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 400 });
 	}
 }
 
@@ -426,7 +468,7 @@ export async function getMedia(projectId: string | null, event: SessionEvent, he
 }
 
 export async function postMedia(projectId: string | null, event: SessionEvent) {
-	if (!localSameOriginMutationAllowed(event.request, event.url, event.getClientAddress())) {
+	if (!sameOriginMutationAllowed(event.request, event.url)) {
 		return json({ error: 'Opening files is limited to this device' }, { status: 403 });
 	}
 	const scope = await scopeOrNotFound(projectId, event.params.sessionId);
@@ -436,6 +478,11 @@ export async function postMedia(projectId: string | null, event: SessionEvent) {
 		const body = (await event.request.json()) as { path?: string; action?: string };
 		if (body.action !== 'open' && body.action !== 'reveal')
 			return json({ error: 'Action must be open or reveal' }, { status: 400 });
+		if (
+			body.action === 'open' &&
+			!localSameOriginMutationAllowed(event.request, event.url, event.getClientAddress())
+		)
+			return json({ error: 'Opening files is limited to this device' }, { status: 403 });
 		const media = resolveSessionMedia(session.cwd, body.path ?? '');
 		try {
 			if (

@@ -20,11 +20,13 @@
 	import Trash2 from '~icons/lucide/trash-2';
 	import WifiOff from '~icons/lucide/wifi-off';
 	import { moveBefore, prependNew, readStringArray, sortByOrder } from '$lib/drag-order';
+	import { projectColorForeground } from '$lib/project-color';
 	import { sessionRowState } from './session-row-state';
 	type Project = {
 		id: string;
 		name: string;
 		icon: string | null;
+		color?: string | null;
 		primaryPath: string;
 		folders: Array<{ path: string; label: string | null; isPrimary: boolean; available: boolean }>;
 		rootAvailable: boolean;
@@ -401,6 +403,7 @@
 			{@const state = rowState(session)}
 			<div
 				class="session-row relative w-full min-w-0"
+				style={`--active-project-color: ${selectedProject?.color ?? 'var(--primary)'}; --active-project-foreground: ${selectedProject?.color ? projectColorForeground(selectedProject.color) : 'var(--primary-foreground)'}`}
 				role="group"
 				aria-label={`Session ${session.title || 'Untitled session'}`}
 				ondragover={(event) => allowSessionDrop(event, session)}

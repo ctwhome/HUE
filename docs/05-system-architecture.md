@@ -55,6 +55,8 @@ Keep exactly one long-lived HUE process per database file. Production startup st
 
 The browser submits one complete envelope with a client-generated ID. HUE persists it before dispatch, serializes turns per Session, deduplicates retries, and exposes monotonic event replay. A transport loss after dispatch becomes `unknown`; HUE does not automatically repeat a possibly side-effecting prompt.
 
+Composer prompt improvement is a one-time refinement backed by a temporary Hermes Session and durable envelope. The Session stays archived while delivery is pending and is removed from HUE once terminal, so it is not retained as a Chat. HUE preserves only the delivery state needed for safe retries; Hermes retains its own transcript. The operation returns an editable draft plus only material clarification questions, never changes or sends the active composer text automatically, and does not add scaffolding to the active Session transcript.
+
 Scheduled prompts follow the same invariant through a dedicated projectless Session per schedule. The Projects rail surfaces those Sessions together under Cron tasks without turning schedules into a fourth user-facing object. HUE coalesces downtime catch-up to one durable run. Existing external Hermes cron jobs may appear as Hermes-owned rows and accept explicit authenticated edits or deletion. HUE polls their run history after a read baseline and projects unread terminal outcomes and best-effort notifications, but does not import their execution, persist their transcripts, or claim HUE delivery guarantees.
 
 ## Trust boundary

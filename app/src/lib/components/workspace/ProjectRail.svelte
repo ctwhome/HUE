@@ -4,7 +4,6 @@
 	import ArrowDown from '~icons/lucide/arrow-down';
 	import ArrowUp from '~icons/lucide/arrow-up';
 	import Bell from '~icons/lucide/bell';
-	import Check from '~icons/lucide/check';
 	import ChevronRight from '~icons/lucide/chevron-right';
 	import EllipsisVertical from '~icons/lucide/ellipsis-vertical';
 	import Folder from '~icons/lucide/folder';
@@ -14,11 +13,13 @@
 	import Menu from '~icons/lucide/menu';
 	import LoaderCircle from '~icons/lucide/loader-circle';
 	import Plus from '~icons/lucide/plus';
+	import Sparkles from '~icons/lucide/sparkles';
 	import X from '~icons/lucide/x';
 	import { dropBefore, moveBefore, moveBy, readStringArray, sortByOrder } from '$lib/drag-order';
+	import { projectColorForeground } from '$lib/project-color';
 	import IconEditorPopover from '$lib/components/IconEditorPopover.svelte';
 	import ProjectFoldersEditor from './ProjectFoldersEditor.svelte';
-	import type { Directory, Project } from './types';
+	import type { Project } from './types';
 
 	let {
 		element = $bindable(),
@@ -26,6 +27,7 @@
 		mobile,
 		projects,
 		chatSessionCount,
+		chatIndicators,
 		cronSessionCount,
 		selectedProject,
 		sessionCollection,
@@ -42,9 +44,6 @@
 		projectIconAnchor,
 		editingProject,
 		projectRoot,
-		projectDirectories,
-		projectDirectoryParent,
-		showHiddenDirectories,
 		directoryLoading,
 		directoryError,
 		projectName = $bindable(),
@@ -57,20 +56,20 @@
 		selectedFolders,
 		primaryFolder,
 		onprojectless,
+		onquickask,
 		oncollection,
 		onaddopen,
 		onchoose,
 		onlocate,
 		onedit,
 		onicon,
+		onnewicon,
 		oniconselect,
 		oncolor,
 		ongroup,
 		onsection,
 		onmove,
-		onhidden,
-		ondirectory,
-		oncreatedirectory,
+		onpickfolder,
 		ontogglefolder,
 		onprimarychoice,
 		oncreate,
@@ -91,6 +90,7 @@
 		mobile: boolean;
 		projects: Project[];
 		chatSessionCount: number;
+		chatIndicators: { running: number; attention: number; unread: number };
 		cronSessionCount: number;
 		selectedProject: Project | null;
 		sessionCollection: 'chats' | 'cron';
@@ -107,9 +107,6 @@
 		projectIconAnchor?: HTMLElement;
 		editingProject: Project | null;
 		projectRoot: string;
-		projectDirectories: Directory[];
-		projectDirectoryParent: string | null;
-		showHiddenDirectories: boolean;
 		directoryLoading: boolean;
 		directoryError: string;
 		projectName: string;
@@ -122,20 +119,20 @@
 		selectedFolders: string[];
 		primaryFolder: string;
 		onprojectless: () => void;
+		onquickask: () => void;
 		oncollection: (collection: 'chats' | 'cron', trigger?: HTMLElement) => void;
 		onaddopen: () => void;
 		onchoose: (project: Project | null, trigger?: HTMLElement) => void;
 		onlocate: (project: Project) => void;
 		onedit: (event: MouseEvent, project: Project) => void;
 		onicon: (event: MouseEvent, project: Project) => void;
+		onnewicon: (event: MouseEvent) => void;
 		oniconselect: (icon: string | null) => void;
 		oncolor: (color: string) => void;
 		ongroup: (group: string) => void;
 		onsection: (name: string, projectIds: string[]) => Promise<boolean>;
 		onmove: (projectId: string, group: string | null) => Promise<boolean>;
-		onhidden: (event: Event) => void;
-		ondirectory: (path?: string) => void;
-		oncreatedirectory: (name: string) => Promise<boolean>;
+		onpickfolder: () => Promise<void>;
 		ontogglefolder: (path?: string) => void;
 		onprimarychoice: (path: string) => void;
 		oncreate: (event: SubmitEvent) => void;
@@ -152,7 +149,6 @@
 		isImage: (icon: string | null) => boolean;
 	} = $props();
 
-	const currentFolderSelected = $derived(selectedFolders.includes(projectRoot));
 	const addDisabled = $derived(projectsCapability !== 'available');
 	let projectOrder = $state<string[]>([]);
 	let groupOrder = $state<string[]>([]);
@@ -178,8 +174,6 @@
 	let sectionSubmitted = $state(false);
 	let draggedProjectId = $state<string | null>(null);
 	let draggedGroup = $state<string | null>(null);
-	let projectPathInput = $state('');
-	let newDirectoryName = $state('');
 	let dropGroup = $state<string | null>(null);
 	let dropProjectId = $state<string | null>(null);
 	let projectDropPosition = $state<'before' | 'after'>('before');
@@ -191,15 +185,6 @@
 	let touchX = 0;
 	let touchY = 0;
 	let touchDragTimer: ReturnType<typeof setTimeout> | null = null;
-
-	$effect(() => {
-		projectPathInput = projectRoot;
-	});
-
-	async function createDirectory(event: SubmitEvent) {
-		event.preventDefault();
-		if (await oncreatedirectory(newDirectoryName)) newDirectoryName = '';
-	}
 
 	onMount(() => {
 		collapsedGroups = new Set(readStringArray(localStorage, 'hue:project-groups:collapsed'));
@@ -501,7 +486,7 @@
 	<nav>
 		<div class="project-row projectless-row relative">
 			<button
-				class="project-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md bg-transparent px-2 py-1 pr-8 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
+				class="project-select flex min-h-(--control-height) w-full items-center gap-2 rounded-md bg-transparent px-2 py-1 pr-16 text-left text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
 				class:active={!selectedProject && sessionCollection === 'chats'}
 				aria-current={!selectedProject && sessionCollection === 'chats' ? 'page' : undefined}
 				aria-controls={!selectedProject && sessionCollection === 'chats'
@@ -510,24 +495,50 @@
 				aria-expanded={!selectedProject && sessionCollection === 'chats' ? sessionsOpen : undefined}
 				onclick={(event) => oncollection('chats', event.currentTarget)}
 			>
-				<MessageSquare
-					class="project-icon grid size-(--navigation-icon-size) shrink-0 place-items-center rounded-md"
-					width={18}
-					height={18}
-					aria-hidden="true"
-				/>
+				<span class="project-icon-wrap relative shrink-0">
+					<MessageSquare
+						class="project-icon grid size-(--navigation-icon-size) shrink-0 place-items-center rounded-md"
+						width={18}
+						height={18}
+						aria-hidden="true"
+					/>
+					{#if chatIndicators.unread}<span
+							class="project-unread-badge"
+							aria-label={`${chatIndicators.unread} unread Chat${chatIndicators.unread === 1 ? '' : 's'}`}
+							title={`${chatIndicators.unread} unread Chat${chatIndicators.unread === 1 ? '' : 's'}`}
+							>{chatIndicators.unread > 99 ? '99+' : chatIndicators.unread}</span
+						>{/if}
+				</span>
 				<span class="project-name min-w-0 flex-1 truncate">Chats</span>
+				{#if chatIndicators.running}<span
+						class="project-running-count flex shrink-0 items-center gap-1 text-xs text-sky-500 tabular-nums"
+						aria-label={`${chatIndicators.running} running Chat${chatIndicators.running === 1 ? '' : 's'}`}
+						title={`${chatIndicators.running} running Chat${chatIndicators.running === 1 ? '' : 's'}`}
+						><LoaderCircle class="animate-spin" width={13} height={13} aria-hidden="true" />{chatIndicators.running}</span
+					>{:else if chatIndicators.attention && !chatIndicators.unread}<span
+						class="project-attention-count shrink-0 font-bold text-[var(--warning)]"
+						aria-label={`${chatIndicators.attention} Chat${chatIndicators.attention === 1 ? '' : 's'} require attention`}
+						title={`${chatIndicators.attention} Chat${chatIndicators.attention === 1 ? '' : 's'} require attention`}>!</span
+					>{/if}
 				{#if chatSessionCount}<span
 						class="project-session-count shrink-0 text-xs text-muted-foreground tabular-nums"
 						aria-label={`${chatSessionCount} non-archived Chats`}>{chatSessionCount}</span
 					>{/if}
 			</button>
-			<button
-				class="icon-button workspace-session-add absolute top-1/2 right-0 grid h-(--control-height-icon) w-(--control-height-icon) -translate-y-1/2 place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-				aria-label="New chat"
-				title="New chat"
-				onclick={onprojectless}><Plus width={18} height={18} aria-hidden="true" /></button
-			>
+			<div class="workspace-session-actions absolute top-1/2 right-0 flex -translate-y-1/2">
+				<button
+					class="icon-button grid h-(--control-height-icon) w-(--control-height-icon) place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+					aria-label="Quick Ask"
+					title="Ask once without adding a Chat."
+					onclick={onquickask}><Sparkles width={17} height={17} aria-hidden="true" /></button
+				>
+				<button
+					class="icon-button workspace-session-add grid h-(--control-height-icon) w-(--control-height-icon) place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+					aria-label="New chat"
+					title="New chat"
+					onclick={onprojectless}><Plus width={18} height={18} aria-hidden="true" /></button
+				>
+			</div>
 		</div>
 		<div class="project-row projectless-row relative">
 			<button
@@ -610,6 +621,7 @@
 							class="project-select flex min-h-11 w-full cursor-grab items-center gap-2 rounded-md bg-transparent py-1 pr-8 pl-2 text-left text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:cursor-grabbing [&.active]:bg-accent [&.active]:text-foreground"
 							class:active={selectedProject?.id === project.id}
 							class:bg-accent={dropProjectId === project.id && draggedProjectId !== project.id}
+							style={`--active-project-color: ${project.color ?? 'var(--primary)'}; --active-project-foreground: ${project.color ? projectColorForeground(project.color) : 'var(--primary-foreground)'}`}
 							aria-current={selectedProject?.id === project.id ? 'page' : undefined}
 							aria-controls={selectedProject?.id === project.id ? 'session-drawer' : undefined}
 							aria-expanded={selectedProject?.id === project.id ? sessionsOpen : undefined}
@@ -735,137 +747,61 @@
 
 	<dialog
 		bind:this={addProjectDialog}
-		class="add-project-dialog fixed m-0 max-h-[calc(100dvh-32px)] w-[min(640px,calc(100vw-32px))] overflow-auto rounded-xl border border-border bg-card p-4 text-foreground shadow-2xl backdrop:bg-black/60"
+		class="add-project-dialog create-project-dialog fixed m-0 max-h-[calc(100dvh-32px)] w-[min(520px,calc(100vw-32px))] overflow-auto rounded-xl border border-border bg-card p-5 text-foreground shadow-2xl backdrop:bg-black/60"
 		aria-labelledby="add-project-title"
-		onclick={(event) => event.target === event.currentTarget && addProjectDialog?.close()}
+		oncancel={(event) => event.preventDefault()}
 	>
-		<header>
+		<header class="create-project-header">
 			<div>
 				<h2 id="add-project-title">
 					{locatingProject ? `Add folder to ${locatingProject.name}` : 'Create Hermes Project'}
 				</h2>
 				<p>
 					{locatingProject
-						? 'Choose one backend folder.'
-						: 'Select one or more backend folders and exactly one primary.'}
+						? 'Choose a folder from your computer to add to this Project.'
+						: 'Choose a folder, then give your Project a name.'}
 				</p>
 			</div>
-			<label class="min-h-11"
-				><input type="checkbox" checked={showHiddenDirectories} onchange={onhidden} /> Show hidden</label
-			>
 		</header>
-		{#if !locatingProject}
-			<label class="mb-3 grid gap-1"
-				><span>Project name</span><input
-					class="min-h-11"
-					form="create-project-form"
-					bind:value={projectName}
-					required
-				/></label
-			>
-		{/if}
-		<form
-			class="directory-location mb-3 grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5"
-			onsubmit={(event) => {
-				event.preventDefault();
-				ondirectory(projectPathInput);
-			}}
-		>
-			<button
-				type="button"
-				class="grid size-11 shrink-0 place-items-center"
-				disabled={!projectDirectoryParent || directoryLoading}
-				onclick={() => projectDirectoryParent && ondirectory(projectDirectoryParent)}
-				aria-label="Parent directory"
-				title="Parent directory"><ArrowUp width={16} height={16} aria-hidden="true" /></button
-			>
-			<label class="min-w-0">
-				<span class="sr-only">Folder path</span>
-				<input
-					class="min-h-11 w-full font-mono text-sm"
-					list="project-directory-paths"
-					bind:value={projectPathInput}
-					spellcheck="false"
-					disabled={directoryLoading}
-				/>
-			</label>
-			<datalist id="project-directory-paths">
-				{#each projectDirectories as directory (directory.path)}
-					<option value={directory.path}></option>
-				{/each}
-			</datalist>
-			<button
-				type="submit"
-				class="grid size-11 shrink-0 place-items-center"
-				disabled={directoryLoading}
-			>
-				<ChevronRight width={16} height={16} aria-hidden="true" />
-				<span class="sr-only">Open path</span>
-			</button>
-		</form>
-		<form class="mb-3 grid grid-cols-[minmax(0,1fr)_auto] gap-2.5" onsubmit={createDirectory}>
-			<label class="min-w-0">
-				<span class="sr-only">New folder name</span>
-				<input
-					class="min-h-11 w-full"
-					placeholder="New folder name"
-					bind:value={newDirectoryName}
-					disabled={!projectRoot || directoryLoading}
-				/>
-			</label>
-			<button
-				type="submit"
-				class="min-h-11"
-				disabled={!projectRoot || !newDirectoryName.trim() || directoryLoading}
-			>
-				<FolderPlus width={16} height={16} aria-hidden="true" /> Create folder
-			</button>
-		</form>
-		<section
-			class="directory-browser max-h-80 min-h-56 overflow-auto rounded-xl border border-border bg-background p-2"
-			aria-label="Directories"
-		>
-			<strong>Directories</strong>
-			{#if directoryLoading}
-				<p class="text-sm text-muted-foreground">Loading directories…</p>
-			{:else if directoryError}
-				<p class="text-sm text-destructive" role="alert">{directoryError}</p>
-			{:else if projectDirectories.length === 0}
-				<p class="text-sm text-muted-foreground">No subdirectories.</p>
-			{:else}
-				{#each projectDirectories as directory (directory.path)}
-					<button
-						class="directory-row grid min-h-11 w-full grid-cols-[18px_minmax(0,1fr)] items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-						title={`Open ${directory.name}`}
-						onclick={() => ondirectory(directory.path)}
-					>
-						<Folder width={16} height={16} aria-hidden="true" /><span class="truncate"
-							>{directory.name}</span
-						>
-					</button>
-				{/each}
-			{/if}
-		</section>
-
 		{#if locatingProject}
-			<div class="mt-3 flex justify-end">
-				<button class="min-h-11" disabled={!projectRoot || projectSaving} onclick={onaddfolder}>
-					<FolderPlus width={16} height={16} aria-hidden="true" /> Add this folder
+			<div class="grid gap-3">
+				<button
+					class="project-create-control project-create-button"
+					disabled={directoryLoading}
+					onclick={onpickfolder}
+				>
+					<FolderPlus width={18} height={18} aria-hidden="true" />
+					{directoryLoading ? 'Opening folder chooser…' : 'Choose folder…'}
 				</button>
+				{#if projectRoot}<code class="rounded-lg border border-border bg-background p-3 text-sm break-all"
+						>{projectRoot}</code
+					>{/if}
+				<button
+					class="project-create-button min-h-11"
+					disabled={!projectRoot || projectSaving}
+					onclick={onaddfolder}
+				>
+					Add folder
+				</button>
+				{#if directoryError}<p class="text-sm text-destructive" role="alert">{directoryError}</p>{/if}
 			</div>
 		{:else}
-			<form id="create-project-form" class="mt-3 grid gap-3" onsubmit={oncreate}>
+			<form id="create-project-form" class="grid gap-4" onsubmit={oncreate}>
 				<button
 					type="button"
-					class="min-h-11"
-					disabled={!projectRoot}
-					onclick={() => ontogglefolder(projectRoot)}
+					class="project-create-control project-create-button"
+					disabled={directoryLoading}
+					onclick={onpickfolder}
 				>
-					{#if currentFolderSelected}<Check width={16} height={16} aria-hidden="true" /> Remove current
-						folder{:else}<FolderPlus width={16} height={16} aria-hidden="true" /> Select current folder{/if}
+					<FolderPlus width={18} height={18} aria-hidden="true" />
+					{directoryLoading
+						? 'Opening folder chooser…'
+						: selectedFolders.length
+							? 'Add another folder…'
+							: 'Choose folder…'}
 				</button>
-				<fieldset class="grid gap-2 rounded-lg border border-border p-3">
-					<legend>Selected folders</legend>
+				{#if selectedFolders.length}<fieldset class="grid gap-1 rounded-lg border border-border p-2">
+					<legend class="px-1 text-sm font-medium">Project folders</legend>
 					{#each selectedFolders as folder (folder)}
 						<label class="grid min-h-11 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
 							<input
@@ -885,16 +821,46 @@
 								><X width={16} height={16} aria-hidden="true" /></button
 							>
 						</label>
-					{:else}
-						<p class="text-sm text-muted-foreground">No folders selected.</p>
 					{/each}
-					{#if selectedFolders.length}<small class="text-muted-foreground"
-							>Selected radio is primary folder.</small
+					{#if selectedFolders.length > 1}<small class="px-1 text-muted-foreground"
+							>Choose which folder new Sessions use by default.</small
 						>{/if}
-				</fieldset>
+				</fieldset>{/if}
+				<label class="grid gap-1.5 text-sm font-medium"
+					>Project name<input class="min-h-11" bind:value={projectName} required /></label
+				>
+				<div class="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
+					<label class="grid gap-1.5 text-sm font-medium"
+						>Section <span class="sr-only">optional</span><input
+							class="min-h-11"
+							bind:value={projectGroup}
+							list="new-project-group-labels"
+							maxlength="100"
+							placeholder="No section"
+						/></label
+					>
+					<datalist id="new-project-group-labels">
+						{#each groupLabels as label (label)}<option value={label}></option>{/each}
+					</datalist>
+					<label class="grid gap-1.5 text-sm font-medium"
+						>Color<input
+							class="project-create-control project-color-input cursor-pointer"
+							type="color"
+							bind:value={projectColor}
+							aria-label="Project color"
+						/></label
+					>
+				</div>
+				<button type="button" class="project-create-button min-h-11" onclick={onnewicon}>
+					{#if isImage(projectIcon)}<img class="size-7 rounded object-cover" src={projectIcon ?? ''} alt="" />{:else if projectIcon}<span
+							class="text-xl">{projectIcon}</span
+						>{:else}<Folder width={18} height={18} aria-hidden="true" />{/if}
+					{projectIcon ? 'Change icon' : 'Choose icon (optional)'}
+				</button>
+				{#if directoryError}<p class="text-sm text-destructive" role="alert">{directoryError}</p>{/if}
 				<button
 					type="submit"
-					class="min-h-11"
+					class="project-create-button project-create-submit min-h-11"
 					disabled={projectSaving ||
 						!projectName.trim() ||
 						!selectedFolders.length ||
@@ -1085,8 +1051,8 @@
 		padding: 0 4px;
 		border: 2px solid var(--navigation-surface);
 		border-radius: 999px;
-		background: var(--destructive);
-		color: var(--destructive-foreground);
+		background: var(--notification);
+		color: white;
 		font-size: 10px;
 		font-weight: 700;
 		line-height: 1;
