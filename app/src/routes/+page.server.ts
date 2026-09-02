@@ -14,6 +14,7 @@ export const load: PageServerLoad = async () => {
 		return {
 			projects: [],
 			chatSessionCount: 0,
+			chatIndicators: { running: 0, attention: 0, unread: 0 },
 			cronSessionCount: 0,
 			projectsCapability:
 				cause instanceof HermesProjectsCapabilityError

@@ -195,6 +195,29 @@
 	margin-bottom: 16px;
 }
 
+.create-project-dialog {
+	border-color: color-mix(in srgb, var(--border) 75%, var(--foreground));
+	box-shadow: 0 28px 80px rgb(0 0 0 / 35%), 0 2px 8px rgb(0 0 0 / 12%);
+}
+
+.create-project-dialog > .create-project-header {
+	margin-bottom: 20px;
+}
+
+.create-project-header h2 {
+	color: var(--foreground);
+	font-size: 18px;
+	font-weight: 700;
+	letter-spacing: -0.015em;
+	line-height: 1.25;
+}
+
+.create-project-header p {
+	margin-top: 4px;
+	font-size: 14px;
+	line-height: 1.4;
+}
+
 .add-project-dialog h2,
 .add-project-dialog p {
 	margin: 0;
@@ -237,6 +260,29 @@
 	box-shadow: 0 0 0 2px var(--ring);
 }
 
+.add-project-dialog .project-create-control {
+	height: 48px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-control);
+}
+
+.add-project-dialog input.project-color-input {
+	width: 56px;
+	height: 48px;
+	border-color: var(--border);
+	padding: 0;
+	overflow: hidden;
+}
+
+.project-color-input::-webkit-color-swatch-wrapper {
+	padding: 0;
+}
+
+.project-color-input::-webkit-color-swatch,
+.project-color-input::-moz-color-swatch {
+	border: 0;
+}
+
 .add-project-dialog button:not(.icon-button),
 .project-icon-upload label,
 .workflow-form button,
@@ -245,6 +291,41 @@
 	border-radius: var(--radius-control);
 	background: var(--secondary);
 	padding: 8px 11px;
+}
+
+.add-project-dialog button.project-create-button {
+	display: inline-flex;
+	width: 100%;
+	align-items: center;
+	justify-content: center;
+	gap: 9px;
+	border: 1px solid color-mix(in srgb, var(--border) 72%, var(--foreground));
+	background: var(--secondary);
+	box-shadow: 0 1px 2px rgb(0 0 0 / 10%);
+	color: var(--foreground);
+	font-weight: 600;
+	transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.add-project-dialog button.project-create-button:hover:not(:disabled) {
+	border-color: color-mix(in srgb, var(--border) 42%, var(--foreground));
+	background: var(--accent);
+	box-shadow: 0 2px 5px rgb(0 0 0 / 14%);
+}
+
+.add-project-dialog button.project-create-submit {
+	border-color: var(--primary);
+	background: var(--primary);
+	color: var(--primary-foreground);
+}
+
+.add-project-dialog button.project-create-submit:hover:not(:disabled) {
+	border-color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 88%, white);
+}
+
+.add-project-dialog button.project-create-button:disabled {
+	opacity: 0.5;
 }
 
 .project-icon-upload label {

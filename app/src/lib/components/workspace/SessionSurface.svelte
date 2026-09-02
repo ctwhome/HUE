@@ -145,6 +145,7 @@
 		onfavoritecatalog={navigation.favoriteCatalogPrompt}
 		{onrunworkflow}
 		onscrolllatest={transcriptFollow.scrollToLatest}
+		onimprove={messageState.improvePrompt}
 		matchingCommands={messageState.matchingCommands}
 		contextPercent={runtimeState.contextPercent}
 		{showContextUsage}

@@ -1871,6 +1871,21 @@ export class HUEStore {
 		return deleted;
 	}
 
+	dismissSession(projectId: string | null, sessionId: string): boolean {
+		return this.database.transaction(() => {
+			this.database
+				.query(
+					'INSERT OR REPLACE INTO dismissed_sessions (project_scope, session_id, dismissed_at) VALUES (?, ?, ?)'
+				)
+				.run(projectId ?? '', sessionId, new Date().toISOString());
+			return (
+				this.database
+					.query('DELETE FROM project_sessions WHERE project_id IS ? AND session_id = ?')
+					.run(projectId, sessionId).changes > 0
+			);
+		})();
+	}
+
 	isSessionDismissed(projectId: string | null, sessionId: string): boolean {
 		return !!this.database
 			.query('SELECT 1 FROM dismissed_sessions WHERE project_scope = ? AND session_id = ?')
@@ -2887,7 +2902,10 @@ export class HUEStore {
 		return Object.fromEntries(rows.map((row) => [row.session_id, row.started_at]));
 	}
 
-	getSessionIndicators(projectId: string | null): Record<
+	getSessionIndicators(
+		projectId: string | null,
+		scope: 'all' | 'scheduled' | 'unscheduled' = 'all'
+	): Record<
 		string,
 		{
 			attention: boolean;
@@ -2903,6 +2921,12 @@ export class HUEStore {
 			unreadAttention: boolean;
 		}
 	> {
+		const scheduleFilter =
+			scope === 'scheduled'
+				? 'AND EXISTS (SELECT 1 FROM schedules s WHERE s.session_id = ps.session_id)'
+				: scope === 'unscheduled'
+					? 'AND NOT EXISTS (SELECT 1 FROM schedules s WHERE s.session_id = ps.session_id)'
+					: '';
 		const rows = this.database
 			.query(
 				`
@@ -2958,7 +2982,7 @@ export class HUEStore {
 				ON li.session_id = ps.session_id AND li.message_id = lm.id AND li.rank = 1
 			LEFT JOIN latest_terminal lt
 				ON lt.session_id = ps.session_id AND lt.message_id = lm.id AND lt.rank = 1
-			WHERE ps.project_id IS ?
+			WHERE ps.project_id IS ? ${scheduleFilter}
 			GROUP BY ps.session_id
 		`
 			)
@@ -2989,12 +3013,15 @@ export class HUEStore {
 		);
 	}
 
-	getSessionIndicatorCounts(projectId: string | null): {
+	getSessionIndicatorCounts(
+		projectId: string | null,
+		scope: 'all' | 'scheduled' | 'unscheduled' = 'all'
+	): {
 		running: number;
 		attention: number;
 		unread: number;
 	} {
-		const indicators = Object.values(this.getSessionIndicators(projectId));
+		const indicators = Object.values(this.getSessionIndicators(projectId, scope));
 		return {
 			running: indicators.filter(({ status }) => status === 'running').length,
 			attention: indicators.filter(({ attention }) => attention).length,

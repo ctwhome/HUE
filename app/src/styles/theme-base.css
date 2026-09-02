@@ -369,7 +369,9 @@ button:disabled {
 
 .app-tooltip {
 	position: fixed;
+	inset: auto;
 	z-index: 100;
+	margin: 0;
 	max-width: min(280px, calc(100vw - 16px));
 	padding: 6px 9px;
 	border: 1px solid var(--border);

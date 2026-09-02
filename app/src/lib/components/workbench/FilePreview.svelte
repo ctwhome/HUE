@@ -1,7 +1,5 @@
 <script lang="ts">
 	import { onMount, type Component } from 'svelte';
-	import { marked } from 'marked';
-	import sanitizeHtml from 'sanitize-html';
 	import ArrowLeft from '~icons/lucide/arrow-left';
 	import Code2 from '~icons/lucide/code-2';
 	import Download from '~icons/lucide/download';
@@ -10,6 +8,7 @@
 	import Save from '~icons/lucide/save';
 	import Trash2 from '~icons/lucide/trash-2';
 	import { highlightFileSource } from '$lib/file-source-highlight';
+	import { renderFileMarkdown } from '$lib/file-markdown';
 	import { isDarkTheme, type HUETheme } from '$lib/preferences';
 	import Button from '../ui/Button.svelte';
 	import Textarea from '../ui/Textarea.svelte';
@@ -68,8 +67,6 @@
 		onmarkdownmode: (value: 'preview' | 'edit') => void;
 	} = $props();
 
-	const markdown = (value: string) =>
-		sanitizeHtml(marked.parse(value, { async: false }), { parseStyleAttributes: false });
 	const breadcrumbs = () => (selectedPath ? selectedPath.split('/').slice(0, -1) : []);
 	let highlightElement = $state<HTMLPreElement>();
 	let diffTheme = $state<'light' | 'dark'>('light');
@@ -274,7 +271,7 @@
 					/>
 				</div>
 			{:else if preview.kind === 'markdown'}<div class="markdown min-h-0 flex-1 overflow-auto">
-					{@html markdown(editor)}
+					{@html renderFileMarkdown(editor)}
 				</div>
 			{:else if preview.kind === 'image'}<img
 					class="max-h-full min-h-0 max-w-full self-center object-contain"

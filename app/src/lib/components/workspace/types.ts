@@ -25,6 +25,7 @@ export type Project = {
 export type WorkspaceProps = {
 	projects: Project[];
 	chatSessionCount?: number;
+	chatIndicators?: { running: number; attention: number; unread: number };
 	cronSessionCount?: number;
 	projectsCapability?: 'available' | 'unavailable' | 'outage';
 	projectsError?: string;

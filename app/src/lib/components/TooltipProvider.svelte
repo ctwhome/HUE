@@ -16,6 +16,7 @@
 
 	function hide() {
 		clearTimeout(timer);
+		if (tooltip?.matches(':popover-open')) tooltip.hidePopover();
 		if (active?.getAttribute('aria-describedby') === 'app-tooltip') {
 			active.removeAttribute('aria-describedby');
 		}
@@ -78,6 +79,7 @@
 			await tick();
 			const target = trigger.getBoundingClientRect();
 			if (!tooltip) return;
+			tooltip.showPopover();
 			const tip = tooltip.getBoundingClientRect();
 			positionTooltip(trigger, target, tip);
 		}, delay);
@@ -119,6 +121,7 @@
 		id="app-tooltip"
 		class="app-tooltip"
 		role="tooltip"
+		popover="manual"
 		style:left={`${x}px`}
 		style:top={`${y}px`}
 	>

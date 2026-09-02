@@ -56,7 +56,8 @@
 		onclose: () => void;
 		oncounts: (unread: number) => void;
 		onindicators: (
-			indicators: Record<string, { running: number; attention: number; unread: number }>
+			indicators: Record<string, { running: number; attention: number; unread: number }>,
+			chatIndicators: { running: number; attention: number; unread: number }
 		) => void;
 	} = $props();
 
@@ -150,6 +151,7 @@
 				items: Item[];
 				nextCursor: string | null;
 				counts: { unread: number; all: number };
+				chatIndicators: { running: number; attention: number; unread: number };
 				projectIndicators: Record<string, { running: number; attention: number; unread: number }>;
 			}>(`/api/notifications?${query}`);
 			if (request !== refreshGeneration) return;
@@ -161,7 +163,10 @@
 			nextCursor = body.nextCursor;
 			unread = body.counts.unread;
 			oncounts(unread);
-			onindicators(body.projectIndicators ?? {});
+			onindicators(
+				body.projectIndicators ?? {},
+				body.chatIndicators ?? { running: 0, attention: 0, unread: 0 }
+			);
 			updateBadge(unread);
 		} catch {
 			if (request === refreshGeneration && !background) error = 'Unable to load notifications';

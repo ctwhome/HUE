@@ -29,6 +29,7 @@ test('lists bounded canonical metadata and counts', async () => {
 	expect(response.status).toBe(200);
 	const body = await response.json();
 	expect(body.counts).toEqual({ unread: 1, all: 1 });
+	expect(body.chatIndicators).toEqual({ running: 0, attention: 0, unread: 1 });
 	expect(body.items).toEqual([
 		expect.objectContaining({ kind: 'completed', projectId: null, sessionId: 'session-1' })
 	]);

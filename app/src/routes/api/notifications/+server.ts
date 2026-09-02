@@ -36,6 +36,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			...notifications,
 			items: _withAuthoritativeProjectNames(notifications.items, projects?.projects ?? []),
 			counts: state.store.notificationCounts(),
+			chatIndicators: state.store.getSessionIndicatorCounts(null, 'unscheduled'),
 			projectIndicators: Object.fromEntries(
 				(projects?.projects ?? []).map(({ id }) => [id, state.store.getSessionIndicatorCounts(id)])
 			)

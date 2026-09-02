@@ -113,6 +113,23 @@ test('rejects remote MEDIA open while retaining remote GET access', async () => 
 	expect(response.status).toBe(403);
 });
 
+test('allows same-origin MEDIA reveal through an authenticated proxy boundary', async () => {
+	const { POST } = await import('./+server');
+	const url = new URL('https://hue.test/api/projects/p/sessions/s/media?path=missing.pdf');
+	const response = await POST({
+		params: { projectId: 'p', sessionId: 's' },
+		url,
+		getClientAddress: () => '203.0.113.10',
+		request: new Request(url, {
+			method: 'POST',
+			headers: { host: url.host, origin: url.origin },
+			body: JSON.stringify({ action: 'reveal', path: 'missing.pdf' })
+		})
+	} as never);
+	expect(response.status).toBe(400);
+	expect(await response.json()).not.toEqual({ error: 'Opening files is limited to this device' });
+});
+
 test('previews SVG MEDIA but never opens it outside the hardened response context', async () => {
 	const { GET, POST } = await import('./+server');
 	const url = new URL('http://127.0.0.1/api/projects/p/sessions/s/media?path=diagram.svg');

@@ -24,6 +24,7 @@
 		onsessions,
 		onnotifications,
 		onprojecttools,
+		onmedia,
 		onicon,
 		onmanage
 	}: {
@@ -41,6 +42,7 @@
 		onsessions: (trigger: HTMLElement) => void;
 		onnotifications: () => void;
 		onprojecttools: (open: boolean) => void;
+		onmedia: (path: string, action: 'open' | 'reveal') => void;
 		onicon: (event: MouseEvent) => void;
 		onmanage: (event: MouseEvent) => void;
 	} = $props();
@@ -86,7 +88,7 @@
 						>{unreadNotifications > 99 ? '99+' : unreadNotifications}</span
 					>{/if}
 			</button>{/if}
-		{#if session && artifacts.length}<ArtifactGallery {artifacts} {mediaPath} />{/if}
+		{#if session && artifacts.length}<ArtifactGallery {artifacts} {mediaPath} {onmedia} />{/if}
 		{#if session && project?.rootAvailable}<button
 				class="session-project-tools grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md hover:bg-accent"
 				class:active={projectTools}

@@ -62,7 +62,9 @@ mock.module('$lib/server/route-services', () => ({
 			}
 		},
 		store: {
-			ensureProjectMetadata: (id: string) => calls.push({ ensureMetadata: id })
+			ensureProjectMetadata: (id: string) => calls.push({ ensureMetadata: id }),
+			updateProjectColor: (id: string, color: string) => calls.push({ updateColor: [id, color] }),
+			updateProjectGroup: (id: string, group: string) => calls.push({ updateGroup: [id, group] })
 		}
 	})
 }));
@@ -91,6 +93,9 @@ test('POST creates exactly one Hermes Project with all validated folders and sel
 			method: 'POST',
 			body: JSON.stringify({
 				name: 'Workspace',
+				icon: '📚',
+				color: '#7aa2f7',
+				group: 'Writing',
 				folders: ['/work/app', '/work/docs'],
 				primaryPath: '/work/app'
 			})
@@ -101,15 +106,18 @@ test('POST creates exactly one Hermes Project with all validated folders and sel
 	expect(calls).toEqual([
 		{
 			name: 'Workspace',
-			icon: undefined,
+			icon: '📚',
 			folders: ['/work/app', '/work/docs'],
 			primaryPath: '/work/app'
 		},
-		{ ensureMetadata: 'p_new' }
+		{ ensureMetadata: 'p_new' },
+		{ updateColor: ['p_new', '#7aa2f7'] },
+		{ updateGroup: ['p_new', 'Writing'] }
 	]);
 	expect((await response.json()).project).toMatchObject({
 		id: 'p_new',
-		group: null,
+		color: '#7aa2f7',
+		group: 'Writing',
 		primaryPath: '/work/app'
 	});
 });

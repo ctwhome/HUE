@@ -1,6 +1,37 @@
 .workspace {
 	background: var(--project-shell-color, var(--background));
 }
+[data-project-id] .project-select.active {
+	background: var(--active-project-color);
+	color: var(--active-project-foreground);
+}
+[data-project-id] .project-select.active :is(
+	.project-icon-default,
+	.project-name,
+	.project-session-count,
+	.project-running-count,
+	.project-attention-count,
+	small
+) {
+	color: inherit;
+}
+[data-project-id] .project-select.active + .project-edit {
+	color: var(--active-project-foreground);
+}
+.session-select.active {
+	border-color: var(--active-project-color);
+	background: var(--active-project-color);
+	color: var(--active-project-foreground);
+}
+.session-select.active :is(.session-row-title, .session-row-copy, .busy-timer, small, .session-indicator) {
+	color: inherit;
+}
+.session-select.active small {
+	opacity: 0.75;
+}
+.session-row:has(.session-select.active) :is(.session-archive, .session-edit) {
+	color: var(--active-project-foreground);
+}
 .session-workspace {
 	position: relative;
 }

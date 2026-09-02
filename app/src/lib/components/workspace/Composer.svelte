@@ -20,6 +20,7 @@
 	import RefreshCw from '~icons/lucide/refresh-cw';
 	import Save from '~icons/lucide/save';
 	import Send from '~icons/lucide/send';
+	import Sparkles from '~icons/lucide/sparkles';
 	import Square from '~icons/lucide/square';
 	import UserRound from '~icons/lucide/user-round';
 	import X from '~icons/lucide/x';
@@ -48,6 +49,10 @@
 	} from './types';
 	import type { WorkMode } from '$lib/work-mode';
 	import type { CatalogPrompt } from '$lib/prompt-catalog';
+	import type {
+		PromptImprovementAnswer,
+		PromptImprovementResult
+	} from './message-state.svelte';
 
 	let {
 		composer,
@@ -116,6 +121,7 @@
 		onfavoritecatalog,
 		onrunworkflow,
 		onscrolllatest,
+		onimprove,
 		matchingCommands,
 		contextPercent,
 		showContextUsage = true,
@@ -198,6 +204,10 @@
 		onfavoritecatalog: (prompt: CatalogPrompt) => Promise<boolean>;
 		onrunworkflow: (workflow: Workflow) => void;
 		onscrolllatest: (behavior: ScrollBehavior) => void;
+		onimprove: (
+			answers: PromptImprovementAnswer[],
+			modelId?: string
+		) => Promise<PromptImprovementResult | null>;
 		matchingCommands: () => Command[];
 		contextPercent: () => number | null;
 		showContextUsage?: boolean;
@@ -226,6 +236,13 @@
 	let optionsMenu = $state<HTMLDivElement>();
 	let deliveryButton = $state<HTMLButtonElement>();
 	let composerActivity = $state<HTMLDivElement>();
+	let improvementDialog = $state<HTMLDialogElement>();
+	let promptImproving = $state(false);
+	let improvedPrompt = $state('');
+	let improvementQuestions = $state<Array<{ id: string; question: string }>>([]);
+	let improvementAnswers = $state<Record<string, string>>({});
+	let improvementError = $state('');
+	let improvementSessionPath = $state('');
 	let commandMatches = $derived(matchingCommands());
 	const deliveryIcons: Record<DeliveryStatusIcon, typeof CircleAlert> = {
 		save: Save,
@@ -305,6 +322,49 @@
 		if (!optionsButton?.contains(target) && !optionsMenu?.contains(target)) optionsOpen = false;
 		if (!deliveryButton?.contains(target) && !composerActivity?.contains(target))
 			thinkingOpen = false;
+	}
+	async function improvePrompt(answers: PromptImprovementAnswer[] = []) {
+		if (promptImproving) return;
+		optionsOpen = false;
+		if (!answers.length) {
+			improvedPrompt = '';
+			improvementQuestions = [];
+			improvementAnswers = {};
+		}
+		promptImproving = true;
+		improvementError = '';
+		improvementSessionPath = '';
+		try {
+			const result = await onimprove(answers, runtime.models?.currentModelId);
+			if (!result) return;
+			if (result.status !== 'completed' || !result.prompt) {
+				improvementError = result.error ?? `Prompt improvement ${result.status}`;
+				improvementSessionPath = result.path ?? '';
+				if (improvementDialog && !improvementDialog.open) improvementDialog.showModal();
+				return;
+			}
+			improvedPrompt = result.prompt;
+			improvementQuestions = result.questions ?? [];
+			improvementAnswers = {};
+			if (improvementDialog && !improvementDialog.open) improvementDialog.showModal();
+		} finally {
+			promptImproving = false;
+		}
+	}
+	function refinePrompt() {
+		void improvePrompt(
+			improvementQuestions.map((question) => ({
+				...question,
+				answer: improvementAnswers[question.id]?.trim() ?? ''
+			}))
+		);
+	}
+	function useImprovedPrompt() {
+		if (!composerElement || !improvedPrompt.trim()) return;
+		composerElement.value = improvedPrompt.trim();
+		composerElement.dispatchEvent(new Event('input', { bubbles: true }));
+		improvementDialog?.close();
+		queueMicrotask(() => composerElement?.focus());
 	}
 </script>
 
@@ -616,6 +676,22 @@
 		>
 			<Ellipsis width={20} height={20} aria-hidden="true" />
 		</button>
+		<button
+			type="button"
+			class="grid size-11 shrink-0 place-items-center rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+			aria-label="Improve prompt with AI"
+			title="Clarify and improve this prompt with AI"
+			disabled={!ready || !composer.trim() || promptImproving}
+			onclick={() => improvePrompt()}
+		>
+			<Sparkles
+				class={promptImproving ? 'animate-pulse' : undefined}
+				width={19}
+				height={19}
+				aria-hidden="true"
+			/>
+		</button>
+		{#if promptImproving}<span class="sr-only" role="status">Improving prompt…</span>{/if}
 		<div bind:this={composerActivity} class="composer-activity">
 			<ThinkingDialog
 				id={`${instanceId}-thinking`}
@@ -783,6 +859,83 @@
 			>{/if}
 	</div>
 </form>
+<dialog
+	bind:this={improvementDialog}
+	class="fixed top-1/2 left-1/2 m-0 max-h-[calc(100dvh-32px)] w-[min(640px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-card p-0 text-foreground shadow-2xl backdrop:bg-black/60"
+	aria-labelledby={`${instanceId}-improvement-title`}
+	onclick={(event) => event.target === event.currentTarget && improvementDialog?.close()}
+>
+	<header class="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+		<div>
+			<h2 id={`${instanceId}-improvement-title`} class="font-bold">Improve prompt</h2>
+			<p class="text-xs text-muted-foreground">Review the result before it replaces your draft.</p>
+		</div>
+		<button
+			type="button"
+			class="grid size-11 shrink-0 place-items-center rounded-lg hover:bg-accent"
+			aria-label="Close prompt improvement"
+			title="Close"
+			onclick={() => improvementDialog?.close()}><X width={18} height={18} aria-hidden="true" /></button
+		>
+	</header>
+	<div class="grid gap-4 p-4">
+		{#if improvementError}<div
+				class="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+				role="alert"
+			>
+				{improvementError}
+				{#if improvementSessionPath}<a class="ml-1 underline" href={improvementSessionPath}
+					>Open Session</a
+				>{/if}
+			</div>{/if}
+		{#if improvedPrompt}<label class="grid gap-1.5 text-sm font-medium">
+				Improved prompt
+				<textarea
+					class="min-h-36 w-full resize-y rounded-lg border border-input bg-background p-3 font-normal text-foreground"
+					bind:value={improvedPrompt}
+				></textarea>
+			</label>{/if}
+		{#if improvementQuestions.length}<section class="grid gap-3" aria-label="Clarification questions">
+				<div>
+					<h3 class="text-sm font-bold">A few details are still unclear</h3>
+					<p class="text-xs text-muted-foreground">Answer these to refine the prompt.</p>
+				</div>
+				{#each improvementQuestions as question}<label class="grid gap-1.5 text-sm font-medium">
+						{question.question}
+						<input
+							class="min-h-11 rounded-lg border border-input bg-background px-3 font-normal text-foreground"
+							value={improvementAnswers[question.id] ?? ''}
+							oninput={(event) =>
+								(improvementAnswers = {
+									...improvementAnswers,
+									[question.id]: event.currentTarget.value
+								})}
+						/>
+					</label>{/each}
+			</section>{/if}
+		<footer class="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+			<button
+				type="button"
+				class="min-h-11 rounded-lg border border-border px-4 text-sm font-medium hover:bg-accent"
+				onclick={() => improvementDialog?.close()}>Cancel</button
+			>
+			{#if improvementQuestions.length}<button
+					type="button"
+					class="min-h-11 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-40"
+					disabled={promptImproving ||
+						improvementQuestions.some(
+							(question) => !improvementAnswers[question.id]?.trim()
+						)}
+					onclick={refinePrompt}>{promptImproving ? 'Refining…' : 'Refine prompt'}</button
+				>{:else if improvedPrompt}<button
+					type="button"
+					class="min-h-11 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-40"
+					disabled={!improvedPrompt.trim()}
+					onclick={useImprovedPrompt}>Use prompt</button
+				>{/if}
+		</footer>
+	</div>
+</dialog>
 <PromptLibraryDialog
 	bind:this={promptLibrary}
 	id={`${instanceId}-prompts`}
