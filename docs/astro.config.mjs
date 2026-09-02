@@ -8,6 +8,10 @@ export default defineConfig({
   site: 'https://ctwhome.github.io',
   base,
   outDir: process.env.HUE_DOCS_OUT_DIR || './dist',
+  vite: {
+    server: { strictPort: true },
+    preview: { strictPort: true },
+  },
   integrations: [
     mermaid({
       autoTheme: true,

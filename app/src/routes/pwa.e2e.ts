@@ -9,7 +9,7 @@ const viewports = [
 	{ width: 390, height: 844 },
 	{ width: 320, height: 844 }
 ];
-const e2eOrigin = `http://127.0.0.1:${Number(process.env.HUE_E2E_PORT ?? 4173)}`;
+const e2eOrigin = `http://127.0.0.1:${Number(process.env.HUE_E2E_PORT ?? 44014)}`;
 
 function captureBrowserErrors(page: import('@playwright/test').Page) {
 	const errors: string[] = [];

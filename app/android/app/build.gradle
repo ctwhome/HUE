@@ -8,7 +8,7 @@ def configuredHueUrl = providers.gradleProperty('HUE_SERVER_URL')
     .orElse(providers.environmentVariable('HUE_SERVER_URL'))
     .getOrElse('')
     .trim()
-def debugHueUrl = configuredHueUrl ?: 'http://10.0.2.2:4173'
+def debugHueUrl = configuredHueUrl ?: 'http://10.0.2.2:44011'
 def releaseHueUrl = configuredHueUrl ?: 'https://hue.invalid'
 
 def parseHueOrigin = { String value ->

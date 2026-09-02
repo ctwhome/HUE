@@ -27,7 +27,7 @@ bun run --cwd app test:e2e
 HUE_REAL_HERMES=1 bun test app/src/lib/server/hermes-acp.test.ts
 ```
 
-Run production locally from `app` with `bun run build` followed by `HOST=127.0.0.1 PORT=4173 HUE_DATABASE_PATH="$HOME/.hue/hue.db" bun run start`.
+Run production locally from `app` with `bun run build` followed by `HOST=127.0.0.1 PORT=44011 HUE_DATABASE_PATH="$HOME/.hue/hue.db" bun run start`.
 
 ## Development workflow
 
@@ -49,5 +49,5 @@ Run production locally from `app` with `bun run build` followed by `HOST=127.0.0
 - SQLite schema changes must preserve automatic backups, historical-schema migration coverage, and tested failure recovery; never destructively rewrite user data in place.
 - Real-Hermes tests must use an isolated temporary `HERMES_HOME`, dummy credentials, and no LLM/provider network access or user persistence.
 - User-facing shell changes require browser verification at 1440×900, 1024×768, 390×844, and dense 320px mobile where relevant. Check interaction, overflow, console/resources, labels, focus, drawers, and 44px mobile targets.
-- Interactive browser verification must reuse the existing development server at `http://127.0.0.1:4010`; do not start another Vite server or override its port. The automated Playwright suite remains isolated on its configured test port.
+- Interactive browser verification must reuse the existing development server at `http://127.0.0.1:44010`; do not start another Vite server or override its port. The automated Playwright suite remains isolated on `44014`.
 - Do not commit generated `node_modules`, `.svelte-kit`, `build`, test output, local databases, credentials, LaunchAgent files, or private session content.

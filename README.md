@@ -27,7 +27,7 @@ bun install --frozen-lockfile
 make dev
 ```
 
-Open [http://127.0.0.1:4010](http://127.0.0.1:4010). Development uses the canonical `~/.hue/hue.db`.
+Open [http://127.0.0.1:44010](http://127.0.0.1:44010). Development uses the canonical `~/.hue/hue.db`.
 
 ## Build and serve
 
@@ -38,6 +38,8 @@ make restart
 ```
 
 `make build` compiles without restarting production. `make serve` is the lower-level foreground production command used by the LaunchAgent.
+
+HUE uses `44010` for app development, `44011` for production, `44014` for app preview and Playwright, `44015` for docs development and preview, and `44016` for Android proof.
 
 Project terminals work on loopback and through an authenticated HTTPS tailnet or trusted reverse-proxy origin.
 

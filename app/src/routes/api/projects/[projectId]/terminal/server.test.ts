@@ -73,7 +73,7 @@ test('terminal access accepts an authenticated same-origin HTTPS tailnet request
 	const { _terminalAllowed } = require('./+server');
 	const secret = 'terminal-test-secret';
 	const token = createAccessSession(secret);
-	const url = new URL('https://m3-max.tail33436f.ts.net:4010/api/projects/project-1/terminal');
+	const url = new URL('https://m3-max.tail33436f.ts.net:44011/api/projects/project-1/terminal');
 	const request = new Request(url, {
 		method: 'POST',
 		headers: {

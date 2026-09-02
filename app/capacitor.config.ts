@@ -1,6 +1,6 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
-function hueServerUrl(value = process.env.HUE_SERVER_URL ?? 'http://10.0.2.2:4173'): string {
+function hueServerUrl(value = process.env.HUE_SERVER_URL ?? 'http://10.0.2.2:44011'): string {
 	let url: URL;
 	try {
 		url = new URL(value.trim());
