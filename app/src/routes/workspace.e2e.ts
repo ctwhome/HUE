@@ -6708,11 +6708,15 @@ test('shows external Hermes cron jobs in the Cron tasks folder', async ({ page, 
 			await expect(editor.getByRole('button', { name: /failed/i })).toBeHidden();
 		} else {
 			await expect(runSelector).toHaveCount(0);
+			const runHistory = editor.getByRole('region', { name: 'Cron run history' });
 			await expect(editor.getByRole('button', { name: /failed/i })).toBeVisible();
 			await expect(editor.getByRole('button', { name: /unknown/i })).toBeVisible();
 			await expect(
-				editor.getByRole('region', { name: 'Cron run history' }).getByRole('button').first()
+				runHistory.getByRole('button').first()
 			).toHaveAttribute('aria-current', 'page');
+			const historyTop = (await runHistory.boundingBox())!.y;
+			await editor.getByLabel('Cron job content').evaluate((element) => (element.scrollTop = 500));
+			expect((await runHistory.boundingBox())!.y).toBe(historyTop);
 		}
 		const prompt = editor.getByText('Cron prompt', { exact: true }).locator('..');
 		await expect(prompt).not.toHaveAttribute('open', '');

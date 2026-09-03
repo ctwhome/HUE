@@ -321,7 +321,7 @@
 					</select>
 				</label>
 				<section
-					class="hidden min-w-0 content-start gap-2 overflow-hidden min-[1200px]:grid"
+					class="sticky top-8 hidden min-w-0 content-start gap-2 self-start overflow-hidden min-[1200px]:grid"
 					aria-label="Cron run history"
 				>
 					{#if runsLoading}<p class="text-sm text-muted-foreground" role="status">
