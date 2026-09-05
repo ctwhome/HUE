@@ -14,7 +14,7 @@ export type InputAttachment = {
 };
 export type ReviewContext = {
 	id: string;
-	source: 'assistant' | 'diff';
+	source: 'assistant' | 'diff' | 'browser';
 	label: string;
 	content: string;
 	comment: string;
@@ -58,7 +58,7 @@ export function validateReviewContexts(input: unknown): ReviewContext[] {
 		const { id, source, label, content, comment } = candidate as Record<string, unknown>;
 		if (typeof id !== 'string' || !id || id.length > 100)
 			throw new Error('Invalid review context id');
-		if (source !== 'assistant' && source !== 'diff')
+		if (source !== 'assistant' && source !== 'diff' && source !== 'browser')
 			throw new Error('Invalid review context source');
 		if (typeof label !== 'string' || !label.trim() || label.length > 200) {
 			throw new Error('Invalid review context label');

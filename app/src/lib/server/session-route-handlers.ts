@@ -80,9 +80,27 @@ export async function getSession(projectId: string | null, { params, url }: Sess
 	if (scope instanceof Response) return scope;
 	const session = services().store.getSession(scope.projectId, params.sessionId)!;
 	const snapshot = services().store.getSessionSnapshot(scope.projectId, params.sessionId);
+	const format = url?.searchParams.get('format');
+	if (session.harness === 'opencode' && snapshot.activeTurn) {
+		if (format === 'json' || format === 'markdown') {
+			return json({ error: 'Wait for the active turn to finish before exporting' }, { status: 409 });
+		}
+		return json({
+			transcript: [],
+			workMode: session.workMode,
+			commands: services().sessionRuntime.getAvailableCommands(params.sessionId),
+			runtime: services().sessionRuntime.getSessionState(params.sessionId),
+			branch: scope.project ? projectBranch(scope.project.primary_path) : null,
+			...snapshot
+		});
+	}
 	try {
-		const transcript = await services().admin.loadTranscript(params.sessionId);
-		const format = url.searchParams.get('format');
+		const transcript =
+			session.harness === 'opencode'
+				? await services().dispatcher.withSessionLock(params.sessionId, () =>
+						services().sessionRuntime.loadTranscript(params.sessionId)
+					)
+				: await services().sessionRuntime.loadTranscript(params.sessionId);
 		if (format === 'json' || format === 'markdown') {
 			const exported = exportSession(format, {
 				session: {
@@ -114,8 +132,8 @@ export async function getSession(projectId: string | null, { params, url }: Sess
 		return json({
 			transcript,
 			workMode: session.workMode,
-			commands: services().runtime.getAvailableCommands(params.sessionId),
-			runtime: services().runtime.getSessionState(params.sessionId),
+			commands: services().sessionRuntime.getAvailableCommands(params.sessionId),
+			runtime: services().sessionRuntime.getSessionState(params.sessionId),
 			branch: scope.project ? projectBranch(scope.project.primary_path) : null,
 			...snapshot
 		});
@@ -125,8 +143,8 @@ export async function getSession(projectId: string | null, { params, url }: Sess
 				transcript: [],
 				transcriptError: cause instanceof Error ? cause.message : String(cause),
 				workMode: session.workMode,
-				commands: services().runtime.getAvailableCommands(params.sessionId),
-				runtime: services().runtime.getSessionState(params.sessionId),
+				commands: services().sessionRuntime.getAvailableCommands(params.sessionId),
+				runtime: services().sessionRuntime.getSessionState(params.sessionId),
 				branch: scope.project ? projectBranch(scope.project.primary_path) : null,
 				...snapshot
 			});
@@ -159,7 +177,7 @@ export async function copySession(projectId: string | null, { params, request }:
 					{ status: 400 }
 				);
 			}
-			const session = await services().runtime.forkSession(source.cwd, params.sessionId);
+			const session = await services().sessionRuntime.forkSession(source.cwd, params.sessionId);
 			try {
 				services().store.upsertSession(scope.projectId, session);
 				const stored = services().store.copySessionMetadata(
@@ -171,8 +189,8 @@ export async function copySession(projectId: string | null, { params, request }:
 				return json(
 					{
 						session: { ...session, ...stored },
-						commands: services().runtime.getAvailableCommands(session.sessionId),
-						runtime: services().runtime.getSessionState(session.sessionId)
+						commands: services().sessionRuntime.getAvailableCommands(session.sessionId),
+						runtime: services().sessionRuntime.getSessionState(session.sessionId)
 					},
 					{ status: 201 }
 				);
@@ -191,7 +209,7 @@ export async function copySession(projectId: string | null, { params, request }:
 		const message = cause instanceof Error ? cause.message : String(cause);
 		return json(
 			{ error: message },
-			{ status: message === 'Hermes does not support Session duplication' ? 409 : 503 }
+			{ status: message.endsWith('does not support Session duplication') ? 409 : 503 }
 		);
 	}
 }
@@ -290,10 +308,10 @@ export async function patchSession(projectId: string | null, { params, request }
 			return json({ error: 'Wait for the active turn to finish' }, { status: 409 });
 		}
 		const runtime = modelId
-			? await services().runtime.setModel(params.sessionId, modelId)
+			? await services().sessionRuntime.setModel(params.sessionId, modelId)
 			: modeId
-				? await services().runtime.setMode(params.sessionId, modeId)
-				: await services().runtime.setConfigOption(
+				? await services().sessionRuntime.setMode(params.sessionId, modeId)
+				: await services().sessionRuntime.setConfigOption(
 						params.sessionId,
 						configId!,
 						body.configValue as string | boolean
@@ -317,10 +335,10 @@ export async function deleteSession(projectId: string | null, { params, url }: S
 	const impact = services().store.previewSessionDelete(scope.projectId, params.sessionId);
 	if (!impact) return json({ error: 'Session not found' }, { status: 404 });
 	if (url.searchParams.get('confirm') !== 'true')
-		return json({ impact: { ...impact, hermesTranscriptRetained: true } });
+		return json({ impact: { ...impact, harnessTranscriptRetained: true } });
 	try {
 		services().store.deleteSession(scope.projectId, params.sessionId);
-		return json({ deleted: true, hermesTranscriptRetained: true });
+		return json({ deleted: true, harnessTranscriptRetained: true });
 	} catch (cause) {
 		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 409 });
 	}
@@ -355,9 +373,9 @@ export async function postMessage(projectId: string | null, { params, request }:
 		const text = body.text ?? '';
 		const { images, attachments } = validateMessageAttachments(body.images, body.attachments);
 		if (images.length) {
-			await services().runtime.start();
-			if (!services().runtime.getCapabilities(params.sessionId).promptImage) {
-				return json({ error: 'Hermes does not support image prompts' }, { status: 400 });
+			await services().sessionRuntime.start(params.sessionId);
+			if (!services().sessionRuntime.getCapabilities(params.sessionId).promptImage) {
+				return json({ error: 'This Session harness does not support image prompts' }, { status: 400 });
 			}
 		}
 		const reviewContexts = validateReviewContexts(body.reviewContexts);
@@ -417,9 +435,9 @@ export async function patchMessage(projectId: string | null, { params, request }
 			preserveAttachments ? [] : body.attachments
 		);
 		if (images.length) {
-			await services().runtime.start();
-			if (!services().runtime.getCapabilities(params.sessionId).promptImage) {
-				return json({ error: 'Hermes does not support image prompts' }, { status: 400 });
+			await services().sessionRuntime.start(params.sessionId);
+			if (!services().sessionRuntime.getCapabilities(params.sessionId).promptImage) {
+				return json({ error: 'This Session harness does not support image prompts' }, { status: 400 });
 			}
 		}
 		const reviewContexts =
@@ -517,7 +535,7 @@ export async function getEvents(projectId: string | null, { params, url }: Sessi
 	const after = Number.isSafeInteger(rawAfter) && rawAfter >= 0 ? rawAfter : 0;
 	return json({
 		events: services().store.listEvents(scope.projectId, params.sessionId, after),
-		runtime: services().runtime.getSessionState(params.sessionId)
+		runtime: services().sessionRuntime.getSessionState(params.sessionId)
 	});
 }
 
@@ -548,7 +566,7 @@ export async function postCancel(projectId: string | null, { params }: SessionEv
 	const scope = await scopeOrNotFound(projectId, params.sessionId);
 	if (scope instanceof Response) return scope;
 	try {
-		await services().runtime.cancelSession(params.sessionId);
+		await services().sessionRuntime.cancelSession(params.sessionId);
 		return json({ cancelled: true }, { status: 202 });
 	} catch (cause) {
 		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 503 });

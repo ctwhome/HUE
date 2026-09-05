@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { statSync } from 'node:fs';
 import { automaticSessionIcon } from '$lib/icon';
+import { parseSessionHarness, sessionHarnessLabel } from '$lib/session-harness';
 import { parseWorkMode } from '$lib/work-mode';
 import {
 	authoritativeProject,
@@ -9,6 +10,16 @@ import {
 	sessionMatchesProjectFolders
 } from '$lib/server/route-services';
 import type { RequestHandler } from './$types';
+
+async function listRuntimeSessions(root: string) {
+	const sessions = await services().sessionRuntime.listSessions(root);
+	try {
+		sessions.push(...(await services().sessionRuntime.listSessions(root, 'opencode')));
+	} catch {
+		// OpenCode is optional; persisted Sessions remain visible for recovery.
+	}
+	return sessions;
+}
 
 export const GET: RequestHandler = async ({ params, url }) => {
 	try {
@@ -37,7 +48,8 @@ export const GET: RequestHandler = async ({ params, url }) => {
 						// Cached unavailable Sessions remain visible for recovery.
 					}
 					const title =
-						stored.title ?? (available ? 'Untitled Hermes Session' : 'Unavailable Hermes Session');
+						stored.title ??
+						`${available ? 'Untitled' : 'Unavailable'} ${sessionHarnessLabel(stored.harness)} Session`;
 					return {
 						...stored,
 						title,
@@ -75,7 +87,8 @@ export const GET: RequestHandler = async ({ params, url }) => {
 			const busyStarts = services().store.getBusySessionStarts(project.id);
 			const indicators = services().store.getSessionIndicators(project.id);
 			const title =
-				stored.title ?? (available ? 'Untitled Hermes Session' : 'Unavailable Hermes Session');
+				stored.title ??
+				`${available ? 'Untitled' : 'Unavailable'} ${sessionHarnessLabel(stored.harness)} Session`;
 			return json({
 				sessions: [
 					{
@@ -107,7 +120,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 				continue;
 			}
 			availableRoots.add(root);
-			for (const session of await services().runtime.listSessions(root)) {
+			for (const session of await listRuntimeSessions(root)) {
 				if (
 					(sessionMatchesProjectFolders(folders, session.cwd) ||
 						services().store.hasSession(project.id, session.sessionId)) &&
@@ -138,7 +151,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 				const title =
 					stored.title ??
 					runtime?.title ??
-					(available ? 'Untitled Hermes Session' : 'Unavailable Hermes Session');
+					`${available ? 'Untitled' : 'Unavailable'} ${sessionHarnessLabel(stored.harness)} Session`;
 				return {
 					...runtime,
 					...stored,
@@ -164,15 +177,17 @@ export const GET: RequestHandler = async ({ params, url }) => {
 export const POST: RequestHandler = async ({ params, request }) => {
 	try {
 		const text = await request.text();
-		const body = text ? (JSON.parse(text) as { workMode?: unknown }) : {};
+		const body = text ? (JSON.parse(text) as { workMode?: unknown; harness?: unknown }) : {};
 		const workMode = body.workMode === undefined ? null : parseWorkMode(body.workMode);
 		if (body.workMode !== undefined && !workMode)
 			return json({ error: 'Invalid work mode' }, { status: 400 });
+		const harness = body.harness === undefined ? 'hermes' : parseSessionHarness(body.harness);
+		if (!harness) return json({ error: 'Invalid Session harness' }, { status: 400 });
 		const project = await authoritativeProject(params.projectId);
 		const folders = project.folders.map(({ path }) => path);
-		const session = await services().runtime.createSession(project.primary_path);
+		const session = await services().sessionRuntime.createSession(project.primary_path, harness);
 		if (!sessionMatchesProjectFolders(folders, session.cwd)) {
-			throw new Error(`Hermes Session ${session.sessionId} is outside the Project root`);
+			throw new Error(`${sessionHarnessLabel(harness)} Session is outside the Project root`);
 		}
 		services().store.upsertSession(project.id, { ...session, workMode });
 		const stored = services().store.getSession(project.id, session.sessionId)!;
@@ -185,8 +200,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 					icon: stored.icon ?? automaticSessionIcon(session.title),
 					customIcon: stored.icon
 				},
-				commands: services().runtime.getAvailableCommands(session.sessionId),
-				runtime: services().runtime.getSessionState(session.sessionId),
+				commands: services().sessionRuntime.getAvailableCommands(session.sessionId),
+				runtime: services().sessionRuntime.getSessionState(session.sessionId),
 				branch: projectBranch(project.primary_path)
 			},
 			{ status: 201 }

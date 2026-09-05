@@ -303,6 +303,7 @@
 				{#if !docked && (!compact || developView === 'browser')}<BrowserPanel
 						{projectId}
 						{onpreviewchange}
+						{onreviewcontext}
 					/>{/if}
 				{#if (!compact && !docked) || developView === 'terminal'}
 					{#if TerminalPanel}

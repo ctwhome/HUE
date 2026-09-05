@@ -124,6 +124,34 @@ describe('HUEStore project and workflow boundaries', () => {
 		store.close();
 	});
 
+	it('persists harness identity separately from the HUE Session id', () => {
+		const store = makeStore();
+		store.upsertSession(null, {
+			sessionId: 'opencode:native-session',
+			externalSessionId: 'native-session',
+			harness: 'opencode',
+			cwd: '/work/hue'
+		});
+
+		expect(store.getSession(null, 'opencode:native-session')).toMatchObject({
+			sessionId: 'opencode:native-session',
+			externalSessionId: 'native-session',
+			harness: 'opencode'
+		});
+		store.close();
+	});
+
+	it('defaults existing Session callers to Hermes identity', () => {
+		const store = makeStore();
+		store.upsertSession(null, { sessionId: 'hermes-session', cwd: '/work/hue' });
+
+		expect(store.getSession(null, 'hermes-session')).toMatchObject({
+			externalSessionId: 'hermes-session',
+			harness: 'hermes'
+		});
+		store.close();
+	});
+
 	it('migrates and validates per-session work mode for project and projectless Sessions', () => {
 		const path = join(tmpdir(), `hue-work-mode-${crypto.randomUUID()}.sqlite`);
 		temporaryDatabases.push(path);

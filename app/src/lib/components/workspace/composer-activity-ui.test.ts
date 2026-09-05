@@ -20,10 +20,10 @@ test('the floating delivery status toggles thinking details without a toolbar tr
 	expect(styles).toContain('.composer-delivery:focus-visible');
 });
 
-test('unknown delivery explains that Hermes may still be working', () => {
+test('unknown delivery names the selected harness that may still be working', () => {
 	const composer = read('Composer.svelte');
 
-	expect(composer).toContain('Delivery unconfirmed · Hermes may still be working');
+	expect(composer).toContain('Delivery unconfirmed · ${harnessName} may still be working');
 });
 
 test('chat activity uses an attributed reduced-motion-safe 3x3 matrix loader', () => {

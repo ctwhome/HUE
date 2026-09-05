@@ -20,6 +20,7 @@
 | [ADR-0011](decisions/0011-retain-project-excalidraw.md)               | Retain Project Excalidraw                                  | Keeps the proven Project-scoped canvas as a workbench surface.                                       |
 | [ADR-0012](decisions/0012-custom-skill-filesystem-exception.md)       | Custom skill filesystem exception                          | Permits narrowly hardened direct `SKILL.md` mutation where Hermes lacks an API.                      |
 | [ADR-0013](decisions/0013-hermes-native-workflow-bundles.md)          | Hermes-native Workflow bundles                             | Workflows reference Hermes-owned bundles and permitted skill content without copying it into HUE.    |
+| [ADR-0014](decisions/0014-per-session-acp-harness.md)                 | Per-Session ACP harness                                    | Keeps Hermes primary while allowing an immutable OpenCode choice for each new Session.               |
 
 ## Open boundaries
 
@@ -27,7 +28,7 @@
 | ------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------- |
 | Production Android distribution and remote access | ADR-0008 is a proof boundary only.                           | A release channel and threat model are selected.                             |
 | Clarify over Hermes ACP                           | Unsupported until Hermes exposes and proves ACP elicitation. | An installed Hermes version advertises and passes the required bridge tests. |
-| Additional runtimes or product objects            | Outside the focused product.                                 | Repeated real use justifies a focused ADR.                                   |
+| Additional Session harnesses or product objects   | Outside the focused product.                                 | Repeated real use and a proven integration justify a focused ADR.            |
 
 ## ADR workflow
 

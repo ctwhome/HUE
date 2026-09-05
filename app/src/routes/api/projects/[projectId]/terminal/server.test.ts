@@ -88,7 +88,7 @@ test('terminal access accepts an authenticated same-origin HTTPS tailnet request
 	expect(_terminalAllowed(request, url, '127.0.0.1', true, secret)).toBe(true);
 });
 
-test('uses canonical Hermes id for every terminal operation reached by slug', async () => {
+test('resolves the canonical Hermes id once for a terminal session reached by slug', async () => {
 	const { GET, POST } = await import('./+server');
 	const url = new URL('http://localhost/api/projects/project-slug/terminal?terminalId=t&after=2');
 	const base = {
@@ -96,9 +96,16 @@ test('uses canonical Hermes id for every terminal operation reached by slug', as
 		url,
 		getClientAddress: () => '127.0.0.1'
 	};
+	await POST({
+		...base,
+		request: new Request(url, {
+			method: 'POST',
+			headers: { host: url.host, origin: url.origin },
+			body: JSON.stringify({ action: 'create', cols: 80, rows: 24 })
+		})
+	} as never);
 	await GET({ ...base, request: new Request(url, { headers: { host: url.host } }) } as never);
 	for (const body of [
-		{ action: 'create', cols: 80, rows: 24 },
 		{ action: 'input', terminalId: 't', sequence: 1, data: 'pwd\n' },
 		{ action: 'resize', terminalId: 't', cols: 100, rows: 30 },
 		{ action: 'close', terminalId: 't' }
@@ -113,10 +120,10 @@ test('uses canonical Hermes id for every terminal operation reached by slug', as
 		} as never);
 	}
 
-	expect(projectReads).toBe(5);
+	expect(projectReads).toBe(1);
 	expect(terminalCalls.map(({ method }) => method)).toEqual([
-		'read',
 		'create',
+		'read',
 		'write',
 		'resize',
 		'close'

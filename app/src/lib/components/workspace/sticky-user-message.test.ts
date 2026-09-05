@@ -22,6 +22,15 @@ test('user turns stick, clamp to two lines, and expand or collapse in place', ()
 		/\.user-message-body\.collapsed\.has-images \.message-images\s*\{[^}]*max-height:\s*72px/s
 	);
 	expect(styles).toContain('var(--chat-surface, var(--background))');
+	expect(styles).toMatch(
+		/\.transcript:has\(article\.user\)\s*\{[^}]*--sticky-message-clearance:\s*152px/s
+	);
+	expect(styles).toMatch(
+		/\.markdown \.table-toolbar\s*\{[^}]*top:\s*var\(--sticky-message-clearance\)/s
+	);
+	expect(styles).toMatch(/\.markdown \.table-toolbar\s*\{[^}]*z-index:\s*3/s);
+	expect(styles).toMatch(/\.code-toolbar\s*\{[^}]*top:\s*var\(--sticky-message-clearance\)/s);
+	expect(styles).toMatch(/\.code-toolbar\s*\{[^}]*z-index:\s*3/s);
 	expect(paneStyles).toMatch(
 		/\.session-pane-grid\[data-pane-count='1'\]\s*\{[^}]*--chat-surface:\s*var\(--card\)/s
 	);

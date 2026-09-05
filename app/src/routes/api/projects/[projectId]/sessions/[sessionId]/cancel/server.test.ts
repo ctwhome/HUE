@@ -13,7 +13,7 @@ mock.module('$lib/server/route-services', () => ({
 				return true;
 			}
 		},
-		runtime: { cancelSession: async () => undefined }
+		sessionRuntime: { cancelSession: async () => undefined }
 	})
 }));
 

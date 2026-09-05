@@ -7,6 +7,7 @@
 	import Monitor from '~icons/lucide/monitor';
 	import Plus from '~icons/lucide/plus';
 	import RefreshCw from '~icons/lucide/refresh-cw';
+	import ScanSearch from '~icons/lucide/scan-search';
 	import Smartphone from '~icons/lucide/smartphone';
 	import Tablet from '~icons/lucide/tablet';
 	import X from '~icons/lucide/x';
@@ -14,6 +15,7 @@
 	import ZoomOut from '~icons/lucide/zoom-out';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
+	import type { ReviewContextSeed } from '$lib/message-content';
 	import {
 		browserDeviceSizes,
 		normalizeBrowserUrl,
@@ -21,6 +23,7 @@
 		restoreBrowserView,
 		type BrowserDevice
 	} from './browser-canvas';
+	import { startBrowserElementPicker } from './browser-element-picker';
 
 	type BrowserTab = {
 		id: string;
@@ -35,8 +38,15 @@
 
 	let {
 		projectId,
-		onpreviewchange
-	}: { projectId: string; onpreviewchange: (url: string) => void } = $props();
+		active = true,
+		onpreviewchange,
+		onreviewcontext
+	}: {
+		projectId: string;
+		active?: boolean;
+		onpreviewchange: (url: string) => void;
+		onreviewcontext?: (context: ReviewContextSeed) => void;
+	} = $props();
 	let view = $state<View>('browser');
 	let excalidrawMounted = $state(false);
 	let ExcalidrawPanel = $state<Component<{
@@ -49,6 +59,9 @@
 	let browserDevice = $state<BrowserDevice>('desktop');
 	let browserZoom = $state(1);
 	let excalidrawUrl = $state('');
+	let selectingElement = $state(false);
+	let elementPickerButton: HTMLButtonElement;
+	let stopElementPicker: (() => void) | null = null;
 	const browserFrames = new Map<string, HTMLIFrameElement>();
 	let currentBrowserTab = $derived(activeBrowserTab());
 	let browserSize = $derived(browserDeviceSizes[browserDevice]);
@@ -115,6 +128,7 @@
 		return browserTabs.find((tab) => tab.id === activeBrowserTabId) ?? browserTabs[0];
 	}
 	function selectView(next: View) {
+		cancelElementSelection();
 		view = next;
 		if (next === 'excalidraw') {
 			excalidrawMounted = true;
@@ -139,6 +153,7 @@
 	}
 	function navigateBrowser(event: SubmitEvent) {
 		event.preventDefault();
+		cancelElementSelection();
 		const tab = activeBrowserTab();
 		if (!tab) return;
 		let url: URL;
@@ -166,6 +181,7 @@
 		onpreviewchange(url.href);
 	}
 	function addBrowserTab() {
+		cancelElementSelection();
 		const tab = newBrowserTab();
 		browserTabs = [...browserTabs, tab];
 		activeBrowserTabId = tab.id;
@@ -175,6 +191,7 @@
 	}
 	function closeBrowserTab(event: MouseEvent | KeyboardEvent, id: string) {
 		event.stopPropagation();
+		cancelElementSelection();
 		const closingActiveTab = activeBrowserTabId === id;
 		const remaining = browserTabs.filter((tab) => tab.id !== id);
 		browserTabs = remaining.length ? remaining : [newBrowserTab()];
@@ -188,6 +205,7 @@
 		onpreviewchange(activeBrowserTab()?.url ?? '');
 	}
 	function selectBrowserTab(tab: BrowserTab) {
+		cancelElementSelection();
 		activeBrowserTabId = tab.id;
 		if (!tab.mounted)
 			browserTabs = browserTabs.map((item) =>
@@ -197,6 +215,7 @@
 		onpreviewchange(tab.url);
 	}
 	function reloadBrowser() {
+		cancelElementSelection();
 		if (!currentBrowserTab?.url) return;
 		browserTabs = browserTabs.map((tab) =>
 			tab.id === activeBrowserTabId ? { ...tab, source: tab.url, reload: tab.reload + 1 } : tab
@@ -228,6 +247,7 @@
 		};
 	}
 	function syncBrowserFrame(event: Event, tabId: string) {
+		if (tabId === activeBrowserTabId) cancelElementSelection();
 		const frame = event.currentTarget as HTMLIFrameElement;
 		if (browserFrames.get(tabId) !== frame) return;
 		try {
@@ -242,6 +262,7 @@
 		}
 	}
 	function navigateBrowserHistory(direction: 'back' | 'forward') {
+		cancelElementSelection();
 		const frameWindow = browserFrames.get(activeBrowserTabId)?.contentWindow;
 		if (!frameWindow || !currentBrowserTab?.url) return;
 		if (new URL(currentBrowserTab.url).origin === window.location.origin) {
@@ -252,6 +273,40 @@
 			{ type: 'hue:browser:history', direction },
 			new URL(currentBrowserTab.url).origin
 		);
+	}
+	function cancelElementSelection() {
+		stopElementPicker?.();
+		stopElementPicker = null;
+		selectingElement = false;
+	}
+	$effect(() => {
+		if (!active) cancelElementSelection();
+	});
+	function toggleElementSelection(event: MouseEvent) {
+		elementPickerButton = event.currentTarget as HTMLButtonElement;
+		if (selectingElement) return cancelElementSelection();
+		const frame = browserFrames.get(activeBrowserTabId);
+		if (!frame || !onreviewcontext) return;
+		try {
+			selectingElement = true;
+			browserError = '';
+			stopElementPicker = startBrowserElementPicker(
+				frame,
+				(context) => {
+					stopElementPicker = null;
+					selectingElement = false;
+					onreviewcontext(context);
+				},
+				() => {
+					stopElementPicker = null;
+					selectingElement = false;
+					queueMicrotask(() => elementPickerButton?.focus());
+				}
+			);
+		} catch (cause) {
+			selectingElement = false;
+			browserError = cause instanceof Error ? cause.message : String(cause);
+		}
 	}
 
 	onMount(() => {
@@ -275,7 +330,10 @@
 			);
 		};
 		window.addEventListener('message', receiveNavigation);
-		return () => window.removeEventListener('message', receiveNavigation);
+		return () => {
+			cancelElementSelection();
+			window.removeEventListener('message', receiveNavigation);
+		};
 	});
 </script>
 
@@ -348,7 +406,7 @@
 			</div>
 			<form
 				class="browser-address grid items-center gap-1.5 overflow-x-auto p-1.5"
-				style="grid-template-columns: auto auto minmax(8rem, 1fr) auto auto auto auto auto"
+				style="grid-template-columns: auto auto minmax(8rem, 1fr) auto auto auto auto auto auto"
 				onsubmit={navigateBrowser}
 			>
 				<Button
@@ -426,6 +484,16 @@
 						><ZoomIn width={15} height={15} aria-hidden="true" /></Button
 					>
 				</div>
+				<Button
+					size="icon"
+					variant={selectingElement ? 'secondary' : 'ghost'}
+					disabled={!currentBrowserTab?.url || !onreviewcontext}
+					aria-label={selectingElement ? 'Cancel element selection' : 'Select page element'}
+					aria-pressed={selectingElement}
+					title={selectingElement ? 'Cancel element selection' : 'Select page element for chat'}
+					onclick={toggleElementSelection}
+					><ScanSearch width={15} height={15} aria-hidden="true" /></Button
+				>
 				<Button
 					size="icon"
 					variant="ghost"

@@ -6,7 +6,7 @@ describe('session inspector rows', () => {
 		expect(
 			sessionInspectorRows({
 				project: { name: 'HUE' },
-				session: { cwd: '/Users/ctw/Sites/HUE/app', workMode: 'live' },
+				session: { cwd: '/Users/ctw/Sites/HUE/app', workMode: 'live', harness: 'hermes' },
 				runtime: {
 					profile: 'default',
 					models: {
@@ -36,6 +36,7 @@ describe('session inspector rows', () => {
 			})
 		).toEqual([
 			{ label: 'Project', value: 'HUE' },
+			{ label: 'Harness', value: 'Hermes' },
 			{ label: 'Path', value: '/Users/ctw/Sites/HUE/app', code: true },
 			{ label: 'Work mode', value: 'Live' },
 			{ label: 'Workflow', value: 'Release' },
@@ -48,6 +49,17 @@ describe('session inspector rows', () => {
 			{ label: 'Hermes profile', value: 'default' },
 			{ label: 'Clarification capability', value: 'Available' }
 		]);
+	});
+
+	test('labels OpenCode without presenting a Hermes profile', () => {
+		const rows = sessionInspectorRows({
+			project: null,
+			session: { harness: 'opencode' },
+			runtime: { profile: 'default', harness: 'opencode' },
+			delivery: ''
+		});
+
+		expect(rows).toEqual([{ label: 'Harness', value: 'OpenCode' }]);
 	});
 
 	test('does not infer connection, health, workflow, or optional runtime values', () => {

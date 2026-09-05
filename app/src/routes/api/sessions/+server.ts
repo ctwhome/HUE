@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { automaticSessionIcon } from '$lib/icon';
+import { parseSessionHarness, sessionHarnessLabel } from '$lib/session-harness';
 import {
 	listExternalHermesCron,
 	type ExternalHermesCronJob
@@ -12,6 +13,16 @@ import {
 	unprojectedSessionRoot
 } from '$lib/server/services';
 import type { RequestHandler } from './$types';
+
+async function listRuntimeSessions(root: string) {
+	const sessions = await services().sessionRuntime.listSessions(root);
+	try {
+		sessions.push(...(await services().sessionRuntime.listSessions(root, 'opencode')));
+	} catch {
+		// OpenCode is optional; persisted Sessions remain visible for recovery.
+	}
+	return sessions;
+}
 
 export const GET: RequestHandler = async ({ url }) => {
 	const root = unprojectedSessionRoot();
@@ -26,7 +37,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			if (!stored) return json({ sessions: [], hasMore: false });
 			const busyStarts = services().store.getBusySessionStarts(null);
 			const indicators = services().store.getSessionIndicators(null);
-			const title = stored.title ?? 'Untitled Hermes Session';
+			const title = stored.title ?? `Untitled ${sessionHarnessLabel(stored.harness)} Session`;
 			const available =
 				sessionMatchesProjectRoot(root, stored.cwd) ||
 				(services().store.isKeptQuickAskSession(stored.sessionId) &&
@@ -53,12 +64,12 @@ export const GET: RequestHandler = async ({ url }) => {
 			});
 		}
 		const sessions = [
-			...(await services().runtime.listSessions(root)).filter(
+			...(await listRuntimeSessions(root)).filter(
 				(session) =>
 					sessionMatchesProjectRoot(root, session.cwd) &&
 					!services().store.isSessionDismissed(null, session.sessionId)
 			),
-			...(await services().runtime.listSessions(quickRoot)).filter(
+			...(await listRuntimeSessions(quickRoot)).filter(
 				(session) =>
 					sessionMatchesProjectRoot(quickRoot, session.cwd) &&
 					services().store.isKeptQuickAskSession(session.sessionId)
@@ -105,7 +116,10 @@ export const GET: RequestHandler = async ({ url }) => {
 					sessionMatchesProjectRoot(root, stored.cwd) ||
 					(services().store.isKeptQuickAskSession(stored.sessionId) &&
 						sessionMatchesProjectRoot(quickRoot, stored.cwd));
-				const title = stored.title ?? runtime?.title ?? 'Untitled Hermes Session';
+				const title =
+					stored.title ??
+					runtime?.title ??
+					`Untitled ${sessionHarnessLabel(stored.harness)} Session`;
 				return {
 					...runtime,
 					...stored,
@@ -128,12 +142,16 @@ export const GET: RequestHandler = async ({ url }) => {
 	}
 };
 
-export const POST: RequestHandler = async () => {
+export const POST: RequestHandler = async ({ request }) => {
 	const root = unprojectedSessionRoot();
 	try {
-		const session = await services().runtime.createSession(root);
+		const text = await request.text();
+		const body = text ? (JSON.parse(text) as { harness?: unknown }) : {};
+		const harness = body.harness === undefined ? 'hermes' : parseSessionHarness(body.harness);
+		if (!harness) return json({ error: 'Invalid Session harness' }, { status: 400 });
+		const session = await services().sessionRuntime.createSession(root, harness);
 		if (!sessionMatchesProjectRoot(root, session.cwd)) {
-			throw new Error('Hermes Session is outside the HUE session directory');
+			throw new Error(`${sessionHarnessLabel(harness)} Session is outside the HUE session directory`);
 		}
 		services().store.upsertSession(null, session);
 		const stored = services().store.getSession(null, session.sessionId)!;
@@ -146,8 +164,8 @@ export const POST: RequestHandler = async () => {
 					icon: stored.icon ?? automaticSessionIcon(session.title),
 					customIcon: stored.icon
 				},
-				commands: services().runtime.getAvailableCommands(session.sessionId),
-				runtime: services().runtime.getSessionState(session.sessionId),
+				commands: services().sessionRuntime.getAvailableCommands(session.sessionId),
+				runtime: services().sessionRuntime.getSessionState(session.sessionId),
 				branch: null
 			},
 			{ status: 201 }

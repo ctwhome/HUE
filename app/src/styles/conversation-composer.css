@@ -13,6 +13,7 @@
 	}
 }
 .transcript {
+	--sticky-message-clearance: 8px;
 	position: relative;
 	z-index: 0;
 	contain: paint;
@@ -20,6 +21,9 @@
 	overflow-anchor: none;
 	overscroll-behavior: contain;
 	scroll-padding-block: 76px var(--composer-height, 160px);
+}
+.transcript:has(article.user) {
+	--sticky-message-clearance: 152px;
 }
 .session-view:has(> .transcript) {
 	position: relative;
@@ -227,8 +231,8 @@
 }
 .markdown .table-toolbar {
 	position: sticky;
-	top: 8px;
-	z-index: 1;
+	top: var(--sticky-message-clearance);
+	z-index: 3;
 	display: flex;
 	justify-content: flex-end;
 	margin-block-end: 4px;
@@ -564,8 +568,8 @@
 }
 .code-toolbar {
 	position: sticky;
-	top: 8px;
-	z-index: 1;
+	top: var(--sticky-message-clearance);
+	z-index: 3;
 	grid-column: 2;
 	grid-row: 1;
 	align-self: start;
@@ -661,6 +665,9 @@
 }
 
 @media (max-width: 700px) {
+	.transcript:has(article.user) {
+		--sticky-message-clearance: 168px;
+	}
 	.markdown-icon-toolbar button,
 	.generated-output-toolbar :is(button, a) {
 		width: 44px;

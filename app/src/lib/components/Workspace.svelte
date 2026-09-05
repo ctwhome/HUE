@@ -351,14 +351,16 @@
 	async function ensureDraftSession() {
 		if (navigation.selectedSession) return navigation.selectedSession;
 		if (!sessionCreation) {
-			sessionCreation = navigation.createSession().then(async (session) => {
-				if (session) {
-					messageState.composer = pendingSessionDraft;
-					messageState.saveCurrentDraft();
-					await tick();
-				}
-				return session;
-			});
+			sessionCreation = navigation
+				.createSession(undefined, navigation.newSessionHarness)
+				.then(async (session) => {
+					if (session) {
+						messageState.composer = pendingSessionDraft;
+						messageState.saveCurrentDraft();
+						await tick();
+					}
+					return session;
+				});
 		}
 		try {
 			return await sessionCreation;
@@ -590,7 +592,7 @@
 		bind:sessionSearch={navigation.sessionSearch}
 		bind:showArchived={navigation.showArchived}
 		{now}
-		oncreate={navigation.createSession}
+		oncreate={navigation.beginSession}
 		onopen={(session) => navigation.openSession(session, 'push')}
 		onexternalopen={(job) => navigation.openExternalCronJob(job, 'push')}
 		onback={(trigger) => mobileShell?.open('projects', trigger)}
@@ -670,7 +672,7 @@
 				{workflows}
 				primarySession={selectedSession?.pending ? null : selectedSession}
 				allowDocking={!embedded}
-				restorePrimarySession={!mobile && !selectedSession?.pending}
+				restorePrimarySession={!mobile && !navigation.composingSession && !selectedSession?.pending}
 				onpanecount={(count) => {
 					sessionPaneCount = count;
 					if (count > 1 && innerWidth < 1600) browserOpen = false;
@@ -736,7 +738,7 @@
 								{dirtyGuard}
 							/>
 						{/key}
-					{:else if selectedSession || (selectedProject?.rootAvailable && navigation.ready)}
+					{:else if selectedSession || navigation.composingSession || (selectedProject?.rootAvailable && navigation.ready)}
 						<SessionSurface
 							controller={sessionController}
 							{navigation}
@@ -745,15 +747,17 @@
 							{workflows}
 							sessionLabel={selectedSession?.title ||
 								selectedSession?.sessionId ||
-								'New Hermes Session'}
+								`New ${selectedSession?.harness === 'opencode' ? 'OpenCode' : 'Hermes'} Session`}
 							mediaPath={selectedSession
 								? navigation.sessionApiPath(selectedSession.sessionId, '/media')
 								: ''}
+							newSessionHarness={navigation.newSessionHarness}
+							onharness={(harness) => (navigation.newSessionHarness = harness)}
 							onsubmit={submitDraft}
 							oninput={createSessionFromDraft}
 							onrunworkflow={navigation.runWorkflow}
 							unavailableRecovery={selectedSession?.available === false
-								? (selectedSession.recovery ?? 'Hermes Session is unavailable.')
+								? (selectedSession.recovery ?? 'Session harness is unavailable.')
 								: null}
 							showContextUsage={false}
 							ready={!selectedSession?.pending}
@@ -806,6 +810,7 @@
 					projectId={selectedProject.id}
 					open={browserOpen}
 					onpreviewchange={(url) => (previewUrl = url)}
+					onreviewcontext={messageState.addReviewContext}
 				/>
 				<ProjectFilesDock
 					projectId={selectedProject.id}

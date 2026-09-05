@@ -14,6 +14,7 @@
 	import LoaderCircle from '~icons/lucide/loader-circle';
 	import Plus from '~icons/lucide/plus';
 	import Sparkles from '~icons/lucide/sparkles';
+	import TerminalSquare from '~icons/lucide/terminal-square';
 	import X from '~icons/lucide/x';
 	import { dropBefore, moveBefore, moveBy, readStringArray, sortByOrder } from '$lib/drag-order';
 	import { projectColorForeground } from '$lib/project-color';
@@ -177,6 +178,7 @@
 	let dropGroup = $state<string | null>(null);
 	let dropProjectId = $state<string | null>(null);
 	let projectDropPosition = $state<'before' | 'after'>('before');
+	let terminalCounts = $state(new Map<string, number>());
 	const touchDragDelay = 250;
 	let touchProjectId: string | null = null;
 	let touchIdentifier: number | null = null;
@@ -185,6 +187,14 @@
 	let touchX = 0;
 	let touchY = 0;
 	let touchDragTimer: ReturnType<typeof setTimeout> | null = null;
+	function updateTerminalCount(event: Event) {
+		const { projectId, count } = (event as CustomEvent<{ projectId: string; count: number }>)
+			.detail;
+		const next = new Map(terminalCounts);
+		if (count > 0) next.set(projectId, count);
+		else next.delete(projectId);
+		terminalCounts = next;
+	}
 
 	onMount(() => {
 		collapsedGroups = new Set(readStringArray(localStorage, 'hue:project-groups:collapsed'));
@@ -193,11 +203,13 @@
 		window.addEventListener('touchmove', moveProjectTouch, { passive: false });
 		window.addEventListener('touchend', finishProjectTouch, { passive: false });
 		window.addEventListener('touchcancel', cancelProjectTouch);
+		window.addEventListener('hue:terminal-count', updateTerminalCount);
 		return () => {
 			cancelProjectTouch();
 			window.removeEventListener('touchmove', moveProjectTouch);
 			window.removeEventListener('touchend', finishProjectTouch);
 			window.removeEventListener('touchcancel', cancelProjectTouch);
+			window.removeEventListener('hue:terminal-count', updateTerminalCount);
 		};
 	});
 
@@ -599,6 +611,7 @@
 				</button>{/if}
 			{#if !group.label || !collapsedGroups.has(group.label)}
 				{#each group.projects as project (project.id)}
+					{@const terminalCount = terminalCounts.get(project.id) ?? 0}
 					<div
 						class="project-row group relative select-none"
 						data-project-id={project.id}
@@ -653,6 +666,12 @@
 									>{/if}
 							</span>
 							<span class="project-name min-w-0 flex-1 truncate">{project.name}</span>
+							{#if terminalCount}<span
+									class="project-terminal-count shrink-0 opacity-70"
+									aria-label={`${terminalCount} open terminal${terminalCount === 1 ? '' : 's'}`}
+									title={`${terminalCount} open terminal${terminalCount === 1 ? '' : 's'}`}
+									><TerminalSquare width={14} height={14} aria-hidden="true" /></span
+								>{/if}
 							{#if !project.rootAvailable}<small class="text-[var(--warning)]">Missing</small>{/if}
 							{#if project.runningCount}<span
 									class="project-running-count flex shrink-0 items-center gap-1 text-xs text-sky-500 tabular-nums"

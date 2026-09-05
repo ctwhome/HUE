@@ -15,6 +15,7 @@ import { validateIcon } from '$lib/icon';
 import { DEFAULT_BUNDLE, parseBundleReference } from '$lib/bundle';
 import type { ImageAttachment, InputAttachment, ReviewContext } from '$lib/message-content';
 import { validateProjectColor } from '$lib/project-color';
+import type { SessionHarness } from '$lib/session-harness';
 import { DEFAULT_WORK_MODE, parseWorkMode, type WorkMode } from '$lib/work-mode';
 import { createHueDatabaseBackup, HUE_SCHEMA_VERSION } from './hue-backup';
 import { redactPersistedValue } from './redaction';
@@ -213,6 +214,8 @@ export type NotificationDeliveryRow = {
 
 export type StoredSession = {
 	sessionId: string;
+	externalSessionId: string;
+	harness: SessionHarness;
 	cwd: string;
 	icon: string | null;
 	title: string | null;
@@ -234,6 +237,8 @@ export type SessionFinderResult = StoredSession & {
 
 type SessionRow = {
 	session_id: string;
+	external_session_id: string;
+	harness: SessionHarness;
 	cwd: string;
 	icon: string | null;
 	title: string | null;
@@ -464,7 +469,8 @@ export class HUEStore {
 			currentVersion !== 5 &&
 			currentVersion !== 6 &&
 			currentVersion !== 7 &&
-			currentVersion !== 8
+			currentVersion !== 8 &&
+			currentVersion !== 9
 		) {
 			throw new Error(
 				`HUE schema migration ${currentVersion} -> ${HUE_SCHEMA_VERSION} is unsupported. Stop HUE and use an application version that supports this database.`
@@ -490,6 +496,13 @@ export class HUEStore {
 		const migratesWorkflowBundle =
 			workflowColumns.some(({ name }) => name === 'work_mode') &&
 			!workflowColumns.some(({ name }) => name === 'bundle');
+		const sessionColumns = this.database
+			.query("PRAGMA table_info('project_sessions')")
+			.all() as Array<{ name: string }>;
+		const migratesSessionHarness =
+			currentVersion !== 0 &&
+			(!sessionColumns.some(({ name }) => name === 'harness') ||
+				!sessionColumns.some(({ name }) => name === 'external_session_id'));
 		const attachmentColumns = this.database
 			.query("PRAGMA table_info('message_attachments')")
 			.all() as Array<{ name: string }>;
@@ -503,7 +516,10 @@ export class HUEStore {
 			).count > 0;
 		const destructiveMigration = rebuildsMessages || rebuildsProjectSessions;
 		const requiresBackup =
-			destructiveMigration || migratesWorkflowBundle || externalizesAttachments;
+			destructiveMigration ||
+			migratesWorkflowBundle ||
+			migratesSessionHarness ||
+			externalizesAttachments;
 		let backup: { filename: string } | null = null;
 		const createdAttachmentPaths: string[] = [];
 		if (this.filename !== ':memory:' && requiresBackup) {
@@ -571,6 +587,8 @@ export class HUEStore {
 
 			CREATE TABLE IF NOT EXISTS project_sessions (
 				session_id TEXT PRIMARY KEY,
+				external_session_id TEXT NOT NULL,
+				harness TEXT NOT NULL DEFAULT 'hermes' CHECK (harness IN ('hermes', 'opencode')),
 				project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
 				cwd TEXT NOT NULL,
 				icon TEXT,
@@ -812,6 +830,8 @@ export class HUEStore {
 			}>;
 		}
 		for (const [name, definition] of [
+			['external_session_id', 'TEXT'],
+			['harness', "TEXT NOT NULL DEFAULT 'hermes'"],
 			['title', 'TEXT'],
 			['title_custom', 'INTEGER NOT NULL DEFAULT 0'],
 			['work_mode', "TEXT NOT NULL DEFAULT 'autonomous'"],
@@ -824,7 +844,26 @@ export class HUEStore {
 				this.database.exec(`ALTER TABLE project_sessions ADD COLUMN ${name} ${definition}`);
 			}
 		}
+		this.database.exec(
+			'UPDATE project_sessions SET external_session_id = session_id WHERE external_session_id IS NULL'
+		);
 		this.database.exec(`
+			CREATE TRIGGER IF NOT EXISTS project_sessions_harness_insert_check
+			BEFORE INSERT ON project_sessions
+			FOR EACH ROW
+			WHEN NEW.harness NOT IN ('hermes', 'opencode') OR NEW.external_session_id IS NULL OR NEW.external_session_id = ''
+			BEGIN
+				SELECT RAISE(FAIL, 'invalid session harness');
+			END;
+
+			CREATE TRIGGER IF NOT EXISTS project_sessions_harness_update_check
+			BEFORE UPDATE OF harness, external_session_id ON project_sessions
+			FOR EACH ROW
+			WHEN NEW.harness NOT IN ('hermes', 'opencode') OR NEW.external_session_id IS NULL OR NEW.external_session_id = ''
+			BEGIN
+				SELECT RAISE(FAIL, 'invalid session harness');
+			END;
+
 			CREATE TRIGGER IF NOT EXISTS project_sessions_work_mode_insert_check
 			BEFORE INSERT ON project_sessions
 			FOR EACH ROW
@@ -945,6 +984,8 @@ export class HUEStore {
 					ON session_events(project_id, type, session_id, sequence DESC);
 			CREATE INDEX IF NOT EXISTS project_sessions_scope_list_idx
 				ON project_sessions(project_id, archived, pinned DESC, updated_at DESC, session_id);
+			CREATE UNIQUE INDEX IF NOT EXISTS project_sessions_harness_external_idx
+				ON project_sessions(harness, external_session_id);
 		`);
 		this.projectPendingNotifications();
 		this.database.exec(`
@@ -1412,6 +1453,8 @@ export class HUEStore {
 		projectId: string | null,
 		session: {
 			sessionId: string;
+			externalSessionId?: string;
+			harness?: SessionHarness;
 			cwd: string;
 			title?: string | null;
 			updatedAt?: string | null;
@@ -1432,8 +1475,8 @@ export class HUEStore {
 		this.database.transaction(() => {
 			this.database
 				.query(
-					`INSERT INTO project_sessions (session_id, project_id, cwd, title, work_mode, updated_at)
-					 VALUES (?, ?, ?, ?, ?, ?)
+					`INSERT INTO project_sessions (session_id, external_session_id, harness, project_id, cwd, title, work_mode, updated_at)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 					 ON CONFLICT(session_id) DO UPDATE SET
 					 project_id = excluded.project_id,
 					 cwd = excluded.cwd,
@@ -1441,7 +1484,16 @@ export class HUEStore {
 					 work_mode = project_sessions.work_mode,
 					 updated_at = excluded.updated_at`
 				)
-				.run(session.sessionId, projectId, session.cwd, session.title ?? null, workMode, now);
+				.run(
+					session.sessionId,
+					session.externalSessionId ?? session.sessionId,
+					session.harness ?? 'hermes',
+					projectId,
+					session.cwd,
+					session.title ?? null,
+					workMode,
+					now
+				);
 			if (projectId) {
 				this.database
 					.query('UPDATE messages SET project_id = ? WHERE session_id = ? AND project_id IS NULL')
@@ -1475,6 +1527,17 @@ export class HUEStore {
 		return event;
 	}
 
+	applyRuntimeSessionTitleByHarness(
+		harness: SessionHarness,
+		externalSessionId: string,
+		input: unknown
+	): SessionEvent | null {
+		const session = this.database
+			.query('SELECT session_id FROM project_sessions WHERE harness = ? AND external_session_id = ?')
+			.get(harness, externalSessionId) as { session_id: string } | null;
+		return session ? this.applyRuntimeSessionTitle(session.session_id, input) : null;
+	}
+
 	hasSession(projectId: string | null, sessionId: string): boolean {
 		return !!this.database
 			.query('SELECT 1 FROM project_sessions WHERE project_id IS ? AND session_id = ?')
@@ -1484,9 +1547,18 @@ export class HUEStore {
 	getSession(projectId: string | null, sessionId: string): StoredSession | null {
 		const row = this.database
 			.query(
-				'SELECT session_id, cwd, icon, title, work_mode, pinned, archived, folder, tags, updated_at FROM project_sessions WHERE project_id IS ? AND session_id = ?'
+				'SELECT session_id, external_session_id, harness, cwd, icon, title, work_mode, pinned, archived, folder, tags, updated_at FROM project_sessions WHERE project_id IS ? AND session_id = ?'
 			)
 			.get(projectId, sessionId) as SessionRow | null;
+		return row ? this.mapSession(row) : null;
+	}
+
+	getSessionById(sessionId: string): StoredSession | null {
+		const row = this.database
+			.query(
+				'SELECT session_id, external_session_id, harness, cwd, icon, title, work_mode, pinned, archived, folder, tags, updated_at FROM project_sessions WHERE session_id = ?'
+			)
+			.get(sessionId) as SessionRow | null;
 		return row ? this.mapSession(row) : null;
 	}
 
@@ -1537,7 +1609,7 @@ export class HUEStore {
 			Number.isSafeInteger(requestedOffset) && requestedOffset > 0 ? requestedOffset : 0;
 		const needle = options.query.trim().toLowerCase();
 		const columns =
-			'ps.session_id, ps.cwd, ps.icon, ps.title, ps.work_mode, ps.pinned, ps.archived, ps.folder, ps.tags, ps.updated_at';
+			'ps.session_id, ps.external_session_id, ps.harness, ps.cwd, ps.icon, ps.title, ps.work_mode, ps.pinned, ps.archived, ps.folder, ps.tags, ps.updated_at';
 		const scheduleFilter =
 			options.scope === 'scheduled'
 				? 'AND EXISTS (SELECT 1 FROM schedules s WHERE s.session_id = ps.session_id)'
@@ -1775,7 +1847,7 @@ export class HUEStore {
 						) AS rank
 					FROM session_events WHERE type IN ('agent.permission', 'agent.clarify')
 				), finder AS (
-					SELECT ps.session_id, ps.project_id, p.name AS project_name, ps.cwd, ps.icon, ps.title,
+					SELECT ps.session_id, ps.external_session_id, ps.harness, ps.project_id, p.name AS project_name, ps.cwd, ps.icon, ps.title,
 						ps.work_mode, ps.pinned, ps.archived, ps.folder, ps.tags, ps.updated_at,
 						CASE
 							WHEN ps.archived = 1 THEN 'archived'
@@ -1912,6 +1984,8 @@ export class HUEStore {
 	private mapSession(row: SessionRow): StoredSession {
 		return {
 			sessionId: row.session_id,
+			externalSessionId: row.external_session_id,
+			harness: row.harness,
 			cwd: row.cwd,
 			icon: row.icon,
 			title: row.title,

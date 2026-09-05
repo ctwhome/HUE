@@ -19,10 +19,14 @@ import { reconcileLegacyProjects } from './project-reconciliation';
 import { ProjectOperations } from './project-operations';
 import { NotificationService, notificationOptionsFromEnv } from './notifications';
 import { ScheduleService } from './schedule-service';
+import { OpenCodeACP } from './opencode-acp';
+import { SessionRuntimeRouter } from './session-runtime-router';
 
 type HUEServices = {
 	store: HUEStore;
 	runtime: HermesACP;
+	opencodeRuntime: OpenCodeACP;
+	sessionRuntime: SessionRuntimeRouter;
 	admin: HermesServe;
 	bundles: HermesBundles;
 	projects: HermesProjects;
@@ -60,11 +64,30 @@ function createServices(): HUEServices {
 		},
 		onDiagnostic: (message) => console.error(`[hermes-acp] ${String(redactHermesValue(message))}`)
 	});
+	const opencodeRuntime = new OpenCodeACP({
+		onSessionInfo: (sessionId, update) => {
+			if (update.title === undefined) return;
+			try {
+				store.applyRuntimeSessionTitleByHarness('opencode', sessionId, update.title);
+			} catch (cause) {
+				console.error(
+					`[opencode-acp] Ignored invalid Session title: ${String(redactHermesValue(cause))}`
+				);
+			}
+		},
+		onDiagnostic: (message) =>
+			console.error(`[opencode-acp] ${String(redactHermesValue(message))}`)
+	});
 	const admin = new HermesServe({
 		command: hermesCommand,
 		profile,
 		onDiagnostic: (message) => console.error(`[hermes-admin] ${String(redactHermesValue(message))}`)
 	});
+	const sessionRuntime = new SessionRuntimeRouter(
+		store,
+		{ hermes: runtime, opencode: opencodeRuntime },
+		{ hermes: (session) => admin.loadTranscript(session.externalSessionId) }
+	);
 	const projects = new HermesProjects(
 		{ request: (method, params) => admin.rpc(method, params) },
 		profile
@@ -81,7 +104,7 @@ function createServices(): HUEServices {
 		archive: (projectId) => projects.archive(projectId)
 	});
 	const notifications = new NotificationService(store, notificationOptionsFromEnv(process.env));
-	const dispatcher = new MessageDispatcher(store, runtime, () => notifications.deliverPending());
+	const dispatcher = new MessageDispatcher(store, sessionRuntime, () => notifications.deliverPending());
 	const schedules = new ScheduleService({
 		store,
 		runtime,
@@ -96,6 +119,8 @@ function createServices(): HUEServices {
 	return {
 		store,
 		runtime,
+		opencodeRuntime,
+		sessionRuntime,
 		admin,
 		bundles,
 		projects,
@@ -129,7 +154,7 @@ export function shutdownServices(): Promise<void> {
 		await state.externalCron?.close();
 		const dispatcherDrain = state.dispatcher.close();
 		const notificationDrain = state.notifications.close();
-		await Promise.all([state.runtime.close(), state.admin.close()]);
+		await Promise.all([state.runtime.close(), state.opencodeRuntime.close(), state.admin.close()]);
 		await Promise.all([dispatcherDrain, notificationDrain]);
 		state.store.close();
 	})();

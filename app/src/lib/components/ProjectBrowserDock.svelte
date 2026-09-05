@@ -1,12 +1,19 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import BrowserPanel from './workbench/BrowserPanel.svelte';
+	import type { ReviewContextSeed } from '$lib/message-content';
 
 	let {
 		projectId,
 		open,
-		onpreviewchange
-	}: { projectId: string; open: boolean; onpreviewchange: (url: string) => void } = $props();
+		onpreviewchange,
+		onreviewcontext
+	}: {
+		projectId: string;
+		open: boolean;
+		onpreviewchange: (url: string) => void;
+		onreviewcontext?: (context: ReviewContextSeed) => void;
+	} = $props();
 	let dockElement: HTMLElement;
 	let width = $state(440);
 	let maxWidth = $state(440);
@@ -93,7 +100,12 @@
 		inert={!open ? true : undefined}
 	>
 		<div class="min-h-0 flex-1 px-2.5 pt-2.5">
-			{#key projectId}<BrowserPanel {projectId} {onpreviewchange} />{/key}
+			{#key projectId}<BrowserPanel
+					{projectId}
+					active={open}
+					{onpreviewchange}
+					{onreviewcontext}
+				/>{/key}
 		</div>
 	</section>
 </aside>

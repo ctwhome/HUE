@@ -61,7 +61,7 @@ mock.module('$lib/server/route-services', () => ({
 				return operation({ id: 'canonical-project' });
 			}
 		},
-		runtime: {
+		sessionRuntime: {
 			start: async () => {
 				runtimeStarted = true;
 			},
@@ -193,7 +193,9 @@ test('rejects an unsupported image before HUE dispatch persistence', async () =>
 	} as never);
 
 	expect(response.status).toBe(400);
-	expect(await response.json()).toEqual({ error: 'Hermes does not support image prompts' });
+	expect(await response.json()).toEqual({
+		error: 'This Session harness does not support image prompts'
+	});
 	expect(submitted).toBe(false);
 	expect(runtimeStarted).toBe(true);
 });

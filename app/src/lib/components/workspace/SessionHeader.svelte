@@ -74,7 +74,7 @@
 					>{/if}
 			</button>
 			<h2 class="selected-session-title min-w-0 flex-1 truncate font-semibold">
-				{session.title || 'New Hermes Session'}
+				{session.title || `New ${session.harness === 'opencode' ? 'OpenCode' : 'Hermes'} Session`}
 			</h2>{:else}<span class="min-w-0 flex-1 font-semibold">HUE</span>{/if}
 		{#if mobile}<button
 				class="relative grid size-11 shrink-0 place-items-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"

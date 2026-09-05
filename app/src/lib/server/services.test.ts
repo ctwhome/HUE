@@ -143,6 +143,7 @@ test('shuts down the aggregate service set only once', async () => {
 	globals.__hueServices = {
 		store: { close: () => calls.push('store') },
 		runtime: { close: async () => calls.push('runtime') },
+		opencodeRuntime: { close: async () => calls.push('opencode') },
 		admin: { close: async () => calls.push('admin') },
 		dispatcher: { close: async () => calls.push('dispatcher') },
 		notifications: { close: async () => calls.push('notifications') },
@@ -157,6 +158,7 @@ test('shuts down the aggregate service set only once', async () => {
 			'dispatcher',
 			'notifications',
 			'runtime',
+			'opencode',
 			'admin',
 			'store'
 		]);

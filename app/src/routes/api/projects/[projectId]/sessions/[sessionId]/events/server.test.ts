@@ -17,7 +17,7 @@ mock.module('$lib/server/route-services', () => ({
 				return [];
 			}
 		},
-		runtime: { getSessionState: () => ({}) }
+		sessionRuntime: { getSessionState: () => ({}) }
 	})
 }));
 

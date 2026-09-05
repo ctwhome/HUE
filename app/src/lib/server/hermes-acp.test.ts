@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
 	HermesACP,
 	buildWorkModePromptEnvelope,
+	appendACPTranscriptUpdate,
 	isolatedHermesEnvironment,
 	normalizeHermesCapabilities,
 	normalizeDelegateTaskUpdate,
@@ -13,6 +14,50 @@ import {
 	redactToolPayload,
 	stripExactWorkModePreamble
 } from './hermes-acp';
+
+it('groups replayed ACP transcript chunks by message and strips HUE cadence context', () => {
+	const transcript: Array<{
+		messageId: string;
+		role: 'user' | 'assistant';
+		text: string;
+	}> = [];
+	const user = buildWorkModePromptEnvelope('autonomous', 'Ship it').text;
+	appendACPTranscriptUpdate(transcript, {
+		sessionUpdate: 'user_message_chunk',
+		messageId: 'user-1',
+		content: { type: 'text', text: user }
+	});
+	appendACPTranscriptUpdate(transcript, {
+		sessionUpdate: 'agent_message_chunk',
+		messageId: 'assistant-1',
+		content: { type: 'text', text: 'Done.' }
+	});
+
+	expect(transcript.map(({ messageId: _, ...message }) => message)).toEqual([
+		{ role: 'user', text: 'Ship it' },
+		{ role: 'assistant', text: 'Done.' }
+	]);
+});
+
+it('groups consecutive id-less replay chunks into one message', () => {
+	const transcript: Array<{
+		messageId: string;
+		role: 'user' | 'assistant';
+		text: string;
+	}> = [];
+	appendACPTranscriptUpdate(transcript, {
+		sessionUpdate: 'agent_message_chunk',
+		content: { type: 'text', text: 'One ' }
+	});
+	appendACPTranscriptUpdate(transcript, {
+		sessionUpdate: 'agent_message_chunk',
+		content: { type: 'text', text: 'answer.' }
+	});
+
+	expect(transcript).toEqual([
+		{ messageId: 'assistant-0', role: 'assistant', text: 'One answer.' }
+	]);
+});
 
 const realHermesTest = process.env.HUE_REAL_HERMES === '1' ? it : it.skip;
 

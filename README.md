@@ -38,6 +38,7 @@ make restart
 ```
 
 `make build` compiles without restarting production. `make serve` is the lower-level foreground production command used by the LaunchAgent.
+Use `make stop-production` to unload the KeepAlive LaunchAgent and stop production permanently.
 
 HUE uses `44010` for app development, `44011` for production, `44014` for app preview and Playwright, `44015` for docs development and preview, and `44016` for Android proof.
 

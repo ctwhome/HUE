@@ -6,6 +6,12 @@ const viewports = [
 	{ width: 390, height: 844 },
 	{ width: 320, height: 568 }
 ];
+const createdProjectIds: string[] = [];
+
+test.afterEach(async ({ request }) => {
+	for (const projectId of createdProjectIds.splice(0))
+		await request.delete(`/api/projects/${projectId}`);
+});
 
 test('keeps Project and Session status visible while switching panes', async ({ page }) => {
 	const pageErrors: string[] = [];
@@ -24,6 +30,7 @@ test('keeps Project and Session status visible while switching panes', async ({ 
 	});
 	expect(created.ok(), await created.text()).toBe(true);
 	const project = (await created.json()).project as { id: string };
+	createdProjectIds.push(project.id);
 	let markedRead = false;
 
 	await page.route('**/api/notifications?**', (route) =>

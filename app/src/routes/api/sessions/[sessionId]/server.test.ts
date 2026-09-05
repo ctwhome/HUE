@@ -4,6 +4,9 @@ import { serviceExportStubs } from '$lib/server/services-test-stubs';
 let workModeCalls: Array<{ sessionId: string; workMode: string; source: string }> = [];
 let lightweightTranscriptCalls = 0;
 let runtimeTranscriptCalls = 0;
+let sessionHarness: 'hermes' | 'opencode' = 'hermes';
+let activeTurn: { status: string } | null = { status: 'running' };
+let lockCalls = 0;
 
 mock.module('$lib/server/route-services', () => ({
 	...serviceExportStubs,
@@ -16,6 +19,7 @@ mock.module('$lib/server/route-services', () => ({
 				icon: null,
 				title: 'Topic',
 				workMode: 'autonomous',
+				harness: sessionHarness,
 				pinned: false,
 				archived: false,
 				folder: null,
@@ -25,7 +29,7 @@ mock.module('$lib/server/route-services', () => ({
 				messages: [],
 				events: [],
 				cursor: 0,
-				activeTurn: { status: 'running' }
+				activeTurn
 			}),
 			updateSessionWorkMode: (
 				_projectId: null,
@@ -37,27 +41,26 @@ mock.module('$lib/server/route-services', () => ({
 				return { session: { sessionId, workMode }, event: null };
 			}
 		},
-		admin: {
+		sessionRuntime: {
 			loadTranscript: async () => {
 				lightweightTranscriptCalls += 1;
 				return [{ role: 'assistant', text: 'Loaded without ACP' }];
-			}
-		},
-		runtime: {
-			loadTranscript: async () => {
-				runtimeTranscriptCalls += 1;
-				return [];
 			},
 			getAvailableCommands: () => [],
 			getSessionState: () => ({ profile: 'default' })
 		},
 		dispatcher: {
-			withSessionLock: async (_id: string, operation: () => Promise<unknown>) => operation()
+			withSessionLock: async (_id: string, operation: () => Promise<unknown>) => {
+				lockCalls += 1;
+				return operation();
+			}
 		}
 	})
 }));
 
 test('GET reads one projectless transcript without loading the ACP Session', async () => {
+	sessionHarness = 'hermes';
+	activeTurn = { status: 'running' };
 	lightweightTranscriptCalls = 0;
 	runtimeTranscriptCalls = 0;
 	const { GET } = await import('./+server');
@@ -72,6 +75,37 @@ test('GET reads one projectless transcript without loading the ACP Session', asy
 	]);
 	expect(lightweightTranscriptCalls).toBe(1);
 	expect(runtimeTranscriptCalls).toBe(0);
+});
+
+test('GET does not replay an OpenCode transcript into an active turn', async () => {
+	sessionHarness = 'opencode';
+	activeTurn = { status: 'running' };
+	lightweightTranscriptCalls = 0;
+	const { GET } = await import('./+server');
+	const response = await GET({
+		params: { sessionId: 'session-1' },
+		url: new URL('http://hue.test/api/sessions/session-1')
+	} as never);
+
+	expect(response.status).toBe(200);
+	expect((await response.json()).transcript).toEqual([]);
+	expect(lightweightTranscriptCalls).toBe(0);
+});
+
+test('GET serializes an inactive OpenCode transcript replay with message delivery', async () => {
+	sessionHarness = 'opencode';
+	activeTurn = null;
+	lockCalls = 0;
+	lightweightTranscriptCalls = 0;
+	const { GET } = await import('./+server');
+	const response = await GET({
+		params: { sessionId: 'session-1' },
+		url: new URL('http://hue.test/api/sessions/session-1')
+	} as never);
+
+	expect(response.status).toBe(200);
+	expect(lockCalls).toBe(1);
+	expect(lightweightTranscriptCalls).toBe(1);
 });
 
 test('PATCH updates projectless HUE work mode while a turn is running', async () => {

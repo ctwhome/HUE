@@ -5,7 +5,7 @@
 
 ## Product boundary
 
-HUE has exactly three user-facing objects: Projects, Workflows, and Hermes Sessions. Files, terminals, Git, browser/Excalidraw, notifications, schedules, and Hermes administration are bounded supporting surfaces rather than additional HUE object types.
+HUE has exactly three user-facing objects: Projects, Workflows, and Sessions. Hermes is the primary Session harness; OpenCode may be selected when creating a Session. Files, terminals, Git, browser/Excalidraw, notifications, schedules, and Hermes administration are bounded supporting surfaces rather than additional HUE object types.
 
 ## Runtime topology
 
@@ -14,15 +14,17 @@ flowchart LR
     B[Browser / installed PWA] --> H[SvelteKit routes on Bun]
     H --> Q[(HUE SQLite)]
     H --> A[Supervised Hermes ACP]
+    H --> O[Supervised OpenCode ACP]
     H --> S[Authenticated loopback hermes serve]
     A --> T[(Hermes transcripts)]
+    O --> U[(OpenCode transcripts)]
     S --> T
     S --> C[Hermes configuration and Projects]
 ```
 
 - SvelteKit serves the responsive workspace and same-origin HTTP API.
 - `bun:sqlite` stores HUE-owned Workflows, schedules, associations, UI metadata, notification state, external-cron read projections, and durable message-delivery state.
-- A supervised Hermes ACP process is the only Session execution and mutation adapter.
+- A per-Session resolver dispatches to supervised Hermes or OpenCode ACP; Hermes remains the default.
 - A supervised, authenticated, loopback-only `hermes serve --isolated` process supplies bounded transcript reads and Hermes-owned administration APIs.
 - HUE never opens or writes Hermes databases directly.
 
@@ -39,8 +41,8 @@ Keep exactly one long-lived HUE process per database file. Production startup st
 | Project identity, folders, icon, archive state                          | Hermes `projects.*`               |
 | Workflow prompt, display metadata, Project association, and bundle slug | HUE SQLite                        |
 | Bundle definitions, membership, and activation                          | Hermes authenticated RPC and ACP  |
-| Session execution and transcript persistence                            | Hermes through ACP                |
-| Project/projectless Session association and work mode                   | HUE SQLite                        |
+| Session execution and transcript persistence                            | Selected Session harness          |
+| Project/projectless association, harness identity, and work mode        | HUE SQLite                        |
 | Message envelope, idempotency, delivery state, replay cursor            | HUE SQLite                        |
 | Hermes profiles, models, MCP                                            | Hermes authenticated APIs         |
 | Schedule definition, next occurrence, and Session association           | HUE SQLite                        |
