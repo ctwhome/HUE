@@ -11,6 +11,7 @@
 	import Trash2 from '~icons/lucide/trash-2';
 	import Upload from '~icons/lucide/upload';
 	import X from '~icons/lucide/x';
+	import type { SessionHarness } from '$lib/session-harness';
 	import type { ChatBackground } from './chat-background';
 	import ChatBackgroundPicker from './ChatBackgroundPicker.svelte';
 	let {
@@ -24,6 +25,7 @@
 		error,
 		saving,
 		canDuplicate,
+		harness,
 		onicon,
 		onsave,
 		onduplicate,
@@ -49,6 +51,7 @@
 		error: string;
 		saving: boolean;
 		canDuplicate: boolean;
+		harness?: SessionHarness;
 		onicon: (event: MouseEvent) => void;
 		onsave: () => void | Promise<void>;
 		onduplicate: () => void;
@@ -64,6 +67,7 @@
 		onbackground: (background: ChatBackground | null) => void;
 		onbackgroundupload: (event: Event) => void;
 	} = $props();
+	let harnessName = $derived(harness === 'opencode' ? 'OpenCode' : 'Hermes');
 </script>
 
 <div
@@ -188,7 +192,7 @@
 			<button
 				class="session-menu-action"
 				disabled
-				title="Hermes ACP does not provide a Session import seam"
+				title={`${harnessName} ACP does not provide a Session import seam`}
 				><Upload width={16} height={16} aria-hidden="true" /> Import unavailable</button
 			><button class="session-menu-action" onclick={() => onexport('markdown')}
 				><Download width={16} height={16} aria-hidden="true" /> Export Markdown</button
@@ -197,7 +201,7 @@
 			><button
 				class="session-menu-action"
 				disabled={saving || !canDuplicate}
-				title={canDuplicate ? 'Duplicate Session' : 'Hermes does not support Session duplication'}
+				title={canDuplicate ? 'Duplicate Session' : `${harnessName} does not support Session duplication`}
 				onclick={onduplicate}><Copy width={16} height={16} aria-hidden="true" /> Duplicate</button
 			><button
 				class="session-menu-action mt-1 border-t border-border text-destructive"

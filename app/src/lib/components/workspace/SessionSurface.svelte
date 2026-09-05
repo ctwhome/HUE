@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import { isTurnBusy, selectLatestPlan } from '$lib';
 	import { renderMessageMarkdown } from '$lib/message-markdown';
+	import type { SessionHarness } from '$lib/session-harness';
 	import type { WorkMode } from '$lib/work-mode';
 	import Composer from './Composer.svelte';
 	import Conversation from './Conversation.svelte';
@@ -18,6 +19,8 @@
 		workflows,
 		sessionLabel,
 		mediaPath,
+		newSessionHarness = 'hermes',
+		onharness = () => {},
 		onsubmit,
 		oninput,
 		onrunworkflow,
@@ -32,6 +35,8 @@
 		workflows: Workflow[];
 		sessionLabel: string;
 		mediaPath: string;
+		newSessionHarness?: SessionHarness;
+		onharness?: (harness: SessionHarness) => void;
 		onsubmit: (event: SubmitEvent) => void | Promise<void>;
 		oninput: (event: Event) => void;
 		onrunworkflow: (workflow: Workflow) => void;
@@ -46,6 +51,9 @@
 	const voice = untrack(() => controller.voice);
 	let timeline = $derived(sessionState.timeline);
 	let runtime = $derived(sessionState.runtime);
+	let harness = $derived(session?.harness ?? newSessionHarness);
+	let harnessName = $derived(harness === 'opencode' ? 'OpenCode' : 'Hermes');
+	let surfaceRuntime = $derived({ ...runtime, harness });
 </script>
 
 <svelte:window onpagehide={messageState.saveCurrentDraft} />
@@ -56,7 +64,7 @@
 	messageNotice={messageState.messageNotice}
 	agentLabel={compactModelLabel(
 		runtime.models?.currentModelId ?? '',
-		runtimeState.currentModel()?.name ?? runtime.models?.currentModelId ?? 'Hermes'
+		runtimeState.currentModel()?.name ?? runtime.models?.currentModelId ?? harnessName
 	)}
 	busy={isTurnBusy(sessionState.delivery)}
 	{mediaPath}
@@ -72,6 +80,33 @@
 	bind:element={transcriptFollow.element}
 	follow={transcriptFollow.follow}
 />
+{#if !session}<section class="mx-auto w-full max-w-2xl px-4 pb-3" aria-label="New Session">
+		<div
+			class="flex min-h-14 items-center justify-between gap-3 rounded-xl border border-border bg-card px-3 py-2"
+		>
+			<div class="min-w-0">
+				<p class="text-sm font-medium">Harness for this Session</p>
+				<p class="text-xs text-muted-foreground">Locked after the Session is created.</p>
+			</div>
+			<div
+				class="grid shrink-0 grid-cols-2 rounded-lg bg-muted p-1"
+				role="radiogroup"
+				aria-label="Harness for this Session"
+			>
+				{#each [['hermes', 'Hermes'], ['opencode', 'OpenCode']] as [value, label]}
+					<button
+						type="button"
+						role="radio"
+						aria-checked={newSessionHarness === value}
+						class="min-h-11 rounded-md px-3 text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring"
+						class:bg-background={newSessionHarness === value}
+						class:shadow-sm={newSessionHarness === value}
+						onclick={() => onharness(value as SessionHarness)}>{label}</button
+					>
+				{/each}
+			</div>
+		</div>
+	</section>{/if}
 {#if unavailableRecovery}<div
 		class="m-4 rounded-lg border border-[var(--warning)] bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] px-4 py-3 text-sm text-[var(--warning)]"
 		role="status"
@@ -101,7 +136,7 @@
 		bind:callMuteElement={voice.muteElement}
 		bind:voiceMessageElement={voice.messageElement}
 		bind:voiceStartElement={voice.startElement}
-		{runtime}
+		runtime={surfaceRuntime}
 		workMode={session?.workMode ?? ('autonomous' satisfies WorkMode)}
 		workModeChanging={controller.workModeChanging}
 		runtimeChanging={runtimeState.changing}

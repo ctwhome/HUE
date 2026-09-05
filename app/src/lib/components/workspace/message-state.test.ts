@@ -12,6 +12,15 @@ const { ApiError, MessageState } = await import('./message-state.svelte');
 
 beforeEach(() => stored.clear());
 
+test('clear removes notices from the previous session', () => {
+	const state = new MessageState({} as never);
+	state.messageNotice = 'Code copied';
+
+	state.clear();
+
+	expect(state.messageNotice).toBe('');
+});
+
 function deferred<T>() {
 	let resolve!: (value: T) => void;
 	let reject!: (cause: unknown) => void;

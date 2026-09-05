@@ -37,6 +37,8 @@ make restart
 
 Production runs continuously under the `com.ctw.hue-production` KeepAlive LaunchAgent. `make restart` rebuilds the docs and app, then restarts production onto an immutable snapshot on `127.0.0.1:44011`. The configured Tailscale Serve route exposes it at `https://m3-max.tail33436f.ts.net:44011`. Set `HUE_ACCESS_SECRET`, `HUE_DATABASE_PATH`, and optionally `HUE_HERMES_PROFILE` in `app/.env`.
 
+Use `make stop-production` to unload the KeepAlive LaunchAgent and stop production permanently.
+
 `make dev` hands the canonical `~/.hue/hue.db` from production to a foreground server on `http://127.0.0.1:44010`. Stopping development restores production. `make build` compiles without restarting production, and `make serve` is the lower-level foreground command used by the production LaunchAgent. App preview and Playwright use `44014`, docs development and preview use `44015`, and Android proof uses `44016`.
 
 ### Authenticated LAN or tailnet access

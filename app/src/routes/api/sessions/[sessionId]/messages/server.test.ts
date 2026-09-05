@@ -39,7 +39,7 @@ mock.module('$lib/server/route-services', () => ({
 				return submitResult;
 			}
 		},
-		runtime: {
+		sessionRuntime: {
 			start: async () => {
 				runtimeStarted = true;
 			},
@@ -86,7 +86,9 @@ test('projectless image rejection negotiates before dispatch persistence', async
 	} as never);
 
 	expect(response.status).toBe(400);
-	expect(await response.json()).toEqual({ error: 'Hermes does not support image prompts' });
+	expect(await response.json()).toEqual({
+		error: 'This Session harness does not support image prompts'
+	});
 	expect(runtimeStarted).toBe(true);
 	expect(submitted).toBe(false);
 });

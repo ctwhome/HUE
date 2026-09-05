@@ -1,4 +1,4 @@
-.PHONY: install dev build serve restart stop stop-dev stop-build
+.PHONY: install dev build serve restart stop stop-dev stop-build stop-production
 
 HOST ?= 127.0.0.1
 PORT ?= 44011
@@ -29,6 +29,10 @@ stop-dev:
 	@./scripts/stop-services.sh dev
 
 stop-build:
+	@./scripts/stop-services.sh serve
+
+stop-production:
+	@launchctl bootout "gui/$$(id -u)/com.ctw.hue-production" 2>/dev/null || true
 	@./scripts/stop-services.sh serve
 
 stop:

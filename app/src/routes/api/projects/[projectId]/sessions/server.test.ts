@@ -14,6 +14,7 @@ const project = {
 };
 const listRoots: string[] = [];
 const createdRoots: string[] = [];
+const createdHarnesses: string[] = [];
 let authoritativeCalls = 0;
 const stored: Array<{
 	projectId: string;
@@ -76,16 +77,24 @@ mock.module('$lib/server/route-services', () => ({
 				hasMore: false
 			})
 		},
-		runtime: {
-			listSessions: async (root: string) => {
+		sessionRuntime: {
+			listSessions: async (root: string, harness = 'hermes') => {
+				if (harness === 'opencode') return [];
 				listRoots.push(root);
 				return root === '/work/app'
 					? [{ sessionId: 'app-session', cwd: '/work/app/packages/api', title: 'API' }]
 					: [{ sessionId: 'docs-session', cwd: '/work/docs/site', title: 'Docs' }];
 			},
-			createSession: async (root: string) => {
+			createSession: async (root: string, harness = 'hermes') => {
 				createdRoots.push(root);
-				return { sessionId: 'new-session', cwd: root, title: 'New' };
+				createdHarnesses.push(harness);
+				return {
+					sessionId: harness === 'opencode' ? 'opencode:new-session' : 'new-session',
+					externalSessionId: 'new-session',
+					harness,
+					cwd: root,
+					title: 'New'
+				};
 			},
 			getAvailableCommands: () => [],
 			getSessionState: () => ({})
@@ -97,6 +106,7 @@ mock.module('$lib/server/route-services', () => ({
 beforeEach(() => {
 	listRoots.length = 0;
 	createdRoots.length = 0;
+	createdHarnesses.length = 0;
 	stored.length = 0;
 	authoritativeCalls = 0;
 });
@@ -143,10 +153,43 @@ test('creates new Hermes Session in primary folder', async () => {
 
 	expect(response.status).toBe(201);
 	expect(createdRoots).toEqual(['/work/app']);
+	expect(createdHarnesses).toEqual(['hermes']);
 	expect((await response.json()).session).toMatchObject({
 		cwd: '/work/app',
 		workMode: 'autonomous'
 	});
+});
+
+test('creates an OpenCode Session when explicitly requested', async () => {
+	const { POST } = await import('./+server');
+	const response = await POST({
+		params: { projectId: 'project-slug' },
+		request: new Request('http://localhost/api/projects/p_1/sessions', {
+			method: 'POST',
+			body: JSON.stringify({ harness: 'opencode' })
+		})
+	} as never);
+
+	expect(response.status).toBe(201);
+	expect(createdHarnesses).toEqual(['opencode']);
+	expect((await response.json()).session).toMatchObject({
+		sessionId: 'opencode:new-session',
+		harness: 'opencode'
+	});
+});
+
+test('rejects an unknown Session harness before creation', async () => {
+	const { POST } = await import('./+server');
+	const response = await POST({
+		params: { projectId: 'project-slug' },
+		request: new Request('http://localhost/api/projects/p_1/sessions', {
+			method: 'POST',
+			body: JSON.stringify({ harness: 'other' })
+		})
+	} as never);
+
+	expect(response.status).toBe(400);
+	expect(createdRoots).toEqual([]);
 });
 
 test('creates a Workflow Session with its requested HUE work mode', async () => {

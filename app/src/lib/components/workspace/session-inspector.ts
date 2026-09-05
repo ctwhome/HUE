@@ -1,11 +1,12 @@
 import { workModeLabel, type WorkMode } from '$lib/work-mode';
+import { sessionHarnessLabel, type SessionHarness } from '$lib/session-harness';
 import type { HermesRuntime } from './types';
 
 export type InspectorRow = { label: string; value: string; code?: true };
 
 type InspectorInput = {
 	project: { name: string } | null;
-	session: { cwd?: string; workMode?: WorkMode };
+	session: { cwd?: string; workMode?: WorkMode; harness?: SessionHarness };
 	runtime: HermesRuntime;
 	delivery: string;
 	pendingInteraction?: string;
@@ -18,6 +19,8 @@ const label = (value: string) =>
 export function sessionInspectorRows(input: InspectorInput): InspectorRow[] {
 	const rows: InspectorRow[] = [];
 	if (input.project) rows.push({ label: 'Project', value: input.project.name });
+	if (input.session.harness)
+		rows.push({ label: 'Harness', value: sessionHarnessLabel(input.session.harness) });
 	if (input.session.cwd) rows.push({ label: 'Path', value: input.session.cwd, code: true });
 	if (input.session.workMode)
 		rows.push({ label: 'Work mode', value: workModeLabel(input.session.workMode) });
@@ -67,7 +70,8 @@ export function sessionInspectorRows(input: InspectorInput): InspectorRow[] {
 	if (input.delivery === 'delivery unknown') rows.push({ label: 'Connection', value: 'Unknown' });
 	if (input.pendingInteraction)
 		rows.push({ label: 'Pending interaction', value: input.pendingInteraction });
-	if (input.runtime.profile) rows.push({ label: 'Hermes profile', value: input.runtime.profile });
+	if (input.runtime.profile && input.session.harness !== 'opencode')
+		rows.push({ label: 'Hermes profile', value: input.runtime.profile });
 	if (input.runtime.clarify)
 		rows.push({
 			label: 'Clarification capability',

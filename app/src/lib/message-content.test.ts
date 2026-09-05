@@ -198,6 +198,28 @@ test('validates bounded structured review contexts without merging source and co
 	).toThrow('Review context content is too long');
 });
 
+test('accepts browser element context as untrusted review data', () => {
+	expect(
+		validateReviewContexts([
+			{
+				id: 'browser-1',
+				source: 'browser',
+				label: 'Browser: button#save',
+				content: '{"tag":"button","text":"Save"}',
+				comment: ''
+			}
+		])
+	).toEqual([
+		{
+			id: 'browser-1',
+			source: 'browser',
+			label: 'Browser: button#save',
+			content: '{"tag":"button","text":"Save"}',
+			comment: ''
+		}
+	]);
+});
+
 test('projects review contexts as readable canonical untrusted JSON', () => {
 	const block = formatReviewContextsForPrompt([
 		{

@@ -66,6 +66,7 @@
 	error={navigation.sessionEditError}
 	saving={navigation.sessionSaving}
 	{canDuplicate}
+	harness={navigation.editingSession?.harness}
 	onicon={navigation.openSessionIconEditor}
 	onsave={navigation.saveSession}
 	onduplicate={navigation.duplicateSession}

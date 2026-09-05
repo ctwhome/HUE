@@ -117,6 +117,41 @@ test('Session creation and archiving keep the standalone Chats count current', a
 	expect(count).toBe(1);
 });
 
+test('Session creation sends the explicitly selected harness', async () => {
+	let request: RequestInit | undefined;
+	const state = new WorkspaceNavigation(null, {
+		api: async (_path: string, options?: RequestInit) => {
+			request = options;
+			return {
+				session: {
+					sessionId: 'opencode:native',
+					cwd: '/work',
+					harness: 'opencode'
+				}
+			};
+		},
+		guard: () => false,
+		endVoice() {},
+		saveDraft() {},
+		cacheSession() {},
+		clearSession() {},
+		clearSessionState() {},
+		setLoading() {},
+		setError() {},
+		adjustChatSessionCount() {},
+		adjustCronSessionCount() {},
+		applyCreatedSession() {},
+		restoreDraft() {},
+		focusComposer() {}
+	} as never);
+	state.persistSelection = () => {};
+
+	const created = await state.createSession(undefined, 'opencode');
+
+	expect(JSON.parse(String(request?.body))).toEqual({ harness: 'opencode' });
+	expect(created?.harness).toBe('opencode');
+});
+
 test('removing a Session from its row preserves the delete impact confirmation', async () => {
 	const requests: string[] = [];
 	const state = navigation((async (path, options) => {

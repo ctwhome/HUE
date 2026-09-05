@@ -1,3 +1,28 @@
+<script module lang="ts">
+	type TerminalTab = {
+		id: string;
+		label: string;
+		terminalId: string;
+		cursor: number;
+		inputSequence: number;
+		status: 'starting' | 'running' | 'exited';
+	};
+	const retainedTerminals = new Map<string, { tabs: TerminalTab[]; activeTerminalTabId: string }>();
+	function closeRetainedTerminals(event: PageTransitionEvent) {
+		if (event.persisted) return;
+		for (const [projectId, { tabs }] of retainedTerminals)
+			for (const tab of tabs)
+				void fetch(`/api/projects/${projectId}/terminal`, {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ action: 'close', terminalId: tab.terminalId }),
+					keepalive: true
+				}).catch(() => undefined);
+		retainedTerminals.clear();
+	}
+	if (typeof window !== 'undefined') window.addEventListener('pagehide', closeRetainedTerminals);
+</script>
+
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { Terminal } from '@xterm/xterm';
@@ -8,15 +33,6 @@
 	import X from '~icons/lucide/x';
 	import Button from '../ui/Button.svelte';
 	import { api } from './api';
-
-	type TerminalTab = {
-		id: string;
-		label: string;
-		terminalId: string;
-		cursor: number;
-		inputSequence: number;
-		status: 'starting' | 'running' | 'exited';
-	};
 
 	let { projectId }: { projectId: string } = $props();
 	let scopedProjectId = '';
@@ -32,6 +48,7 @@
 	let terminalThemeObserver: MutationObserver | null = null;
 	let terminalThemeMedia: MediaQueryList | null = null;
 	let terminalInputFlight = Promise.resolve();
+	const pendingTerminalInput = new Map<string, string>();
 	const panel =
 		'workbench-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card';
 
@@ -48,6 +65,14 @@
 	}
 	function applyTerminalTheme() {
 		if (terminalRenderer) terminalRenderer.options.theme = terminalTheme();
+	}
+	function reportTerminalCount() {
+		retainTerminals();
+		window.dispatchEvent(
+			new CustomEvent('hue:terminal-count', {
+				detail: { projectId: scopedProjectId, count: terminalTabs.length }
+			})
+		);
 	}
 	function mountTerminal() {
 		if (!terminalElement) return;
@@ -104,6 +129,7 @@
 			};
 			terminalTabs = [...terminalTabs, tab];
 			activeTerminalTabId = tab.id;
+			reportTerminalCount();
 			terminalRenderer?.reset();
 			startTerminalPolling();
 		} catch (cause) {
@@ -120,6 +146,7 @@
 	function closeTerminalTab(event: MouseEvent | KeyboardEvent, tab: TerminalTab) {
 		event.stopPropagation();
 		terminalTabs = terminalTabs.filter((item) => item.id !== tab.id);
+		reportTerminalCount();
 		if (activeTerminalTabId === tab.id) {
 			activeTerminalTabId = terminalTabs[0]?.id ?? '';
 			terminalRenderer?.reset();
@@ -134,8 +161,12 @@
 	function sendTerminalInput(data: string) {
 		const tab = activeTerminalTab();
 		if (!tab) return;
+		pendingTerminalInput.set(tab.id, (pendingTerminalInput.get(tab.id) ?? '') + data);
 		terminalInputFlight = terminalInputFlight
 			.then(async () => {
+				const pending = pendingTerminalInput.get(tab.id);
+				if (!pending) return;
+				pendingTerminalInput.delete(tab.id);
 				const current = terminalTabs.find((item) => item.id === tab.id);
 				if (!current || current.status !== 'running') return;
 				const sequence = current.inputSequence + 1;
@@ -146,7 +177,7 @@
 							action: 'input',
 							terminalId: current.terminalId,
 							sequence,
-							data
+							data: pending
 						})
 					});
 				try {
@@ -219,8 +250,10 @@
 			}
 		}
 	}
-	function closeTerminals(event?: PageTransitionEvent) {
-		if (event?.persisted) return;
+	function retainTerminals() {
+		retainedTerminals.set(scopedProjectId, { tabs: terminalTabs, activeTerminalTabId });
+	}
+	function detachTerminal() {
 		if (terminalClosing) return;
 		terminalClosing = true;
 		if (terminalPollTimer) clearTimeout(terminalPollTimer);
@@ -232,15 +265,7 @@
 		terminalRenderer?.dispose();
 		terminalRenderer = null;
 		terminalFit = null;
-		for (const tab of terminalTabs)
-			void fetch(`/api/projects/${scopedProjectId}/terminal`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ action: 'close', terminalId: tab.terminalId }),
-				keepalive: true
-			}).catch(() => undefined);
 	}
-
 	onMount(() => {
 		scopedProjectId = projectId;
 		terminalThemeObserver = new MutationObserver(applyTerminalTheme);
@@ -250,12 +275,20 @@
 			attributeFilter: ['data-theme']
 		});
 		terminalThemeMedia.addEventListener('change', applyTerminalTheme);
-		void addTerminalTab();
+		const retained = retainedTerminals.get(scopedProjectId);
+		if (retained?.tabs.length) {
+			terminalTabs = retained.tabs.map((tab) => ({ ...tab, cursor: 0 }));
+			activeTerminalTabId = retained.activeTerminalTabId;
+			reportTerminalCount();
+			mountTerminal();
+			startTerminalPolling();
+		} else void addTerminalTab();
 	});
-	onDestroy(closeTerminals);
+	onDestroy(() => {
+		retainTerminals();
+		detachTerminal();
+	});
 </script>
-
-<svelte:window onpagehide={closeTerminals} />
 
 <article class={`${panel} terminal-panel relative`} aria-label="Project terminal">
 	<header

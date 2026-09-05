@@ -1,5 +1,6 @@
 import type { ImageAttachment, InputAttachment, ReviewContext } from '$lib/message-content';
 import type { WorkMode } from '$lib/work-mode';
+import type { SessionHarness } from '$lib/session-harness';
 import type {
 	WorkspaceActivity,
 	WorkspacePlanEntry,
@@ -51,6 +52,8 @@ export type ExternalCronJob = {
 
 export type Session = {
 	sessionId: string;
+	harness?: SessionHarness;
+	externalSessionId?: string;
 	cwd: string;
 	pending?: boolean;
 	title?: string | null;
@@ -108,6 +111,7 @@ export type HermesBundleSkill = {
 export type HermesCommand = { name: string; description: string; input?: { hint: string } | null };
 export type HermesRuntime = {
 	profile: string;
+	harness?: SessionHarness;
 	capabilities?: {
 		loadSession: boolean;
 		promptImage: boolean;

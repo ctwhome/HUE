@@ -228,9 +228,10 @@ test('shortcut launch contracts consume intent and retain native share intake', 
 	const calls = await mockProjectlessSessions(page);
 	try {
 		await page.goto('/?intent=new-session');
-		await expect(page).toHaveURL(/project=none&session=capture-1/);
+		await expect(page).toHaveURL(/project=none/);
 		expect(page.url()).not.toContain('intent=');
-		expect(calls.creates()).toBe(1);
+		expect(calls.creates()).toBe(0);
+		await expect(page.getByRole('combobox', { name: 'Message Hermes' })).toBeVisible();
 
 		await page.goto('/?intent=projects');
 		await expect(page).toHaveURL(/project=none/);

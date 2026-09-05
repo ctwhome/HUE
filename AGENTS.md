@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-HUE is a focused native Bun/SvelteKit workspace for exactly three user-facing objects: Projects, Workflows, and Hermes Sessions. HUE owns local organization and reliable message-delivery state; Hermes ACP owns agent execution and Hermes transcript persistence. Do not write Hermes' internal database directly or silently grant ACP permission requests.
+HUE is a focused native Bun/SvelteKit workspace for exactly three user-facing objects: Projects, Workflows, and Sessions. Hermes is the primary Session harness; OpenCode may be selected when creating a Session. HUE owns local organization and reliable message-delivery state; the selected ACP harness owns agent execution and transcript persistence. Do not write harness databases directly or silently grant ACP permission requests.
 
 HUE currently requires the local Hermes bundle integration patch in `acp_adapter/server.py`, `agent/skill_bundles.py`, and `tui_gateway/server.py`: authenticated `bundles.*` RPC plus ACP-native bundle commands that preserve the original user transcript. After every Hermes update, verify that capability before removing or reapplying the patch; never fall back to expanding skill content inside HUE.
 
@@ -25,6 +25,7 @@ bun run --cwd app check
 bun run --cwd app build
 bun run --cwd app test:e2e
 HUE_REAL_HERMES=1 bun test app/src/lib/server/hermes-acp.test.ts
+HUE_REAL_OPENCODE=1 bun test app/src/lib/server/opencode-acp.test.ts
 ```
 
 Run production locally from `app` with `bun run build` followed by `HOST=127.0.0.1 PORT=44011 HUE_DATABASE_PATH="$HOME/.hue/hue.db" bun run start`.

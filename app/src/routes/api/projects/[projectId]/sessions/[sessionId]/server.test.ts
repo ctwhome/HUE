@@ -89,16 +89,9 @@ mock.module('$lib/server/route-services', () => ({
 			getBusySessionStarts: () => ({}),
 			getSessionIndicators: () => ({})
 		},
-		admin: {
+		sessionRuntime: {
 			loadTranscript: async () => {
 				throw new Error('Hermes transcript read unavailable');
-			}
-		},
-		runtime: {
-			loadTranscript: async (cwd: string) => {
-				transcriptCwd = cwd;
-				runtimeTranscriptCalls += 1;
-				return [];
 			},
 			forkSession: async () => {
 				forkCalls += 1;

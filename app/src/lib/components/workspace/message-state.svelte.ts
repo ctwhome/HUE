@@ -76,6 +76,7 @@ export class MessageState {
 	clear = () => {
 		this.pendingEnvelope = null;
 		this.editingQueuedMessageId = '';
+		this.messageNotice = '';
 		this.images = [];
 		this.attachments = [];
 		this.reviewContexts = [];

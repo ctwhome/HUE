@@ -213,8 +213,9 @@
 		showContextUsage?: boolean;
 	} = $props();
 	const instanceId = $props.id();
+	let harnessName = $derived(runtime.harness === 'opencode' ? 'OpenCode' : 'Hermes');
 	const workModeOptions = [
-		{ value: 'autonomous', name: 'Autonomous', description: 'Hermes works independently.' },
+		{ value: 'autonomous', name: 'Autonomous', description: 'The agent works independently.' },
 		{ value: 'live', name: 'Live', description: 'Collaborate turn by turn.' }
 	];
 	type SelectConfig = Extract<NonNullable<Runtime['configOptions']>[number], { type: 'select' }>;
@@ -390,7 +391,7 @@
 			options={runtime.modes.availableModes.map((mode) => ({
 				value: mode.id,
 				name: mode.name,
-				description: `${mode.description ?? 'Choose how Hermes handles file edits.'} Other permission requests still ask.`
+				description: `${mode.description ?? `Choose how ${harnessName} handles file edits.`} Other permission requests still ask.`
 			}))}
 			value={runtime.modes.currentModeId}
 			ariaLabel="Edit approvals"
@@ -402,7 +403,7 @@
 			type="button"
 			class="context-chip session-option-trigger inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-lg px-1.5 text-xs text-muted-foreground sm:min-h-8 sm:min-w-8"
 			aria-label="Edit approvals"
-			title="Edit approvals are unavailable until Hermes starts"
+			title={`Edit approvals are unavailable until ${harnessName} starts`}
 			disabled
 		>
 			<CircleHelp width={16} height={16} aria-hidden="true" />
@@ -439,7 +440,7 @@
 			id={`${instanceId}-command-menu`}
 			class="command-menu absolute right-0 bottom-[calc(100%+8px)] left-0 max-h-[min(360px,45vh)] overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-xl"
 			role="listbox"
-			aria-label="Hermes commands"
+			aria-label={`${harnessName} commands`}
 		>
 			{#each commandMatches as command, index}<button
 					id={`${instanceId}-command-${index}`}
@@ -547,7 +548,7 @@
 							class="min-h-11 min-w-0 rounded-md border border-input bg-background px-2 text-foreground"
 							value={context.comment}
 							maxlength={reviewContextLimits.maxCommentChars}
-							placeholder="What should Hermes address?"
+							placeholder={`What should ${harnessName} address?`}
 							oninput={(event) => oncontextcomment(context.id, event.currentTarget.value)}
 						/>
 					</label>
@@ -599,8 +600,8 @@
 					</button>
 					{#if busy || callStatus === 'speaking'}<button
 							type="button"
-							aria-label="Interrupt Hermes"
-							title="Interrupt Hermes and listen"
+							aria-label={`Interrupt ${harnessName}`}
+							title={`Interrupt ${harnessName} and listen`}
 							onclick={oninterrupt}
 							><Square width={13} height={13} fill="currentColor" aria-hidden="true" /></button
 						>{/if}
@@ -626,7 +627,7 @@
 			aria-expanded={thinkingOpen}
 			aria-label={`${thinkingOpen ? 'Hide' : 'Show'} activity details for message ${activityStatus}`}
 			title={activityStatus.includes('unknown')
-				? 'Delivery is unconfirmed; Hermes may still be working · Toggle activity details'
+				? `Delivery is unconfirmed; ${harnessName} may still be working · Toggle activity details`
 				: `Message ${activityStatus} · Toggle activity details`}
 			onclick={toggleThinking}
 			><DeliveryIcon
@@ -636,7 +637,7 @@
 				height={14}
 				aria-hidden="true"
 			/>{activityStatus.includes('unknown')
-				? 'Delivery unconfirmed · Hermes may still be working'
+				? `Delivery unconfirmed · ${harnessName} may still be working`
 				: activityStatus}</button
 		>{/if}
 	<div class="task-activity">
@@ -652,8 +653,8 @@
 			{onpaste}
 			placeholder={busy
 				? 'Type a follow-up and press Enter to queue…'
-				: 'Message Hermes… / for commands'}
-			aria-label="Message Hermes"
+				: `Message ${harnessName}… / for commands`}
+			aria-label={`Message ${harnessName}`}
 			role="combobox"
 			aria-autocomplete="list"
 			aria-expanded={commandMatches.length > 0}
@@ -716,7 +717,7 @@
 				aria-label={imagePrompts ? 'Attach images and files' : 'Attach files'}
 				title={imagePrompts
 					? 'Attach documents, audio, video, archives, text, code, or images'
-					: 'Attach documents, audio, video, archives, text, or code. Hermes does not support image prompts.'}
+					: `Attach documents, audio, video, archives, text, or code. ${harnessName} does not support image prompts.`}
 			>
 				<Paperclip width={20} height={20} aria-hidden="true" />
 				<span class="mobile-option-label">Attach files</span>
@@ -760,8 +761,8 @@
 				>{/if}
 			<span
 				class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border text-muted-foreground"
-				aria-label={`Hermes profile: ${runtime.profile}`}
-				title={`Hermes profile: ${runtime.profile}`}
+				aria-label={`${harnessName} profile: ${runtime.profile}`}
+				title={`${harnessName} profile: ${runtime.profile}`}
 			>
 				<UserRound width={20} height={20} aria-hidden="true" />
 				<span class="mobile-option-label">Profile: {runtime.profile}</span>
@@ -793,7 +794,7 @@
 		</div>
 		<div
 			class="composer-context ml-auto flex min-w-0 items-center gap-1"
-			aria-label="Hermes session context"
+			aria-label={`${harnessName} session context`}
 		>
 			<div class="desktop-context-option">
 				{@render approvalPicker()}

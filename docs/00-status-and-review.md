@@ -2,7 +2,7 @@
 
 > **Repository status:** `ACTIVE`
 > **Product status:** `IMPLEMENTED IN PART`
-> **Active boundary:** Projects, Workflows, and Hermes Sessions
+> **Active boundary:** Projects, Workflows, and Sessions
 
 HUE is an active SvelteKit/Bun implementation. The canonical product boundary is [ADR-0002](decisions/0002-bun-hermes-acp-workspace.md), as amended by later accepted decisions. Historical plans for a universal personal-agent operating system are not an implementation backlog.
 
@@ -10,22 +10,22 @@ HUE is an active SvelteKit/Bun implementation. The canonical product boundary is
 
 - Projects are Hermes-authoritative, profile-scoped, and may contain multiple folders.
 - Workflows are HUE-owned reusable Project prompts and launch settings.
-- Sessions are Hermes-owned conversations associated with a Project or explicitly projectless.
+- Sessions are harness-owned conversations associated with a Project or explicitly projectless; Hermes is default and OpenCode is selectable at creation.
 - HUE owns local organization, workbench state, and reliable message-delivery state.
-- Hermes ACP owns Session execution and mutation; Hermes owns transcript persistence.
+- The selected ACP harness owns Session execution, mutation, and transcript persistence.
 - Supporting panels may expose bounded Project tools and Hermes administration without becoming new product objects.
 - Notifications, HUE-owned scheduled prompts, Project Excalidraw canvases, and the custom-skill filesystem exception are governed by focused ADRs.
 
 ## Evidence labels
 
-| Label | Meaning |
-| --- | --- |
-| `TBD` | A material choice is unresolved and must not be selected silently in code. |
-| `SPEC` | A reviewable behavior or boundary is documented. |
-| `POC` | A disposable experiment has produced evidence but is not production. |
-| `IMPLEMENTED` | Production code and focused automated checks exist. |
-| `VERIFIED` | The relevant canonical gates pass in a representative environment. |
-| `DEFERRED` | Work is intentionally postponed with a stated revisit trigger. |
+| Label         | Meaning                                                                    |
+| ------------- | -------------------------------------------------------------------------- |
+| `TBD`         | A material choice is unresolved and must not be selected silently in code. |
+| `SPEC`        | A reviewable behavior or boundary is documented.                           |
+| `POC`         | A disposable experiment has produced evidence but is not production.       |
+| `IMPLEMENTED` | Production code and focused automated checks exist.                        |
+| `VERIFIED`    | The relevant canonical gates pass in a representative environment.         |
+| `DEFERRED`    | Work is intentionally postponed with a stated revisit trigger.             |
 
 ## Review protocol
 

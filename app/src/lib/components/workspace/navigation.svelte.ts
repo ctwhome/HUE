@@ -1,6 +1,7 @@
 import { tick } from 'svelte';
 import { automaticSessionIcon } from '$lib/icon';
 import type { CatalogPrompt } from '$lib/prompt-catalog';
+import type { SessionHarness } from '$lib/session-harness';
 import { isCurrentSessionRequest, isCurrentTabRequest } from '$lib';
 import type { MobilePane } from './mobile-navigation';
 import {
@@ -74,6 +75,8 @@ export class WorkspaceNavigation {
 	mobileDrawer = $state<MobilePane>(null);
 	ready = $state(false);
 	creatingSession = $state(false);
+	composingSession = $state(false);
+	newSessionHarness = $state<SessionHarness>('hermes');
 	loadedSessionListProjectId = $state<string | null | undefined>();
 	workflowName = $state('');
 	workflowPrompt = $state('');
@@ -171,6 +174,8 @@ export class WorkspaceNavigation {
 		this.loadedSessionListProjectId = undefined;
 		if (!project) this.activeTab = 'sessions';
 		this.selectedSession = null;
+		this.composingSession = false;
+		this.newSessionHarness = 'hermes';
 		this.sessions = this.sessionLists.get(project?.id ?? this.sessionCollection) ?? [];
 		this.workflows = project ? (this.workflowLists.get(project.id) ?? []) : [];
 		this.effects.clearSession();
@@ -197,6 +202,7 @@ export class WorkspaceNavigation {
 		this.selectedProject = null;
 		this.sessionCollection = 'cron';
 		this.selectedSession = null;
+		this.composingSession = false;
 		this.selectedExternalCronJob = job;
 		this.effects.clearSession();
 		this.effects.setError('');
@@ -225,7 +231,25 @@ export class WorkspaceNavigation {
 	createProjectlessSession = async () => {
 		if (this.effects.guard(() => void this.createProjectlessSession())) return;
 		await this.chooseProject(null, 'none');
-		await this.createSession();
+		this.beginSession();
+	};
+	beginSession = async () => {
+		if (this.effects.guard(() => void this.beginSession())) return;
+		this.effects.endVoice();
+		this.effects.saveDraft();
+		this.effects.cacheSession();
+		this.effects.stopPolling();
+		this.sessionRequestGeneration += 1;
+		this.selectedExternalCronJob = null;
+		this.selectedSession = null;
+		this.composingSession = true;
+		this.newSessionHarness = 'hermes';
+		this.effects.clearSessionState();
+		this.effects.setError('');
+		this.mobileDrawer = null;
+		this.persistSelection('push');
+		await tick();
+		this.effects.focusComposer();
 	};
 	private currentTabRequest() {
 		return {
@@ -339,8 +363,11 @@ export class WorkspaceNavigation {
 			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
 		}
 	};
-	createSession = async (workMode?: 'autonomous' | 'live'): Promise<Session | null> => {
-		if (this.effects.guard(() => void this.createSession(workMode))) return null;
+	createSession = async (
+		workMode?: 'autonomous' | 'live',
+		harness?: SessionHarness
+	): Promise<Session | null> => {
+		if (this.effects.guard(() => void this.createSession(workMode, harness))) return null;
 		if (this.creatingSession) return null;
 		const replacingSession = this.selectedSession !== null;
 		this.effects.endVoice();
@@ -351,6 +378,7 @@ export class WorkspaceNavigation {
 			sessionId: `pending-${crypto.randomUUID()}`,
 			cwd: this.selectedProject?.primaryPath ?? '',
 			title: 'New Session',
+			harness: harness ?? 'hermes',
 			pending: true,
 			...(workMode ? { workMode } : {})
 		};
@@ -371,7 +399,7 @@ export class WorkspaceNavigation {
 				branch?: string | null;
 			}>(this.sessionApiPath(), {
 				method: 'POST',
-				...(workMode ? { body: JSON.stringify({ workMode }) } : {})
+				...(workMode || harness ? { body: JSON.stringify({ workMode, harness }) } : {})
 			});
 			await tick();
 			this.effects.focusComposer();
@@ -380,6 +408,7 @@ export class WorkspaceNavigation {
 			this.prependSession(body.session);
 			if (this.selectedSession?.sessionId !== pendingSession.sessionId) return body.session;
 			this.selectedSession = body.session;
+			this.composingSession = false;
 			this.mobileDrawer = null;
 			this.persistSelection('push');
 			this.effects.saveDraft();
@@ -426,6 +455,7 @@ export class WorkspaceNavigation {
 		this.effects.stopPolling();
 		this.selectedExternalCronJob = null;
 		this.selectedSession = session;
+		this.composingSession = false;
 		this.effects.restoreDraft();
 		this.effects.showCachedSession(session);
 		this.effects.beginTranscriptEntryStick();
@@ -870,7 +900,7 @@ export class WorkspaceNavigation {
 			const impact = preview.impact;
 			if (
 				!window.confirm(
-					`Remove ${this.editingSession.title ?? 'Untitled Session'} from HUE?\n\n${impact.messages} messages, ${impact.events} events, ${impact.attachments} attachments. ${impact.activeDeliveries} active deliveries. Hermes transcript remains available outside HUE. Archive is reversible; removal is not.`
+					`Remove ${this.editingSession.title ?? 'Untitled Session'} from HUE?\n\n${impact.messages} messages, ${impact.events} events, ${impact.attachments} attachments. ${impact.activeDeliveries} active deliveries. The harness transcript remains available outside HUE. Archive is reversible; removal is not.`
 				)
 			)
 				return;

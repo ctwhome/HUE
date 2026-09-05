@@ -352,6 +352,31 @@ describe('HUEStore versioned migrations', () => {
 		expect(readdirSync(root)).toEqual(['hue.db']);
 	});
 
+	it('backs up version 9 before adding Session harness identity', () => {
+		const { root, path } = temporaryDatabase('session-harness-migration');
+		const store = new HUEStore(path);
+		store.upsertSession(null, { sessionId: 'existing', cwd: '/work/existing' });
+		store.close();
+		const historical = new Database(path);
+		historical.exec(`
+			DROP INDEX project_sessions_harness_external_idx;
+			DROP TRIGGER project_sessions_harness_insert_check;
+			DROP TRIGGER project_sessions_harness_update_check;
+			ALTER TABLE project_sessions DROP COLUMN external_session_id;
+			ALTER TABLE project_sessions DROP COLUMN harness;
+			PRAGMA user_version = 9;
+		`);
+		historical.close();
+
+		const migrated = new HUEStore(path);
+		expect(migrated.getSession(null, 'existing')).toMatchObject({
+			harness: 'hermes',
+			externalSessionId: 'existing'
+		});
+		migrated.close();
+		expect(readdirSync(join(root, 'backups'))).toHaveLength(1);
+	});
+
 	it('backs up and migrates the cancelled-status schema without losing HUE state', () => {
 		const { root, path } = temporaryDatabase('historical-migration');
 		createHistoricalCancelledSchema(path);

@@ -21,6 +21,7 @@
 	import WifiOff from '~icons/lucide/wifi-off';
 	import { moveBefore, prependNew, readStringArray, sortByOrder } from '$lib/drag-order';
 	import { projectColorForeground } from '$lib/project-color';
+	import type { SessionHarness } from '$lib/session-harness';
 	import { sessionRowState } from './session-row-state';
 	type Project = {
 		id: string;
@@ -33,6 +34,7 @@
 	};
 	type Session = {
 		sessionId: string;
+		harness?: SessionHarness;
 		cwd: string;
 		title?: string | null;
 		icon?: string | null;
@@ -616,7 +618,7 @@
 			>
 				{sessionCollection === 'cron' && !selectedProject
 					? 'No cron tasks yet.'
-					: 'No persisted Hermes Sessions yet.'}
+					: 'No persisted Sessions yet.'}
 			</p>{/if}
 	</div>
 </aside>
