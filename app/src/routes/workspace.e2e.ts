@@ -6288,6 +6288,7 @@ test('opens the project prompt library from the composer across required viewpor
 		await expect(
 			dialog.getByRole('button', { name: 'Add Prepare release to input' })
 		).toBeVisible();
+		await expect(dialog.getByRole('button', { name: 'Run Prepare release' })).toBeVisible();
 		await expect(dialog.getByText('Run checks and prepare release notes.')).toBeVisible();
 		await expect(dialog.getByText('HUE · default · Release')).toBeVisible();
 		const more = dialog.getByRole('button', { name: 'More actions for Prepare release' });
@@ -6312,9 +6313,20 @@ test('opens the project prompt library from the composer across required viewpor
 		await dialog.getByRole('button', { name: 'Close prompt library' }).click();
 		await expect(dialog).toBeHidden();
 	}
+	await openPromptLibrary();
+	let dialog = page.getByRole('dialog', { name: 'Prompt library' });
+	await dialog.getByRole('button', { name: /Prompts/ }).click();
+	await dialog.locator('summary').filter({ hasText: 'Delivery' }).click();
+	await dialog
+		.getByRole('navigation', { name: 'Prompts' })
+		.getByRole('button', { name: /Prepare release/ })
+		.click();
+	await dialog.getByRole('button', { name: 'Run Prepare release' }).click();
+	await expect(dialog).toBeHidden();
+	await expect.poll(() => sentPrompt).toBe('/release Run checks and prepare release notes.');
 	await page.getByLabel('Message Hermes').fill('Existing draft');
 	await openPromptLibrary();
-	const dialog = page.getByRole('dialog', { name: 'Prompt library' });
+	dialog = page.getByRole('dialog', { name: 'Prompt library' });
 	await dialog.getByRole('button', { name: /Prompts/ }).click();
 	page.once('dialog', (prompt) => prompt.accept('Operations'));
 	await dialog.getByRole('button', { name: 'Add folder' }).click();
@@ -6413,7 +6425,7 @@ test('opens the project prompt library from the composer across required viewpor
 	await dialog.getByRole('button', { name: 'New bundle' }).click();
 	await page.waitForTimeout(200);
 	await expect(dialog.getByLabel('Bundle name')).toBeVisible();
-	expect(sentPrompt).toBe('');
+	expect(sentPrompt).toBe('/release Run checks and prepare release notes.');
 	expect(browserErrors).toEqual([]);
 });
 

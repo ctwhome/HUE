@@ -957,4 +957,5 @@
 	{onfavoritecatalog}
 	onload={onloadworkflows}
 	oninsert={insertPrompt}
+	onrun={onrunworkflow}
 />

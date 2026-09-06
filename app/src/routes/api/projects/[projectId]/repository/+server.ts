@@ -13,7 +13,8 @@ import {
 	type ProjectRepositoryDiffScope
 } from '$lib/server/services';
 import { commitModelId, generateRepositoryCommitMessage } from '$lib/server/commit-generation';
-import { localSameOriginMutationAllowed } from '$lib/server/same-origin';
+import { requestAccessAllowed } from '$lib/server/access-auth';
+import { requestOriginMatches } from '$lib/server/same-origin';
 import { basename, join } from 'node:path';
 import type { RequestHandler } from './$types';
 
@@ -110,7 +111,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 };
 
 export const POST: RequestHandler = async ({ params, request, url, getClientAddress }) => {
-	if (!localSameOriginMutationAllowed(request, url, getClientAddress())) {
+	if (!requestOriginMatches(request, url) || !requestAccessAllowed(request, url, getClientAddress())) {
 		return json({ error: 'Repository changes are limited to this device' }, { status: 403 });
 	}
 	try {

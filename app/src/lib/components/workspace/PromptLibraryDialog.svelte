@@ -6,6 +6,7 @@
 	import FolderPlus from '~icons/lucide/folder-plus';
 	import MoreHorizontal from '~icons/lucide/more-horizontal';
 	import Pencil from '~icons/lucide/pencil';
+	import Play from '~icons/lucide/play';
 	import Plus from '~icons/lucide/plus';
 	import RotateCcw from '~icons/lucide/rotate-ccw';
 	import Search from '~icons/lucide/search';
@@ -34,7 +35,8 @@
 		onduplicate,
 		onfavoritecatalog,
 		onload,
-		oninsert
+		oninsert,
+		onrun
 	}: {
 		id: string;
 		dialog?: HTMLDialogElement;
@@ -62,6 +64,7 @@
 		onfavoritecatalog: (prompt: CatalogPrompt) => Promise<boolean>;
 		onload: (includeArchived?: boolean) => Promise<void>;
 		oninsert: (prompt: string) => void;
+		onrun: (workflow: Workflow) => void;
 	} = $props();
 
 	let source = $state<'prompts' | 'community' | 'bundles'>('community');
@@ -932,13 +935,24 @@
 					<div class="rounded-xl border border-border bg-background p-4">
 						<p class="text-sm leading-6 whitespace-pre-wrap">{selectedWorkflow.prompt}</p>
 					</div>
-					{#if !selectedWorkflow.archived}<button
-							type="button"
-							class="inline-flex min-h-11 w-fit items-center gap-2"
-							aria-label={`Add ${selectedWorkflow.name} to input`}
-							onclick={() => oninsert(selectedWorkflow.prompt)}
-							><Plus width={16} height={16} aria-hidden="true" />Add to input</button
-						>{/if}
+					{#if !selectedWorkflow.archived}<div class="flex flex-wrap gap-2">
+							<button
+								type="button"
+								class="inline-flex min-h-11 w-fit items-center gap-2 bg-primary text-primary-foreground"
+								aria-label={`Run ${selectedWorkflow.name}`}
+								onclick={() => {
+									dialog?.close();
+									onrun(selectedWorkflow);
+								}}
+								><Play width={16} height={16} aria-hidden="true" />Run Workflow</button
+							><button
+								type="button"
+								class="inline-flex min-h-11 w-fit items-center gap-2"
+								aria-label={`Add ${selectedWorkflow.name} to input`}
+								onclick={() => oninsert(selectedWorkflow.prompt)}
+								><Plus width={16} height={16} aria-hidden="true" />Add to input</button
+							>
+						</div>{/if}
 				</article>
 			{:else}<div
 					class="grid min-h-64 place-items-center text-center text-sm text-muted-foreground"

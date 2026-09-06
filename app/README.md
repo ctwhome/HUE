@@ -43,7 +43,7 @@ Use `make stop-production` to unload the KeepAlive LaunchAgent and stop producti
 
 ### Authenticated LAN or tailnet access
 
-Loopback access remains zero-configuration. For remote browser access, keep HUE bound to loopback behind Tailscale Serve or another trusted HTTPS reverse proxy and configure a high-entropy access secret:
+Loopback access remains zero-configuration. Clients on the Tailscale CGNAT range (`100.64.0.0/10`) are trusted without configuration, so any machine on the same tailnet can access HUE directly. For remote browser access from outside the tailnet, keep HUE bound to loopback behind an authenticated HTTPS reverse proxy and configure a high-entropy access secret:
 
 ```bash
 bun run build
@@ -57,6 +57,6 @@ bun run start
 
 Open the HTTPS URL and enter the secret once. HUE stores only an HttpOnly, Secure, SameSite session cookie in the browser; the configured secret is not sent to client JavaScript. `POST /logout` clears that browser session. Changing `HUE_ACCESS_SECRET` invalidates all existing sessions. Project terminals use the same authenticated session and require same-origin requests for input, resize, and close operations.
 
-Do not expose HUE directly to the public internet or use remote access over plain HTTP. The secret grants access to local Projects, Sessions, files, terminals, and Hermes controls: use a unique generated value, keep it out of shell history and logs, restrict the proxy to a trusted LAN or tailnet, and set `ORIGIN` to the exact public HTTPS origin. This P0 mechanism does not provide accounts, per-device revocation, or brute-force rate limiting.
+Do not expose HUE directly to the public internet or use remote access over plain HTTP. Tailnet and loopback clients are trusted; anything reached through a non-tailnet LAN or public reverse proxy requires the secret. The secret grants access to local Projects, Sessions, files, terminals, and Hermes controls: use a unique generated value, keep it out of shell history and logs, restrict the proxy to a trusted LAN or tailnet, and set `ORIGIN` to the exact public HTTPS origin. This P0 mechanism does not provide accounts, per-device revocation, or brute-force rate limiting.
 
 HUE stores Project, Workflow, Project/Session associations, message-delivery, and event-cursor state in its own SQLite database. Startup recovery redispatches queued turns after resuming their associated Hermes Session and marks interrupted running turns `unknown` without retrying them. Hermes remains authoritative for agent execution and Session transcripts; HUE never writes Hermes' database directly.

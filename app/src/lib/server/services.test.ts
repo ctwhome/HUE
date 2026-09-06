@@ -287,7 +287,7 @@ test('groups open GitHub issues by milestone and lists pull requests for origin'
 			'--state',
 			'open',
 			'--limit',
-			'20',
+			'1000',
 			'--json',
 			'number,title,url,milestone'
 		],
@@ -299,7 +299,7 @@ test('groups open GitHub issues by milestone and lists pull requests for origin'
 			'--state',
 			'open',
 			'--limit',
-			'20',
+			'1000',
 			'--json',
 			'number,title,url'
 		]
