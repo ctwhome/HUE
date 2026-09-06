@@ -4,8 +4,10 @@
 	import Files from '~icons/lucide/files';
 	import GitBranch from '~icons/lucide/git-branch';
 	import Globe from '~icons/lucide/globe';
+	import PencilRuler from '~icons/lucide/pencil-ruler';
 	import TerminalSquare from '~icons/lucide/terminal-square';
 	import BrowserPanel from './workbench/BrowserPanel.svelte';
+	import ExcalidrawPanel from './workbench/ExcalidrawPanel.svelte';
 	import FilesPanel from './workbench/FilesPanel.svelte';
 	import { afterInitialPaint } from './workbench/after-initial-paint';
 	import { api } from './workbench/api';
@@ -28,10 +30,12 @@
 		compact,
 		docked = false,
 		browserOpen = false,
+		excalidrawOpen = false,
 		gitOpen = false,
 		filesOpen = false,
 		terminalOpen = false,
 		onbrowser = () => {},
+		onexcalidraw = () => {},
 		ongit = () => {},
 		onfiles = () => {},
 		onopenfile = () => {},
@@ -46,10 +50,12 @@
 		compact: boolean;
 		docked?: boolean;
 		browserOpen?: boolean;
+		excalidrawOpen?: boolean;
 		gitOpen?: boolean;
 		filesOpen?: boolean;
 		terminalOpen?: boolean;
 		onbrowser?: () => void;
+		onexcalidraw?: () => void;
 		ongit?: () => void;
 		onfiles?: () => void;
 		onopenfile?: (request: FileOpenRequest) => void;
@@ -60,7 +66,7 @@
 		dirtyGuard: DirtyGuard;
 	} = $props();
 	let view = $state<'develop' | 'files'>('develop');
-	let developView = $state<'browser' | 'terminal' | 'git'>('browser');
+	let developView = $state<'browser' | 'excalidraw' | 'terminal' | 'git'>('browser');
 	let gitChanges = $state(0);
 	let width = $state(440);
 	let maxWidth = $state(720);
@@ -125,12 +131,12 @@
 	function openDevelop() {
 		if (!dirtyGuard.block(() => (view = 'develop'))) view = 'develop';
 	}
-	function chooseDevelopView(next: 'browser' | 'terminal' | 'git') {
+	function chooseDevelopView(next: 'browser' | 'excalidraw' | 'terminal' | 'git') {
 		developView = next;
 		if (next === 'terminal') void activateTerminal();
 		if (next === 'git') void loadRepositoryPanels();
 	}
-	function openDevelopView(next: 'browser' | 'terminal' | 'git') {
+	function openDevelopView(next: 'browser' | 'excalidraw' | 'terminal' | 'git') {
 		if (view === 'develop') return chooseDevelopView(next);
 		const activate = () => {
 			chooseDevelopView(next);
@@ -246,14 +252,26 @@
 			{#if compact}
 				<button
 					aria-pressed={view === 'develop' && developView === 'browser'}
+					aria-label="Browser"
+					title="Browser"
 					onclick={() => openDevelopView('browser')}
 					><Globe width={17} height={17} aria-hidden="true" />Browser</button
 				><button
+					aria-pressed={view === 'develop' && developView === 'excalidraw'}
+					aria-label="Excalidraw"
+					title="Excalidraw"
+					onclick={() => openDevelopView('excalidraw')}
+					><PencilRuler width={17} height={17} aria-hidden="true" />Excalidraw</button
+				><button
 					aria-pressed={view === 'develop' && developView === 'terminal'}
+					aria-label="Terminal"
+					title="Terminal"
 					onclick={() => openDevelopView('terminal')}
 					><TerminalSquare width={17} height={17} aria-hidden="true" />Terminal</button
 				><button
 					aria-pressed={view === 'develop' && developView === 'git'}
+					aria-label="Git"
+					title="Git"
 					onclick={() => openDevelopView('git')}
 					><GitBranch width={17} height={17} aria-hidden="true" />Git</button
 				>
@@ -267,6 +285,8 @@
 				class="flex min-h-9 items-center gap-2 rounded-md px-3 text-xs"
 				class:bg-secondary={view === 'files'}
 				aria-pressed={view === 'files'}
+				aria-label="Files"
+				title="Files"
 				onclick={openFiles}><Files width={15} height={15} aria-hidden="true" />Files</button
 			>
 		</nav>
@@ -291,6 +311,12 @@
 						{onpreviewchange}
 						{onreviewcontext}
 					/>{/if}
+				{#if !docked && compact && developView === 'excalidraw'}<article
+						class={`${panel} browser-panel`}
+						aria-label="Project Excalidraw"
+					>
+						<ExcalidrawPanel {projectId} {onpreviewchange} />
+					</article>{/if}
 				{#if (!compact && !docked) || developView === 'terminal'}
 					{#if TerminalPanel}
 						<TerminalPanel {projectId} />
@@ -377,6 +403,16 @@
 				onclick={onbrowser}
 			>
 				<Globe width={19} height={19} aria-hidden="true" />
+			</button>
+			<button
+				type="button"
+				class:active={excalidrawOpen}
+				aria-label="Excalidraw"
+				aria-expanded={excalidrawOpen}
+				title={excalidrawOpen ? 'Hide Excalidraw' : 'Show Excalidraw'}
+				onclick={onexcalidraw}
+			>
+				<PencilRuler width={19} height={19} aria-hidden="true" />
 			</button>
 			{#each tools.filter((tool) => tool.id === 'git') as tool}
 				{@const Icon = tool.icon}

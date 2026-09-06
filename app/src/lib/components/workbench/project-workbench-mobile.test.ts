@@ -9,9 +9,18 @@ test('compact project tools use one navigation row', () => {
 	expect(workbench).toContain('class:compact-workbench-tabs={compact}');
 	expect(workbench).not.toContain('{#if compact}<nav class="compact-workbench-tabs"');
 	expect(workbench).toContain("onclick={() => openDevelopView('browser')}");
+	expect(workbench).toContain("onclick={() => openDevelopView('excalidraw')}");
 	expect(workbench).toContain("onclick={() => openDevelopView('terminal')}");
 	expect(workbench).toContain("onclick={() => openDevelopView('git')}");
-	expect(workbench).toContain('aria-pressed={view === \'files\'}');
+	expect(workbench).toContain("aria-pressed={view === 'files'}");
+});
+
+test('Excalidraw is independent from the browser panel', () => {
+	const browser = readFileSync(join(import.meta.dir, 'BrowserPanel.svelte'), 'utf8');
+	const workspace = readFileSync(join(import.meta.dir, '../Workspace.svelte'), 'utf8');
+
+	expect(browser).not.toContain('ExcalidrawPanel');
+	expect(workspace).toContain('<ProjectExcalidrawDock');
 });
 
 test('project tools use the navigation surface instead of the chat background', () => {

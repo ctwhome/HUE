@@ -71,6 +71,7 @@ export class WorkspaceNavigation {
 	selectedExternalCronJob = $state<ExternalCronJob | null>(null);
 	workflows = $state<Workflow[]>([]);
 	selectedSession = $state<Session | null>(null);
+	removedSession = $state<{ projectId: string | null; sessionId: string } | null>(null);
 	activeTab = $state<'sessions' | 'workflows'>('sessions');
 	mobileDrawer = $state<MobilePane>(null);
 	ready = $state(false);
@@ -910,11 +911,13 @@ export class WorkspaceNavigation {
 			const id = this.editingSession.sessionId;
 			if (!this.editingSession.archived) this.adjustSessionCount(-1);
 			this.sessions = this.sessions.filter((session) => session.sessionId !== id);
+			this.sessionLists.set(this.selectedProject?.id ?? this.sessionCollection, this.sessions);
 			if (this.selectedSession?.sessionId === id) {
 				this.selectedSession = null;
 				this.effects.clearSession();
 				this.persistSelection();
 			}
+			this.removedSession = { projectId: this.selectedProject?.id ?? null, sessionId: id };
 			this.editSessionMenu?.hidePopover();
 		} catch (cause) {
 			this.sessionEditError = cause instanceof Error ? cause.message : String(cause);

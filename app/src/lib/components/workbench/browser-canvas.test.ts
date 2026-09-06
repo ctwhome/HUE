@@ -14,12 +14,17 @@ import {
 	normalizeBrowserUrl,
 	parseStoredBrowserAddress,
 	parseStoredBrowserScene,
+	restoreHiddenPorts,
 	restoreBrowserTabId,
-	restoreBrowserView,
 	serializeBrowserScene
 } from './browser-canvas';
 
 describe('browser URL normalization', () => {
+	test('restores only unique valid hidden ports', () => {
+		expect(restoreHiddenPorts('[5173, 3000, 5173, 0, 70000, "8080"]')).toEqual([5173, 3000]);
+		expect(restoreHiddenPorts('invalid')).toEqual([]);
+	});
+
 	test('accepts only normalized credential-free http and https URLs', () => {
 		expect(normalizeBrowserUrl('localhost:5173/path')).toBe('http://localhost:5173/path');
 		expect(normalizeBrowserUrl('https://example.com')).toBe('https://example.com/');
@@ -117,12 +122,6 @@ describe('browser scene storage', () => {
 		expect(restoreBrowserTabId(tabs, 'second')).toBe('second');
 		expect(restoreBrowserTabId(tabs, 'missing')).toBe('first');
 		expect(restoreBrowserTabId(tabs, null)).toBe('first');
-	});
-
-	test('restores the selected Browser or Excalidraw view', () => {
-		expect(restoreBrowserView('excalidraw')).toBe('excalidraw');
-		expect(restoreBrowserView('browser')).toBe('browser');
-		expect(restoreBrowserView('unknown')).toBe('browser');
 	});
 
 	test('uses isolated versioned project keys', () => {

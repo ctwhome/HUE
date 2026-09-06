@@ -1087,9 +1087,7 @@ test('Project tools stay docked across Sessions and collapse to their rail', asy
 	await expect(dock).toBeVisible();
 	await expect(workbench).toBeHidden();
 	await expect(dock.getByRole('button', { name: 'Git, 3 changed files' })).toBeVisible();
-	expect(await page.locator('.message-identity strong').textContent()).toBe(
-		await page.getByRole('button', { name: 'Hermes model' }).locator('span').textContent()
-	);
+	expect(await page.locator('.message-identity strong').textContent()).toBe('Hermes');
 	const transcriptWidth = (await page.getByRole('region', { name: 'Conversation' }).boundingBox())!
 		.width;
 	const messageWidth = (await page.locator('.transcript article.assistant .message').boundingBox())!
@@ -1113,7 +1111,7 @@ test('Project tools stay docked across Sessions and collapse to their rail', asy
 	);
 	await dock.getByRole('button', { name: 'Git, 3 changed files' }).click();
 	await expect(workbench).toBeVisible();
-	await expect(page.getByRole('complementary', { name: 'Project browser' })).toBeHidden();
+	await expect(page.getByRole('complementary', { name: 'Project browser' })).toBeVisible();
 	const splitter = page.getByRole('separator', { name: 'Resize project tools' });
 	const widthBefore = (await workbench.boundingBox())!.width;
 	await splitter.focus();
@@ -1138,19 +1136,23 @@ test('Project tools stay docked across Sessions and collapse to their rail', asy
 		.toBeGreaterThan(draggedGitHeight);
 	await dock.getByRole('button', { name: 'Files', exact: true }).click();
 	await expect(page.getByRole('complementary', { name: 'Project files' })).toBeVisible();
+	await expect(page.getByRole('complementary', { name: 'Project browser' })).toBeVisible();
+	await expect(workbench).toBeVisible();
+	await dock.getByRole('button', { name: 'Browser', exact: true }).click();
 	await expect(page.getByRole('complementary', { name: 'Project browser' })).toBeHidden();
-	await expect(workbench).toBeHidden();
+	await expect(page.getByRole('complementary', { name: 'Project files' })).toBeVisible();
+	await expect(workbench).toBeVisible();
 	for (const panel of await page.locator('.session-workspace > :visible').all()) {
 		const box = (await panel.boundingBox())!;
 		expect(box.x + box.width).toBeLessThanOrEqual(viewports[0].width);
 	}
+	await dock.getByRole('button', { name: 'Files', exact: true }).click();
+	await expect(page.getByRole('complementary', { name: 'Project files' })).toBeHidden();
+	await expect(workbench).toBeVisible();
 	await dock.getByRole('button', { name: 'Browser', exact: true }).click();
 	await expect(page.getByRole('complementary', { name: 'Project browser' })).toBeVisible();
-	await expect(workbench).toBeHidden();
-	await expect(page.getByRole('complementary', { name: 'Project files' })).toBeHidden();
+	await expect(workbench).toBeVisible();
 	await dock.getByRole('button', { name: 'Terminal', exact: true }).click();
-	await expect(workbench).toBeHidden();
-	await expect(page.getByRole('complementary', { name: 'Project browser' })).toBeHidden();
 	await expect(dock.getByRole('button', { name: 'Terminal', exact: true })).toHaveAttribute(
 		'aria-expanded',
 		'true'
@@ -1174,6 +1176,10 @@ test('Project tools stay docked across Sessions and collapse to their rail', asy
 				(await page.getByRole('region', { name: 'Workspace terminal panel' }).boundingBox())!.height
 		)
 		.toBeGreaterThan(terminalHeight);
+	await dock.getByRole('button', { name: 'Git, 3 changed files' }).click();
+	await expect(workbench).toBeHidden();
+	await dock.getByRole('button', { name: 'Browser', exact: true }).click();
+	await expect(page.getByRole('complementary', { name: 'Project browser' })).toBeHidden();
 	await sessionButton(page, 'Dock beta').click();
 	await expect(page).toHaveURL(/session=dock-beta/);
 	await expect(dock.getByRole('button', { name: 'Terminal', exact: true })).toHaveAttribute(
@@ -1194,9 +1200,9 @@ test('Project tools stay docked across Sessions and collapse to their rail', asy
 	await expect(page.getByRole('navigation', { name: 'Project tools' })).toBeVisible();
 	await expect(page.getByRole('region', { name: 'HUE workbench' })).toBeHidden();
 	await expect(page.getByRole('region', { name: 'Workspace terminal panel' })).toBeVisible();
-	expect((await page.getByRole('region', { name: 'Session panes' }).boundingBox())!.width).toBeGreaterThan(
-		280
-	);
+	expect(
+		(await page.getByRole('region', { name: 'Session panes' }).boundingBox())!.width
+	).toBeGreaterThan(280);
 	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1024);
 	await testInfo.attach('session-project-tools-1024x768', {
 		body: await page.screenshot(),
@@ -3036,12 +3042,14 @@ test('summarises, filters, and groups scheduled jobs', async ({ page }) => {
 	await panel.getByLabel('Time', { exact: true }).fill('08:00');
 	await panel.getByLabel('Time zone').fill('America/New_York');
 	await panel.getByRole('button', { name: 'Create schedule' }).click();
-	await expect.poll(() => createdSchedule).toEqual({
-		name: 'Weekday checks',
-		prompt: 'Review the project',
-		cron: '0 8 * * 1-5',
-		timezone: 'America/New_York'
-	});
+	await expect
+		.poll(() => createdSchedule)
+		.toEqual({
+			name: 'Weekday checks',
+			prompt: 'Review the project',
+			cron: '0 8 * * 1-5',
+			timezone: 'America/New_York'
+		});
 	await panel.getByLabel('Schedule format').selectOption('advanced');
 	await expect(panel.getByLabel('Cron schedule')).toBeVisible();
 
@@ -5719,6 +5727,7 @@ test('revisits a loaded session immediately while refreshing it', async ({ page 
 });
 
 test('restores an exact deep-linked session through direct Session lookup', async ({ page }) => {
+	await controlIdleCallbacks(page);
 	const listRequests: URL[] = [];
 	await page.route(/\/api\/projects\/[^/]+\/sessions(?:\?.*)?$/, (route) => {
 		const url = new URL(route.request().url());
@@ -5745,15 +5754,21 @@ test('restores an exact deep-linked session through direct Session lookup', asyn
 		})
 	);
 	await addProject(page);
-	await expect(page).toHaveURL(/\?project=(?!none)[^&]+/);
-	const project = new URL(page.url()).searchParams.get('project');
+	const projectsResponse = await page.request.get('/api/projects');
+	const project = ((await projectsResponse.json()) as { projects: Array<{ id: string }> })
+		.projects[0].id;
 	await page.goto(`/?project=${project}&session=deep-target`);
 	await expect(page.getByText('Deep session restored')).toBeVisible();
+	await expect(page.getByRole('status', { name: 'Loading project contents' })).toBeHidden();
+	const requestsAfterRestore = listRequests.length;
+	await runIdleCallbacks(page);
+	await page.waitForTimeout(50);
 	const directLookup = listRequests.find(
 		(request) => request.searchParams.get('sessionId') === 'deep-target'
 	);
 	expect(directLookup).toBeDefined();
 	expect(directLookup?.searchParams.has('offset')).toBe(false);
+	expect(listRequests).toHaveLength(requestsAfterRestore);
 });
 
 test('searches and manages rename pin archive duplicate export and delete impact', async ({
@@ -5889,12 +5904,24 @@ test('searches and manages rename pin archive duplicate export and delete impact
 	await expect(sessionButton(page, 'Managed copy')).toBeVisible();
 
 	await page.getByRole('button', { name: 'Edit Managed copy' }).click();
+	const managedProjectId = new URL(page.url()).searchParams.get('project')!;
 	page.once('dialog', async (dialog) => {
 		expect(dialog.message()).toContain('2 messages, 5 events, 1 attachments');
 		await dialog.accept();
 	});
 	await page.getByRole('button', { name: 'Remove', exact: true }).click();
 	await expect(sessionButton(page, 'Managed copy')).toHaveCount(0);
+	await expect(page).not.toHaveURL(/session=manage-copy/);
+	await expect
+		.poll(() =>
+			page.evaluate(
+				(projectId) =>
+					JSON.parse(localStorage.getItem(`hue:session-panes:${projectId}`) ?? '{}').primary ??
+					null,
+				managedProjectId
+			)
+		)
+		.toBeNull();
 	expect(confirmedDelete).toBe(true);
 });
 
@@ -7190,6 +7217,7 @@ test('mobile uses a full-screen Projects to Sessions hierarchy without global to
 		const sessions = page.locator('#session-drawer');
 		await expect(projects).toBeHidden();
 		await expect(sessions).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Back to Projects' })).toBeFocused();
 		expect((await sessions.boundingBox())?.width).toBeCloseTo(width, 3);
 		expect(await sessions.evaluate((element) => getComputedStyle(element).boxShadow)).toBe('none');
 		expect(await sessions.evaluate((element) => getComputedStyle(element).borderLeftWidth)).toBe(
@@ -7878,6 +7906,7 @@ test('durable mobile destination restores safely and browser Back follows drawer
 	await expect(page.locator('#session-drawer')).toBeVisible();
 	await sessionButton(page, 'Remembered session').click();
 	await expect(page.locator('#session-drawer')).toBeHidden();
+	await expect(page.getByRole('button', { name: 'Back to Sessions' })).toBeFocused();
 
 	await page.getByRole('button', { name: 'Back to Sessions' }).click();
 	await expect(page).toHaveURL(/pane=sessions/);
@@ -8327,6 +8356,22 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 				</script>`
 			});
 		});
+		await page.route('**/api/dev-servers', (route) =>
+			route.fulfill({
+				json: {
+					servers: [
+						{
+							port: 4001,
+							url: 'http://localhost:4001',
+							pid: 101,
+							process: 'vite',
+							folder: '~/hue',
+							canStop: true
+						}
+					]
+				}
+			})
+		);
 		await page.route('http://canvas.test/**', (route) =>
 			route.fulfill({ contentType: 'text/html', body: '<h1>HUE canvas fixture</h1>' })
 		);
@@ -8497,6 +8542,7 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		await workbench.getByRole('button', { name: 'Commit and push staged changes' }).click();
 		await expect.poll(() => gitActions).toEqual(['stage', 'commit', 'push']);
 
+		await projectTools.getByRole('button', { name: 'Browser', exact: true }).click();
 		await expect(browser.getByRole('button', { name: 'Browser', exact: true })).toHaveAttribute(
 			'aria-pressed',
 			'true'
@@ -8509,8 +8555,9 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		await browser.getByRole('button', { name: 'Browser', exact: true }).click();
 		await expect(browser.getByRole('button', { name: 'New browser tab' })).toBeVisible();
 		const browserPreview = browser.getByLabel('Browser view');
-		await browserPreview.getByLabel('Browser address').fill('http://localhost:4001');
-		await browserPreview.getByRole('button', { name: 'Go' }).click();
+		const discoveredServer = browserPreview.getByRole('button', { name: 'Open localhost:4001' });
+		await expect(discoveredServer).toBeVisible();
+		await discoveredServer.click();
 		const browserFrame = browserPreview.locator('iframe.browser-frame-active');
 		await expect(browserFrame).toBeVisible();
 		await expect(
@@ -8520,12 +8567,16 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		await expect(browserFrame).toHaveCSS('zoom', '0.75');
 		await browserPreview.getByRole('button', { name: 'Zoom in preview' }).click();
 		await expect(browserFrame).toHaveCSS('zoom', '1');
-		const [addressBox, reloadBox, externalBox] = await Promise.all([
+		const [addressBox, reloadBox, cleanReloadBox, externalBox] = await Promise.all([
 			browserPreview.getByLabel('Browser address').boundingBox(),
 			browserPreview.getByRole('button', { name: 'Reload preview' }).boundingBox(),
+			browserPreview.getByRole('button', { name: 'Clean reload preview' }).boundingBox(),
 			browserPreview.getByRole('link', { name: 'Open preview in system browser' }).boundingBox()
 		]);
 		expect(reloadBox!.y).toBe(addressBox!.y);
+		expect(reloadBox!.x).toBeLessThan(addressBox!.x);
+		expect(cleanReloadBox!.y).toBe(addressBox!.y);
+		expect(cleanReloadBox!.x).toBeLessThan(addressBox!.x);
 		expect(externalBox!.y).toBe(addressBox!.y);
 		await expect(browserPreview.getByRole('button', { name: 'Desktop viewport' })).toHaveAttribute(
 			'aria-pressed',
@@ -8719,7 +8770,7 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 				expect(frameBox!.x).toBeGreaterThanOrEqual(frameHostBox!.x);
 			}
 			await browser.getByRole('button', { name: 'Excalidraw' }).click();
-			await expect(workbench).toBeVisible();
+			await expect(browser).toBeVisible();
 			const browserBox = await browser.boundingBox();
 			expect(browserBox).not.toBeNull();
 			expect(browserBox!.x).toBeGreaterThanOrEqual(0);
@@ -8827,7 +8878,11 @@ test('closes retained terminals when the page exits from another project', async
 				return route.fulfill({
 					json: { output: '', cursor: 0, inputSequence: 0, reset: false, status: 'running' }
 				});
-			const projectId = route.request().url().match(/projects\/([^/]+)\//)?.[1] ?? '';
+			const projectId =
+				route
+					.request()
+					.url()
+					.match(/projects\/([^/]+)\//)?.[1] ?? '';
 			const body = (await route.request().postDataJSON()) as { action: string };
 			terminalActions.push({ projectId, action: body.action });
 			return route.fulfill({
@@ -8843,16 +8898,20 @@ test('closes retained terminals when the page exits from another project', async
 			.getByRole('navigation', { name: 'Project tools' })
 			.getByRole('button', { name: 'Terminal', exact: true })
 			.click();
-		await expect.poll(() => terminalActions).toContainEqual({
-			projectId: projects[0].id,
-			action: 'create'
-		});
+		await expect
+			.poll(() => terminalActions)
+			.toContainEqual({
+				projectId: projects[0].id,
+				action: 'create'
+			});
 		await page.locator('.project-select').filter({ hasText: projects[1].name }).click();
 		await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));
-		await expect.poll(() => terminalActions).toContainEqual({
-			projectId: projects[0].id,
-			action: 'close'
-		});
+		await expect
+			.poll(() => terminalActions)
+			.toContainEqual({
+				projectId: projects[0].id,
+				action: 'close'
+			});
 	} finally {
 		for (const project of projects)
 			await page.request.delete(`/api/projects/${project.id}`).catch(() => undefined);
@@ -8940,10 +8999,9 @@ test('preserves project-scoped tools when switching projects', async ({ page }) 
 			.toBe(true);
 		await expect(page.getByTitle('Open Terminal 1')).toBeVisible();
 		await expect(
-			page
-				.getByRole('group', { name: `Project ${projects[0].name}` })
-				.getByLabel('1 open terminal')
+			page.getByRole('group', { name: `Project ${projects[0].name}` }).getByLabel('1 open terminal')
 		).toBeVisible();
+		await projectTools.getByRole('button', { name: 'Browser', exact: true }).click();
 		const firstBrowser = page.getByRole('article', { name: 'Project browser' });
 		await firstBrowser.getByRole('button', { name: 'Excalidraw' }).click();
 		const firstCanvas = firstBrowser.getByLabel('Excalidraw view');
@@ -8961,9 +9019,7 @@ test('preserves project-scoped tools when switching projects', async ({ page }) 
 		await expect(firstCanvas.locator('iframe[title*="Mobile"]')).toHaveCount(1);
 		await page.locator('.project-select').filter({ hasText: projects[1].name }).click();
 		await expect(
-			page
-				.getByRole('group', { name: `Project ${projects[0].name}` })
-				.getByLabel('1 open terminal')
+			page.getByRole('group', { name: `Project ${projects[0].name}` }).getByLabel('1 open terminal')
 		).toBeVisible();
 
 		await page
@@ -8973,6 +9029,10 @@ test('preserves project-scoped tools when switching projects', async ({ page }) 
 		await expect(
 			page.getByRole('article', { name: 'Git status' }).getByText('branch-two', { exact: true })
 		).toBeVisible();
+		await page
+			.getByRole('navigation', { name: 'Project tools' })
+			.getByRole('button', { name: 'Browser', exact: true })
+			.click();
 		await page
 			.getByRole('article', { name: 'Project browser' })
 			.getByRole('button', { name: 'Excalidraw' })
@@ -8993,12 +9053,20 @@ test('preserves project-scoped tools when switching projects', async ({ page }) 
 		await page.waitForTimeout(250);
 		expect(terminalActions).not.toContainEqual({ projectId: projects[0].id, action: 'close' });
 		await page.locator('.project-select').filter({ hasText: projects[0].name }).click();
+		await page
+			.getByRole('navigation', { name: 'Project tools' })
+			.getByRole('button', { name: 'Terminal', exact: true })
+			.click();
 		await expect(page.getByTitle('Open Terminal 1')).toBeVisible();
 		expect(
 			terminalActions.filter(
 				({ projectId, action }) => projectId === projects[0].id && action === 'create'
 			)
 		).toHaveLength(1);
+		await page
+			.getByRole('navigation', { name: 'Project tools' })
+			.getByRole('button', { name: 'Browser', exact: true })
+			.click();
 		await page
 			.getByRole('article', { name: 'Project browser' })
 			.getByRole('button', { name: 'Excalidraw' })

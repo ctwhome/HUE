@@ -417,6 +417,13 @@ export class MessageConflictError extends Error {
 	}
 }
 
+export class ProjectExcalidrawConflictError extends Error {
+	constructor() {
+		super('This canvas changed elsewhere. Reload before saving again.');
+		this.name = 'ProjectExcalidrawConflictError';
+	}
+}
+
 const allowedTransitions: Record<MessageStatus, ReadonlySet<MessageStatus>> = {
 	queued: new Set(['running', 'failed']),
 	running: new Set(['completed', 'failed', 'unknown', 'cancelled']),
@@ -2203,29 +2210,40 @@ export class HUEStore {
 
 	updateProjectExcalidraw(
 		projectId: string,
-		input: { address?: string; scene?: string }
+		input: { address?: string; scene?: string },
+		expectedUpdatedAt: string | null
 	): ProjectExcalidraw {
 		if (input.address === undefined && input.scene === undefined) {
 			throw new Error('Excalidraw address or scene is required');
 		}
-		const now = new Date().toISOString();
-		this.database
-			.query(
-				`INSERT INTO project_excalidraw (project_id, address, scene, updated_at)
-				 VALUES (?, ?, ?, ?)
-				 ON CONFLICT(project_id) DO UPDATE SET
-				 address = CASE WHEN ? THEN excluded.address ELSE project_excalidraw.address END,
-				 scene = CASE WHEN ? THEN excluded.scene ELSE project_excalidraw.scene END,
-				 updated_at = excluded.updated_at`
-			)
-			.run(
-				projectId,
-				input.address ?? '',
-				input.scene ?? '',
-				now,
-				input.address === undefined ? 0 : 1,
-				input.scene === undefined ? 0 : 1
-			);
+		const expectedTime = expectedUpdatedAt ? Date.parse(expectedUpdatedAt) : 0;
+		const now = new Date(Math.max(Date.now(), Number.isNaN(expectedTime) ? 0 : expectedTime + 1)).toISOString();
+		const result =
+			expectedUpdatedAt === null
+				? this.database
+						.query(
+							`INSERT INTO project_excalidraw (project_id, address, scene, updated_at)
+							 VALUES (?, ?, ?, ?) ON CONFLICT(project_id) DO NOTHING`
+						)
+						.run(projectId, input.address ?? '', input.scene ?? '', now)
+				: this.database
+						.query(
+							`UPDATE project_excalidraw SET
+							 address = CASE WHEN ? THEN ? ELSE address END,
+							 scene = CASE WHEN ? THEN ? ELSE scene END,
+							 updated_at = ?
+							 WHERE project_id = ? AND updated_at = ?`
+						)
+						.run(
+							input.address === undefined ? 0 : 1,
+							input.address ?? '',
+							input.scene === undefined ? 0 : 1,
+							input.scene ?? '',
+							now,
+							projectId,
+							expectedUpdatedAt
+						);
+		if (!result.changes) throw new ProjectExcalidrawConflictError();
 		return this.getProjectExcalidraw(projectId)!;
 	}
 

@@ -46,12 +46,20 @@
 	aria-label="Global navigation"
 >
 	<button
-		class={`global-home mb-1 rounded-xl focus-visible:ring-2 focus-visible:ring-ring ${view === null ? 'ring-1 ring-ring' : ''}`}
+		class={`global-home mb-1 flex flex-col items-center gap-1 rounded-xl p-0.5 focus-visible:ring-2 focus-visible:ring-ring ${view === null ? 'ring-1 ring-ring' : ''}`}
 		aria-label="Workspace"
 		aria-current={view === null ? 'page' : undefined}
 		title="Workspace"
-		onclick={() => onview(null)}><BrandMark class="global-mark size-10" /></button
+		onclick={() => onview(null)}
 	>
+		<BrandMark class="global-mark size-10" />
+		{#if import.meta.env.DEV}
+			<span
+				class="rounded bg-[var(--notification)] px-1 py-0.5 text-[9px] leading-none font-bold text-white"
+				>DEV</span
+			>
+		{/if}
+	</button>
 	<Button
 		variant="outline"
 		size="icon"

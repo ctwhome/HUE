@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import ExternalLink from '~icons/lucide/external-link';
 	import Info from '~icons/lucide/info';
 	import Monitor from '~icons/lucide/monitor';
@@ -26,15 +26,18 @@
 	let canvasReady = $state(false);
 	let saveChain = Promise.resolve();
 	let scopedProjectId = '';
+	let updatedAt: string | null = null;
 	const endpoint = () => `/api/projects/${encodeURIComponent(scopedProjectId)}/excalidraw`;
 
 	function saveState(input: { address?: string; scene?: string }) {
-		const request = saveChain.then(() =>
-			api<{ state: ProjectExcalidrawState }>(endpoint(), {
+		const request = saveChain.then(async () => {
+			const { state } = await api<{ state: ProjectExcalidrawState }>(endpoint(), {
 				method: 'PATCH',
-				body: JSON.stringify(input)
-			}).then(({ state }) => state)
-		);
+				body: JSON.stringify({ ...input, expectedUpdatedAt: updatedAt })
+			});
+			updatedAt = state.updatedAt;
+			return state;
+		});
 		saveChain = request.then(
 			() => undefined,
 			() => undefined
@@ -77,6 +80,7 @@
 		const mountCanvas = async () => {
 			try {
 				const loaded = await api<{ state: ProjectExcalidrawState | null }>(endpoint());
+				updatedAt = loaded.state?.updatedAt ?? null;
 				const state = loaded.state ?? (await migrateLegacyExcalidraw(scopedProjectId, saveState));
 				if (cancelled) return;
 				if (!addressDirty) {
@@ -116,8 +120,6 @@
 			controller?.destroy();
 		};
 	});
-
-	onDestroy(() => void controller?.flush());
 </script>
 
 <div class="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Project Excalidraw">

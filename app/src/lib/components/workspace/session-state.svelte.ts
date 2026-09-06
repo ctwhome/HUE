@@ -84,11 +84,6 @@ export class SessionState {
 		};
 	}
 
-	preload = (projectId: string | null, sessionId: string, body: SessionLoad) => {
-		const key = this.capturedViewKey(projectId, sessionId);
-		if (!this.views.has(key)) this.views.set(key, this.loadedView(body));
-	};
-
 	resolveInteraction = (
 		projectId: string | null,
 		sessionId: string,

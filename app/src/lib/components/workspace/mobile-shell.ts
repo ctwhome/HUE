@@ -78,12 +78,22 @@ export class MobileShellController {
 		);
 	}
 
-	private async focusDrawer(pane: Drawer) {
+	async focusDrawer(pane: Drawer) {
 		await Promise.resolve();
 		this.options
 			.drawer(pane)
 			.querySelector<HTMLElement>(
 				'[data-drawer-focus], button:not([disabled]), input:not([disabled])'
+			)
+			?.focus({ preventScroll: true });
+	}
+
+	async focusChat() {
+		await Promise.resolve();
+		this.options
+			.chat()
+			.querySelector<HTMLElement>(
+				'[aria-label="Back to Sessions"], [aria-label="Back to Cron tasks"]'
 			)
 			?.focus({ preventScroll: true });
 	}

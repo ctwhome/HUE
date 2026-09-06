@@ -12,6 +12,8 @@ HUE has exactly three user-facing objects: Projects, Workflows, and Sessions. He
 ```mermaid
 flowchart LR
     B[Browser / installed PWA] --> H[SvelteKit routes on Bun]
+    D[Electrobun desktop] --> H
+    D --> N[Sandboxed native preview webviews]
     H --> Q[(HUE SQLite)]
     H --> A[Supervised Hermes ACP]
     H --> O[Supervised OpenCode ACP]
@@ -23,6 +25,7 @@ flowchart LR
 ```
 
 - SvelteKit serves the responsive workspace and same-origin HTTP API.
+- Electrobun may load that same server UI and provide sandboxed native Project previews; it owns no HUE data or execution state. Browser and mobile clients retain iframe previews.
 - `bun:sqlite` stores HUE-owned Workflows, schedules, associations, UI metadata, notification state, external-cron read projections, and durable message-delivery state.
 - A per-Session resolver dispatches to supervised Hermes or OpenCode ACP; Hermes remains the default.
 - A supervised, authenticated, loopback-only `hermes serve --isolated` process supplies bounded transcript reads and Hermes-owned administration APIs.
@@ -66,3 +69,5 @@ Scheduled prompts follow the same invariant through a dedicated projectless Sess
 ## Trust boundary
 
 Loopback is the default. Remote use requires an authenticated HTTPS reverse proxy with an exact `ORIGIN`. Project paths, attachment bytes, skill content, browser input, and Hermes API responses remain untrusted. Consequential operations require server-side validation, and ACP permission requests are never granted silently.
+
+The desktop shell accepts only loopback HTTP or remote HTTPS HUE origins and does not bypass server authentication. Native preview URLs resolve on the desktop computer; remote development ports are reached through user-managed SSH forwarding or trusted Tailnet routes, never a HUE preview proxy.

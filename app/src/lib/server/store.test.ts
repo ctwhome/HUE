@@ -3,7 +3,7 @@ import { Database } from 'bun:sqlite';
 import { chmodSync, lstatSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { HUEStore, MessageConflictError } from './store';
+import { HUEStore, MessageConflictError, ProjectExcalidrawConflictError } from './store';
 
 const temporaryDatabases: string[] = [];
 
@@ -88,16 +88,36 @@ describe('HUEStore project and workflow boundaries', () => {
 		store.ensureProjectMetadata('hue', 'HUE');
 		expect(store.getProjectExcalidraw('hue')).toBeNull();
 
-		store.updateProjectExcalidraw('hue', { address: 'https://example.com/' });
-		store.updateProjectExcalidraw('hue', {
-			scene: '{"version":1,"elements":[],"appState":{}}'
-		});
+		const initial = store.updateProjectExcalidraw(
+			'hue',
+			{ address: 'https://example.com/' },
+			null
+		);
+		store.updateProjectExcalidraw(
+			'hue',
+			{ scene: '{"version":1,"elements":[],"appState":{}}' },
+			initial.updatedAt
+		);
 
 		expect(store.getProjectExcalidraw('hue')).toMatchObject({
 			projectId: 'hue',
 			address: 'https://example.com/',
 			scene: '{"version":1,"elements":[],"appState":{}}'
 		});
+		store.close();
+	});
+
+	it('rejects stale Excalidraw writes without replacing newer work', () => {
+		const store = makeStore();
+		store.ensureProjectMetadata('hue', 'HUE');
+		const initial = store.updateProjectExcalidraw('hue', { scene: 'initial' }, null);
+		const newer = store.updateProjectExcalidraw('hue', { scene: 'newer' }, initial.updatedAt);
+
+		expect(() =>
+			store.updateProjectExcalidraw('hue', { scene: 'stale' }, initial.updatedAt)
+		).toThrow(ProjectExcalidrawConflictError);
+		expect(store.getProjectExcalidraw('hue')?.scene).toBe('newer');
+		expect(newer.updatedAt).not.toBe(initial.updatedAt);
 		store.close();
 	});
 
@@ -1735,9 +1755,11 @@ describe('HUEStore Hermes Project identity migration', () => {
 		});
 		store.updateMessageStatus('message-1', 'running');
 		store.updateMessageStatus('message-1', 'unknown');
-		store.updateProjectExcalidraw('legacy-hue', {
-			scene: '{"version":1,"elements":[],"appState":{}}'
-		});
+		store.updateProjectExcalidraw(
+			'legacy-hue',
+			{ scene: '{"version":1,"elements":[],"appState":{}}' },
+			null
+		);
 		store.database
 			.query(
 				'INSERT INTO dismissed_sessions (project_scope, session_id, dismissed_at) VALUES (?, ?, ?)'

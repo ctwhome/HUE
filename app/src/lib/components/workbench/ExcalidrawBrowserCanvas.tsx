@@ -76,8 +76,8 @@ export async function mountExcalidrawBrowserCanvas(
 		const scene = serializeBrowserScene(latestElements, latestAppState);
 		saveChain = saveChain
 			.then(() => options.onsave(scene))
-			.catch(() => {
-				options.onerror('Canvas could not be saved to HUE.');
+			.catch((cause) => {
+				options.onerror(cause instanceof Error ? cause.message : 'Canvas could not be saved to HUE.');
 			});
 		return saveChain;
 	};

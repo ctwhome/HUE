@@ -69,6 +69,13 @@
 	}
 }
 
+@media (max-width: 360px) {
+	.compact-workbench-tabs button {
+		gap: 0;
+		font-size: 0;
+	}
+}
+
 @media (max-width: 1200px) and (min-width: 701px) {
 	.workspace {
 		grid-template-columns: 56px 74px 280px minmax(0, 1fr);
@@ -739,6 +746,7 @@
 	box-shadow: none;
 }
 .workspace.embedded .project-browser-dock,
+.workspace.embedded .project-excalidraw-dock,
 .workspace.embedded .project-tool-dock,
 .workspace.embedded .workspace-terminal-dock,
 .workspace.embedded .mobile-project-tools {

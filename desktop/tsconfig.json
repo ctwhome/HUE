@@ -1,0 +1,4 @@
+{
+  "extends": "./.hutch/devkit/tsconfig.json",
+  "include": ["src", "electrobun.config.ts"]
+}

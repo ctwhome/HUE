@@ -136,7 +136,7 @@ print(json.dumps(_content_blocks_to_openai_user_content([block])))`,
 			try {
 				await runtime.start();
 				expect(runtime.getRuntimeInfo()).toMatchObject({
-					agent: { name: 'hermes-agent', version: '0.20.6' },
+					agent: { name: 'hermes-agent', version: '0.21.0' },
 					clarify: {
 						status: 'unsupported',
 						reason: 'Hermes ACP has not sent elicitation/create'

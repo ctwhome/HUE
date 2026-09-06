@@ -1,23 +1,38 @@
 type PanelStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
-export type ProjectTool = 'browser' | 'git' | 'files' | 'terminal' | null;
+export type ProjectPanel = 'browser' | 'excalidraw' | 'git' | 'files' | 'terminal';
 
-const key = (projectId: string) => `hue:project-tools:${projectId}:active`;
-const tools = new Set<ProjectTool>(['browser', 'git', 'files', 'terminal', null]);
+const defaults: Record<ProjectPanel, boolean> = {
+	browser: true,
+	excalidraw: false,
+	git: false,
+	files: false,
+	terminal: false
+};
 
-export function readProjectTool(storage: PanelStorage, projectId: string): ProjectTool {
-	const saved = storage.getItem(key(projectId));
-	if (saved === null) return 'browser';
-	return tools.has(saved as ProjectTool) ? (saved as ProjectTool) : null;
+const key = (projectId: string, panel: ProjectPanel) =>
+	`hue:project-tools:${projectId}:${panel}-open`;
+
+export function readProjectPanels(
+	storage: PanelStorage,
+	projectId: string
+): Record<ProjectPanel, boolean> {
+	const panels = { ...defaults };
+	if (!projectId) return panels;
+	for (const panel of Object.keys(panels) as ProjectPanel[]) {
+		const saved = storage.getItem(key(projectId, panel));
+		if (saved !== null) panels[panel] = saved === 'true';
+	}
+	return panels;
 }
 
-export function toggleProjectTool(
+export function togglePanelState(
 	storage: PanelStorage,
 	projectId: string,
-	tool: Exclude<ProjectTool, null>,
-	current: ProjectTool
-): ProjectTool {
-	const next = current === tool ? null : tool;
-	storage.setItem(key(projectId), next ?? 'closed');
+	panel: ProjectPanel,
+	current: boolean
+): boolean {
+	const next = !current;
+	storage.setItem(key(projectId, panel), String(next));
 	return next;
 }
