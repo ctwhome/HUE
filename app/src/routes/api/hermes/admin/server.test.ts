@@ -85,12 +85,21 @@ describe('Hermes admin API boundary', () => {
 		await _scheduleAction(schedules as never, 'schedule.create', {
 			name: 'Daily',
 			prompt: 'Review',
-			cron: '0 9 * * *'
+			cron: '0 9 * * *',
+			timezone: 'Europe/Amsterdam'
 		});
 		await _scheduleAction(schedules as never, 'schedule.run', { id: 'daily', runId: 'client-1' });
 
 		expect(calls).toEqual([
-			['create', { name: 'Daily', prompt: 'Review', cron: '0 9 * * *' }],
+			[
+				'create',
+				{
+					name: 'Daily',
+					prompt: 'Review',
+					cron: '0 9 * * *',
+					timezone: 'Europe/Amsterdam'
+				}
+			],
 			['run', 'daily', 'client-1']
 		]);
 	});

@@ -21,6 +21,7 @@
 | [ADR-0012](decisions/0012-custom-skill-filesystem-exception.md)       | Custom skill filesystem exception                          | Permits narrowly hardened direct `SKILL.md` mutation where Hermes lacks an API.                      |
 | [ADR-0013](decisions/0013-hermes-native-workflow-bundles.md)          | Hermes-native Workflow bundles                             | Workflows reference Hermes-owned bundles and permitted skill content without copying it into HUE.    |
 | [ADR-0014](decisions/0014-per-session-acp-harness.md)                 | Per-Session ACP harness                                    | Keeps Hermes primary while allowing an immutable OpenCode choice for each new Session.               |
+| [ADR-0015](decisions/0015-timezone-aware-schedules.md)                | Timezone-aware HUE schedules                               | Pins five-field cron to an IANA timezone with defined daylight-saving behavior.                       |
 
 ## Open boundaries
 

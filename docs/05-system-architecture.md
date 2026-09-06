@@ -45,7 +45,7 @@ Keep exactly one long-lived HUE process per database file. Production startup st
 | Project/projectless association, harness identity, and work mode        | HUE SQLite                        |
 | Message envelope, idempotency, delivery state, replay cursor            | HUE SQLite                        |
 | Hermes profiles, models, MCP                                            | Hermes authenticated APIs         |
-| Schedule definition, next occurrence, and Session association           | HUE SQLite                        |
+| Schedule definition, IANA timezone, next UTC occurrence, and Session association | HUE SQLite                 |
 | External cron definition, status, and explicit mutation                 | Hermes authenticated APIs         |
 | External cron run transcript                                            | Hermes profile-scoped Session API |
 | External cron run baseline, unread state, and notification projection   | HUE SQLite                        |
@@ -61,7 +61,7 @@ Composer prompt improvement is a one-time refinement backed by a temporary Herme
 
 Quick Ask provides one answer in a temporary surface rather than a fourth object or retained Chat. HUE archives its projectless Hermes Session during delivery, promotes that same Session only when the user chooses Keep as Chat, and otherwise deletes its HUE transcript when the surface closes. Complete-envelope idempotency and explicit unknown state still apply, Hermes retains its transcript, and normal Hermes capabilities remain subject to HUE's explicit permission boundary.
 
-Scheduled prompts follow the same invariant through a dedicated projectless Session per schedule. The Projects rail surfaces those Sessions together under Cron tasks without turning schedules into a fourth user-facing object. HUE coalesces downtime catch-up to one durable run. Existing external Hermes cron jobs may appear as Hermes-owned rows and accept explicit authenticated edits or deletion. HUE polls their run history after a read baseline and projects unread terminal outcomes and best-effort notifications, but does not import their execution, persist their transcripts, or claim HUE delivery guarantees.
+Scheduled prompts follow the same invariant through a dedicated projectless Session per schedule. Each HUE-owned five-field cron expression uses its persisted IANA timezone to derive an absolute next occurrence; missing spring-forward times are skipped and repeated fall-back times run once. The Projects rail surfaces those Sessions together under Cron tasks without turning schedules into a fourth user-facing object. HUE coalesces downtime catch-up to one durable run. Existing external Hermes cron jobs may appear as Hermes-owned rows and accept explicit authenticated edits or deletion. HUE polls their run history after a read baseline and projects unread terminal outcomes and best-effort notifications, but does not import their execution, persist their transcripts, or claim HUE delivery guarantees.
 
 ## Trust boundary
 

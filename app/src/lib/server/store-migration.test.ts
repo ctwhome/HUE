@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { validateHueBackup } from './runtime-reliability';
 import { HUE_SCHEMA_VERSION, HUEStore } from './store';
+import { systemTimeZone } from './cron';
 
 const roots: string[] = [];
 
@@ -172,6 +173,30 @@ function createHistoricalRequiredProjectSessionSchema(path: string): void {
 			('session-1', 'hue', '/work/hue', NULL, '2026-08-27T00:00:00.000Z');
 		PRAGMA user_version = 0;
 	`);
+	database.close();
+}
+
+function createVersion10ScheduleSchema(path: string): void {
+	const store = new HUEStore(path);
+	store.upsertSession(null, { sessionId: 'scheduled', cwd: '/work/sessions' });
+	store.createSchedule({
+		id: 'daily',
+		name: 'Daily review',
+		prompt: 'Review progress',
+		cron: '0 8 * * 1-5',
+		timezone: 'UTC',
+		enabled: true,
+		nextRunAt: '2026-09-07T08:00:00.000Z',
+		sessionId: 'scheduled'
+	} as never);
+	store.close();
+
+	const database = new Database(path);
+	const columns = database.query('PRAGMA table_info(schedules)').all() as Array<{ name: string }>;
+	if (columns.some(({ name }) => name === 'timezone')) {
+		database.exec('ALTER TABLE schedules DROP COLUMN timezone');
+	}
+	database.exec('PRAGMA user_version = 10;');
 	database.close();
 }
 
@@ -375,6 +400,58 @@ describe('HUEStore versioned migrations', () => {
 		});
 		migrated.close();
 		expect(readdirSync(join(root, 'backups'))).toHaveLength(1);
+	});
+
+	it('backs up version 10 and pins existing schedules to the migration time zone', () => {
+		const { root, path } = temporaryDatabase('schedule-timezone-migration');
+		mkdirSync(root, { recursive: true });
+		createVersion10ScheduleSchema(path);
+
+		const migrated = new HUEStore(path);
+		expect(HUE_SCHEMA_VERSION).toBe(11);
+		expect(migrated.getSchedule('daily')).toMatchObject({
+			timezone: systemTimeZone(),
+			nextRunAt: '2026-09-07T08:00:00.000Z'
+		});
+		migrated.close();
+
+		const backups = readdirSync(join(root, 'backups'));
+		expect(backups).toHaveLength(1);
+		const backup = new Database(join(root, 'backups', backups[0]!), {
+			readonly: true,
+			strict: true
+		});
+		expect(backup.query('PRAGMA user_version').get()).toEqual({ user_version: 10 });
+		expect(backup.query('PRAGMA table_info(schedules)').all()).not.toContainEqual(
+			expect.objectContaining({ name: 'timezone' })
+		);
+		expect(backup.query('SELECT next_run_at FROM schedules WHERE id = ?').get('daily')).toEqual({
+			next_run_at: '2026-09-07T08:00:00.000Z'
+		});
+		backup.close();
+	});
+
+	it('rolls back a failed version 10 schedule timezone migration', () => {
+		const { root, path } = temporaryDatabase('schedule-timezone-rollback');
+		mkdirSync(root, { recursive: true });
+		createVersion10ScheduleSchema(path);
+
+		expect(
+			() =>
+				new HUEStore(path, {
+					migrationFault: () => {
+						throw new Error('injected migration failure');
+					}
+				})
+		).toThrow('restore the backup to a fresh HUE database path');
+		expect(readdirSync(join(root, 'backups'))).toHaveLength(1);
+		const unchanged = new Database(path, { readonly: true, strict: true });
+		expect(unchanged.query('PRAGMA user_version').get()).toEqual({ user_version: 10 });
+		expect(unchanged.query('PRAGMA table_info(schedules)').all()).not.toContainEqual(
+			expect.objectContaining({ name: 'timezone' })
+		);
+		expect(unchanged.query('SELECT id FROM schedules').all()).toEqual([{ id: 'daily' }]);
+		unchanged.close();
 	});
 
 	it('backs up and migrates the cancelled-status schema without losing HUE state', () => {

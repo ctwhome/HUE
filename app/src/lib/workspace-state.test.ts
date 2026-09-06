@@ -155,13 +155,21 @@ describe('workspace async state', () => {
 	it('keeps messages and agent activity in one sequence-keyed timeline with patch-in-place updates', () => {
 		const events = [
 			{ sequence: 1, type: 'message.accepted', payload: { messageId: 'msg-1' } },
-			{ sequence: 2, type: 'agent.chunk', payload: { messageId: 'msg-1', text: 'Before tool.' } },
+			{
+				sequence: 2,
+				type: 'agent.chunk',
+				payload: { messageId: 'msg-1', modelId: 'openai:gpt-test', text: 'Before tool.' }
+			},
 			{
 				sequence: 3,
 				type: 'agent.tool',
 				payload: { messageId: 'msg-1', id: 'tool-1', title: 'Read', status: 'in_progress' }
 			},
-			{ sequence: 4, type: 'agent.chunk', payload: { messageId: 'msg-1', text: 'After tool.' } },
+			{
+				sequence: 4,
+				type: 'agent.chunk',
+				payload: { messageId: 'msg-1', modelId: 'openai:gpt-test', text: 'After tool.' }
+			},
 			{
 				sequence: 5,
 				type: 'agent.plan',
@@ -233,9 +241,17 @@ describe('workspace async state', () => {
 			[8, 'clarify'],
 			[9, 'subagents']
 		]);
-		expect(timeline[1]).toMatchObject({ role: 'assistant', text: 'Before tool.' });
+		expect(timeline[1]).toMatchObject({
+			role: 'assistant',
+			modelId: 'openai:gpt-test',
+			text: 'Before tool.'
+		});
 		expect(timeline[2]).toMatchObject({ id: 'tool-1', status: 'completed' });
-		expect(timeline[3]).toMatchObject({ role: 'assistant', text: 'After tool.' });
+		expect(timeline[3]).toMatchObject({
+			role: 'assistant',
+			modelId: 'openai:gpt-test',
+			text: 'After tool.'
+		});
 		expect(timeline[4]).toMatchObject({ entries: [{ status: 'completed' }] });
 		expect(timeline[7]).toMatchObject({ id: 'delegate-1', status: 'completed' });
 	});

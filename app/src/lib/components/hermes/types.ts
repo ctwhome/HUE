@@ -23,6 +23,7 @@ export type Job = {
 	id: string;
 	name: string;
 	cron: string;
+	timezone: string;
 	enabled: boolean;
 	status: string;
 	nextRun?: string;

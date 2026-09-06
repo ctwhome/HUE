@@ -39,6 +39,7 @@ describe('HUE runtime reliability', () => {
 			name: 'Daily review',
 			prompt: 'Review HUE.',
 			cron: '0 9 * * *',
+			timezone: 'Europe/Amsterdam',
 			enabled: true,
 			nextRunAt: '2026-08-29T09:00:00.000Z',
 			sessionId: 'schedule-session'
@@ -64,9 +65,10 @@ describe('HUE runtime reliability', () => {
 			'hello'
 		);
 		expect(
-			restored.query('SELECT name, session_id FROM schedules WHERE id = ?').get('daily')
+			restored.query('SELECT name, timezone, session_id FROM schedules WHERE id = ?').get('daily')
 		).toEqual({
 			name: 'Daily review',
+			timezone: 'Europe/Amsterdam',
 			session_id: 'schedule-session'
 		});
 		restored.close();

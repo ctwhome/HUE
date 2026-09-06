@@ -103,6 +103,10 @@ export class SessionRuntimeRouter implements PromptRuntime {
 		return runtime.getCapabilities(session.externalSessionId);
 	}
 
+	getModelId(sessionId: string): string | null {
+		return this.getSessionState(sessionId).models?.currentModelId ?? null;
+	}
+
 	async start(sessionId: string): Promise<void> {
 		await this.resolve(sessionId).runtime.start();
 	}

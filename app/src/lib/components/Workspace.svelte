@@ -23,7 +23,11 @@
 	import ContextPanel from './workspace/ContextPanel.svelte';
 	import ExternalCronJobView from './workspace/ExternalCronJobView.svelte';
 	import { MobileShellController } from './workspace/mobile-shell';
-	import { readProjectPanels, togglePanelState as togglePanel } from './workspace/panel-state';
+	import {
+		readProjectTool,
+		toggleProjectTool,
+		type ProjectTool
+	} from './workspace/panel-state';
 	import { workspaceApi } from './workspace/api';
 	import { WorkspaceNavigation } from './workspace/navigation.svelte';
 	import { isImageIcon, ProjectManagement } from './workspace/project-management.svelte';
@@ -318,11 +322,13 @@
 				? `Question: ${interaction.message ?? 'Hermes needs input'}`
 				: undefined;
 	});
-	let browserOpen = $state(true),
-		filesOpen = $state(false);
+	let activeProjectTool = $state<ProjectTool>('browser');
+	let browserOpen = $derived(activeProjectTool === 'browser');
+	let gitOpen = $derived(activeProjectTool === 'git');
+	let filesOpen = $derived(activeProjectTool === 'files');
 	let fileRequest = $state<FileRequest | null>(null);
 	let previewUrl = $state('');
-	let terminalOpen = $state(false);
+	let terminalOpen = $derived(activeProjectTool === 'terminal');
 	let terminalHeight = $state(300),
 		sessionPaneCount = $state(1);
 	let pendingSessionDraft = '';
@@ -331,22 +337,13 @@
 		projectTools = false;
 		previewUrl = '';
 		fileRequest = null;
-		({ browserOpen, filesOpen, terminalOpen } = readProjectPanels(localStorage, panelProjectId));
-		if (filesOpen) browserOpen = false;
-		if (sessionPaneCount > 1 && innerWidth < 1600) browserOpen = false;
+		activeProjectTool = readProjectTool(localStorage, panelProjectId);
+		if (sessionPaneCount > 1 && innerWidth < 1600 && activeProjectTool === 'browser')
+			activeProjectTool = null;
 		terminalHeight = 300;
 	});
-	function toggleBrowserPanel() {
-		const opening = !browserOpen;
-		browserOpen = togglePanel(localStorage, panelProjectId, 'browser', browserOpen);
-		if (opening && filesOpen)
-			filesOpen = togglePanel(localStorage, panelProjectId, 'files', filesOpen);
-	}
-	function toggleFilesPanel() {
-		const opening = !filesOpen;
-		filesOpen = togglePanel(localStorage, panelProjectId, 'files', filesOpen);
-		if (opening && browserOpen)
-			browserOpen = togglePanel(localStorage, panelProjectId, 'browser', browserOpen);
+	function toggleProjectPanel(tool: Exclude<ProjectTool, null>) {
+		activeProjectTool = toggleProjectTool(localStorage, panelProjectId, tool, activeProjectTool);
 	}
 	async function ensureDraftSession() {
 		if (navigation.selectedSession) return navigation.selectedSession;
@@ -673,10 +670,11 @@
 				primarySession={selectedSession?.pending ? null : selectedSession}
 				allowDocking={!embedded}
 				restorePrimarySession={!mobile && !navigation.composingSession && !selectedSession?.pending}
-				onpanecount={(count) => {
-					sessionPaneCount = count;
-					if (count > 1 && innerWidth < 1600) browserOpen = false;
-				}}
+					onpanecount={(count) => {
+						sessionPaneCount = count;
+						if (count > 1 && innerWidth < 1600 && activeProjectTool === 'browser')
+							activeProjectTool = null;
+					}}
 				onprimaryclose={navigation.openSession}
 				onsessionupdate={navigation.replaceSession}
 				onrunworkflow={navigation.runWorkflow}
@@ -817,7 +815,7 @@
 					open={filesOpen}
 					{fileRequest}
 					{dirtyGuard}
-					onclose={toggleFilesPanel}
+					onclose={() => toggleProjectPanel('files')}
 				/>
 				<ProjectWorkbench
 					projectId={selectedProject.id}
@@ -825,17 +823,18 @@
 					compact={false}
 					docked={true}
 					{browserOpen}
+					{gitOpen}
 					{filesOpen}
 					{terminalOpen}
 					onpreviewchange={(url) => (previewUrl = url)}
-					onbrowser={toggleBrowserPanel}
-					onfiles={toggleFilesPanel}
+					onbrowser={() => toggleProjectPanel('browser')}
+					ongit={() => toggleProjectPanel('git')}
+					onfiles={() => toggleProjectPanel('files')}
 					onopenfile={(request) => {
 						fileRequest = { ...request, id: crypto.randomUUID() };
-						if (!filesOpen) toggleFilesPanel();
+						if (!filesOpen) toggleProjectPanel('files');
 					}}
-					onterminal={() =>
-						(terminalOpen = togglePanel(localStorage, panelProjectId, 'terminal', terminalOpen))}
+					onterminal={() => toggleProjectPanel('terminal')}
 					onbranch={(value) => (branch = value)}
 					onreviewcontext={messageState.addReviewContext}
 					{dirtyGuard}

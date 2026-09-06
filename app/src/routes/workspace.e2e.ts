@@ -1113,6 +1113,7 @@ test('Project tools stay docked across Sessions and collapse to their rail', asy
 	);
 	await dock.getByRole('button', { name: 'Git, 3 changed files' }).click();
 	await expect(workbench).toBeVisible();
+	await expect(page.getByRole('complementary', { name: 'Project browser' })).toBeHidden();
 	const splitter = page.getByRole('separator', { name: 'Resize project tools' });
 	const widthBefore = (await workbench.boundingBox())!.width;
 	await splitter.focus();
@@ -1138,16 +1139,18 @@ test('Project tools stay docked across Sessions and collapse to their rail', asy
 	await dock.getByRole('button', { name: 'Files', exact: true }).click();
 	await expect(page.getByRole('complementary', { name: 'Project files' })).toBeVisible();
 	await expect(page.getByRole('complementary', { name: 'Project browser' })).toBeHidden();
+	await expect(workbench).toBeHidden();
 	for (const panel of await page.locator('.session-workspace > :visible').all()) {
 		const box = (await panel.boundingBox())!;
 		expect(box.x + box.width).toBeLessThanOrEqual(viewports[0].width);
 	}
 	await dock.getByRole('button', { name: 'Browser', exact: true }).click();
 	await expect(page.getByRole('complementary', { name: 'Project browser' })).toBeVisible();
-	await expect(workbench).toBeVisible();
+	await expect(workbench).toBeHidden();
 	await expect(page.getByRole('complementary', { name: 'Project files' })).toBeHidden();
 	await dock.getByRole('button', { name: 'Terminal', exact: true }).click();
-	await expect(workbench).toBeVisible();
+	await expect(workbench).toBeHidden();
+	await expect(page.getByRole('complementary', { name: 'Project browser' })).toBeHidden();
 	await expect(dock.getByRole('button', { name: 'Terminal', exact: true })).toHaveAttribute(
 		'aria-expanded',
 		'true'
@@ -1158,12 +1161,9 @@ test('Project tools stay docked across Sessions and collapse to their rail', asy
 		.getByRole('region', { name: 'Workspace terminal panel' })
 		.boundingBox())!;
 	const chatBox = (await page.getByRole('main').boundingBox())!;
-	const browserBox = (await page
-		.getByRole('complementary', { name: 'Project browser' })
-		.boundingBox())!;
 	expect(terminalBox.x).toBeLessThanOrEqual(chatBox.x + 1);
-	expect(terminalBox.x + terminalBox.width).toBeGreaterThan(browserBox.x + browserBox.width - 2);
-	expect(terminalBox.y).toBeGreaterThan(browserBox.y);
+	expect(terminalBox.width).toBeGreaterThan(500);
+	expect(terminalBox.y).toBeGreaterThan(chatBox.y);
 	expect((await page.locator('.composer').boundingBox())!.y).toBeLessThan(terminalBox.y);
 	const terminalHeight = terminalBox.height;
 	await page.getByRole('separator', { name: 'Resize Terminal' }).focus();
@@ -1192,7 +1192,11 @@ test('Project tools stay docked across Sessions and collapse to their rail', asy
 		.evaluate((button: HTMLButtonElement) => button.click());
 	await sessionButton(page, 'Dock beta').click();
 	await expect(page.getByRole('navigation', { name: 'Project tools' })).toBeVisible();
-	await expect(page.getByRole('region', { name: 'HUE workbench' })).toBeVisible();
+	await expect(page.getByRole('region', { name: 'HUE workbench' })).toBeHidden();
+	await expect(page.getByRole('region', { name: 'Workspace terminal panel' })).toBeVisible();
+	expect((await page.getByRole('region', { name: 'Session panes' }).boundingBox())!.width).toBeGreaterThan(
+		280
+	);
 	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1024);
 	await testInfo.attach('session-project-tools-1024x768', {
 		body: await page.screenshot(),
@@ -2650,10 +2654,12 @@ test('opens distinct Hermes runtime, skills, schedules, commands, profiles, and 
 							jobs: [
 								{
 									id: 'job-1',
-									profile: 'work',
 									name: 'Monthly check',
-									schedule: '0 9 1 * *',
-									status: 'active'
+									cron: '0 9 1 * *',
+									timezone: 'Europe/Amsterdam',
+									enabled: true,
+									prompt: 'Review',
+									sessionId: 'monthly-session'
 								}
 							]
 						}
@@ -2950,6 +2956,7 @@ test('summarises, filters, and groups installed skills', async ({ page }) => {
 
 test('summarises, filters, and groups scheduled jobs', async ({ page }) => {
 	const browserErrors: string[] = [];
+	let createdSchedule: Record<string, unknown> | null = null;
 	page.on('console', (message) => message.type() === 'error' && browserErrors.push(message.text()));
 	page.on('pageerror', (error) => browserErrors.push(error.message));
 	page.on('requestfailed', (request) => recordRequestFailure(browserErrors, request));
@@ -2962,8 +2969,9 @@ test('summarises, filters, and groups scheduled jobs', async ({ page }) => {
 						id: 'monthly',
 						name: 'Monthly check',
 						cron: '0 9 1 * *',
+						timezone: 'Europe/Amsterdam',
 						enabled: true,
-						nextRunAt: 'Sep 1, 09:00',
+						nextRunAt: '2026-09-01T07:00:00.000Z',
 						prompt: 'Monthly review',
 						sessionId: 'monthly-session'
 					},
@@ -2971,6 +2979,7 @@ test('summarises, filters, and groups scheduled jobs', async ({ page }) => {
 						id: 'digest',
 						name: 'Daily digest',
 						cron: '0 8 * * *',
+						timezone: 'America/New_York',
 						enabled: true,
 						prompt: 'Daily digest',
 						sessionId: 'digest-session'
@@ -2979,6 +2988,7 @@ test('summarises, filters, and groups scheduled jobs', async ({ page }) => {
 						id: 'cleanup',
 						name: 'Weekly cleanup',
 						cron: '0 3 * * 0',
+						timezone: 'UTC',
 						enabled: false,
 						prompt: 'Weekly cleanup',
 						sessionId: 'cleanup-session'
@@ -2987,6 +2997,7 @@ test('summarises, filters, and groups scheduled jobs', async ({ page }) => {
 						id: 'legacy',
 						name: 'Legacy sync',
 						cron: '0 0 * * *',
+						timezone: 'Asia/Tokyo',
 						enabled: false,
 						prompt: 'Legacy sync',
 						sessionId: 'legacy-session'
@@ -2995,6 +3006,14 @@ test('summarises, filters, and groups scheduled jobs', async ({ page }) => {
 			}
 		})
 	);
+	await page.route('/api/hermes/admin', async (route) => {
+		const body = (await route.request().postDataJSON()) as {
+			action: string;
+			input: Record<string, unknown>;
+		};
+		if (body.action === 'schedule.create') createdSchedule = body.input;
+		await route.fulfill({ json: { target: { id: 'created' } } });
+	});
 	await addProject(page);
 
 	await page.goto('/');
@@ -3010,7 +3029,21 @@ test('summarises, filters, and groups scheduled jobs', async ({ page }) => {
 	await expect(statistics.getByLabel('4 scheduled jobs')).toBeVisible();
 	await expect(statistics.getByLabel('2 active jobs')).toBeVisible();
 	await expect(statistics.getByLabel('2 inactive jobs')).toBeVisible();
-	await expect(panel.getByText('Next Sep 1, 09:00')).toBeVisible();
+	await expect(panel.getByText('Europe/Amsterdam', { exact: false }).first()).toBeVisible();
+	await panel.getByLabel('Schedule name').fill('Weekday checks');
+	await panel.getByLabel('Schedule prompt').fill('Review the project');
+	await panel.getByLabel('Repeat').selectOption('weekdays');
+	await panel.getByLabel('Time', { exact: true }).fill('08:00');
+	await panel.getByLabel('Time zone').fill('America/New_York');
+	await panel.getByRole('button', { name: 'Create schedule' }).click();
+	await expect.poll(() => createdSchedule).toEqual({
+		name: 'Weekday checks',
+		prompt: 'Review the project',
+		cron: '0 8 * * 1-5',
+		timezone: 'America/New_York'
+	});
+	await panel.getByLabel('Schedule format').selectOption('advanced');
+	await expect(panel.getByLabel('Cron schedule')).toBeVisible();
 
 	await panel.getByLabel('Filter schedules by status').selectOption('paused');
 	await expect(panel.getByText('2 of 4 jobs')).toBeVisible();
@@ -3043,7 +3076,9 @@ test('summarises, filters, and groups scheduled jobs', async ({ page }) => {
 		);
 		if (viewport.width <= 390) {
 			await expectMinimumTouchTargets(
-				page.locator('.schedule-controls input, .schedule-controls select')
+				page.locator(
+					'.schedule-create input, .schedule-create select, .schedule-create button, .schedule-controls input, .schedule-controls select'
+				)
 			);
 		}
 	}
@@ -3139,6 +3174,7 @@ test('capability-gates Hermes v0.20.5 administration and keeps controls responsi
 						id: 'daily',
 						name: 'Daily',
 						cron: '0 9 * * *',
+						timezone: 'Europe/Amsterdam',
 						enabled: true,
 						nextRunAt: '2026-08-29T09:00:00.000Z',
 						prompt: 'Review HUE',

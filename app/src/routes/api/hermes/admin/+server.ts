@@ -42,7 +42,12 @@ export async function _scheduleAction(
 	const id = typeof input.id === 'string' ? input.id : '';
 	if (action === 'schedule.create') {
 		return {
-			target: await schedules.create({ name: input.name, prompt: input.prompt, cron: input.cron })
+			target: await schedules.create({
+				name: input.name,
+				prompt: input.prompt,
+				cron: input.cron,
+				timezone: input.timezone
+			})
 		};
 	}
 	if (action === 'schedule.update') {

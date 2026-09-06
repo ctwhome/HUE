@@ -1,19 +1,17 @@
 import { expect, test } from 'bun:test';
-import { readPanelState, readProjectPanels, togglePanelState } from './panel-state';
+import { readProjectTool, toggleProjectTool } from './panel-state';
 
-test('persists project panel state with defaults', () => {
+test('persists one active project tool', () => {
 	const values = new Map<string, string>();
 	const storage = {
 		getItem: (key: string) => values.get(key) ?? null,
 		setItem: (key: string, value: string) => values.set(key, value)
 	};
 
-	expect(readPanelState(storage, 'project-1', 'browser', true)).toBe(true);
-	expect(togglePanelState(storage, 'project-1', 'browser', true)).toBe(false);
-	expect(readPanelState(storage, 'project-1', 'browser', true)).toBe(false);
-	expect(readProjectPanels(storage, 'project-1')).toEqual({
-		browserOpen: false,
-		filesOpen: false,
-		terminalOpen: false
-	});
+	expect(readProjectTool(storage, 'project-1')).toBe('browser');
+	expect(toggleProjectTool(storage, 'project-1', 'git', 'browser')).toBe('git');
+	expect(readProjectTool(storage, 'project-1')).toBe('git');
+	expect(toggleProjectTool(storage, 'project-1', 'terminal', 'git')).toBe('terminal');
+	expect(toggleProjectTool(storage, 'project-1', 'terminal', 'terminal')).toBe(null);
+	expect(readProjectTool(storage, 'project-1')).toBe(null);
 });

@@ -1,4 +1,4 @@
-import { nextCronOccurrence, parseCron } from './cron';
+import { nextCronOccurrence, normalizeTimeZone, parseCron } from './cron';
 import type { MessageEnvelope } from './message-dispatcher';
 import type { HUEStore, Schedule } from './store';
 
@@ -60,12 +60,18 @@ export class ScheduleService {
 		};
 	}
 
-	async create(input: { name: unknown; prompt: unknown; cron: unknown }): Promise<Schedule> {
+	async create(input: {
+		name: unknown;
+		prompt: unknown;
+		cron: unknown;
+		timezone: unknown;
+	}): Promise<Schedule> {
 		const name = required(input.name, 'Schedule name', 128);
 		const prompt = required(input.prompt, 'Schedule prompt', 100_000);
 		const cron = required(input.cron, 'Schedule cron', 256);
+		const timezone = normalizeTimeZone(required(input.timezone, 'Schedule time zone', 128));
 		parseCron(cron);
-		const nextRunAt = nextCronOccurrence(cron, this.now()).toISOString();
+		const nextRunAt = nextCronOccurrence(cron, this.now(), timezone).toISOString();
 		const root = this.dependencies.root();
 		const session = await this.dependencies.runtime.createSession(root);
 		if (session.cwd !== root)
@@ -80,6 +86,7 @@ export class ScheduleService {
 			name,
 			prompt,
 			cron,
+			timezone,
 			enabled: true,
 			nextRunAt,
 			sessionId: session.sessionId
@@ -88,16 +95,25 @@ export class ScheduleService {
 		return schedule;
 	}
 
-	update(id: string, input: { name?: unknown; prompt?: unknown; cron?: unknown }): Schedule {
+	update(
+		id: string,
+		input: { name?: unknown; prompt?: unknown; cron?: unknown; timezone?: unknown }
+	): Schedule {
 		const current = this.require(id);
-		const patch: Partial<Pick<Schedule, 'name' | 'prompt' | 'cron' | 'nextRunAt'>> = {};
+		const patch: Partial<Pick<Schedule, 'name' | 'prompt' | 'cron' | 'timezone' | 'nextRunAt'>> =
+			{};
 		if (input.name !== undefined) patch.name = required(input.name, 'Schedule name', 128);
 		if (input.prompt !== undefined)
 			patch.prompt = required(input.prompt, 'Schedule prompt', 100_000);
-		if (input.cron !== undefined) {
-			patch.cron = required(input.cron, 'Schedule cron', 256);
-			parseCron(patch.cron);
-			patch.nextRunAt = nextCronOccurrence(patch.cron, this.now()).toISOString();
+		if (input.cron !== undefined) patch.cron = required(input.cron, 'Schedule cron', 256);
+		if (input.timezone !== undefined) {
+			patch.timezone = normalizeTimeZone(required(input.timezone, 'Schedule time zone', 128));
+		}
+		if (patch.cron !== undefined || patch.timezone !== undefined) {
+			const cron = patch.cron ?? current.cron;
+			const timezone = patch.timezone ?? current.timezone;
+			parseCron(cron);
+			patch.nextRunAt = nextCronOccurrence(cron, this.now(), timezone).toISOString();
 		}
 		const updated = this.dependencies.store.updateSchedule(id, patch);
 		if (patch.name)
@@ -118,7 +134,7 @@ export class ScheduleService {
 		const current = this.require(id);
 		const schedule = this.dependencies.store.updateSchedule(id, {
 			enabled: true,
-			nextRunAt: nextCronOccurrence(current.cron, this.now()).toISOString()
+			nextRunAt: nextCronOccurrence(current.cron, this.now(), current.timezone).toISOString()
 		});
 		this.arm();
 		return schedule;
@@ -152,7 +168,7 @@ export class ScheduleService {
 			const accepted = this.dependencies.store.acceptDueSchedule(
 				schedule.id,
 				schedule.nextRunAt,
-				nextCronOccurrence(schedule.cron, now).toISOString()
+				nextCronOccurrence(schedule.cron, now, schedule.timezone).toISOString()
 			);
 			if (accepted)
 				this.dependencies.dispatcher.submitAccepted(accepted.envelope, accepted.accepted);

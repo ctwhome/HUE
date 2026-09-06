@@ -54,6 +54,11 @@
 	let harness = $derived(session?.harness ?? newSessionHarness);
 	let harnessName = $derived(harness === 'opencode' ? 'OpenCode' : 'Hermes');
 	let surfaceRuntime = $derived({ ...runtime, harness });
+	function modelLabel(modelId?: string) {
+		if (!modelId) return harnessName;
+		const name = runtime.models?.availableModels.find((model) => model.modelId === modelId)?.name;
+		return compactModelLabel(modelId, name ?? modelId);
+	}
 </script>
 
 <svelte:window onpagehide={messageState.saveCurrentDraft} />
@@ -66,6 +71,7 @@
 		runtime.models?.currentModelId ?? '',
 		runtimeState.currentModel()?.name ?? runtime.models?.currentModelId ?? harnessName
 	)}
+	{modelLabel}
 	busy={isTurnBusy(sessionState.delivery)}
 	{mediaPath}
 	renderMarkdown={renderMessageMarkdown}

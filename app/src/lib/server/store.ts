@@ -18,6 +18,7 @@ import { validateProjectColor } from '$lib/project-color';
 import type { SessionHarness } from '$lib/session-harness';
 import { DEFAULT_WORK_MODE, parseWorkMode, type WorkMode } from '$lib/work-mode';
 import { createHueDatabaseBackup, HUE_SCHEMA_VERSION } from './hue-backup';
+import { systemTimeZone } from './cron';
 import { redactPersistedValue } from './redaction';
 
 const runtimeRequire = createRequire(import.meta.url);
@@ -59,6 +60,7 @@ export type Schedule = {
 	name: string;
 	prompt: string;
 	cron: string;
+	timezone: string;
 	enabled: boolean;
 	nextRunAt: string;
 	sessionId: string;
@@ -470,7 +472,8 @@ export class HUEStore {
 			currentVersion !== 6 &&
 			currentVersion !== 7 &&
 			currentVersion !== 8 &&
-			currentVersion !== 9
+			currentVersion !== 9 &&
+			currentVersion !== 10
 		) {
 			throw new Error(
 				`HUE schema migration ${currentVersion} -> ${HUE_SCHEMA_VERSION} is unsupported. Stop HUE and use an application version that supports this database.`
@@ -514,11 +517,17 @@ export class HUEStore {
 					.query("SELECT COUNT(*) AS count FROM message_attachments WHERE data <> ''")
 					.get() as { count: number }
 			).count > 0;
+		const scheduleColumns = this.database.query("PRAGMA table_info('schedules')").all() as Array<{
+			name: string;
+		}>;
+		const migratesScheduleTimezone =
+			scheduleColumns.length > 0 && !scheduleColumns.some(({ name }) => name === 'timezone');
 		const destructiveMigration = rebuildsMessages || rebuildsProjectSessions;
 		const requiresBackup =
 			destructiveMigration ||
 			migratesWorkflowBundle ||
 			migratesSessionHarness ||
+			migratesScheduleTimezone ||
 			externalizesAttachments;
 		let backup: { filename: string } | null = null;
 		const createdAttachmentPaths: string[] = [];
@@ -703,6 +712,7 @@ export class HUEStore {
 				name TEXT NOT NULL,
 				prompt TEXT NOT NULL,
 				cron TEXT NOT NULL,
+				timezone TEXT NOT NULL,
 				enabled INTEGER NOT NULL DEFAULT 1,
 				next_run_at TEXT NOT NULL,
 				session_id TEXT NOT NULL UNIQUE REFERENCES project_sessions(session_id),
@@ -759,6 +769,13 @@ export class HUEStore {
 				updated_at TEXT NOT NULL
 			);
 		`);
+		const scheduleColumns = this.database.query('PRAGMA table_info(schedules)').all() as Array<{
+			name: string;
+		}>;
+		if (!scheduleColumns.some(({ name }) => name === 'timezone')) {
+			this.database.exec("ALTER TABLE schedules ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'");
+			this.database.query('UPDATE schedules SET timezone = ?').run(systemTimeZone());
+		}
 		const projectColumns = this.database.query('PRAGMA table_info(projects)').all() as Array<{
 			name: string;
 		}>;
@@ -2772,14 +2789,15 @@ export class HUEStore {
 		const now = new Date().toISOString();
 		this.database
 			.query(
-				`INSERT INTO schedules (id, name, prompt, cron, enabled, next_run_at, session_id, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+				`INSERT INTO schedules (id, name, prompt, cron, timezone, enabled, next_run_at, session_id, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 			)
 			.run(
 				input.id,
 				input.name,
 				input.prompt,
 				input.cron,
+				input.timezone,
 				input.enabled ? 1 : 0,
 				input.nextRunAt,
 				input.sessionId,
@@ -2792,13 +2810,14 @@ export class HUEStore {
 	getSchedule(id: string): Schedule | null {
 		const row = this.database
 			.query(
-				'SELECT id, name, prompt, cron, enabled, next_run_at, session_id, created_at, updated_at FROM schedules WHERE id = ?'
+				'SELECT id, name, prompt, cron, timezone, enabled, next_run_at, session_id, created_at, updated_at FROM schedules WHERE id = ?'
 			)
 			.get(id) as {
 			id: string;
 			name: string;
 			prompt: string;
 			cron: string;
+			timezone: string;
 			enabled: number;
 			next_run_at: string;
 			session_id: string;
@@ -2811,6 +2830,7 @@ export class HUEStore {
 					name: row.name,
 					prompt: row.prompt,
 					cron: row.cron,
+					timezone: row.timezone,
 					enabled: !!row.enabled,
 					nextRunAt: row.next_run_at,
 					sessionId: row.session_id,
@@ -2840,19 +2860,20 @@ export class HUEStore {
 
 	updateSchedule(
 		id: string,
-		patch: Partial<Pick<Schedule, 'name' | 'prompt' | 'cron' | 'enabled' | 'nextRunAt'>>
+		patch: Partial<Pick<Schedule, 'name' | 'prompt' | 'cron' | 'timezone' | 'enabled' | 'nextRunAt'>>
 	): Schedule {
 		const current = this.getSchedule(id);
 		if (!current) throw new Error('Schedule not found');
 		const next = { ...current, ...patch };
 		this.database
 			.query(
-				'UPDATE schedules SET name = ?, prompt = ?, cron = ?, enabled = ?, next_run_at = ?, updated_at = ? WHERE id = ?'
+				'UPDATE schedules SET name = ?, prompt = ?, cron = ?, timezone = ?, enabled = ?, next_run_at = ?, updated_at = ? WHERE id = ?'
 			)
 			.run(
 				next.name,
 				next.prompt,
 				next.cron,
+				next.timezone,
 				next.enabled ? 1 : 0,
 				next.nextRunAt,
 				new Date().toISOString(),

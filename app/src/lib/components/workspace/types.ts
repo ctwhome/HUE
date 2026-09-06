@@ -164,6 +164,7 @@ export type TranscriptMessage = {
 	attachments?: InputAttachment[];
 	reviewContexts?: ReviewContext[];
 	createdAt?: string;
+	modelId?: string;
 };
 export type SessionEvent = {
 	sequence: number;

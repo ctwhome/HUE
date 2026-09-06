@@ -21,6 +21,7 @@ class RecordingRuntime implements PromptRuntime {
 	active = 0;
 	maxActive = 0;
 	failure: Error | null = null;
+	modelId = 'openai:gpt-test';
 
 	constructor(loaded = true) {
 		this.loadedSessions = new Set(loaded ? ['session-1'] : []);
@@ -28,6 +29,10 @@ class RecordingRuntime implements PromptRuntime {
 
 	hasSessionState(sessionId: string): boolean {
 		return this.loadedSessions.has(sessionId);
+	}
+
+	getModelId(): string {
+		return this.modelId;
 	}
 
 	async resumeSession(cwd: string, sessionId: string): Promise<void> {
@@ -360,12 +365,16 @@ describe('MessageDispatcher', () => {
 			store
 				.listEvents('hue', 'session-1')
 				.filter((event) => event.type === 'agent.chunk')
-				.map((event) => event.payload.text)
-		).toEqual(['Complete ', 'answer.']);
+				.map((event) => event.payload)
+		).toEqual([
+			{ messageId: 'msg-1', modelId: 'openai:gpt-test', text: 'Complete ' },
+			{ messageId: 'msg-1', modelId: 'openai:gpt-test', text: 'answer.' }
+		]);
 		expect(
 			store.listEvents('hue', 'session-1').find((event) => event.type === 'agent.image')?.payload
 		).toEqual({
 			messageId: 'msg-1',
+			modelId: 'openai:gpt-test',
 			image: { name: 'Hermes image', mimeType: 'image/png', data: 'aGVsbG8=' }
 		});
 		expect(

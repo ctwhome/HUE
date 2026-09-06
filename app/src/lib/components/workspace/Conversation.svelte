@@ -55,12 +55,14 @@
 		attachments?: InputAttachment[];
 		reviewContexts?: ReviewContext[];
 		createdAt?: string;
+		modelId?: string;
 	};
 
 	let {
 		timeline,
 		messageNotice,
 		agentLabel,
+		modelLabel,
 		sessionLabel,
 		busy,
 		renderMarkdown,
@@ -79,6 +81,7 @@
 		timeline: WorkspaceTimelineItem[];
 		messageNotice: string;
 		agentLabel: string;
+		modelLabel: (modelId?: string) => string;
 		sessionLabel: string;
 		busy: boolean;
 		renderMarkdown: (text: string) => string;
@@ -329,7 +332,11 @@
 			!article.contains(selection.getRangeAt(0).commonAncestorContainer)
 		)
 			return;
-		onquote({ source: 'assistant', label: `${agentLabel} response`, content });
+		onquote({
+			source: 'assistant',
+			label: `${article.dataset.agentLabel ?? agentLabel} response`,
+			content
+		});
 		selection.removeAllRanges();
 	}
 </script>
@@ -356,6 +363,7 @@
 				<article
 					data-timeline-sequence={item.sequence}
 					data-message-id={message.messageId}
+					data-agent-label={message.role === 'assistant' ? modelLabel(message.modelId) : undefined}
 					tabindex="-1"
 					class:assistant={message.role === 'assistant'}
 					class:user={message.role === 'user'}
@@ -364,7 +372,7 @@
 						<span
 							class="avatar grid size-6 shrink-0 place-items-center rounded-md bg-muted font-bold text-primary"
 							>{message.role === 'assistant' ? 'H' : 'You'}</span
-						><strong>{message.role === 'assistant' ? agentLabel : 'You'}</strong>
+						><strong>{message.role === 'assistant' ? modelLabel(message.modelId) : 'You'}</strong>
 					</div>
 					<div class="message-stack grid min-w-0">
 						{#if message.role === 'user' && message.reviewContexts?.length}<section
