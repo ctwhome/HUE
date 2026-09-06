@@ -49,6 +49,21 @@ function requestOriginAllowed(request: Request, url: URL): boolean {
 	return !request.headers.has('origin') || requestOriginMatches(request, url);
 }
 
+function loopbackAddress(address: string, hostname: string): boolean {
+	return (
+		['127.0.0.1', '::1'].includes(address) &&
+		['127.0.0.1', 'localhost', '[::1]'].includes(hostname)
+	);
+}
+
+function trustedTailnetAddress(address: string): boolean {
+	if (address.includes(':')) return address.startsWith('fd7a:115c:a1e0::');
+	const octets = address.split('.').map(Number);
+	if (octets.length !== 4 || octets.some((o) => !Number.isInteger(o) || o < 0 || o > 255))
+		return false;
+	return octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127;
+}
+
 export function requestAccessAllowed(
 	request: Request,
 	url: URL,
@@ -61,11 +76,7 @@ export function requestAccessAllowed(
 	const proxied = ['forwarded', 'x-forwarded-for', 'x-forwarded-proto'].some((header) =>
 		request.headers.has(header)
 	);
-	if (
-		!proxied &&
-		['127.0.0.1', '::1'].includes(address) &&
-		['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
-	)
+	if (!proxied && (loopbackAddress(address, url.hostname) || trustedTailnetAddress(address)))
 		return true;
 	return !!secret && accessSessionValid(cookieValue(request), secret, now);
 }

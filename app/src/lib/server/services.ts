@@ -540,7 +540,7 @@ export function projectGitHubItems(
 	const list = (kind: 'issue' | 'pr', fields: string) => {
 		const result = run(
 			'gh',
-			[kind, 'list', '--repo', webUrl, '--state', 'open', '--limit', '20', '--json', fields],
+			[kind, 'list', '--repo', webUrl, '--state', 'open', '--limit', '1000', '--json', fields],
 			{ cwd: projectRoot, encoding: 'utf8', timeout: 10_000 }
 		);
 		if (result.status !== 0)

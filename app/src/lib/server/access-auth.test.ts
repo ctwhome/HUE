@@ -53,17 +53,35 @@ test('remote access accepts same-host HTTPS terminated at an HTTP proxy', () => 
 		}
 	});
 
-	expect(requestAccessAllowed(remote, new URL(remote.url), '100.64.0.2', secret, now)).toBe(true);
+	expect(requestAccessAllowed(remote, new URL(remote.url), '203.0.113.8', secret, now)).toBe(true);
 });
 
 test('remote access requires a configured secret and valid session', () => {
 	const token = createAccessSession(secret, now);
 	const remote = request('https://hue.example.test/', token);
 
-	expect(requestAccessAllowed(remote, new URL(remote.url), '100.64.0.2', undefined, now)).toBe(
+	expect(requestAccessAllowed(remote, new URL(remote.url), '203.0.113.8', undefined, now)).toBe(
 		false
 	);
-	expect(requestAccessAllowed(remote, new URL(remote.url), '100.64.0.2', secret, now)).toBe(true);
+	expect(requestAccessAllowed(remote, new URL(remote.url), '203.0.113.8', secret, now)).toBe(true);
+});
+
+test('Tailnet CGNAT range is trusted without configuration', () => {
+	const remote = request('https://hue.example.test/');
+	const url = new URL(remote.url);
+
+	expect(requestAccessAllowed(remote, url, '100.64.0.2', undefined, now)).toBe(true);
+	expect(requestAccessAllowed(remote, url, '100.127.255.255', undefined, now)).toBe(true);
+});
+
+test('non-Tailnet or malformed addresses are not trusted by IP alone', () => {
+	const remote = request('https://hue.example.test/');
+	const url = new URL(remote.url);
+
+	expect(requestAccessAllowed(remote, url, '100.63.255.255', undefined, now)).toBe(false);
+	expect(requestAccessAllowed(remote, url, '100.128.0.1', undefined, now)).toBe(false);
+	expect(requestAccessAllowed(remote, url, '203.0.113.8', undefined, now)).toBe(false);
+	expect(requestAccessAllowed(remote, url, 'not-an-ip', undefined, now)).toBe(false);
 });
 
 test('remote access preserves same-origin request protection', () => {
@@ -71,7 +89,7 @@ test('remote access preserves same-origin request protection', () => {
 	const crossOrigin = request('https://hue.example.test/api/projects', token, 'https://evil.test');
 
 	expect(
-		requestAccessAllowed(crossOrigin, new URL(crossOrigin.url), '100.64.0.2', secret, now)
+		requestAccessAllowed(crossOrigin, new URL(crossOrigin.url), '203.0.113.8', secret, now)
 	).toBe(false);
 });
 
@@ -88,9 +106,9 @@ test('malformed cookie input is treated as unauthenticated', () => {
 	remote.headers.set('cookie', `${ACCESS_COOKIE}=%`);
 
 	expect(() =>
-		requestAccessAllowed(remote, new URL(remote.url), '100.64.0.2', secret, now)
+		requestAccessAllowed(remote, new URL(remote.url), '203.0.113.8', secret, now)
 	).not.toThrow();
-	expect(requestAccessAllowed(remote, new URL(remote.url), '100.64.0.2', secret, now)).toBe(false);
+	expect(requestAccessAllowed(remote, new URL(remote.url), '203.0.113.8', secret, now)).toBe(false);
 });
 
 test('access cookie persists across top-level PWA launches', () => {
