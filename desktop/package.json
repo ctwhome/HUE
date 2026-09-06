@@ -1,0 +1,17 @@
+{
+  "name": "hue-desktop",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "packageManager": "bun@1.3.14",
+  "scripts": {
+    "prepare:desktop": "electrobun prepare",
+    "dev": "electrobun dev --watch",
+    "build": "electrobun build --env=stable"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "electrobun": "2.0.1",
+    "typescript": "^6.0.3"
+  }
+}

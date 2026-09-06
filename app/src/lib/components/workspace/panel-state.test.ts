@@ -1,17 +1,33 @@
 import { expect, test } from 'bun:test';
-import { readProjectTool, toggleProjectTool } from './panel-state';
+import { readProjectPanels, togglePanelState } from './panel-state';
 
-test('persists one active project tool', () => {
+test('persists each project panel independently with defaults', () => {
 	const values = new Map<string, string>();
 	const storage = {
 		getItem: (key: string) => values.get(key) ?? null,
 		setItem: (key: string, value: string) => values.set(key, value)
 	};
 
-	expect(readProjectTool(storage, 'project-1')).toBe('browser');
-	expect(toggleProjectTool(storage, 'project-1', 'git', 'browser')).toBe('git');
-	expect(readProjectTool(storage, 'project-1')).toBe('git');
-	expect(toggleProjectTool(storage, 'project-1', 'terminal', 'git')).toBe('terminal');
-	expect(toggleProjectTool(storage, 'project-1', 'terminal', 'terminal')).toBe(null);
-	expect(readProjectTool(storage, 'project-1')).toBe(null);
+	expect(readProjectPanels(storage, 'project-1')).toEqual({
+		browser: true,
+		excalidraw: false,
+		git: false,
+		files: false,
+		terminal: false
+	});
+	expect(togglePanelState(storage, 'project-1', 'git', false)).toBe(true);
+	expect(togglePanelState(storage, 'project-1', 'browser', true)).toBe(false);
+	expect(togglePanelState(storage, 'project-1', 'terminal', false)).toBe(true);
+	expect(readProjectPanels(storage, 'project-1')).toEqual({
+		browser: false,
+		excalidraw: false,
+		git: true,
+		files: false,
+		terminal: true
+	});
+	expect(togglePanelState(storage, 'project-1', 'files', false)).toBe(true);
+	expect(readProjectPanels(storage, 'project-1').files).toBe(true);
+	expect(togglePanelState(storage, 'project-1', 'files', true)).toBe(false);
+	expect(togglePanelState(storage, 'project-1', 'excalidraw', false)).toBe(true);
+	expect(readProjectPanels(storage, 'project-1').excalidraw).toBe(true);
 });

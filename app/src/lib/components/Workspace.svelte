@@ -14,6 +14,7 @@
 	import AttentionCenter from './notifications/AttentionCenter.svelte';
 	import HermesPanel from './HermesPanel.svelte';
 	import ProjectBrowserDock from './ProjectBrowserDock.svelte';
+	import ProjectExcalidrawDock from './ProjectExcalidrawDock.svelte';
 	import ProjectFilesDock from './ProjectFilesDock.svelte';
 	import ProjectWorkbench from './ProjectWorkbench.svelte';
 	import HealthStrip from './workbench/HealthStrip.svelte';
@@ -23,11 +24,7 @@
 	import ContextPanel from './workspace/ContextPanel.svelte';
 	import ExternalCronJobView from './workspace/ExternalCronJobView.svelte';
 	import { MobileShellController } from './workspace/mobile-shell';
-	import {
-		readProjectTool,
-		toggleProjectTool,
-		type ProjectTool
-	} from './workspace/panel-state';
+	import { readProjectPanels, togglePanelState, type ProjectPanel } from './workspace/panel-state';
 	import { workspaceApi } from './workspace/api';
 	import { WorkspaceNavigation } from './workspace/navigation.svelte';
 	import { isImageIcon, ProjectManagement } from './workspace/project-management.svelte';
@@ -42,7 +39,6 @@
 	import DirtyGuardDialog from './workspace/DirtyGuardDialog.svelte';
 	import { DirtyGuard } from './workspace/dirty-guard';
 	import { installDirtyNavigation } from './workspace/dirty-navigation';
-	import { preloadSessionViews } from './workspace/session-preload';
 	import { createSessionController } from './workspace/session-controller.svelte';
 	import SessionSurface from './workspace/SessionSurface.svelte';
 	import {
@@ -258,7 +254,7 @@
 	function chooseProjectFromRail(project: Project | null, trigger?: HTMLElement) {
 		if (mobile) {
 			if (trigger) mobileShell?.rememberTrigger('sessions', trigger);
-			void navigation.chooseProject(project);
+			void navigation.chooseProject(project).then(() => mobileShell?.focusDrawer('sessions'));
 			return;
 		}
 		if ((selectedProject?.id ?? null) === (project?.id ?? null)) {
@@ -271,7 +267,9 @@
 	function chooseSessionCollection(collection: 'chats' | 'cron', trigger?: HTMLElement) {
 		if (mobile) {
 			if (trigger) mobileShell?.rememberTrigger('sessions', trigger);
-			void navigation.chooseSessionCollection(collection);
+			void navigation
+				.chooseSessionCollection(collection)
+				.then(() => mobileShell?.focusDrawer('sessions'));
 			return;
 		}
 		if (!selectedProject && navigation.sessionCollection === collection) {
@@ -322,13 +320,13 @@
 				? `Question: ${interaction.message ?? 'Hermes needs input'}`
 				: undefined;
 	});
-	let activeProjectTool = $state<ProjectTool>('browser');
-	let browserOpen = $derived(activeProjectTool === 'browser');
-	let gitOpen = $derived(activeProjectTool === 'git');
-	let filesOpen = $derived(activeProjectTool === 'files');
+	let browserOpen = $state(true),
+		excalidrawOpen = $state(false),
+		gitOpen = $state(false),
+		filesOpen = $state(false),
+		terminalOpen = $state(false);
 	let fileRequest = $state<FileRequest | null>(null);
 	let previewUrl = $state('');
-	let terminalOpen = $derived(activeProjectTool === 'terminal');
 	let terminalHeight = $state(300),
 		sessionPaneCount = $state(1);
 	let pendingSessionDraft = '';
@@ -337,13 +335,33 @@
 		projectTools = false;
 		previewUrl = '';
 		fileRequest = null;
-		activeProjectTool = readProjectTool(localStorage, panelProjectId);
-		if (sessionPaneCount > 1 && innerWidth < 1600 && activeProjectTool === 'browser')
-			activeProjectTool = null;
+		const panels = readProjectPanels(localStorage, panelProjectId);
+		browserOpen = panels.browser;
+		excalidrawOpen = panels.excalidraw;
+		gitOpen = panels.git;
+		filesOpen = panels.files;
+		terminalOpen = panels.terminal;
+		if (sessionPaneCount > 1 && innerWidth < 1600 && browserOpen) browserOpen = false;
 		terminalHeight = 300;
 	});
-	function toggleProjectPanel(tool: Exclude<ProjectTool, null>) {
-		activeProjectTool = toggleProjectTool(localStorage, panelProjectId, tool, activeProjectTool);
+	function panelIsOpen(panel: ProjectPanel) {
+		return panel === 'browser'
+			? browserOpen
+			: panel === 'excalidraw'
+				? excalidrawOpen
+				: panel === 'git'
+					? gitOpen
+					: panel === 'files'
+						? filesOpen
+						: terminalOpen;
+	}
+	function toggleProjectPanel(panel: ProjectPanel) {
+		const next = togglePanelState(localStorage, panelProjectId, panel, panelIsOpen(panel));
+		if (panel === 'browser') browserOpen = next;
+		else if (panel === 'excalidraw') excalidrawOpen = next;
+		else if (panel === 'git') gitOpen = next;
+		else if (panel === 'files') filesOpen = next;
+		else terminalOpen = next;
 	}
 	async function ensureDraftSession() {
 		if (navigation.selectedSession) return navigation.selectedSession;
@@ -413,20 +431,6 @@
 		await messageState.submit(event);
 	}
 	onMount(() => {
-		const preloadAbort = new AbortController();
-		const preload = () => {
-			void preloadSessionViews(
-				projectManagement.projects,
-				workspaceApi,
-				sessionState.preload,
-				preloadAbort.signal
-			);
-		};
-		let preloadIdleHandle: number | undefined;
-		let preloadTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
-		if ('requestIdleCallback' in window) {
-			preloadIdleHandle = window.requestIdleCallback(preload, { timeout: 1_000 });
-		} else preloadTimeoutHandle = globalThis.setTimeout(preload, 250);
 		const refreshChatBackground = () => (chatBackgroundRevision += 1);
 		window.addEventListener(CHAT_BACKGROUND_EVENT, refreshChatBackground);
 		applyPreferences(document.documentElement, readPreferences(localStorage));
@@ -447,9 +451,6 @@
 		});
 		mobileShell.start();
 		return () => {
-			preloadAbort.abort();
-			if (preloadIdleHandle !== undefined) window.cancelIdleCallback(preloadIdleHandle);
-			if (preloadTimeoutHandle !== undefined) globalThis.clearTimeout(preloadTimeoutHandle);
 			window.removeEventListener(CHAT_BACKGROUND_EVENT, refreshChatBackground);
 			mobileShell?.destroy();
 			mobileShell = null;
@@ -590,8 +591,14 @@
 		bind:showArchived={navigation.showArchived}
 		{now}
 		oncreate={navigation.beginSession}
-		onopen={(session) => navigation.openSession(session, 'push')}
-		onexternalopen={(job) => navigation.openExternalCronJob(job, 'push')}
+		onopen={async (session) => {
+			await navigation.openSession(session, 'push');
+			if (mobile) await mobileShell?.focusChat();
+		}}
+		onexternalopen={async (job) => {
+			await navigation.openExternalCronJob(job, 'push');
+			if (mobile) await mobileShell?.focusChat();
+		}}
 		onback={(trigger) => mobileShell?.open('projects', trigger)}
 		onedit={navigation.openEditSession}
 		onicon={navigation.openSessionIconEditor}
@@ -668,13 +675,13 @@
 					(selectedProject?.id ?? navigation.sessionCollection)}
 				{workflows}
 				primarySession={selectedSession?.pending ? null : selectedSession}
+				removedSession={navigation.removedSession}
 				allowDocking={!embedded}
 				restorePrimarySession={!mobile && !navigation.composingSession && !selectedSession?.pending}
-					onpanecount={(count) => {
-						sessionPaneCount = count;
-						if (count > 1 && innerWidth < 1600 && activeProjectTool === 'browser')
-							activeProjectTool = null;
-					}}
+				onpanecount={(count) => {
+					sessionPaneCount = count;
+					if (count > 1 && innerWidth < 1600 && browserOpen) browserOpen = false;
+				}}
 				onprimaryclose={navigation.openSession}
 				onsessionupdate={navigation.replaceSession}
 				onrunworkflow={navigation.runWorkflow}
@@ -810,6 +817,11 @@
 					onpreviewchange={(url) => (previewUrl = url)}
 					onreviewcontext={messageState.addReviewContext}
 				/>
+				<ProjectExcalidrawDock
+					projectId={selectedProject.id}
+					open={excalidrawOpen}
+					onpreviewchange={(url) => (previewUrl = url)}
+				/>
 				<ProjectFilesDock
 					projectId={selectedProject.id}
 					open={filesOpen}
@@ -823,11 +835,13 @@
 					compact={false}
 					docked={true}
 					{browserOpen}
+					{excalidrawOpen}
 					{gitOpen}
 					{filesOpen}
 					{terminalOpen}
 					onpreviewchange={(url) => (previewUrl = url)}
 					onbrowser={() => toggleProjectPanel('browser')}
+					onexcalidraw={() => toggleProjectPanel('excalidraw')}
 					ongit={() => toggleProjectPanel('git')}
 					onfiles={() => toggleProjectPanel('files')}
 					onopenfile={(request) => {

@@ -98,4 +98,22 @@ describe('HermesBundles', () => {
 		]);
 		expect(accessReads).toBe(1);
 	});
+
+	it('keeps Hermes-visible symlinked skills available as external read-only skills', async () => {
+		const bundles = new HermesBundles(
+			transport(() => ({})),
+			'default',
+			async () => [{ name: 'linked-skill', enabled: true, provenance: 'agent' }],
+			() => new Map()
+		);
+
+		expect(await bundles.listSkills()).toEqual([
+			{
+				name: 'linked-skill',
+				enabled: true,
+				provenance: 'external',
+				permissions: { read: false, write: false, delete: false }
+			}
+		]);
+	});
 });

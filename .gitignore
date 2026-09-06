@@ -4,6 +4,7 @@ __pycache__/
 .tmp/
 prototype/screenshots/
 node_modules/
+.hutch/
 dist/
 .astro/
 *.tsbuildinfo
@@ -15,3 +16,5 @@ docs/public/data/
 app/static/docs/
 .playwright-mcp
 artifacts/android-proof/
+desktop/artifacts/
+desktop/build/

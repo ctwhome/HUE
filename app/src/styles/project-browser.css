@@ -82,6 +82,7 @@ dialog.global-panel::backdrop {
 	}
 }
 .project-browser-dock,
+.project-excalidraw-dock,
 .project-files-dock,
 .project-tool-dock,
 .workspace-terminal-dock {
@@ -104,6 +105,7 @@ dialog.global-panel::backdrop {
 	height: 100%;
 }
 .project-browser-dock .workbench-panel,
+.project-excalidraw-dock .workbench-panel,
 .project-files-dock .files-panel,
 .project-tool-dock .workbench-panel,
 .workspace-terminal-dock .workbench-panel {
@@ -113,7 +115,11 @@ dialog.global-panel::backdrop {
 	padding-inline: calc(var(--panel-gap) / 2);
 	padding-right: var(--panel-gap);
 }
-.session-workspace:has(> .project-files-dock.open, > .project-tool-dock.open)
+.session-workspace:has(
+		> .project-excalidraw-dock.open,
+		> .project-files-dock.open,
+		> .project-tool-dock.open
+	)
 	> .project-browser-dock.open
 	.project-browser-content
 	> div {
@@ -149,6 +155,26 @@ dialog.global-panel::backdrop {
 }
 .session-workspace.terminal-open > .project-browser-dock {
 	height: calc(100% - var(--terminal-panel-height, 300px));
+}
+.project-excalidraw-dock {
+	position: relative;
+	flex: 0 0 var(--project-excalidraw-width, 720px);
+	background: var(--project-tool-surface);
+}
+.project-excalidraw-dock:not(.open) {
+	flex-basis: 0;
+	overflow: hidden;
+}
+.project-excalidraw-dock:not(.open) > section {
+	display: none;
+}
+.project-excalidraw-dock > section {
+	padding-inline: calc(var(--panel-gap) / 2);
+}
+.session-workspace:has(> .project-files-dock.open, > .project-tool-dock.open)
+	> .project-excalidraw-dock.open
+	> section {
+	padding-right: calc(var(--panel-gap) / 2);
 }
 .project-files-dock {
 	position: relative;
@@ -354,12 +380,14 @@ dialog.global-panel::backdrop {
 }
 .session-workspace:has(
 		> .project-browser-dock.open,
+		> .project-excalidraw-dock.open,
 		> .project-files-dock.open,
 		> .project-tool-dock.open
 	)
 	> .session-pane-grid {
 	padding-right: calc(var(--panel-gap) / 2);
 }
+.project-excalidraw-resizer,
 .project-files-resizer {
 	position: absolute;
 	z-index: 4;
@@ -370,6 +398,7 @@ dialog.global-panel::backdrop {
 	cursor: col-resize;
 	touch-action: none;
 }
+.project-excalidraw-resizer::after,
 .project-files-resizer::after {
 	position: absolute;
 	top: 0;
@@ -379,12 +408,16 @@ dialog.global-panel::backdrop {
 	background: transparent;
 	content: '';
 }
+.project-excalidraw-resizer:hover::after,
+.project-excalidraw-resizer:focus-visible::after,
+.project-excalidraw-resizer:active::after,
 .project-files-resizer:hover::after,
 .project-files-resizer:focus-visible::after,
 .project-files-resizer:active::after {
 	width: 2px;
 	background: var(--primary);
 }
+.session-workspace.terminal-open > .project-excalidraw-dock,
 .session-workspace.terminal-open > .project-files-dock {
 	height: calc(100% - var(--terminal-panel-height, 300px));
 }

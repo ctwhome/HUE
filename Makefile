@@ -1,4 +1,4 @@
-.PHONY: install dev build serve restart stop stop-dev stop-build stop-production
+.PHONY: install dev desktop build serve restart stop stop-dev stop-build stop-production
 
 HOST ?= 127.0.0.1
 PORT ?= 44011
@@ -13,6 +13,9 @@ dev: install
 	@./scripts/stop-services.sh all
 	HUE_DOCS_BASE=/docs HUE_DOCS_OUT_DIR=../app/static/docs bun run --cwd docs build
 	cd app && trap 'launchctl bootstrap "gui/$$(id -u)" "$(HOME)/Library/LaunchAgents/com.ctw.hue-production.plist" 2>/dev/null || launchctl kickstart -k "gui/$$(id -u)/com.ctw.hue-production"' EXIT; HUE_DATABASE_PATH="$(HUE_DATABASE_PATH)" bun --env-file=.env --bun vite dev
+
+desktop: install
+	bun run --cwd desktop dev
 
 build: install
 	HUE_DOCS_BASE=/docs HUE_DOCS_OUT_DIR=../app/static/docs bun run --cwd docs build

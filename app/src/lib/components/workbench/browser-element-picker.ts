@@ -18,7 +18,7 @@ export type BrowserElementContext = {
 	};
 };
 
-const attributeNames = [
+export const attributeNames = [
 	'id',
 	'class',
 	'name',
@@ -32,7 +32,7 @@ const attributeNames = [
 	'aria-label',
 	'data-testid'
 ];
-const styleNames = [
+export const styleNames = [
 	'display',
 	'position',
 	'color',

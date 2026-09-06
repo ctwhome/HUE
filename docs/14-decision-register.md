@@ -22,6 +22,7 @@
 | [ADR-0013](decisions/0013-hermes-native-workflow-bundles.md)          | Hermes-native Workflow bundles                             | Workflows reference Hermes-owned bundles and permitted skill content without copying it into HUE.    |
 | [ADR-0014](decisions/0014-per-session-acp-harness.md)                 | Per-Session ACP harness                                    | Keeps Hermes primary while allowing an immutable OpenCode choice for each new Session.               |
 | [ADR-0015](decisions/0015-timezone-aware-schedules.md)                | Timezone-aware HUE schedules                               | Pins five-field cron to an IANA timezone with defined daylight-saving behavior.                       |
+| [ADR-0016](decisions/0016-electrobun-desktop-previews.md)             | Electrobun desktop previews                                | Adds local native previews while retaining the web/PWA and authenticated remote boundary.             |
 
 ## Open boundaries
 

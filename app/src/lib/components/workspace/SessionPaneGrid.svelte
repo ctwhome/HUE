@@ -11,6 +11,7 @@
 		sessionListLoaded,
 		workflows,
 		primarySession,
+		removedSession = null,
 		allowDocking = true,
 		restorePrimarySession = true,
 		onpanecount = () => {},
@@ -25,6 +26,7 @@
 		sessionListLoaded: boolean;
 		workflows: Workflow[];
 		primarySession: Session | null;
+		removedSession?: { projectId: string | null; sessionId: string } | null;
 		allowDocking?: boolean;
 		restorePrimarySession?: boolean;
 		onpanecount?: (count: number) => void;
@@ -41,8 +43,9 @@
 	let dropPreview = $state(false);
 	let hydratedProjectId: string | null | undefined;
 	let reconciledProjectId = $state<string | null | undefined>();
-	let layoutReady = false;
+	let layoutReady = $state(false);
 	let restoredPrimary = $state<PaneSession | null>(null);
+	let handledRemoval = $state<typeof removedSession>(null);
 	let paneCount = $derived(1 + dockedSessions.length);
 	let dropDestination = $derived(
 		paneCount === 1 ? 'right' : paneCount < 4 ? 'bottom-right' : 'reflow'
@@ -50,7 +53,7 @@
 	function setDockedSessions(next: PaneSession[]) {
 		dockedSessions = next;
 		onpanecount(1 + next.length);
-		if (layoutReady) saveLayout();
+		if (layoutReady) queueMicrotask(saveLayout);
 	}
 
 	const storageKey = (id: string | null) => `hue:session-panes:${id ?? 'none'}`;
@@ -141,6 +144,21 @@
 		);
 		if (restorePrimarySession && !primarySession && restoredPrimary)
 			onprimaryclose(restoredPrimary);
+	});
+	$effect(() => {
+		if (
+			!allowDocking ||
+			!layoutReady ||
+			!removedSession ||
+			removedSession === handledRemoval ||
+			removedSession.projectId !== projectId
+		)
+			return;
+		handledRemoval = removedSession;
+		if (restoredPrimary?.sessionId === removedSession.sessionId) restoredPrimary = null;
+		setDockedSessions(
+			dockedSessions.filter((session) => session.sessionId !== removedSession.sessionId)
+		);
 	});
 	$effect(() => {
 		if (!allowDocking || reconciledProjectId !== projectId) return;

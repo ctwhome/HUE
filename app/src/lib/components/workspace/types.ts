@@ -105,7 +105,7 @@ export type HermesBundleSkill = {
 	description?: string;
 	category?: string;
 	enabled: boolean;
-	provenance: 'custom' | 'bundled' | 'hub';
+	provenance: 'custom' | 'bundled' | 'hub' | 'external';
 	permissions: { read: boolean; write: boolean; delete: boolean };
 };
 export type HermesCommand = { name: string; description: string; input?: { hint: string } | null };

@@ -88,7 +88,7 @@ export class ProjectManagement {
 		try {
 			const selected = await this.options.api<{ path: string | null; name: string | null }>(
 				'/api/directories/pick',
-				{ method: 'POST' }
+				{ method: 'POST', signal: AbortSignal.timeout(125_000) }
 			);
 			if (!selected.path) return;
 			this.projectRoot = selected.path;
@@ -99,7 +99,12 @@ export class ProjectManagement {
 				if (!this.projectName) this.projectName = selected.name ?? '';
 			}
 		} catch (cause) {
-			this.directoryError = cause instanceof Error ? cause.message : String(cause);
+			this.directoryError =
+				cause instanceof DOMException && cause.name === 'TimeoutError'
+					? 'The folder chooser did not respond. Try again.'
+					: cause instanceof Error
+						? cause.message
+						: String(cause);
 		} finally {
 			this.directoryLoading = false;
 		}

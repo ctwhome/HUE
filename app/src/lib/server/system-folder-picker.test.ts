@@ -29,3 +29,16 @@ test('treats cancelling the macOS folder chooser as no selection', async () => {
 
 	expect(selected).toBeNull();
 });
+
+test('stops waiting when the macOS folder chooser does not respond', async () => {
+	let aborted = false;
+	const result = pickSystemFolder(
+		'darwin',
+		async (_command, signal) =>
+			new Promise<string>(() => signal?.addEventListener('abort', () => (aborted = true))),
+		5
+	);
+
+	await expect(result).rejects.toThrow('The folder chooser did not respond. Try again.');
+	expect(aborted).toBe(true);
+});

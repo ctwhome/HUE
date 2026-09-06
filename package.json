@@ -2,5 +2,9 @@
   "name": "hue",
   "private": true,
   "packageManager": "bun@1.3.14",
-  "workspaces": ["app", "docs"]
+  "workspaces": [
+    "app",
+    "desktop",
+    "docs"
+  ]
 }

@@ -30,8 +30,8 @@ async function handled(path: string, address: string, cookie?: string) {
 test('remote requests cannot read application or API data without authentication', async () => {
 	delete process.env.HUE_ACCESS_SECRET;
 
-	const page = await handled('/', '100.64.0.2');
-	const api = await handled('/api/projects', '100.64.0.2');
+	const page = await handled('/', '203.0.113.2');
+	const api = await handled('/api/projects', '203.0.113.2');
 
 	expect(page.status).toBe(303);
 	expect(page.headers.get('location')).toBe('/login');

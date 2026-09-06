@@ -156,9 +156,21 @@ describe('ProjectManagement Hermes authority', () => {
 		await state.pickFolder();
 
 		expect(requests[0]).toMatchObject({ url: '/api/directories/pick', options: { method: 'POST' } });
+		expect(requests[0]?.options?.signal).toBeInstanceOf(AbortSignal);
 		expect(state.selectedFolders).toEqual(['/work/new-project']);
 		expect(state.primaryFolder).toBe('/work/new-project');
 		expect(state.projectName).toBe('new-project');
+	});
+
+	it('recovers when the system folder picker times out', async () => {
+		const state = manager(async () => {
+			throw new DOMException('Timed out', 'TimeoutError');
+		});
+
+		await state.pickFolder();
+
+		expect(state.directoryLoading).toBe(false);
+		expect(state.directoryError).toBe('The folder chooser did not respond. Try again.');
 	});
 
 	it('creates a folder in the open directory and refreshes the browser', async () => {

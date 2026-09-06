@@ -149,14 +149,17 @@ export class HermesBundles {
 				throw new Error('Hermes returned an invalid skill name');
 			}
 			const skillAccess = access.get(skill.name);
-			if (!skillAccess) throw new Error(`Hermes skill ${skill.name} was not found`);
 			return {
 				name: skill.name,
 				...(typeof skill.description === 'string' ? { description: skill.description } : {}),
 				...(typeof skill.category === 'string' ? { category: skill.category } : {}),
 				enabled: skill.enabled === true,
-				provenance: skillAccess.provenance,
-				permissions: { read: true, write: skillAccess.editable, delete: skillAccess.editable }
+				provenance: skillAccess?.provenance ?? ('external' as const),
+				permissions: {
+					read: Boolean(skillAccess),
+					write: skillAccess?.editable === true,
+					delete: skillAccess?.editable === true
+				}
 			};
 		});
 	}
