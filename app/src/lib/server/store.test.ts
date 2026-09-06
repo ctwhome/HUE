@@ -599,10 +599,12 @@ describe('HUEStore project and workflow boundaries', () => {
 			name: 'Daily review',
 			prompt: 'Review progress',
 			cron: '0 9 * * *',
+			timezone: 'Europe/Amsterdam',
 			enabled: true,
 			nextRunAt: '2026-01-02T09:00:00.000Z',
 			sessionId: 'scheduled'
 		});
+		expect(store.getSchedule('daily')?.timezone).toBe('Europe/Amsterdam');
 
 		expect(store.countSessions(null, 'unscheduled')).toBe(1);
 		expect(store.countSessions(null, 'scheduled')).toBe(1);

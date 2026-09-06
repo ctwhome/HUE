@@ -4,6 +4,7 @@
 - **Date:** 2026-08-28
 - **Owners:** Curi / HUE
 - **Extends:** ADR-0003, ADR-0005, and ADR-0009
+- **Amended by:** ADR-0015
 
 ## Context
 
@@ -28,5 +29,5 @@ HUE-managed Hermes schedules receive normal Session rows because HUE creates the
 
 ## Revisit triggers
 
-- Product requirements need time zones or cron syntax beyond the implemented five-field form.
+- Cron syntax beyond the implemented five-field form is required. Timezone support is resolved by ADR-0015.
 - Catch-up must preserve every missed occurrence instead of coalescing them.

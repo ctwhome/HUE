@@ -28,9 +28,11 @@
 		compact,
 		docked = false,
 		browserOpen = false,
+		gitOpen = false,
 		filesOpen = false,
 		terminalOpen = false,
 		onbrowser = () => {},
+		ongit = () => {},
 		onfiles = () => {},
 		onopenfile = () => {},
 		onterminal = () => {},
@@ -44,9 +46,11 @@
 		compact: boolean;
 		docked?: boolean;
 		browserOpen?: boolean;
+		gitOpen?: boolean;
 		filesOpen?: boolean;
 		terminalOpen?: boolean;
 		onbrowser?: () => void;
+		ongit?: () => void;
 		onfiles?: () => void;
 		onopenfile?: (request: FileOpenRequest) => void;
 		onterminal?: () => void;
@@ -55,16 +59,11 @@
 		onreviewcontext?: (context: ReviewContextSeed) => void;
 		dirtyGuard: DirtyGuard;
 	} = $props();
-	type Tool = 'git' | 'files';
 	let view = $state<'develop' | 'files'>('develop');
 	let developView = $state<'browser' | 'terminal' | 'git'>('browser');
-	let open = $state(true);
 	let gitChanges = $state(0);
 	let width = $state(440);
 	let maxWidth = $state(720);
-	let activeTool = $derived<Tool | 'browser'>(
-		view === 'files' ? 'files' : developView === 'git' ? 'git' : 'browser'
-	);
 	let dockElement: HTMLElement;
 	let resizeStart: { x: number; width: number } | null = null;
 	let filesMounted = $state(false);
@@ -139,22 +138,14 @@
 		};
 		if (!dirtyGuard.block(activate)) activate();
 	}
-	function toggleTool(tool: Tool) {
-		if (open && activeTool === tool) {
-			open = false;
-			if (docked) localStorage.setItem(`hue:project-tools:${projectId}:dock`, 'closed');
-			return;
+	function toggleGit() {
+		if (!gitOpen) {
+			chooseDevelopView('git');
+			void loadRepositoryPanels();
 		}
-		open = true;
-		if (tool === 'files') openFiles();
-		else {
-			chooseDevelopView(tool);
-			openDevelop();
-		}
-		if (docked) localStorage.setItem(`hue:project-tools:${projectId}:dock`, tool);
+		ongit();
 	}
 	function toggleTerminal() {
-		open = true;
 		onterminal();
 	}
 	function resizeLimits() {
@@ -198,16 +189,11 @@
 	onMount(() => {
 		mounted = true;
 		if (docked) {
-			open = false;
 			const savedWidth = Number(localStorage.getItem(`hue:project-tools:${projectId}:width`));
 			setWidth(
 				savedWidth > 0 ? savedWidth : (dockElement.parentElement?.clientWidth ?? 960) * 0.46
 			);
-			const savedDock = localStorage.getItem(`hue:project-tools:${projectId}:dock`);
-			if (savedDock === 'git') {
-				open = true;
-				chooseDevelopView('git');
-			}
+			if (gitOpen) chooseDevelopView('git');
 		}
 		const cancelRepositoryLoad = afterInitialPaint(() => {
 			void loadRepositoryPanels();
@@ -224,10 +210,10 @@
 	bind:this={dockElement}
 	class="project-tool-dock flex min-h-0 min-w-0"
 	class:docked
-	class:open={!docked || open}
+	class:open={!docked || gitOpen}
 	style={`--project-tool-width: ${width}px`}
 >
-	{#if docked && open}
+	{#if docked && gitOpen}
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions (ARIA separator is keyboard-operable.) -->
 		<div
@@ -249,8 +235,8 @@
 	<section
 		class="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
 		aria-label={`${projectName} workbench`}
-		aria-hidden={docked && !open}
-		inert={docked && !open ? true : undefined}
+		aria-hidden={docked && !gitOpen}
+		inert={docked && !gitOpen ? true : undefined}
 	>
 		<nav
 			class="workbench-tabs flex gap-1 border-b border-border px-2.5 py-1.5"
@@ -396,13 +382,13 @@
 				{@const Icon = tool.icon}
 				<button
 					type="button"
-					class:active={open && activeTool === tool.id}
+					class:active={gitOpen}
 					aria-label={tool.id === 'git' && gitChanges
 						? `Git, ${gitChanges} changed files`
 						: tool.label}
-					aria-expanded={open && activeTool === tool.id}
-					title={`${open && activeTool === tool.id ? 'Hide' : 'Show'} ${tool.label}`}
-					onclick={() => toggleTool(tool.id)}
+					aria-expanded={gitOpen}
+					title={`${gitOpen ? 'Hide' : 'Show'} ${tool.label}`}
+					onclick={toggleGit}
 				>
 					<Icon width={19} height={19} aria-hidden="true" />
 					{#if tool.id === 'git' && gitChanges}<span class="git-change-badge">{gitChanges}</span

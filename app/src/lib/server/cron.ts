@@ -64,14 +64,26 @@ export function parseCron(expression: string): ParsedCron {
 	};
 }
 
-function matches(cron: ParsedCron, date: Date): boolean {
-	const day = cron.day.values.has(date.getDate());
-	const weekday = cron.weekday.values.has(date.getDay());
+export function normalizeTimeZone(value: string): string {
+	try {
+		return new Intl.DateTimeFormat('en', { timeZone: value }).resolvedOptions().timeZone;
+	} catch {
+		throw new Error('Invalid time zone');
+	}
+}
+
+export function systemTimeZone(): string {
+	return normalizeTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+}
+
+function matches(cron: ParsedCron, date: Temporal.PlainDateTime): boolean {
+	const day = cron.day.values.has(date.day);
+	const weekday = cron.weekday.values.has(date.dayOfWeek % 7);
 	const calendarDay = cron.day.wildcard ? weekday : cron.weekday.wildcard ? day : day || weekday;
 	return (
-		cron.minute.values.has(date.getMinutes()) &&
-		cron.hour.values.has(date.getHours()) &&
-		cron.month.values.has(date.getMonth() + 1) &&
+		cron.minute.values.has(date.minute) &&
+		cron.hour.values.has(date.hour) &&
+		cron.month.values.has(date.month) &&
 		calendarDay
 	);
 }
@@ -79,15 +91,27 @@ function matches(cron: ParsedCron, date: Date): boolean {
 export function nextCronOccurrence(
 	expression: string,
 	after: Date,
+	timeZone: string,
 	maximumMinutes = 366 * 24 * 60 * 5
 ): Date {
 	const cron = parseCron(expression);
-	const candidate = new Date(after);
-	candidate.setSeconds(0, 0);
-	candidate.setMinutes(candidate.getMinutes() + 1);
+	const zone = normalizeTimeZone(timeZone);
+	const afterMilliseconds = after.getTime();
+	if (!Number.isFinite(afterMilliseconds)) throw new Error('Invalid schedule date');
+	let candidate = Temporal.Instant.fromEpochMilliseconds(afterMilliseconds)
+		.toZonedDateTimeISO(zone)
+		.toPlainDateTime()
+		.with({ second: 0, millisecond: 0, microsecond: 0, nanosecond: 0 })
+		.add({ minutes: 1 });
 	for (let minute = 0; minute < maximumMinutes; minute += 1) {
-		if (matches(cron, candidate)) return candidate;
-		candidate.setMinutes(candidate.getMinutes() + 1);
+		if (matches(cron, candidate)) {
+			const zoned = candidate.toZonedDateTime(zone, { disambiguation: 'earlier' });
+			const milliseconds = Number(zoned.epochMilliseconds);
+			if (zoned.toPlainDateTime().equals(candidate) && milliseconds > afterMilliseconds) {
+				return new Date(milliseconds);
+			}
+		}
+		candidate = candidate.add({ minutes: 1 });
 	}
 	throw new Error('Cron expression has no occurrence within five years');
 }

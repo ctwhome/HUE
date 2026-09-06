@@ -71,6 +71,7 @@ export type BrowserInteractionResponse =
 
 export interface PromptRuntime {
 	hasSessionState(sessionId: string): boolean;
+	getModelId?(sessionId: string): string | null;
 	resumeSession(cwd: string, sessionId: string): Promise<void>;
 	prompt(input: {
 		sessionId: string;
@@ -328,6 +329,7 @@ export class MessageDispatcher {
 			this.store.transitionMessage(current.id, 'running', {
 				messageId: envelope.id
 			});
+			const modelId = this.runtime.getModelId?.(current.sessionId) ?? null;
 			await this.runtime.prompt({
 				sessionId: current.sessionId,
 				text: current.text,
@@ -338,12 +340,14 @@ export class MessageDispatcher {
 				onChunk: (text) => {
 					this.store.appendEvent(envelope.projectId, envelope.sessionId, 'agent.chunk', {
 						messageId: envelope.id,
+						...(modelId ? { modelId } : {}),
 						text
 					});
 				},
 				onImage: (image) => {
 					this.store.appendEvent(envelope.projectId, envelope.sessionId, 'agent.image', {
 						messageId: envelope.id,
+						...(modelId ? { modelId } : {}),
 						image
 					});
 				},

@@ -16,14 +16,45 @@
 	let scheduleGroup = $state<'none' | 'status'>('none');
 	let newName = $state('');
 	let newPrompt = $state('');
-	let newSchedule = $state('0 9 * * *');
+	let scheduleFormat = $state<'simple' | 'advanced'>('simple');
+	let repeat = $state<'daily' | 'weekdays' | 'weekends'>('weekdays');
+	let time = $state('08:00');
+	let newSchedule = $state('0 8 * * 1-5');
+	let timezone = $state(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
 	let historyJob = $state('');
 	let history = $state<Record<string, unknown> | null>(null);
 	let historyError = $state('');
 	const inputClass =
 		'h-10 min-w-0 rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring max-[700px]:min-h-11';
 	const card = 'rounded-xl border border-border bg-card p-4';
+	const timezones = [
+		'UTC',
+		...Intl.supportedValuesOf('timeZone').filter((value) => value !== 'UTC')
+	];
 	const label = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+	const cron = () => {
+		if (scheduleFormat === 'advanced') return newSchedule;
+		const [hour, minute] = time.split(':').map(Number);
+		return `${minute} ${hour} * * ${repeat === 'daily' ? '*' : repeat === 'weekdays' ? '1-5' : '0,6'}`;
+	};
+	const scheduleLabel = (job: Job) => {
+		const match = job.cron.match(/^(\d{1,2}) (\d{1,2}) \* \* (\*|1-5|0,6)$/);
+		if (!match) return job.cron;
+		const days = match[3] === '*' ? 'Daily' : match[3] === '1-5' ? 'Weekdays' : 'Weekends';
+		return `${days} at ${match[2]!.padStart(2, '0')}:${match[1]!.padStart(2, '0')}`;
+	};
+	const nextRunLabel = (job: Job) => {
+		if (!job.nextRun) return '';
+		try {
+			return new Intl.DateTimeFormat(undefined, {
+				timeZone: job.timezone,
+				dateStyle: 'medium',
+				timeStyle: 'short'
+			}).format(new Date(job.nextRun));
+		} catch {
+			return job.nextRun;
+		}
+	};
 	const jobStatuses = () =>
 		[...new Set(jobs.map((job) => job.status))].sort((a, b) => a.localeCompare(b));
 	const filteredJobs = () => {
@@ -31,7 +62,7 @@
 		return jobs.filter(
 			(job) =>
 				(!query ||
-					`${job.name || job.id} ${job.cron} ${job.status} ${job.nextRun || ''}`
+					`${job.name || job.id} ${job.cron} ${job.timezone} ${job.status} ${job.nextRun || ''}`
 						.toLowerCase()
 						.includes(query)) &&
 				(status === 'all' || job.status === status)
@@ -66,26 +97,56 @@
 		if (promptText === null) return;
 		const cron = window.prompt('Cron schedule', job.cron);
 		if (cron === null) return;
+		const timezone = window.prompt('IANA time zone', job.timezone);
+		if (timezone === null) return;
 		void onaction('schedule.update', {
 			id: job.id,
-			updates: { name, prompt: promptText, cron }
+			updates: { name, prompt: promptText, cron, timezone }
 		});
 	}
 </script>
 
 <form
-	class="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-border bg-card p-4 max-[700px]:grid-cols-1"
+	class="schedule-create mb-4 grid grid-cols-2 gap-2 rounded-xl border border-border bg-card p-4 max-[700px]:grid-cols-1"
 	onsubmit={(event) => {
 		event.preventDefault();
 		void onaction('schedule.create', {
 			name: newName,
 			prompt: newPrompt,
-			cron: newSchedule
+			cron: cron(),
+			timezone
 		});
 	}}
 >
 	<Input bind:value={newName} aria-label="Schedule name" placeholder="Schedule name" required />
-	<Input bind:value={newSchedule} aria-label="Cron schedule" placeholder="0 9 * * *" required />
+	<select class={inputClass} bind:value={scheduleFormat} aria-label="Schedule format">
+		<option value="simple">Simple schedule</option>
+		<option value="advanced">Advanced cron</option>
+	</select>
+	{#if scheduleFormat === 'simple'}<select
+			class={inputClass}
+			bind:value={repeat}
+			aria-label="Repeat"
+		>
+			<option value="daily">Daily</option>
+			<option value="weekdays">Weekdays</option>
+			<option value="weekends">Weekends</option>
+		</select><Input bind:value={time} type="time" aria-label="Time" required />{:else}<Input
+			bind:value={newSchedule}
+			aria-label="Cron schedule"
+			placeholder="0 8 * * 1-5"
+			required
+		/>{/if}
+	<Input
+		bind:value={timezone}
+		list="hue-schedule-timezones"
+		aria-label="Time zone"
+		placeholder="Europe/Amsterdam"
+		required
+	/>
+	<datalist id="hue-schedule-timezones">
+		{#each timezones as zone}<option value={zone}></option>{/each}
+	</datalist>
 	<Input
 		bind:value={newPrompt}
 		class="max-[700px]:col-span-1"
@@ -142,9 +203,10 @@
 					<article class={`${card} flex flex-wrap items-center justify-between gap-4`}>
 						<div class="grid gap-1">
 							<strong>{job.name || job.id}</strong>
-							<small class="text-muted-foreground">{job.cron}</small>
+							<small class="text-muted-foreground">{scheduleLabel(job)} · {job.timezone}</small>
 							{#if job.nextRun}
-								<small class="schedule-runs text-xs text-muted-foreground">Next {job.nextRun}</small
+								<small class="schedule-runs text-xs text-muted-foreground"
+									>Next {nextRunLabel(job)}</small
 								>
 							{/if}
 							<a

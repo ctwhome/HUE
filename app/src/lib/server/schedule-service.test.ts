@@ -24,10 +24,35 @@ describe('ScheduleService', () => {
 		});
 
 		await expect(
-			service.create({ name: 'Impossible', prompt: 'Never', cron: '0 0 31 2 *' })
+			service.create({ name: 'Impossible', prompt: 'Never', cron: '0 0 31 2 *', timezone: 'UTC' })
 		).rejects.toThrow('no occurrence');
 		expect(sessions).toBe(0);
 		expect(store.listSchedules()).toEqual([]);
+		store.close();
+	});
+
+	it('rejects an invalid time zone before creating a Hermes Session', async () => {
+		const store = new HUEStore(':memory:');
+		let sessions = 0;
+		const service = new ScheduleService({
+			store,
+			runtime: {
+				createSession: async (cwd) => {
+					sessions += 1;
+					return { sessionId: 'orphan', cwd };
+				}
+			},
+			dispatcher: { submit: () => undefined, submitAccepted: () => undefined },
+			root: () => '/tmp',
+			now: () => new Date('2026-01-01T00:00:00Z'),
+			startTimer: false
+		});
+
+		await expect(
+			service.create({ name: 'Invalid', prompt: 'Never', cron: '0 8 * * *', timezone: 'Nope' })
+		).rejects.toThrow('Invalid time zone');
+		expect(sessions).toBe(0);
+		service.close();
 		store.close();
 	});
 
@@ -54,12 +79,14 @@ describe('ScheduleService', () => {
 		const schedule = await service.create({
 			name: 'Daily review',
 			prompt: 'Review HUE',
-			cron: '0 9 * * *'
+			cron: '0 9 * * *',
+			timezone: 'UTC'
 		});
 		const next = schedule.nextRunAt;
 		await service.runNow(schedule.id, 'client-run-1');
 
 		expect(service.detail(schedule.id).nextRunAt).toBe(next);
+		expect(service.detail(schedule.id).timezone).toBe('UTC');
 		expect(store.getSession(null, 'schedule-session')).toMatchObject({
 			title: 'Daily review',
 			folder: 'Schedules'
@@ -93,7 +120,12 @@ describe('ScheduleService', () => {
 			now: () => new Date('2026-08-28T12:30:00Z'),
 			startTimer: false
 		});
-		const schedule = await service.create({ name: 'Hourly', prompt: 'Run', cron: '0 * * * *' });
+		const schedule = await service.create({
+			name: 'Hourly',
+			prompt: 'Run',
+			cron: '0 * * * *',
+			timezone: 'UTC'
+		});
 		store.database
 			.query('UPDATE schedules SET next_run_at = ? WHERE id = ?')
 			.run('2026-08-28T09:00:00.000Z', schedule.id);
@@ -110,5 +142,31 @@ describe('ScheduleService', () => {
 		service.close();
 		store.close();
 		rmSync(root, { recursive: true, force: true });
+	});
+
+	it('recomputes the next occurrence when the time zone changes', async () => {
+		const store = new HUEStore(':memory:');
+		const service = new ScheduleService({
+			store,
+			runtime: { createSession: async (cwd) => ({ sessionId: 'zoned-session', cwd }) },
+			dispatcher: { submit: () => undefined, submitAccepted: () => undefined },
+			root: () => '/tmp',
+			now: () => new Date('2026-03-28T12:00:00Z'),
+			startTimer: false
+		});
+		const schedule = await service.create({
+			name: 'Daily',
+			prompt: 'Review',
+			cron: '0 8 * * *',
+			timezone: 'Europe/Amsterdam'
+		});
+
+		expect(schedule.nextRunAt).toBe('2026-03-29T06:00:00.000Z');
+		expect(service.update(schedule.id, { timezone: 'America/New_York' })).toMatchObject({
+			timezone: 'America/New_York',
+			nextRunAt: '2026-03-29T12:00:00.000Z'
+		});
+		service.close();
+		store.close();
 	});
 });

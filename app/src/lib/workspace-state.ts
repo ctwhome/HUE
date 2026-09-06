@@ -7,6 +7,7 @@ export type WorkspaceTranscriptMessage = {
 	attachments?: InputAttachment[];
 	reviewContexts?: ReviewContext[];
 	createdAt?: string;
+	modelId?: string;
 };
 export type WorkspaceSubagentTree = {
 	messageId: string;
@@ -141,6 +142,7 @@ function applyTimelineEvent(
 			next[next.length - 1] = {
 				...last,
 				text: last.text + (event.type === 'agent.chunk' ? String(event.payload.text ?? '') : ''),
+				...(event.payload.modelId ? { modelId: String(event.payload.modelId) } : {}),
 				...(image ? { images: [...(last.images ?? []), image] } : {})
 			};
 			return next;
@@ -153,6 +155,7 @@ function applyTimelineEvent(
 				role: 'assistant',
 				messageId,
 				text: event.type === 'agent.chunk' ? String(event.payload.text ?? '') : '',
+				...(event.payload.modelId ? { modelId: String(event.payload.modelId) } : {}),
 				...(event.createdAt ? { createdAt: event.createdAt } : {}),
 				...(image ? { images: [image] } : {})
 			}
