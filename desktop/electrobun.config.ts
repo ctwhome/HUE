@@ -1,10 +1,11 @@
 import type { ElectrobunConfig } from "electrobun";
+import { version } from "./package.json";
 
 export default {
   app: {
     name: "HUE",
     identifier: "studio.ctw.hue.desktop",
-    version: "0.0.1",
+    version,
   },
   build: {
     mainProcess: "bun",
