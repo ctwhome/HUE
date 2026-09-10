@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { onDestroy, tick, untrack } from 'svelte';
+	import type { DirtyGuard } from './dirty-guard';
 	import Archive from '~icons/lucide/archive';
 	import ChevronRight from '~icons/lucide/chevron-right';
 	import Copy from '~icons/lucide/copy';
@@ -21,6 +23,8 @@
 		id,
 		dialog = $bindable(),
 		loading,
+		dirtyGuard,
+		mutationError = '',
 		available,
 		projectName,
 		workflows,
@@ -41,6 +45,8 @@
 		id: string;
 		dialog?: HTMLDialogElement;
 		loading: boolean;
+		dirtyGuard?: DirtyGuard;
+		mutationError?: string;
 		available: boolean;
 		projectName: string;
 		workflows: Workflow[];
@@ -101,6 +107,80 @@
 	let showArchived = $state(false);
 	let actions = $state(false);
 	let mobileDetail = $state(false);
+	let workflowBusy = $state(false);
+	let workflowError = $state('');
+	let workflowNotice = $state('');
+	let bundleSaving = $state(false);
+	let editorGeneration = 0;
+	let skillRequest = 0;
+	let promptBaseline = $state('');
+	let bundleBaseline = $state('');
+	let skillBaseline = $state('');
+	function promptDraft() {
+		return JSON.stringify(
+			editor === 'create'
+				? [name, prompt, folder, profile, bundle]
+				: [editName, editPrompt, editFolder, editProfile, editBundle]
+		);
+	}
+	function bundleDraft() {
+		return JSON.stringify([bundleName, bundleDescription, bundleInstruction, bundleMembers]);
+	}
+	function isDirty() {
+		return Boolean(
+			(editor && promptDraft() !== promptBaseline) ||
+			(bundleBaseline && bundleDraft() !== bundleBaseline) ||
+			(openedSkill && skillEditable && skillContent !== skillBaseline)
+		);
+	}
+	function discardDrafts() {
+		editorGeneration++;
+		skillRequest++;
+		editor = null;
+		openedSkill = '';
+		const selected = bundles.find(({ slug }) => slug === selectedBundleSlug);
+		bundleName = selected?.name ?? '';
+		bundleDescription = selected?.description ?? '';
+		bundleInstruction = selected?.instruction ?? '';
+		bundleMembers = [...(selected?.skills ?? [])];
+		bundleBaseline = bundleDraft();
+	}
+	const dirtySource = untrack(() => dirtyGuard?.register(discardDrafts));
+	$effect(() => dirtySource?.setDirty(isDirty()));
+	onDestroy(() => dirtySource?.unregister());
+	function leaveEditor() {
+		if (isDirty() && !window.confirm('Discard unsaved prompt, bundle, or skill changes?'))
+			return false;
+		discardDrafts();
+		return true;
+	}
+	function closeLibrary() {
+		if (leaveEditor()) dialog?.close();
+	}
+	async function mutateWorkflow(action: () => Promise<boolean | void>) {
+		if (workflowBusy) return false;
+		const generation = editorGeneration;
+		workflowBusy = true;
+		workflowError = '';
+		workflowNotice = '';
+		try {
+			const accepted = await action();
+			await tick();
+			if (generation === editorGeneration) {
+				if (accepted !== true)
+					workflowError =
+						mutationError || 'Workflow was not saved. Your inputs are retained; try again.';
+				else workflowNotice = 'Workflow change saved. Any newer edits remain unsaved.';
+			}
+			return accepted === true;
+		} catch (cause) {
+			if (generation === editorGeneration)
+				workflowError = cause instanceof Error ? cause.message : String(cause);
+			return false;
+		} finally {
+			workflowBusy = false;
+		}
+	}
 	$effect(() => {
 		if (!available) source = 'community';
 	});
@@ -172,7 +252,12 @@
 				bundles = body.bundles;
 				bundleSkills = body.skills;
 				bundlesLoaded = true;
-				if (!selectedBundleSlug || !bundles.some(({ slug }) => slug === selectedBundleSlug)) {
+				if (
+					!editor &&
+					!creatingBundle &&
+					!isDirty() &&
+					(!selectedBundleSlug || !bundles.some(({ slug }) => slug === selectedBundleSlug))
+				) {
 					selectBundle(bundles[0] ?? null);
 				}
 				if (!bundles.some(({ slug }) => slug === bundle)) bundle = bundles[0]?.slug ?? bundle;
@@ -185,6 +270,7 @@
 		})());
 	}
 	export async function openBundle(slug: string) {
+		if (!leaveEditor()) return;
 		source = 'bundles';
 		mobileDetail = true;
 		await ensureBundles();
@@ -193,6 +279,7 @@
 		else if (!bundleError) bundleError = `Hermes bundle ${slug} is unavailable.`;
 	}
 	function selectBundle(item: HermesBundle | null) {
+		if (!leaveEditor()) return;
 		selectedBundleSlug = item?.slug ?? '';
 		bundleName = item?.name ?? '';
 		bundleDescription = item?.description ?? '';
@@ -200,8 +287,10 @@
 		bundleMembers = [...(item?.skills ?? [])];
 		creatingBundle = false;
 		openedSkill = '';
+		bundleBaseline = bundleDraft();
 	}
 	function startBundleCreate() {
+		if (!leaveEditor()) return;
 		selectedBundleSlug = '';
 		bundleName = '';
 		bundleDescription = '';
@@ -209,6 +298,7 @@
 		bundleMembers = [];
 		creatingBundle = true;
 		openedSkill = '';
+		bundleBaseline = bundleDraft();
 	}
 	function toggleBundleSkill(name: string, included: boolean) {
 		bundleMembers = included
@@ -217,14 +307,18 @@
 	}
 	async function saveBundle(event: SubmitEvent) {
 		event.preventDefault();
+		if (bundleSaving) return;
+		bundleSaving = true;
+		const creating = creatingBundle;
+		const slug = selectedBundleSlug;
+		const generation = editorGeneration;
+		const submitted = bundleDraft();
 		bundleError = '';
 		try {
 			const body = await workspaceApi<{ bundle: HermesBundle }>(
-				creatingBundle
-					? '/api/hermes/bundles'
-					: `/api/hermes/bundles/${encodeURIComponent(selectedBundleSlug)}`,
+				creating ? '/api/hermes/bundles' : `/api/hermes/bundles/${encodeURIComponent(slug)}`,
 				{
-					method: creatingBundle ? 'POST' : 'PUT',
+					method: creating ? 'POST' : 'PUT',
 					body: JSON.stringify({
 						...(creatingBundle ? { name: bundleName } : {}),
 						description: bundleDescription,
@@ -233,33 +327,60 @@
 					})
 				}
 			);
-			bundles = creatingBundle
+			bundles = creating
 				? [...bundles, body.bundle]
-				: bundles.map((item) => (item.slug === selectedBundleSlug ? body.bundle : item));
-			selectBundle(body.bundle);
-			bundle = body.bundle.slug;
+				: bundles.map((item) => (item.slug === slug ? body.bundle : item));
+			if (generation !== editorGeneration || selectedBundleSlug !== slug) return;
+			bundleBaseline = submitted;
+			creatingBundle = false;
+			selectedBundleSlug = body.bundle.slug;
+			if (bundleDraft() === submitted) {
+				bundleName = body.bundle.name;
+				bundleDescription = body.bundle.description;
+				bundleInstruction = body.bundle.instruction;
+				bundleMembers = [...body.bundle.skills];
+				bundleBaseline = bundleDraft();
+			}
 		} catch (cause) {
-			bundleError = cause instanceof Error ? cause.message : String(cause);
+			if (generation === editorGeneration)
+				bundleError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			bundleSaving = false;
 		}
 	}
 	async function deleteBundle() {
+		if (bundleSaving || !leaveEditor()) return;
 		const selected = bundles.find(({ slug }) => slug === selectedBundleSlug);
 		if (!selected || window.prompt(`Type ${selected.name} to delete this Bundle`) !== selected.name)
 			return;
 		bundleError = '';
+		bundleSaving = true;
+		const generation = editorGeneration;
 		try {
 			await workspaceApi(`/api/hermes/bundles/${encodeURIComponent(selected.slug)}`, {
 				method: 'DELETE',
 				body: JSON.stringify({ confirm: selected.name })
 			});
 			bundles = bundles.filter((item) => item.slug !== selected.slug);
-			selectBundle(bundles[0] ?? null);
+			if (generation === editorGeneration) selectBundle(bundles[0] ?? null);
 			if (bundle === selected.slug) bundle = bundles[0]?.slug ?? '';
 		} catch (cause) {
-			bundleError = cause instanceof Error ? cause.message : String(cause);
+			if (generation === editorGeneration)
+				bundleError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			bundleSaving = false;
 		}
 	}
 	async function openSkill(name: string) {
+		if (
+			openedSkill &&
+			skillContent !== skillBaseline &&
+			!window.confirm('Discard unsaved skill changes?')
+		)
+			return;
+		const request = ++skillRequest;
+		const generation = editorGeneration;
+		openedSkill = '';
 		bundleError = '';
 		try {
 			const body = await workspaceApi<{
@@ -268,46 +389,60 @@
 				provenance: string;
 				editable: boolean;
 			}>(`/api/hermes/skills/${encodeURIComponent(name)}`);
+			if (request !== skillRequest || generation !== editorGeneration) return;
 			const access = bundleSkills.find((skill) => skill.name === name);
 			openedSkill = name;
 			skillContent = body.content;
+			skillBaseline = body.content;
 			skillProvenance = body.provenance;
 			skillEditable =
 				body.editable && access?.permissions.write === true && access.provenance === 'custom';
 		} catch (cause) {
-			bundleError = cause instanceof Error ? cause.message : String(cause);
+			if (request === skillRequest && generation === editorGeneration)
+				bundleError = cause instanceof Error ? cause.message : String(cause);
 		}
 	}
 	async function saveSkill() {
-		if (!openedSkill || !skillEditable) return;
+		if (!openedSkill || !skillEditable || skillSaving) return;
+		const name = openedSkill;
+		const content = skillContent;
+		const request = skillRequest;
+		const generation = editorGeneration;
 		skillSaving = true;
 		bundleError = '';
 		try {
-			await workspaceApi(`/api/hermes/skills/${encodeURIComponent(openedSkill)}`, {
+			await workspaceApi(`/api/hermes/skills/${encodeURIComponent(name)}`, {
 				method: 'PUT',
-				body: JSON.stringify({ content: skillContent })
+				body: JSON.stringify({ content })
 			});
+			if (request === skillRequest && generation === editorGeneration && openedSkill === name)
+				skillBaseline = content;
 		} catch (cause) {
-			bundleError = cause instanceof Error ? cause.message : String(cause);
+			if (request === skillRequest && generation === editorGeneration)
+				bundleError = cause instanceof Error ? cause.message : String(cause);
 		} finally {
 			skillSaving = false;
 		}
 	}
 	function startCreate(template?: CatalogPrompt) {
+		if (!leaveEditor()) return false;
 		name = template?.title ?? '';
 		prompt = template?.prompt ?? '';
 		folder = template?.category ?? '';
 		editor = 'create';
 		mobileDetail = true;
 		editing = null;
+		promptBaseline = promptDraft();
+		return true;
 	}
 	function addFolder() {
 		const value = window.prompt('Folder name')?.trim();
 		if (!value) return;
-		startCreate();
+		if (!startCreate()) return;
 		folder = value.slice(0, 100);
 	}
 	function startEdit(workflow: Workflow) {
+		if (!leaveEditor()) return;
 		editing = workflow;
 		editName = workflow.name;
 		editPrompt = workflow.prompt;
@@ -317,39 +452,54 @@
 		editor = 'edit';
 		mobileDetail = true;
 		actions = false;
+		promptBaseline = promptDraft();
 	}
 	async function saveEdit(event: SubmitEvent) {
 		event.preventDefault();
+		const submitted = promptDraft();
+		const generation = editorGeneration;
 		if (
 			editing &&
-			(await onupdate(editing, {
-				name: editName,
-				prompt: editPrompt,
-				folder: editFolder.trim() || null,
-				profile: editProfile,
-				bundle: editBundle
-			}))
-		)
-			editor = null;
+			(await mutateWorkflow(() =>
+				onupdate(editing!, {
+					name: editName,
+					prompt: editPrompt,
+					folder: editFolder.trim() || null,
+					profile: editProfile,
+					bundle: editBundle
+				})
+			)) &&
+			generation === editorGeneration
+		) {
+			promptBaseline = submitted;
+			if (promptDraft() === submitted) editor = null;
+		}
 	}
 	async function saveCreate(event: SubmitEvent) {
-		if ((await onsubmit(event)) === true) {
-			editor = null;
-			source = 'prompts';
+		event.preventDefault();
+		const submitted = promptDraft();
+		const generation = editorGeneration;
+		if (await mutateWorkflow(() => Promise.resolve(onsubmit(event)))) {
+			if (generation !== editorGeneration) return;
+			promptBaseline = submitted;
+			if (promptDraft() === submitted) {
+				editor = null;
+				source = 'prompts';
+			}
 		}
 	}
 	async function toggleCatalogFavorite(item: CatalogPrompt) {
 		const existing = workflows.find(
 			(workflow) => workflow.name === item.title && workflow.prompt === item.prompt
 		);
-		if (existing) await onupdate(existing, { favorite: !existing.favorite });
-		else await onfavoritecatalog(item);
+		if (existing) await mutateWorkflow(() => onupdate(existing, { favorite: !existing.favorite }));
+		else await mutateWorkflow(() => onfavoritecatalog(item));
 	}
 	async function remove(workflow: Workflow) {
+		if (workflowBusy) return;
 		actions = false;
 		if (window.prompt(`Type ${workflow.name} to delete this Workflow`) === workflow.name) {
-			await ondelete(workflow);
-			selectedWorkflowId = null;
+			if (await mutateWorkflow(() => ondelete(workflow))) selectedWorkflowId = null;
 		}
 	}
 	async function toggleArchived() {
@@ -365,11 +515,24 @@
 	}
 </script>
 
+<svelte:window
+	onbeforeunload={(event) => {
+		if (isDirty()) {
+			event.preventDefault();
+			event.returnValue = '';
+		}
+	}}
+/>
+
 <dialog
 	bind:this={dialog}
 	class="prompt-library-dialog fixed top-1/2 left-1/2 m-0 h-[min(760px,calc(100dvh-32px))] w-[min(1080px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl border border-border bg-card p-0 text-foreground shadow-2xl backdrop:bg-black/60"
 	aria-labelledby={id}
-	onclick={(event) => event.target === event.currentTarget && dialog?.close()}
+	onclick={(event) => event.target === event.currentTarget && closeLibrary()}
+	oncancel={(event) => {
+		event.preventDefault();
+		closeLibrary();
+	}}
 	onkeydown={closeActionsOnEscape}
 	onfocusin={() => {
 		void ensureCatalog();
@@ -377,7 +540,6 @@
 	}}
 	onclose={() => {
 		mobileDetail = false;
-		editor = null;
 		actions = false;
 	}}
 >
@@ -392,7 +554,7 @@
 			class="grid size-11 shrink-0 place-items-center rounded-md border border-border bg-secondary hover:bg-accent"
 			aria-label="Close prompt library"
 			title="Close prompt library"
-			onclick={() => dialog?.close()}><X width={18} height={18} aria-hidden="true" /></button
+			onclick={closeLibrary}><X width={18} height={18} aria-hidden="true" /></button
 		>
 	</header>
 	<div class="grid h-[calc(100%-80px)] min-h-0 grid-cols-1 md:grid-cols-[360px_minmax(0,1fr)]">
@@ -412,6 +574,7 @@
 							aria-pressed={source === 'prompts'}
 							class:bg-card={source === 'prompts'}
 							onclick={() => {
+								if (!leaveEditor()) return;
 								source = 'prompts';
 								editor = null;
 								mobileDetail = false;
@@ -425,6 +588,7 @@
 						aria-pressed={source === 'community'}
 						class:bg-card={source === 'community'}
 						onclick={() => {
+							if (!leaveEditor()) return;
 							source = 'community';
 							editor = null;
 							mobileDetail = false;
@@ -438,6 +602,7 @@
 							aria-pressed={source === 'bundles'}
 							class:bg-card={source === 'bundles'}
 							onclick={() => {
+								if (!leaveEditor()) return;
 								source = 'bundles';
 								editor = null;
 								mobileDetail = false;
@@ -550,6 +715,7 @@
 										class:bg-accent={selectedCatalog?.id === item.id}
 										aria-pressed={selectedCatalog?.id === item.id}
 										onclick={() => {
+											if (!leaveEditor()) return;
 											selectedCatalogId = item.id;
 											editor = null;
 											mobileDetail = true;
@@ -582,6 +748,7 @@
 									class:bg-accent={selectedWorkflow?.id === item.id}
 									aria-pressed={selectedWorkflow?.id === item.id}
 									onclick={() => {
+										if (!leaveEditor()) return;
 										selectedWorkflowId = item.id;
 										editor = null;
 										mobileDetail = true;
@@ -614,10 +781,16 @@
 				type="button"
 				class="mb-4 min-h-11 md:hidden"
 				onclick={() => {
+					if (!leaveEditor()) return;
 					mobileDetail = false;
 					editor = null;
 				}}>Back to {source === 'bundles' ? 'bundles' : 'prompts'}</button
 			>
+			{#if workflowBusy}<p role="status">Saving Workflow...</p>{/if}
+			{#if workflowError}<p class="mb-3 text-sm text-destructive" role="alert">
+					{workflowError}
+				</p>{/if}
+			{#if workflowNotice}<p class="mb-3 text-sm" role="status">{workflowNotice}</p>{/if}
 			{#if source === 'bundles'}
 				{#if bundleError}<p class="mb-3 text-sm text-destructive" role="alert">
 						{bundleError}
@@ -625,8 +798,18 @@
 				{#if openedSkill}
 					<section class="mx-auto grid max-w-2xl gap-3" aria-label={`${openedSkill} skill editor`}>
 						<div class="flex flex-wrap items-center gap-3">
-							<button type="button" class="min-h-11" onclick={() => (openedSkill = '')}
-								>Back to bundle</button
+							<button
+								type="button"
+								class="min-h-11"
+								onclick={() => {
+									if (
+										skillContent !== skillBaseline &&
+										!window.confirm('Discard unsaved skill changes?')
+									)
+										return;
+									skillRequest++;
+									openedSkill = '';
+								}}>Back to bundle</button
 							>
 							<h3 class="text-base font-semibold">{openedSkill}</h3>
 							{#if !skillEditable}<span class="text-sm text-muted-foreground"
@@ -662,7 +845,7 @@
 						<label class="grid gap-1 text-sm"
 							><span>Bundle name</span><input
 								bind:value={bundleName}
-								disabled={!creatingBundle}
+								disabled={!creatingBundle || bundleSaving}
 								required
 								maxlength="128"
 							/></label
@@ -713,10 +896,18 @@
 							{#if !creatingBundle}<button
 									type="button"
 									class="min-h-11 text-destructive"
+									disabled={bundleSaving}
 									onclick={deleteBundle}>Delete bundle</button
 								>{/if}
-							<button type="submit" class="min-h-11" disabled={!bundleMembers.length}
-								>{creatingBundle ? 'Add bundle' : 'Save bundle'}</button
+							<button
+								type="submit"
+								class="min-h-11"
+								disabled={bundleSaving || !bundleMembers.length}
+								>{bundleSaving
+									? 'Saving...'
+									: creatingBundle
+										? 'Add bundle'
+										: 'Save bundle'}</button
 							>
 						</div>
 					</form>
@@ -732,7 +923,7 @@
 				>
 					<div class="flex items-center justify-between">
 						<h3 class="text-base font-semibold">Add custom prompt</h3>
-						<button type="button" onclick={() => (editor = null)}>Cancel</button>
+						<button type="button" onclick={leaveEditor}>Cancel</button>
 					</div>
 					<label class="grid gap-1 text-sm"
 						><span>Name</span><input bind:value={name} aria-label="Workflow name" required /></label
@@ -766,13 +957,13 @@
 							></label
 						>
 					</div>
-					<button type="submit" title="Save prompt">Add prompt</button>
+					<button type="submit" title="Save prompt" disabled={workflowBusy}>Add prompt</button>
 				</form>
 			{:else if editor === 'edit' && editing}
 				<form class="workflow-form mx-auto grid max-w-2xl content-start gap-3" onsubmit={saveEdit}>
 					<div class="flex items-center justify-between">
 						<h3 class="text-base font-semibold">Edit custom prompt</h3>
-						<button type="button" onclick={() => (editor = null)}>Cancel</button>
+						<button type="button" onclick={leaveEditor}>Cancel</button>
 					</div>
 					<label class="grid gap-1 text-sm"
 						><span>Name</span><input bind:value={editName} required /></label
@@ -800,7 +991,7 @@
 							></label
 						>
 					</div>
-					<button type="submit">Save prompt</button>
+					<button type="submit" disabled={workflowBusy}>Save prompt</button>
 				</form>
 			{:else if source === 'community' && selectedCatalog}
 				<article class="mx-auto grid max-w-2xl gap-5">
@@ -822,6 +1013,7 @@
 									? 'Remove from favorites'
 									: 'Add to favorites'}
 								onclick={() => toggleCatalogFavorite(selectedCatalog)}
+								disabled={workflowBusy}
 								><Star
 									width={19}
 									height={19}
@@ -837,8 +1029,9 @@
 						type="button"
 						class="inline-flex min-h-11 w-fit items-center gap-2"
 						aria-label={`Add ${selectedCatalog.title} to input`}
-						onclick={() => oninsert(selectedCatalog.prompt)}
-						><Plus width={17} height={17} aria-hidden="true" />Add to input</button
+						onclick={() => {
+							if (leaveEditor()) oninsert(selectedCatalog.prompt);
+						}}><Plus width={17} height={17} aria-hidden="true" />Add to input</button
 					>
 					{#if available}<button
 							type="button"
@@ -869,7 +1062,11 @@
 									? 'Remove from favorites'
 									: 'Add to favorites'}
 								title={selectedWorkflow.favorite ? 'Remove from favorites' : 'Add to favorites'}
-								onclick={() => onupdate(selectedWorkflow, { favorite: !selectedWorkflow.favorite })}
+								disabled={workflowBusy}
+								onclick={() => {
+									const item = selectedWorkflow;
+									void mutateWorkflow(() => onupdate(item, { favorite: !item.favorite }));
+								}}
 								><Star
 									width={18}
 									height={18}
@@ -900,18 +1097,22 @@
 											><Pencil width={15} height={15} aria-hidden="true" />Edit Workflow</button
 										><button
 											type="button"
+											disabled={workflowBusy}
 											class="flex items-center gap-2"
 											onclick={() => {
 												actions = false;
-												void onduplicate(selectedWorkflow);
+												const item = selectedWorkflow;
+												void mutateWorkflow(() => onduplicate(item));
 											}}
 											><Copy width={15} height={15} aria-hidden="true" />Duplicate Workflow</button
 										><button
 											type="button"
+											disabled={workflowBusy}
 											class="flex items-center gap-2"
 											onclick={() => {
 												actions = false;
-												void onupdate(selectedWorkflow, { archived: !selectedWorkflow.archived });
+												const item = selectedWorkflow;
+												void mutateWorkflow(() => onupdate(item, { archived: !item.archived }));
 											}}
 											>{#if selectedWorkflow.archived}<RotateCcw
 													width={15}
@@ -924,6 +1125,7 @@
 												/>Archive Workflow{/if}</button
 										><button
 											type="button"
+											disabled={workflowBusy}
 											class="flex items-center gap-2 text-destructive"
 											onclick={() => remove(selectedWorkflow)}
 											><Trash2 width={15} height={15} aria-hidden="true" />Delete Workflow</button
@@ -941,16 +1143,17 @@
 								class="inline-flex min-h-11 w-fit items-center gap-2 bg-primary text-primary-foreground"
 								aria-label={`Run ${selectedWorkflow.name}`}
 								onclick={() => {
+									if (!leaveEditor()) return;
 									dialog?.close();
 									onrun(selectedWorkflow);
-								}}
-								><Play width={16} height={16} aria-hidden="true" />Run Workflow</button
+								}}><Play width={16} height={16} aria-hidden="true" />Run Workflow</button
 							><button
 								type="button"
 								class="inline-flex min-h-11 w-fit items-center gap-2"
 								aria-label={`Add ${selectedWorkflow.name} to input`}
-								onclick={() => oninsert(selectedWorkflow.prompt)}
-								><Plus width={16} height={16} aria-hidden="true" />Add to input</button
+								onclick={() => {
+									if (leaveEditor()) oninsert(selectedWorkflow.prompt);
+								}}><Plus width={16} height={16} aria-hidden="true" />Add to input</button
 							>
 						</div>{/if}
 				</article>

@@ -1,8 +1,12 @@
 <script lang="ts">
 	import { onMount, type Component } from 'svelte';
 
-	let { projectId, height = $bindable(300) }: { projectId: string; height?: number } = $props();
-	let TerminalPanel = $state<Component<{ projectId: string }> | null>(null);
+	let {
+		projectId,
+		rootPath = '',
+		height = $bindable(300)
+	}: { projectId: string; rootPath?: string; height?: number } = $props();
+	let TerminalPanel = $state<Component<{ projectId: string; rootPath?: string }> | null>(null);
 	let error = $state('');
 	let element: HTMLElement;
 	let resizeStart: { y: number; height: number } | null = null;
@@ -84,7 +88,7 @@
 		onkeydown={resizeWithKeyboard}
 	></div>
 	{#if TerminalPanel}
-		<TerminalPanel {projectId} />
+		<TerminalPanel {projectId} {rootPath} />
 	{:else}
 		<article
 			class="workbench-panel terminal-panel grid h-full place-content-center gap-2 rounded-xl border border-border bg-card p-4 text-center"

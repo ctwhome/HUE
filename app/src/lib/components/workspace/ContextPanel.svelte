@@ -603,6 +603,9 @@
 								>{job.enabled ? job.state : 'paused'}</span
 							>
 						</div>
+						{#if job.error}<small class="col-start-2 text-xs text-destructive">History may be stale: {job.error}. Open to retry.</small>{/if}
+						<small class="col-start-2 text-xs text-muted-foreground">{job.refreshedAt ? `History checked ${new Date(job.refreshedAt).toLocaleString()}` : 'History not refreshed'}</small>
+						{#if job.history}<small class="col-start-2 text-xs text-muted-foreground">Up to {job.history.limit} recent runs per check{job.history.paginationSupported ? '' : '; no pagination'}{job.history.possiblyTruncated ? '; may be truncated' : ''}</small>{/if}
 					</button>
 				</div>
 			{/each}

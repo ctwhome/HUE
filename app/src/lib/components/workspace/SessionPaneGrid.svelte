@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import X from '~icons/lucide/x';
 	import SessionPanel from './SessionPanel.svelte';
 	import type { Project, Session, Workflow } from './types';
@@ -96,6 +96,7 @@
 		layoutReady = false;
 		hydratedProjectId = projectId;
 		reconciledProjectId = undefined;
+		restoredPrimary = null;
 		setDockedSessions([]);
 		paneRatio.column = 50;
 		paneRatio.row = 50;
@@ -142,8 +143,6 @@
 				return current ? [paneSession(current)] : [];
 			})
 		);
-		if (restorePrimarySession && !primarySession && restoredPrimary)
-			onprimaryclose(restoredPrimary);
 	});
 	$effect(() => {
 		if (
@@ -171,7 +170,10 @@
 			saveLayout();
 			return;
 		}
-		if (restorePrimarySession && restoredPrimary) onprimaryclose(restoredPrimary);
+		if (restorePrimarySession && restoredPrimary) {
+			const currentSession = currentPaneSession(restoredPrimary);
+			untrack(() => onprimaryclose(currentSession));
+		}
 	});
 	$effect(() => onpanecount(paneCount));
 
@@ -189,7 +191,7 @@
 		)
 			return;
 		const pane = { sessionId: session.sessionId, title: session.title, cwd: session.cwd };
-		if (!primarySession) onprimaryclose(pane);
+		if (!primarySession) onprimaryclose(session);
 		else setDockedSessions([...dockedSessions, pane]);
 	}
 
@@ -197,7 +199,7 @@
 		const [next, ...remaining] = dockedSessions;
 		if (!next) return;
 		setDockedSessions(remaining);
-		onprimaryclose(next);
+		onprimaryclose(currentPaneSession(next));
 	}
 
 	function currentPaneTitle(session: PaneSession) {

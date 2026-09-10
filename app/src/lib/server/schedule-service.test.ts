@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,6 +6,191 @@ import { ScheduleService } from './schedule-service';
 import { HUEStore } from './store';
 
 describe('ScheduleService', () => {
+	it('queries only the earliest non-backed-off timestamp and wakes for retry expiry', async () => {
+		let now = new Date('2026-01-01T01:00Z');
+		const exclusions: string[][] = [];
+		let nextRunAt: string | null = '2026-01-01T01:00:10Z';
+		let due = true;
+		const store = {
+			listSchedules: () => {
+				throw new Error('Must not hydrate all schedules');
+			},
+			listDueSchedules: () =>
+				due
+					? [{ id: 'bad', cron: '0 * * * *', timezone: 'UTC', nextRunAt: '2026-01-01T00:00Z' }]
+					: [],
+			acceptDueSchedule: () => {
+				throw new Error('Unavailable');
+			},
+			getNextScheduleRunAt: (excludeIds: string[] = []) => {
+				exclusions.push(excludeIds);
+				return nextRunAt;
+			}
+		};
+		const delays: number[] = [];
+		let wake!: () => void;
+		let armed!: () => void;
+		const arm = () =>
+			new Promise<void>((resolve) => {
+				armed = resolve;
+			});
+		const timer = spyOn(globalThis, 'setTimeout').mockImplementation(((
+			callback: () => void,
+			delay: number
+		) => {
+			wake = callback;
+			delays.push(delay);
+			armed();
+			return 0;
+		}) as typeof setTimeout);
+		const log = spyOn(console, 'error').mockImplementation(() => undefined);
+		let service!: ScheduleService;
+		try {
+			const ready = arm();
+			service = new ScheduleService({
+				store: store as never,
+				root: () => '/tmp',
+				now: () => now,
+				runtime: { createSession: async (cwd) => ({ cwd, sessionId: 'unused' }) },
+				dispatcher: { submit: () => undefined, submitAccepted: () => undefined }
+			});
+			await ready;
+			expect(exclusions).toEqual([['bad']]);
+			expect(delays).toEqual([10_000]);
+			now = new Date('2026-01-01T01:00:10Z');
+			nextRunAt = null;
+			due = false;
+			const retried = arm();
+			wake();
+			await retried;
+			expect(delays).toEqual([10_000, 20_000]);
+			now = new Date('2026-01-01T01:00:30Z');
+			nextRunAt = '2026-01-01T02:00Z';
+			const expired = arm();
+			wake();
+			await expired;
+			expect(exclusions.at(-1)).toEqual([]);
+			expect(delays.at(-1)).toBe(3_570_000);
+		} finally {
+			service?.close();
+			timer.mockRestore();
+			log.mockRestore();
+		}
+	});
+	it('rearms failures with a positive delay without starting a real scheduler', async () => {
+		for (const failure of ['accept', 'inventory', 'arm'] as const) {
+			const store = new HUEStore(':memory:');
+			store.upsertSession(null, { sessionId: 's-1', cwd: '/tmp' });
+			store.createSchedule({
+				id: 'a',
+				sessionId: 's-1',
+				name: 'A',
+				prompt: 'A',
+				cron: '0 * * * *',
+				timezone: 'UTC',
+				enabled: true,
+				nextRunAt: '2026-01-01T00:00:00.000Z'
+			});
+			const fault = spyOn(
+				store,
+				failure === 'accept'
+					? 'acceptDueSchedule'
+					: failure === 'inventory'
+						? 'listDueSchedules'
+						: 'getNextScheduleRunAt'
+			).mockImplementation(() => {
+				throw new Error('Unavailable');
+			});
+			const log = spyOn(console, 'error').mockImplementation(() => undefined);
+			const delays: number[] = [];
+			let armed!: () => void;
+			let service!: ScheduleService;
+			const ready = new Promise<void>((resolve) => {
+				armed = resolve;
+			});
+			const timer = spyOn(globalThis, 'setTimeout').mockImplementation(((
+				_callback: unknown,
+				delay: number
+			) => {
+				delays.push(delay);
+				armed();
+				return 0;
+			}) as typeof setTimeout);
+			try {
+				service = new ScheduleService({
+					store,
+					root: () => '/tmp',
+					now: () => new Date('2026-01-01T01:00Z'),
+					runtime: { createSession: async (cwd) => ({ cwd, sessionId: 'unused' }) },
+					dispatcher: { submit: () => undefined, submitAccepted: () => undefined }
+				});
+				await ready;
+				expect(delays).toEqual([30_000]);
+			} finally {
+				service?.close();
+				timer.mockRestore();
+				fault.mockRestore();
+				log.mockRestore();
+				store.close();
+			}
+		}
+	});
+	it('isolates failed jobs, backs off retries, and retains the original durable occurrence', async () => {
+		const store = new HUEStore(':memory:');
+		let now = new Date('2026-01-01T01:00Z');
+		let sessions = 0;
+		const service = new ScheduleService({
+			store,
+			root: () => '/tmp',
+			now: () => now,
+			startTimer: false,
+			runtime: { createSession: async (cwd) => ({ cwd, sessionId: `s-${++sessions}` }) },
+			dispatcher: { submit: () => undefined, submitAccepted: () => undefined }
+		});
+		const first = await service.create({
+			name: 'A',
+			prompt: 'A',
+			cron: '0 * * * *',
+			timezone: 'UTC'
+		});
+		const second = await service.create({
+			name: 'B',
+			prompt: 'B',
+			cron: '0 * * * *',
+			timezone: 'UTC'
+		});
+		const due = '2026-01-01T00:00:00.000Z';
+		for (const schedule of [first, second]) store.updateSchedule(schedule.id, { nextRunAt: due });
+		const accept = store.acceptDueSchedule.bind(store);
+		let attempts = 0;
+		const fault = spyOn(store, 'acceptDueSchedule').mockImplementation((...args) => {
+			if (args[0] === first.id && ++attempts <= 2) throw new Error('Storage unavailable');
+			return accept(...args);
+		});
+		const log = spyOn(console, 'error').mockImplementation(() => undefined);
+		try {
+			await service.runDue();
+			expect(store.listMessages(null, second.sessionId)).toHaveLength(1);
+			expect(store.getSchedule(first.id)?.nextRunAt).toBe(due);
+			await service.runDue();
+			expect(attempts).toBe(1);
+			now = new Date(now.getTime() + 30_000);
+			await service.runDue();
+			expect(attempts).toBe(2);
+			await service.runDue();
+			expect(attempts).toBe(2);
+			now = new Date(now.getTime() + 30_000);
+			await service.runDue();
+			expect(store.listMessages(null, first.sessionId).map(({ id }) => id)).toEqual([
+				`schedule:${first.id}:${due}`
+			]);
+		} finally {
+			fault.mockRestore();
+			log.mockRestore();
+			service.close();
+			store.close();
+		}
+	});
 	it('rejects a valid but impossible cron before creating a Hermes Session', async () => {
 		const store = new HUEStore(':memory:');
 		let sessions = 0;

@@ -24,6 +24,6 @@ The first version uses each platform's system webview. CEF, CDP automation, inte
 
 - Local desktop development gains native developer tools, cross-origin element selection, and previews that are not subject to iframe framing policy.
 - Web and mobile behavior remains portable and unchanged.
-- The desktop shell must be started separately from HUE so it cannot create a second database or scheduler owner.
+- The development command supervises separate HUE and desktop processes; the shell cannot create a second database or scheduler owner.
 - A remote desktop shell can operate HUE over authenticated HTTPS, but it can preview only addresses reachable from that desktop computer.
 - Native behavior requires platform testing in addition to browser tests.

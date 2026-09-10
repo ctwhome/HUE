@@ -12,6 +12,67 @@ afterEach(async () => {
 });
 
 describe('HermesServe', () => {
+	it('reports recent completeness from raw page coverage rather than rendered message count', async () => {
+		const hermes = new HermesServe();
+		let messages = [{ id: 1, role: 'user', content: 'Question' }];
+		Object.assign(hermes, {
+			json: async () => ({ session_id: 's', messages, pagination: { returned: messages.length } })
+		});
+		expect(await hermes.loadTranscriptWithCoverage('s', undefined, 2)).toEqual({
+			transcript: [{ role: 'user', text: 'Question' }],
+			complete: true
+		});
+		messages = [...messages, { id: 2, role: 'tool', content: 'Ignored' }];
+		expect(await hermes.loadTranscriptWithCoverage('s', undefined, 2)).toEqual({
+			transcript: [{ role: 'user', text: 'Question' }],
+			complete: false
+		});
+		expect(await hermes.loadTranscript('s', undefined, 2)).toEqual([
+			{ role: 'user', text: 'Question' }
+		]);
+	});
+	it('rejects invalid recent bounds and oversized upstream pages', async () => {
+		const hermes = new HermesServe();
+		Object.assign(hermes, {
+			json: async () => ({
+				session_id: 's',
+				messages: [
+					{ id: 1, role: 'user', content: 'one' },
+					{ id: 2, role: 'assistant', content: 'two' }
+				],
+				pagination: { returned: 2 }
+			})
+		});
+		for (const limit of [0, -1, 501, 1.5, Infinity])
+			await expect(hermes.loadTranscript('s', undefined, limit)).rejects.toThrow(
+				'Recent transcript limit'
+			);
+		await expect(hermes.loadTranscript('s', undefined, 1)).rejects.toThrow('pagination');
+	});
+	it('reads only a bounded recent transcript window in chronological order', async () => {
+		const hermes = new HermesServe();
+		const paths: string[] = [];
+		Object.assign(hermes, {
+			json: async (path: string) => {
+				paths.push(path);
+				return {
+					session_id: 'resolved',
+					messages: [
+						{ id: 3, role: 'assistant', content: 'Recent answer' },
+						{ id: 2, role: 'user', content: 'Recent question' }
+					],
+					pagination: { returned: 2 }
+				};
+			}
+		});
+		expect(await hermes.loadTranscript('session', undefined, 2)).toEqual([
+			{ role: 'user', text: 'Recent question' },
+			{ role: 'assistant', text: 'Recent answer' }
+		]);
+		expect(paths).toEqual([
+			'/api/sessions/session/messages?limit=2&offset=0&order=newest&include_compacted=true'
+		]);
+	});
 	it('reports idle and ready administration health without exposing its token', () => {
 		const hermes = new HermesServe();
 		expect(hermes.healthStatus()).toBe('idle');

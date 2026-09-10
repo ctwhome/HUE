@@ -40,7 +40,16 @@ export class SessionState {
 	pendingImages = $state<ImageAttachment[]>([]);
 	pendingThought = $state('');
 	delivery = $state('');
+	history = $state<SessionLoad['history']>();
 	private views = new Map<string, CachedSessionView>();
+	private loadOrigin: ReturnType<SessionState['captureLoad']> | null = null;
+	captureLoad = () => ({
+		activeMessageId: this.activeMessageId,
+		delivery: this.delivery,
+		runtime: this.runtime,
+		queuedMessages: this.queuedMessages,
+		timeline: this.timeline
+	});
 
 	constructor(
 		private getProject: () => Project | null,
@@ -57,6 +66,7 @@ export class SessionState {
 
 	private loadedView(body: SessionLoad): CachedSessionView {
 		return {
+			history: body.history,
 			timeline: timelineFromSession(body.transcript, body.messages, body.events ?? []),
 			transcript: body.transcript,
 			subagents: subagentTreesFromEvents(body.events ?? []),
@@ -80,7 +90,11 @@ export class SessionState {
 					: body.activeTurn.status === 'unknown'
 						? 'delivery unknown'
 						: 'running'
-				: ''
+				: ['failed', 'cancelled', 'unknown'].includes(body.messages.at(-1)?.status ?? '')
+					? body.messages.at(-1)!.status === 'unknown'
+						? 'delivery unknown'
+						: body.messages.at(-1)!.status
+					: ''
 		};
 	}
 
@@ -113,7 +127,9 @@ export class SessionState {
 
 	cache = (session: Session | null) => {
 		if (!session) return;
+		this.views.delete(this.viewKey(session.sessionId));
 		this.views.set(this.viewKey(session.sessionId), {
+			history: this.history,
 			timeline: [...this.timeline],
 			transcript: [...this.transcript],
 			subagents: [...this.subagents],
@@ -130,10 +146,15 @@ export class SessionState {
 			pendingThought: this.pendingThought,
 			delivery: this.delivery
 		});
+		while (this.views.size > 10) this.views.delete(this.views.keys().next().value!);
 	};
 
 	showCached = (session: Session) => {
 		const cached = this.views.get(this.viewKey(session.sessionId));
+		if (cached) {
+			this.views.delete(this.viewKey(session.sessionId));
+			this.views.set(this.viewKey(session.sessionId), cached);
+		}
 		this.timeline = cached?.timeline ?? [];
 		this.transcript = cached?.transcript ?? [];
 		this.subagents = cached?.subagents ?? [];
@@ -149,9 +170,13 @@ export class SessionState {
 		this.pendingImages = cached?.pendingImages ?? [];
 		this.pendingThought = cached?.pendingThought ?? '';
 		this.delivery = cached?.delivery ?? '';
+		this.history = cached?.history;
+		this.loadOrigin = this.captureLoad();
 	};
 
 	clear = () => {
+		this.history = undefined;
+		this.loadOrigin = null;
 		this.timeline = [];
 		this.transcript = [];
 		this.subagents = [];
@@ -169,19 +194,110 @@ export class SessionState {
 		this.delivery = '';
 	};
 
-	applyCreated = (body: {
-		commands?: HermesCommand[];
-		runtime?: HermesRuntime;
-		branch?: string | null;
-	}) => {
-		this.clear();
+	applyCreated = (
+		body: {
+			commands?: HermesCommand[];
+			runtime?: HermesRuntime;
+			branch?: string | null;
+		},
+		origin?: ReturnType<SessionState['captureLoad']>
+	) => {
 		this.commands = body.commands ?? [];
-		this.runtime = body.runtime ?? { profile: 'default' };
+		if (!origin || origin.runtime === this.runtime)
+			this.runtime = body.runtime ?? { profile: 'default' };
 		this.branch = body.branch ?? null;
 	};
 
-	applyLoaded = (body: SessionLoad) => {
+	applyLoaded = (body: SessionLoad, origin = this.loadOrigin) => {
+		if (origin === this.loadOrigin) this.loadOrigin = null;
+		const newerEvents = body.cursor < this.eventCursor;
+		const deliveryChanged =
+			newerEvents ||
+			!!(
+				origin &&
+				(origin.activeMessageId !== this.activeMessageId || origin.delivery !== this.delivery)
+			);
+		const runtimeChanged = newerEvents || !!(origin && origin.runtime !== this.runtime);
+		const queueChanged = newerEvents || !!(origin && origin.queuedMessages !== this.queuedMessages);
+		const keepCurrent =
+			newerEvents ||
+			!!(
+				origin &&
+				(origin.activeMessageId !== this.activeMessageId ||
+					origin.delivery !== this.delivery ||
+					origin.runtime !== this.runtime ||
+					origin.queuedMessages !== this.queuedMessages ||
+					origin.timeline !== this.timeline)
+			);
 		const view = this.loadedView(body);
+		const retain = keepCurrent || (this.timeline.length > 0 && body.history?.complete !== true);
+		if (retain) {
+			const cursor = this.eventCursor;
+			const userIds = new Set(
+				this.timeline.flatMap((item) =>
+					item.kind === 'message' && item.role === 'user' ? [item.messageId] : []
+				)
+			);
+			this.timeline = [
+				...this.timeline,
+				...view.timeline.filter(
+					(item) =>
+						item.kind === 'message' &&
+						item.role === 'user' &&
+						item.messageId &&
+						!userIds.has(item.messageId)
+				)
+			];
+			this.applyEvents(body.events ?? []);
+			// Local event sequences identify streamed segments; newer segments win over a fetched snapshot.
+			const key = (item: WorkspaceTimelineItem) =>
+				item.kind === 'message' && item.role === 'user' && item.messageId
+					? `user:${item.messageId}`
+					: `${item.kind}:${item.sequence}`;
+			const current = new Map(
+				this.timeline.filter((item) => item.sequence >= 0).map((item) => [key(item), item])
+			);
+			const merged = new Map(
+				view.timeline.filter((item) => item.sequence >= 0).map((item) => [key(item), item])
+			);
+			for (const [id, item] of current) merged.set(id, item);
+			const historical =
+				body.history?.complete || !this.timeline.some((item) => item.sequence < 0)
+					? view.timeline.filter((item) => item.sequence < 0)
+					: this.timeline.filter((item) => item.sequence < 0);
+			view.timeline = [
+				...historical,
+				...[...merged.values()].sort((a, b) => a.sequence - b.sequence)
+			];
+			const activeMessageId = deliveryChanged ? this.activeMessageId : view.activeMessageId;
+			const busy = isTurnBusy(deliveryChanged ? this.delivery : view.delivery);
+			view.transcript = view.timeline.flatMap((item) => {
+				if (item.kind !== 'message') return [];
+				if (busy && item.role === 'assistant' && item.messageId === activeMessageId) return [];
+				const { kind, sequence, messageId, ...message } = item;
+				return [message];
+			});
+			if (!body.history?.complete && this.history?.complete) view.history = this.history;
+			if (deliveryChanged)
+				Object.assign(view, {
+					activeMessageId: this.activeMessageId,
+					pendingAssistant: this.pendingAssistant,
+					pendingImages: this.pendingImages,
+					pendingThought: this.pendingThought,
+					delivery: this.delivery
+				});
+			if (runtimeChanged) view.runtime = this.runtime;
+			if (queueChanged) view.queuedMessages = this.queuedMessages;
+			if (keepCurrent)
+				Object.assign(view, {
+					activity: this.activity,
+					subagents: this.subagents,
+					plan: this.plan
+				});
+			view.history ??= this.history;
+			view.eventCursor = Math.max(cursor, this.eventCursor, body.cursor);
+		}
+		this.history = view.history;
 		this.timeline = view.timeline;
 		this.transcript = view.transcript;
 		this.subagents = view.subagents;

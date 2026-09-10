@@ -89,11 +89,38 @@ export const legacyBrowserStorageKey = (projectId: string) => `hue:browser:${pro
 
 export function restoreHiddenPorts(value: string | null): number[] {
 	try {
-		return [...new Set((JSON.parse(value ?? '[]') as unknown[]).filter(
-			(port): port is number => Number.isInteger(port) && Number(port) > 0 && Number(port) <= 65_535
-		))];
+		return [
+			...new Set(
+				(JSON.parse(value ?? '[]') as unknown[]).filter(
+					(port): port is number =>
+						Number.isInteger(port) && Number(port) > 0 && Number(port) <= 65_535
+				)
+			)
+		];
 	} catch {
 		return [];
+	}
+}
+
+export function restorePortNotes(value: string | null): Record<string, string> {
+	try {
+		const parsed = JSON.parse(value ?? '{}') as Record<string, unknown>;
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+		return Object.fromEntries(
+			Object.entries(parsed).filter(([port, note]) => {
+				const number = Number(port);
+				return (
+					Number.isInteger(number) &&
+					number > 0 &&
+					number <= 65_535 &&
+					typeof note === 'string' &&
+					note.length > 0 &&
+					note.length <= 200
+				);
+			}) as Array<[string, string]>
+		);
+	} catch {
+		return {};
 	}
 }
 

@@ -170,15 +170,28 @@ export class MessageDispatcher {
 	}
 
 	updateQueuedMessage(id: string, input: Parameters<HUEStore['updateQueuedMessage']>[1]) {
-		if (input.attachments === undefined && !this.turnAttachments.has(id)) {
+		const current = this.store.getMessage(id);
+		if (
+			!current ||
+			current.projectId !== input.projectId ||
+			current.sessionId !== input.sessionId
+		) {
+			throw new Error(`Message ${id} was not found`);
+		}
+		const preserve = input.preserveAttachments || input.attachments === undefined;
+		const retained = this.turnAttachments.get(id);
+		if (preserve && current.attachments.length && !retained?.length) {
 			throw new Error('Attachments unavailable after restart; reattach required');
 		}
-		const message = this.store.updateQueuedMessage(id, input);
-		if (input.attachments !== undefined) {
-			input.attachments.length
-				? this.turnAttachments.set(id, input.attachments)
-				: this.turnAttachments.delete(id);
-		}
+		const attachments = [...(preserve ? (retained ?? []) : []), ...(input.attachments ?? [])];
+		const message = this.store.updateQueuedMessage(id, {
+			...input,
+			attachments,
+			preserveAttachments: false
+		});
+		attachments.length
+			? this.turnAttachments.set(id, attachments)
+			: this.turnAttachments.delete(id);
 		return message;
 	}
 

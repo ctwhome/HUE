@@ -1,6 +1,56 @@
 import { describe, expect, it } from 'bun:test';
 import * as workspaceState from './index';
 
+it('reconstructs cancelled and failed turns without duplicating harness history', () => {
+	for (const status of ['cancelled', 'failed', 'unknown']) {
+		const timeline = workspaceState.timelineFromSession(
+			[
+				{ role: 'user', text: 'hello' },
+				{ role: 'assistant', text: 'partial' }
+			],
+			[{ id: 'turn', text: 'hello', status }],
+			[
+				{ sequence: 1, type: 'message.accepted', payload: { messageId: 'turn' } },
+				{ sequence: 2, type: 'agent.chunk', payload: { messageId: 'turn', text: 'partial' } },
+				{
+					sequence: 3,
+					type: `message.${status}`,
+					payload: { messageId: 'turn', error: 'provider unavailable' }
+				}
+			]
+		);
+		expect(timeline.filter((item) => item.kind === 'message')).toHaveLength(2);
+		if (status !== 'cancelled') expect(JSON.stringify(timeline)).toContain('provider unavailable');
+	}
+});
+
+it('scopes reused activity IDs to their turn', () => {
+	const events = ['a', 'b'].map((messageId, index) => ({
+		sequence: index + 1,
+		type: 'agent.tool',
+		payload: { messageId, id: 'tool', status: 'completed' }
+	}));
+	expect(workspaceState.activityFromEvents(events)).toHaveLength(2);
+	expect(
+		workspaceState.applyTimelineEvents({ cursor: 0, timeline: [] }, events).timeline
+	).toHaveLength(2);
+});
+
+it('does not copy unchanged histories on empty event polls', () => {
+	const state = {
+		cursor: 1,
+		activeMessageId: 'a',
+		pendingAssistant: '',
+		delivery: 'running',
+		transcript: []
+	};
+	expect(workspaceState.applySessionEvents(state, []).transcript).toBe(state.transcript);
+	const timeline: workspaceState.WorkspaceTimelineItem[] = [];
+	expect(workspaceState.applyTimelineEvents({ cursor: 1, timeline }, []).timeline).toBe(timeline);
+	const timelineState = { cursor: 1, timeline };
+	expect(workspaceState.applyTimelineEvents(timelineState, [])).toBe(timelineState);
+});
+
 describe('workspace async state', () => {
 	it('exposes event, request, and turn guards', () => {
 		expect(typeof workspaceState.applySessionEvents).toBe('function');
@@ -454,7 +504,8 @@ describe('workspace async state', () => {
 		).toEqual([
 			['message', 'user', 'Repeat', 'completed'],
 			['message', 'assistant', 'Earlier answer', 'completed'],
-			['message', 'user', 'Repeat', 'unknown']
+			['message', 'user', 'Repeat', 'unknown'],
+			['status', '', '', 'unknown']
 		]);
 
 		expect(workspaceState.applyTimelineEvents({ cursor: 7, timeline }, events.slice(4))).toEqual({

@@ -48,6 +48,9 @@ export type ExternalCronJob = {
 	lastRunAt: string | null;
 	lastStatus: string | null;
 	unreadCount?: number;
+	error?: string | null;
+	refreshedAt?: string | null;
+	history?: { limit: number; possiblyTruncated: boolean; paginationSupported: boolean } | null;
 };
 
 export type Session = {
@@ -198,6 +201,7 @@ export type ActiveTurn = {
 	error: string | null;
 };
 export type CachedSessionView = {
+	history?: SessionLoad['history'];
 	timeline: WorkspaceTimelineItem[];
 	transcript: TranscriptMessage[];
 	subagents: WorkspaceSubagentTree[];
@@ -215,6 +219,7 @@ export type CachedSessionView = {
 	delivery: string;
 };
 export type SessionLoad = {
+	history?: { mode: 'recent' | 'full'; complete: boolean; fullUrl: string };
 	transcript: TranscriptMessage[];
 	transcriptError?: string;
 	cursor: number;

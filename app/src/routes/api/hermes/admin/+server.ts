@@ -10,7 +10,17 @@ import { requestAccessAllowed } from '$lib/server/access-auth';
 import type { RequestHandler } from './$types';
 import type { ScheduleService } from '$lib/server/schedule-service';
 
-const views = new Set(['runtime', 'memory', 'schedules', 'skills', 'profiles', 'mcp', 'models']);
+const views = new Set([
+	'runtime',
+	'logs',
+	'update',
+	'memory',
+	'schedules',
+	'skills',
+	'profiles',
+	'mcp',
+	'models'
+]);
 const actions = new Set([
 	'schedule.create',
 	'schedule.update',
@@ -60,8 +70,8 @@ export async function _scheduleAction(
 	if (action === 'schedule.resume') return { target: schedules.resume(id) };
 	if (action === 'schedule.run') {
 		return {
-			target: schedules.detail(id),
-			delivery: schedules.runNow(id, String(input.runId ?? ''))
+			target: schedules.get(id),
+			delivery: await schedules.runNow(id, String(input.runId ?? ''))
 		};
 	}
 	if (action === 'schedule.delete') {

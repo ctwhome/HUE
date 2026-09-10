@@ -57,6 +57,7 @@ export class ProjectManagement {
 	private refreshGeneration = 0;
 	private mutationGeneration = new Map<string, number>();
 	private pendingMutations = 0;
+	private iconRequestGeneration = 0;
 
 	constructor(private options: ProjectManagementOptions) {
 		this.projects = [...options.initialProjects];
@@ -176,7 +177,15 @@ export class ProjectManagement {
 
 	createProject = async (event: SubmitEvent) => {
 		event.preventDefault();
-		if (!this.projectName.trim() || !this.selectedFolders.length || !this.primaryFolder) return;
+		if (
+			this.projectSaving ||
+			!this.projectName.trim() ||
+			!this.selectedFolders.length ||
+			!this.primaryFolder
+		)
+			return;
+		this.pendingMutations += 1;
+		this.refreshGeneration += 1;
 		this.projectSaving = true;
 		this.directoryError = '';
 		try {
@@ -200,7 +209,9 @@ export class ProjectManagement {
 		} catch (cause) {
 			this.directoryError = cause instanceof Error ? cause.message : String(cause);
 		} finally {
-			this.projectSaving = false;
+			this.refreshGeneration += 1;
+			this.pendingMutations -= 1;
+			this.projectSaving = this.pendingMutations > 0;
 		}
 	};
 
@@ -253,6 +264,8 @@ export class ProjectManagement {
 	}
 
 	chooseProjectImage = async (event: Event) => {
+		const project = this.editingProject;
+		const generation = ++this.iconRequestGeneration;
 		const input = event.currentTarget as HTMLInputElement;
 		const file = input.files?.[0];
 		input.value = '';
@@ -265,7 +278,10 @@ export class ProjectManagement {
 			this.projectEditError = 'Project icon image must be 1 MB or smaller';
 			return;
 		}
-		this.projectIcon = await imageDataUrl(file);
+		const icon = await imageDataUrl(file);
+		if (this.editingProject?.id !== project?.id || generation !== this.iconRequestGeneration)
+			return;
+		this.projectIcon = icon;
 		this.projectEditError = '';
 		await this.saveProjectIcon(this.projectIcon);
 	};
@@ -290,61 +306,34 @@ export class ProjectManagement {
 	};
 
 	selectProjectIcon = async (icon: string | null) => {
+		this.iconRequestGeneration += 1;
 		this.projectIcon = icon;
 		if (this.editingProject) await this.saveProjectIcon(icon);
 	};
 
 	saveProjectIcon = async (icon: string | null) => {
+		this.iconRequestGeneration += 1;
 		if (!this.editingProject) return;
 		this.projectIcon = icon;
-		this.projectSaving = true;
-		this.projectEditError = '';
-		try {
-			const body = await this.options.api<{ project: Project }>(
-				`/api/projects/${this.editingProject.id}`,
-				{
-					method: 'PATCH',
-					body: JSON.stringify(
-						icon === null
-							? { action: 'auto_icon' }
-							: {
-									action: 'update',
-									name: this.projectName.trim() || this.editingProject.name,
-									icon
-								}
-					)
-				}
-			);
-			this.applyProject(body.project);
-		} catch (cause) {
-			this.restoreProject(cause);
-			this.projectEditError = cause instanceof Error ? cause.message : String(cause);
-		} finally {
-			this.projectSaving = false;
-		}
+		const project = this.editingProject;
+		await this.mutateProject(
+			project,
+			project,
+			icon === null
+				? { action: 'auto_icon' }
+				: {
+						action: 'update',
+						name: this.projectName.trim() || project.name,
+						icon
+					}
+		);
 	};
 
 	saveProjectColor = async (color: string) => {
 		if (!this.editingProject) return;
 		const project = this.editingProject;
 		this.projectColor = color;
-		this.pendingMutations += 1;
-		this.projectSaving = true;
-		this.projectEditError = '';
-		this.applyProject({ ...project, color });
-		try {
-			const body = await this.options.api<{ project: Project }>(`/api/projects/${project.id}`, {
-				method: 'PATCH',
-				body: JSON.stringify({ action: 'set_color', color })
-			});
-			this.applyProject(body.project);
-		} catch (cause) {
-			this.applyProject(project);
-			this.projectEditError = cause instanceof Error ? cause.message : String(cause);
-		} finally {
-			this.pendingMutations -= 1;
-			this.projectSaving = this.pendingMutations > 0;
-		}
+		await this.mutateProject(project, { ...project, color }, { action: 'set_color', color });
 	};
 
 	saveProjectGroup = async (group: string) => {
@@ -352,85 +341,36 @@ export class ProjectManagement {
 		const project = this.editingProject;
 		const normalized = group.trim() || null;
 		this.projectGroup = normalized ?? '';
-		this.projectSaving = true;
-		this.projectEditError = '';
-		try {
-			const body = await this.options.api<{ project: Project }>(`/api/projects/${project.id}`, {
-				method: 'PATCH',
-				body: JSON.stringify({ action: 'set_group', group: normalized })
-			});
-			this.applyProject(body.project);
-		} catch (cause) {
-			this.projectGroup = project.group ?? '';
-			this.projectEditError = cause instanceof Error ? cause.message : String(cause);
-		} finally {
-			this.projectSaving = false;
-		}
+		await this.mutateProject(
+			project,
+			{ ...project, group: normalized },
+			{ action: 'set_group', group: normalized }
+		);
 	};
 
 	createProjectSection = async (name: string, projectIds: string[]) => {
 		const group = name.trim();
 		if (!group || !projectIds.length) return false;
-		this.projectSaving = true;
-		this.projectEditError = '';
-		try {
-			for (const id of projectIds) {
-				const body = await this.options.api<{ project: Project }>(`/api/projects/${id}`, {
-					method: 'PATCH',
-					body: JSON.stringify({ action: 'set_group', group })
-				});
-				this.applyProject(body.project);
-			}
-			return true;
-		} catch (cause) {
-			this.projectEditError = cause instanceof Error ? cause.message : String(cause);
-			return false;
-		} finally {
-			this.projectSaving = false;
+		for (const id of projectIds) {
+			if (!(await this.moveProjectToSection(id, group))) return false;
 		}
+		return true;
 	};
 
 	moveProjectToSection = async (projectId: string, group: string | null) => {
-		this.projectSaving = true;
-		this.projectEditError = '';
-		try {
-			const body = await this.options.api<{ project: Project }>(`/api/projects/${projectId}`, {
-				method: 'PATCH',
-				body: JSON.stringify({ action: 'set_group', group })
-			});
-			this.applyProject(body.project);
-			return true;
-		} catch (cause) {
-			this.projectEditError = cause instanceof Error ? cause.message : String(cause);
-			return false;
-		} finally {
-			this.projectSaving = false;
-		}
+		const project = this.projects.find(({ id }) => id === projectId);
+		if (!project) return false;
+		return this.mutateProject(project, { ...project, group }, { action: 'set_group', group });
 	};
 
 	saveProject = async () => {
 		if (!this.editingProject || !this.projectName.trim()) return;
-		this.projectSaving = true;
-		this.projectEditError = '';
-		try {
-			const body = await this.options.api<{ project: Project }>(
-				`/api/projects/${this.editingProject.id}`,
-				{
-					method: 'PATCH',
-					body: JSON.stringify({
-						action: 'update',
-						name: this.projectName.trim(),
-						icon: this.projectIcon
-					})
-				}
-			);
-			this.applyProject(body.project);
-		} catch (cause) {
-			this.restoreProject(cause);
-			this.projectEditError = cause instanceof Error ? cause.message : String(cause);
-		} finally {
-			this.projectSaving = false;
-		}
+		const project = this.editingProject;
+		await this.mutateProject(project, project, {
+			action: 'update',
+			name: this.projectName.trim(),
+			icon: this.projectIcon
+		});
 	};
 
 	setPrimaryFolder = async (project: Project, path: string) => {
@@ -464,9 +404,13 @@ export class ProjectManagement {
 
 	refreshProjects = async () => {
 		const generation = ++this.refreshGeneration;
+		const pending = this.pendingMutations;
 		try {
 			const body = await this.options.api<{ projects: Project[] }>('/api/projects');
-			if (generation === this.refreshGeneration) this.projects = body.projects;
+			if (generation === this.refreshGeneration && !pending && !this.pendingMutations) {
+				this.projects = body.projects;
+				for (const project of body.projects) this.applyProject(project);
+			}
 		} catch (cause) {
 			if (generation === this.refreshGeneration) {
 				this.projectEditError = cause instanceof Error ? cause.message : String(cause);
@@ -502,7 +446,9 @@ export class ProjectManagement {
 	};
 
 	removeProject = async () => {
-		if (!this.editingProject) return;
+		if (!this.editingProject || this.projectSaving) return;
+		this.pendingMutations += 1;
+		this.refreshGeneration += 1;
 		this.projectSaving = true;
 		this.projectEditError = '';
 		try {
@@ -519,7 +465,9 @@ export class ProjectManagement {
 		} catch (cause) {
 			this.projectEditError = cause instanceof Error ? cause.message : String(cause);
 		} finally {
-			this.projectSaving = false;
+			this.refreshGeneration += 1;
+			this.pendingMutations -= 1;
+			this.projectSaving = this.pendingMutations > 0;
 		}
 	};
 
@@ -538,6 +486,8 @@ export class ProjectManagement {
 		payload: Record<string, unknown>,
 		setError: (message: string) => void = (message) => (this.projectEditError = message)
 	) {
+		const errorOrigin = this.editingProject?.id;
+		this.refreshGeneration += 1;
 		const generation = (this.mutationGeneration.get(project.id) ?? 0) + 1;
 		this.mutationGeneration.set(project.id, generation);
 		this.applyProject(optimistic);
@@ -550,17 +500,21 @@ export class ProjectManagement {
 				body: JSON.stringify(payload)
 			});
 			if (this.mutationGeneration.get(project.id) === generation) this.applyProject(body.project);
+			return true;
 		} catch (cause) {
-			if (this.mutationGeneration.get(project.id) !== generation) return;
+			if (this.mutationGeneration.get(project.id) !== generation) return false;
 			const restored = this.restoreProject(cause) ?? project;
 			this.applyProject(restored);
 			const message = cause instanceof Error ? cause.message : String(cause);
-			setError(
-				(cause as { reconciliationRequired?: unknown } | null)?.reconciliationRequired === true
-					? message
-					: `${message}. Restored Hermes state.`
-			);
+			if (this.editingProject?.id === errorOrigin)
+				setError(
+					(cause as { reconciliationRequired?: unknown } | null)?.reconciliationRequired === true
+						? message
+						: `${message}. Restored Hermes state.`
+				);
+			return false;
 		} finally {
+			this.refreshGeneration += 1;
 			this.pendingMutations -= 1;
 			this.projectSaving = this.pendingMutations > 0;
 		}
@@ -572,9 +526,13 @@ export class ProjectManagement {
 			this.options.setSelectedProject(project);
 		}
 		if (this.editingProject?.id === project.id) {
+			const previous = this.editingProject;
 			this.editingProject = project;
-			this.projectColor = project.color ?? '#007acc';
-			this.projectGroup = project.group ?? '';
+			if (this.projectName === previous.name) this.projectName = project.name;
+			if (this.projectIcon === previous.icon) this.projectIcon = project.icon;
+			if (this.projectColor === (previous.color ?? '#007acc'))
+				this.projectColor = project.color ?? '#007acc';
+			if (this.projectGroup === (previous.group ?? '')) this.projectGroup = project.group ?? '';
 		}
 	}
 

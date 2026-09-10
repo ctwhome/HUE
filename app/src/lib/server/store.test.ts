@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { chmodSync, lstatSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -24,6 +24,252 @@ function makeDeliveryStore() {
 	store.upsertSession('hue', { sessionId: 'session-1', cwd: '/work/hue' });
 	return store;
 }
+
+it('reads the indexed earliest enabled schedule excluding failed IDs', () => {
+	const store = makeStore();
+	expect(store.getNextScheduleRunAt()).toBeNull();
+	for (const [id, enabled, nextRunAt] of [
+		['disabled', false, '2026-09-01T00:00:00.000Z'],
+		['first', true, '2026-09-02T00:00:00.000Z'],
+		['later', true, '2026-09-03T00:00:00.000Z']
+	] as const) {
+		store.upsertSession(null, { sessionId: id, cwd: '/synthetic' });
+		store.createSchedule({
+			id,
+			name: id,
+			prompt: 'Run',
+			cron: '* * * * *',
+			timezone: 'UTC',
+			enabled,
+			nextRunAt,
+			sessionId: id
+		});
+	}
+	const query = spyOn(store.database, 'query');
+	expect(store.getNextScheduleRunAt()).toBe('2026-09-02T00:00:00.000Z');
+	const sql = query.mock.calls[0][0];
+	query.mockRestore();
+	expect(store.getNextScheduleRunAt(['first'])).toBe('2026-09-03T00:00:00.000Z');
+	expect(store.getNextScheduleRunAt(['first', 'later'])).toBeNull();
+	const plan = store.database.query(`EXPLAIN QUERY PLAN ${sql}`).all('[]') as Array<{
+		detail: string;
+	}>;
+	expect(plan.some(({ detail }) => detail.includes('schedules_due_idx'))).toBe(true);
+	expect(plan.some(({ detail }) => detail.includes('TEMP B-TREE'))).toBe(false);
+	store.close();
+});
+
+it('augments retained queued files and preserves omitted images', () => {
+	const store = makeDeliveryStore();
+	const image = { name: 'image.png', mimeType: 'image/png', data: 'iVBORw0KGgo=' };
+	const old = { name: 'old.txt', mimeType: 'text/plain', data: 'b2xk', size: 3 };
+	const added = { name: 'new.txt', mimeType: 'text/plain', data: 'bmV3', size: 3 };
+	store.acceptMessage({
+		id: 'augment',
+		projectId: 'hue',
+		sessionId: 'session-1',
+		text: '',
+		images: [image],
+		attachments: [old]
+	});
+	const result = store.updateQueuedMessage('augment', {
+		projectId: 'hue',
+		sessionId: 'session-1',
+		text: '',
+		preserveAttachments: true,
+		attachments: [added]
+	});
+	expect(result.images).toEqual([image]);
+	expect(result.attachments.map(({ name }) => name)).toEqual(['old.txt', 'new.txt']);
+	const removedImages = store.updateQueuedMessage('augment', {
+		projectId: 'hue',
+		sessionId: 'session-1',
+		text: '',
+		preserveAttachments: true,
+		images: []
+	});
+	expect(removedImages.images).toEqual([]);
+	expect(removedImages.attachments).toEqual(result.attachments);
+	store.close();
+});
+
+it('checks the aggregate attachment limit after retention without mutating the queued message', () => {
+	const store = makeDeliveryStore();
+	store.acceptMessage({
+		id: 'size-bound',
+		projectId: 'hue',
+		sessionId: 'session-1',
+		text: 'Keep',
+		attachments: [{ name: 'old.txt', mimeType: 'text/plain', size: 1, data: 'YQ==' }]
+	});
+	const before = store.getMessage('size-bound');
+	expect(() =>
+		store.updateQueuedMessage('size-bound', {
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Change',
+			preserveAttachments: true,
+			attachments: [{ name: 'large.txt', mimeType: 'text/plain', size: 40 * 1024 * 1024, data: '' }]
+		})
+	).toThrow('Attachments must total 40 MB');
+	expect(store.getMessage('size-bound')).toEqual(before);
+	store.close();
+});
+
+it('restricts lifecycle and busy indicators to requested Sessions', () => {
+	const store = makeDeliveryStore();
+	store.upsertSession('hue', { sessionId: 'other', cwd: '/work/hue' });
+	for (const sessionId of ['session-1', 'other']) {
+		store.acceptMessage({ id: sessionId, projectId: 'hue', sessionId, text: 'Run', images: [] });
+	}
+	expect(Object.keys(store.getSessionIndicators('hue', 'all', ['session-1']))).toEqual([
+		'session-1'
+	]);
+	expect(Object.keys(store.getBusySessionStarts('hue', ['session-1']))).toEqual(['session-1']);
+	expect(store.getSessionIndicators('hue', 'all', [])).toEqual({});
+	expect(store.getSessionIndicators(null, 'all', ['session-1'])).toEqual({});
+	store.close();
+});
+
+it('returns local Project indicator counts without Project administration', () => {
+	const store = makeDeliveryStore();
+	store.acceptMessage({
+		id: 'busy',
+		projectId: 'hue',
+		sessionId: 'session-1',
+		text: 'Run',
+		images: []
+	});
+	expect(store.getProjectIndicatorCounts()).toEqual({
+		hue: { running: 1, attention: 0, unread: 0 }
+	});
+	store.close();
+});
+
+it('updates only the target Workflow without listing other prompts', () => {
+	const store = makeDeliveryStore();
+	store.createWorkflow({ id: 'target', projectId: 'hue', name: 'Target', prompt: 'Keep' });
+	const listing = spyOn(store, 'listWorkflows');
+	expect(store.updateWorkflow('hue', 'target', { name: 'Updated' })).toMatchObject({
+		name: 'Updated',
+		prompt: 'Keep'
+	});
+	expect(store.updateWorkflow('elsewhere', 'target', { name: 'Wrong' })).toBeNull();
+	expect(listing).not.toHaveBeenCalled();
+	listing.mockRestore();
+	store.close();
+});
+
+it('aggregates lifecycle events before joining finder messages', () => {
+	const store = makeDeliveryStore();
+	const query = spyOn(store.database, 'query');
+	store.findSessions('');
+	const sql = query.mock.calls.find(([sql]) => sql.includes('status_filter'))![0];
+	query.mockRestore();
+	const plan = store.database.query(`EXPLAIN QUERY PLAN ${sql}`).all('', '', 50) as Array<{
+		detail: string;
+	}>;
+	expect(
+		plan.some(
+			({ detail }) =>
+				detail.includes('SEARCH e USING INDEX session_events') && detail.includes('LEFT-JOIN')
+		)
+	).toBe(false);
+	store.close();
+});
+
+it('batches attachment hydration when listing messages', () => {
+	const store = makeDeliveryStore();
+	for (const id of ['a', 'b', 'c'])
+		store.acceptMessage({ id, projectId: 'hue', sessionId: 'session-1', text: id, images: [] });
+	const query = spyOn(store.database, 'query');
+	expect(store.listMessages('hue', 'session-1')).toHaveLength(3);
+	expect(query.mock.calls.filter(([sql]) => sql.includes('FROM message_attachments'))).toHaveLength(
+		1
+	);
+	query.mockRestore();
+	store.close();
+});
+
+it('bounds recent snapshot history while retaining older unresolved deliveries', () => {
+	const store = makeDeliveryStore();
+	for (let index = 0; index < 8; index++) {
+		const id = `m-${index}`;
+		store.acceptMessage({ id, projectId: 'hue', sessionId: 'session-1', text: id, images: [] });
+		store.database.query('UPDATE messages SET created_at = ? WHERE id = ?').run(String(index), id);
+		if (index > 0) {
+			store.transitionMessage(id, 'running', { messageId: id });
+			store.appendEvent('hue', 'session-1', 'agent.chunk', { messageId: id, text: 'Answer' });
+			store.transitionMessage(id, 'completed', { messageId: id });
+		}
+	}
+	const full = store.getSessionSnapshot('hue', 'session-1');
+	const recent = store.getSessionSnapshot('hue', 'session-1', 2);
+	expect(recent.messages.map(({ id }) => id)).toEqual(['m-0', 'm-6', 'm-7']);
+	expect(
+		recent.events.every(({ payload }) => ['m-0', 'm-6', 'm-7'].includes(String(payload.messageId)))
+	).toBe(true);
+	expect(recent.cursor).toBe(full.cursor);
+	expect(recent.activeTurn?.messageId).toBe('m-0');
+	expect(full.messages).toHaveLength(8);
+	store.close();
+});
+
+it('rejects clearing all queued content even with retained-attachment mode', () => {
+	const store = makeDeliveryStore();
+	store.acceptMessage({
+		id: 'empty-edit',
+		projectId: 'hue',
+		sessionId: 'session-1',
+		text: 'Keep',
+		images: []
+	});
+	expect(() =>
+		store.updateQueuedMessage('empty-edit', {
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: '',
+			images: []
+		})
+	).toThrow('Message content is required');
+	expect(store.getMessage('empty-edit')?.text).toBe('Keep');
+	store.close();
+});
+
+it('keeps both stored images and generic metadata on attachment-only queued edits', () => {
+	const store = makeDeliveryStore();
+	store.acceptMessage({
+		id: 'mixed',
+		projectId: 'hue',
+		sessionId: 'session-1',
+		text: 'Before',
+		images: [
+			{
+				name: 'image.png',
+				mimeType: 'image/png',
+				data: Buffer.from('89504e470d0a1a0a', 'hex').toString('base64')
+			}
+		],
+		attachments: [
+			{
+				name: 'note.txt',
+				mimeType: 'text/plain',
+				data: Buffer.from('note').toString('base64'),
+				size: 4
+			}
+		]
+	});
+	const before = store.getMessage('mixed')!;
+	const after = store.updateQueuedMessage('mixed', {
+		projectId: 'hue',
+		sessionId: 'session-1',
+		text: ''
+	});
+	expect(after.images).toEqual(before.images);
+	expect(after.attachments).toEqual(before.attachments);
+	expect(store.listMessages('hue', 'session-1')[0]).toEqual(after);
+	store.close();
+});
 
 describe('HUEStore project and workflow boundaries', () => {
 	it('persists a local status color without changing Project identity', () => {
@@ -88,11 +334,7 @@ describe('HUEStore project and workflow boundaries', () => {
 		store.ensureProjectMetadata('hue', 'HUE');
 		expect(store.getProjectExcalidraw('hue')).toBeNull();
 
-		const initial = store.updateProjectExcalidraw(
-			'hue',
-			{ address: 'https://example.com/' },
-			null
-		);
+		const initial = store.updateProjectExcalidraw('hue', { address: 'https://example.com/' }, null);
 		store.updateProjectExcalidraw(
 			'hue',
 			{ scene: '{"version":1,"elements":[],"appState":{}}' },
@@ -647,8 +889,8 @@ describe('HUEStore project and workflow boundaries', () => {
 					limit: 100,
 					offset: 0,
 					scope: 'unscheduled'
-			})
-			.sessions.map(({ sessionId }) => sessionId)
+				})
+				.sessions.map(({ sessionId }) => sessionId)
 		).toEqual(['chat']);
 		store.acceptMessage({ id: 'chat-message', projectId: null, sessionId: 'chat', text: 'Run' });
 		store.transitionMessage('chat-message', 'running', { messageId: 'chat-message' });

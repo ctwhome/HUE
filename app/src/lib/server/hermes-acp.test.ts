@@ -14,6 +14,85 @@ import {
 	redactToolPayload,
 	stripExactWorkModePreamble
 } from './hermes-acp';
+import { OpenCodeACP } from './opencode-acp';
+
+it('initializes a delayed fake ACP peer before concurrent list requests and kills stalled startup', async () => {
+	const runtime = new HermesACP({
+		command: process.execPath,
+		args: [
+			'-e',
+			`
+			let initialized = false;
+			require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
+				const request = JSON.parse(line);
+				const respond = result => console.log(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }));
+				if (request.method === 'initialize') setTimeout(() => {
+					initialized = true;
+					respond({ protocolVersion: 1, agentCapabilities: { loadSession: true, sessionCapabilities: { list: {} } } });
+				}, 40);
+				else if (request.method === 'session/list') respond({ sessions: initialized ? [{ sessionId: 'ready', cwd: '/tmp' }] : [] });
+			});
+		`
+		],
+		controlTimeoutMs: 1_000
+	});
+	try {
+		const starting = runtime.start();
+		expect(runtime.healthStatus()).toBe('idle');
+		const listed = runtime.listSessions('/tmp');
+		await starting;
+		expect(await listed).toMatchObject([{ sessionId: 'ready' }]);
+		expect(runtime.healthStatus()).toBe('ready');
+	} finally {
+		await runtime.close();
+	}
+	const stalled = new HermesACP({
+		command: process.execPath,
+		args: ['-e', 'setInterval(() => {}, 1000)'],
+		controlTimeoutMs: 20
+	});
+	try {
+		await expect(stalled.start()).rejects.toThrow('initialize timed out');
+		expect(stalled.healthStatus()).toBe('unavailable');
+	} finally {
+		await stalled.close();
+	}
+});
+
+for (const Runtime of [HermesACP, OpenCodeACP]) {
+	it(`${Runtime.name} concurrent starts wait for initialization`, async () => {
+		const runtime = new Runtime();
+		let initialize!: () => void;
+		const internals = runtime as any;
+		internals.open = async () => {
+			internals.connection = { signal: new AbortController().signal };
+			await new Promise<void>((resolve) => (initialize = resolve));
+		};
+		const first = runtime.start();
+		let ready = false;
+		const second = runtime.start().then(() => (ready = true));
+		await Bun.sleep(10);
+		expect(ready).toBe(false);
+		initialize();
+		await Promise.all([first, second]);
+	});
+}
+
+it('bounds ACP control requests without timing out prompts or closing other turns', async () => {
+	const runtime = new HermesACP({ controlTimeoutMs: 10 });
+	const internals = runtime as any;
+	const context = { request: () => new Promise(() => {}) };
+	await expect(internals.requestRaw(context, 'session/set_model', {})).rejects.toThrow('timed out');
+	let complete!: (value: unknown) => void;
+	const prompt = internals.requestRaw(
+		{ request: () => new Promise((resolve) => (complete = resolve)) },
+		'session/prompt',
+		{}
+	);
+	await Bun.sleep(30);
+	complete({ stopReason: 'end_turn' });
+	expect(await prompt).toEqual({ stopReason: 'end_turn' });
+});
 
 it('groups replayed ACP transcript chunks by message and strips HUE cadence context', () => {
 	const transcript: Array<{

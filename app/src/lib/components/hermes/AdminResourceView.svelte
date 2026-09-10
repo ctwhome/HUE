@@ -6,12 +6,25 @@
 
 	let {
 		view,
+		busy = false,
 		data,
+		runtimeDetails,
+		onruntimeDetail,
 		onaction,
 		onbackup
 	}: {
 		view: GlobalView;
+		busy?: boolean;
 		data: Record<string, any>;
+		runtimeDetails: Record<
+			'logs' | 'update',
+			{
+				loading: boolean;
+				error: string;
+				value: Record<string, any> | null;
+			}
+		>;
+		onruntimeDetail: (kind: 'logs' | 'update') => Promise<void>;
 		onaction: (
 			action: string,
 			input: Record<string, unknown>
@@ -38,8 +51,10 @@
 		value === true ? 'ready' : value === false ? 'blocked' : String(value ?? 'unknown');
 
 	async function act(action: string, input: Record<string, unknown>) {
+		if (busy) return;
+		const submittedToken = bearerToken;
 		const response = await onaction(action, input);
-		bearerToken = '';
+		if (response && bearerToken === submittedToken) bearerToken = '';
 		return response;
 	}
 
@@ -103,10 +118,13 @@
 					· ACP v{data.protocolVersion ?? 1}
 				</p>
 			</div>
-			<Button variant="outline" onclick={() => act('runtime.restart-admin', { confirm: 'restart' })}
-				>Restart admin</Button
+			<Button
+				disabled={busy}
+				variant="outline"
+				onclick={() => act('runtime.restart-admin', { confirm: 'restart' })}>Restart admin</Button
 			>
 			<Button
+				disabled={busy}
 				variant="outline"
 				onclick={() => act('runtime.reconnect-acp', { confirm: 'reconnect' })}>Reconnect ACP</Button
 			>
@@ -118,7 +136,7 @@
 					Includes HUE-owned SQLite state and referenced image files. Hermes data is not included.
 				</p>
 			</div>
-			<Button variant="outline" onclick={onbackup}>Create validated backup</Button>
+			<Button disabled={busy} variant="outline" onclick={onbackup}>Create validated backup</Button>
 			{#if data.backup?.path}<p class="w-full text-sm break-all" role="status">
 					Validated database backup: {data.backup.path}
 				</p>{/if}
@@ -134,7 +152,26 @@
 		</article>
 		<article class={card}>
 			<strong>Update availability</strong>
-			<p class="mt-1 text-sm">{data.administration?.update?.message ?? 'Not checked'}</p>
+			<p class="mt-1 text-sm">{runtimeDetails.update.value?.message ?? 'Not checked'}</p>
+			{#if runtimeDetails.update.loading}<p class="mt-2 text-sm" role="status">
+					Checking for updates...
+				</p>{/if}
+			{#if runtimeDetails.update.error}<p class="mt-2 text-sm text-destructive" role="alert">
+					{runtimeDetails.update.error}{runtimeDetails.update.value
+						? ' Showing the previous check.'
+						: ''}
+				</p>{/if}
+			<Button
+				class="mt-2"
+				variant="outline"
+				disabled={runtimeDetails.update.loading}
+				onclick={() => onruntimeDetail('update')}
+				>{runtimeDetails.update.error
+					? 'Retry update check'
+					: runtimeDetails.update.value
+						? 'Check again'
+						: 'Check for updates'}</Button
+			>
 		</article>
 		<details
 			class={card}
@@ -142,12 +179,34 @@
 			ontoggle={(event) => {
 				errorLogsOpen = event.currentTarget.open;
 				localStorage.setItem(errorLogsStorageKey, String(errorLogsOpen));
+				if (errorLogsOpen && !runtimeDetails.logs.value && !runtimeDetails.logs.error)
+					void onruntimeDetail('logs');
 			}}
 		>
 			<summary>Redacted error logs</summary>
-			<pre class="mt-2 max-h-80 overflow-auto text-xs">{(
-					data.administration?.logs?.lines ?? []
-				).join('\n') || 'No errors.'}</pre>
+			{#if runtimeDetails.logs.loading}<p class="mt-2 text-sm" role="status">
+					Loading error logs...
+				</p>{/if}
+			{#if runtimeDetails.logs.error}<p class="mt-2 text-sm text-destructive" role="alert">
+					{runtimeDetails.logs.error}{runtimeDetails.logs.value
+						? ' Showing previously loaded logs.'
+						: ''}
+				</p>{/if}
+			{#if runtimeDetails.logs.value}<pre class="mt-2 max-h-80 overflow-auto text-xs">{(
+						runtimeDetails.logs.value.lines ?? []
+					).join('\n') || 'No errors.'}</pre>
+			{:else if !runtimeDetails.logs.loading}<p class="mt-2 text-sm">Logs not loaded.</p>{/if}
+			<Button
+				class="mt-2"
+				variant="outline"
+				disabled={runtimeDetails.logs.loading}
+				onclick={() => onruntimeDetail('logs')}
+				>{runtimeDetails.logs.error
+					? 'Retry logs'
+					: runtimeDetails.logs.value
+						? 'Refresh logs'
+						: 'Load logs'}</Button
+			>
 		</details>
 	</div>
 {:else if view === 'profiles'}
@@ -177,7 +236,7 @@
 						value={profile.name}>Clone {profile.name}</option
 					>{/each}
 			</select>
-			<Button type="submit">Create profile</Button>
+			<Button disabled={busy} type="submit">Create profile</Button>
 		</form>
 		<div class="inventory-list grid gap-2">
 			{#each profiles() as profile}<article class={`${card} flex flex-wrap items-center gap-2`}>
@@ -189,10 +248,12 @@
 						</p>
 					</div>
 					{#if data.active?.active !== profile.name}<Button
+							disabled={busy}
 							variant="outline"
 							onclick={() => act('profile.switch', { name: profile.name })}>Use next launch</Button
 						>{/if}
 					{#if !profile.is_default}<Button
+							disabled={busy}
 							variant="destructive"
 							onclick={() => act('profile.delete', { name: profile.name, confirm: profile.name })}
 							>Delete</Button
@@ -233,7 +294,7 @@
 				placeholder="Bearer token (write-only)"
 				disabled={authMode !== 'header'}
 			/>
-			<Button type="submit">Add MCP server</Button>
+			<Button disabled={busy} type="submit">Add MCP server</Button>
 		</form>
 		<div class="inventory-list grid gap-2">
 			{#each servers() as server}<article class={`${card} flex flex-wrap items-center gap-2`}>
@@ -246,18 +307,23 @@
 						</p>
 					</div>
 					<Button
+						disabled={busy}
 						variant="outline"
 						onclick={() => act('mcp.toggle', { name: server.name, enabled: !server.enabled })}
 						>{server.enabled ? 'Disable' : 'Enable'}</Button
 					>
-					<Button variant="outline" onclick={() => inspectMcp(server.name, 'mcp.test')}
-						>Test health & tools</Button
+					<Button
+						disabled={busy}
+						variant="outline"
+						onclick={() => inspectMcp(server.name, 'mcp.test')}>Test health & tools</Button
 					>
 					{#if server.auth === 'oauth'}<Button
+							disabled={busy}
 							variant="outline"
 							onclick={() => inspectMcp(server.name, 'mcp.auth')}>Authenticate</Button
 						>{/if}
 					<Button
+						disabled={busy}
 						variant="destructive"
 						onclick={() => act('mcp.delete', { name: server.name, confirm: server.name })}
 						>Delete</Button
@@ -278,11 +344,15 @@
 					target="_blank"
 					rel="noopener noreferrer">Open authorization</a
 				>
-				<Button variant="outline" onclick={() => updateAuthorization('mcp.auth.status')}
-					>Check authorization status</Button
+				<Button
+					disabled={busy}
+					variant="outline"
+					onclick={() => updateAuthorization('mcp.auth.status')}>Check authorization status</Button
 				>
-				<Button variant="outline" onclick={() => updateAuthorization('mcp.auth.cancel')}
-					>Cancel authorization</Button
+				<Button
+					disabled={busy}
+					variant="outline"
+					onclick={() => updateAuthorization('mcp.auth.cancel')}>Cancel authorization</Button
 				>
 			</article>{/if}
 	</div>
@@ -322,6 +392,6 @@
 					>{/each}</select
 			></label
 		>
-		<Button type="submit">Validate and apply</Button>
+		<Button disabled={busy} type="submit">Validate and apply</Button>
 	</form>
 {/if}

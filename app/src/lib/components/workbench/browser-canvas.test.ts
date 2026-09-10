@@ -14,6 +14,7 @@ import {
 	normalizeBrowserUrl,
 	parseStoredBrowserAddress,
 	parseStoredBrowserScene,
+	restorePortNotes,
 	restoreHiddenPorts,
 	restoreBrowserTabId,
 	serializeBrowserScene
@@ -23,6 +24,15 @@ describe('browser URL normalization', () => {
 	test('restores only unique valid hidden ports', () => {
 		expect(restoreHiddenPorts('[5173, 3000, 5173, 0, 70000, "8080"]')).toEqual([5173, 3000]);
 		expect(restoreHiddenPorts('invalid')).toEqual([]);
+	});
+
+	test('restores bounded notes for valid ports', () => {
+		expect(
+			restorePortNotes(
+				JSON.stringify({ 5173: 'Dashboard', 0: 'invalid', 70000: 'invalid', 8080: 42 })
+			)
+		).toEqual({ 5173: 'Dashboard' });
+		expect(restorePortNotes('invalid')).toEqual({});
 	});
 
 	test('accepts only normalized credential-free http and https URLs', () => {

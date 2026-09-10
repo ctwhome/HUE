@@ -15,9 +15,10 @@
 	import type { ReviewContextSeed } from '$lib/message-content';
 	import type { FileOpenRequest, FileRequest } from './workbench/file-types';
 
-	type TerminalProps = { projectId: string };
+	type TerminalProps = { projectId: string; rootPath?: string };
 	type RepositoryProps = {
 		projectId: string;
+		active?: boolean;
 		onbranch: (branch: string | null) => void;
 		onopenfile: (request: FileOpenRequest) => void;
 		onchanges: (count: number) => void;
@@ -26,6 +27,7 @@
 
 	let {
 		projectId,
+		rootPath = '',
 		projectName,
 		compact,
 		docked = false,
@@ -41,11 +43,13 @@
 		onopenfile = () => {},
 		onterminal = () => {},
 		onpreviewchange = () => {},
+		onpreviewstatus,
 		onbranch,
 		onreviewcontext,
 		dirtyGuard
 	}: {
 		projectId: string;
+		rootPath?: string;
 		projectName: string;
 		compact: boolean;
 		docked?: boolean;
@@ -61,6 +65,7 @@
 		onopenfile?: (request: FileOpenRequest) => void;
 		onterminal?: () => void;
 		onpreviewchange?: (url: string) => void;
+		onpreviewstatus?: (status: 'idle' | 'loading' | 'unverified' | 'error', url: string) => void;
 		onbranch: (branch: string | null) => void;
 		onreviewcontext?: (context: ReviewContextSeed) => void;
 		dirtyGuard: DirtyGuard;
@@ -68,6 +73,12 @@
 	let view = $state<'develop' | 'files'>('develop');
 	let developView = $state<'browser' | 'excalidraw' | 'terminal' | 'git'>('browser');
 	let gitChanges = $state(0);
+	let gitCountLoading = false;
+	let gitCountStale = $state(true);
+	let lastGitCountRefresh = 0;
+	let repositoryVisible = $derived(
+		view === 'develop' && (docked ? gitOpen : !compact || developView === 'git')
+	);
 	let width = $state(440);
 	let maxWidth = $state(720);
 	let dockElement: HTMLElement;
@@ -109,12 +120,23 @@
 		}
 	}
 	async function loadGitChangeCount() {
+		if (gitCountLoading || repositoryVisible) return;
+		gitCountLoading = true;
+		lastGitCountRefresh = Date.now();
 		try {
-			gitChanges = (await api<{ changes: unknown[] }>(`/api/projects/${projectId}/repository`))
-				.changes.length;
+			const result = await api<{ changes: unknown[] }>(`/api/projects/${projectId}/repository`);
+			if (!mounted || repositoryVisible) return;
+			gitChanges = result.changes.length;
+			gitCountStale = false;
 		} catch {
-			gitChanges = 0;
+			gitCountStale = true;
+		} finally {
+			gitCountLoading = false;
 		}
+	}
+	function refreshGitCountOnFocus() {
+		if (document.visibilityState === 'visible' && Date.now() - lastGitCountRefresh > 5_000)
+			void loadGitChangeCount();
 	}
 	function openFile(request: FileOpenRequest) {
 		if (docked) return onopenfile(request);
@@ -137,7 +159,7 @@
 		if (next === 'git') void loadRepositoryPanels();
 	}
 	function openDevelopView(next: 'browser' | 'excalidraw' | 'terminal' | 'git') {
-		if (view === 'develop') return chooseDevelopView(next);
+		if (view === 'develop' && developView === next) return;
 		const activate = () => {
 			chooseDevelopView(next);
 			view = 'develop';
@@ -205,7 +227,11 @@
 			void loadRepositoryPanels();
 			void loadGitChangeCount();
 		});
+		window.addEventListener('focus', refreshGitCountOnFocus);
+		document.addEventListener('visibilitychange', refreshGitCountOnFocus);
 		return () => {
+			window.removeEventListener('focus', refreshGitCountOnFocus);
+			document.removeEventListener('visibilitychange', refreshGitCountOnFocus);
 			mounted = false;
 			cancelRepositoryLoad();
 		};
@@ -309,17 +335,18 @@
 				{#if !docked && (!compact || developView === 'browser')}<BrowserPanel
 						{projectId}
 						{onpreviewchange}
+						{onpreviewstatus}
 						{onreviewcontext}
 					/>{/if}
 				{#if !docked && compact && developView === 'excalidraw'}<article
 						class={`${panel} browser-panel`}
 						aria-label="Project Excalidraw"
 					>
-						<ExcalidrawPanel {projectId} {onpreviewchange} />
+						<ExcalidrawPanel {projectId} {onpreviewchange} {dirtyGuard} />
 					</article>{/if}
 				{#if (!compact && !docked) || developView === 'terminal'}
 					{#if TerminalPanel}
-						<TerminalPanel {projectId} />
+						<TerminalPanel {projectId} {rootPath} />
 					{:else}
 						<article
 							class={`${panel} terminal-panel grid place-content-center gap-3 p-4 text-center`}
@@ -344,8 +371,12 @@
 						<RepositoryPanels
 							{projectId}
 							{onbranch}
+							active={repositoryVisible}
 							onopenfile={openFile}
-							onchanges={(count) => (gitChanges = count)}
+							onchanges={(count) => {
+								gitChanges = count;
+								gitCountStale = false;
+							}}
 							{onreviewcontext}
 						/>
 					{:else}
@@ -423,7 +454,7 @@
 						? `Git, ${gitChanges} changed files`
 						: tool.label}
 					aria-expanded={gitOpen}
-					title={`${gitOpen ? 'Hide' : 'Show'} ${tool.label}`}
+					title={`${gitOpen ? 'Hide' : 'Show'} ${tool.label}${gitCountStale ? '; status unavailable or stale, open to refresh' : ''}`}
 					onclick={toggleGit}
 				>
 					<Icon width={19} height={19} aria-hidden="true" />

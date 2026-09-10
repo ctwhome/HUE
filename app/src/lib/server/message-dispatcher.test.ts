@@ -878,6 +878,113 @@ describe('MessageDispatcher', () => {
 		store.close();
 	});
 
+	it('delivers retained and appended queued file bytes with omitted images preserved', async () => {
+		const store = makeStore();
+		const runtime = new RecordingRuntime();
+		const dispatcher = new MessageDispatcher(store, runtime);
+		let release!: () => void;
+		const locked = dispatcher.withSessionLock(
+			'session-1',
+			() =>
+				new Promise<void>((resolve) => {
+					release = resolve;
+				})
+		);
+		await Promise.resolve();
+		const old = { name: 'old.txt', mimeType: 'text/plain', size: 3, data: 'b2xk' };
+		const added = { name: 'new.txt', mimeType: 'text/plain', size: 3, data: 'bmV3' };
+		const image = { name: 'image.png', mimeType: 'image/png', data: 'iVBORw0KGgo=' };
+		dispatcher.submit({
+			id: 'append',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Before',
+			images: [image],
+			attachments: [old]
+		});
+		try {
+			const edited = dispatcher.updateQueuedMessage('append', {
+				projectId: 'hue',
+				sessionId: 'session-1',
+				text: '',
+				preserveAttachments: true,
+				attachments: [added]
+			});
+			expect(edited.images).toEqual([image]);
+			expect(edited.attachments.map(({ name }) => name)).toEqual(['old.txt', 'new.txt']);
+		} finally {
+			release();
+			await locked;
+			await dispatcher.whenIdle('session-1');
+		}
+		expect(runtime.calls[0]).toMatchObject({
+			images: [image],
+			attachments: [old, added],
+			text: ''
+		});
+		store.close();
+	});
+
+	it('rejects unavailable retained bytes and wrong scope without changing queued metadata', async () => {
+		const store = makeStore();
+		const dispatcher = new MessageDispatcher(store, new RecordingRuntime());
+		store.acceptMessage({
+			id: 'lost-files',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Keep',
+			attachments: [{ name: 'old.txt', mimeType: 'text/plain', size: 3, data: 'b2xk' }]
+		});
+		const before = store.getMessage('lost-files');
+		const patch = {
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Edit',
+			preserveAttachments: true,
+			attachments: [{ name: 'new.txt', mimeType: 'text/plain', size: 3, data: 'bmV3' }]
+		};
+		expect(() =>
+			dispatcher.updateQueuedMessage('lost-files', { ...patch, projectId: 'other' })
+		).toThrow('was not found');
+		expect(() => dispatcher.updateQueuedMessage('lost-files', patch)).toThrow('reattach required');
+		expect(store.getMessage('lost-files')).toEqual(before);
+		await dispatcher.close();
+		store.close();
+	});
+
+	it('allows image-only queued edits without generic turn-memory bytes and rejects clearing their final content', async () => {
+		const store = makeStore();
+		const dispatcher = new MessageDispatcher(store, new RecordingRuntime());
+		const image = { name: 'image.png', mimeType: 'image/png', data: 'iVBORw0KGgo=' };
+		store.acceptMessage({
+			id: 'image-only',
+			projectId: 'hue',
+			sessionId: 'session-1',
+			text: 'Before',
+			images: [image]
+		});
+		expect(
+			dispatcher.updateQueuedMessage('image-only', {
+				projectId: 'hue',
+				sessionId: 'session-1',
+				text: '',
+				preserveAttachments: true
+			}).images
+		).toEqual([image]);
+		expect(() =>
+			dispatcher.updateQueuedMessage('image-only', {
+				projectId: 'hue',
+				sessionId: 'session-1',
+				text: '',
+				images: [],
+				attachments: []
+			})
+		).toThrow('Message content is required');
+		expect(store.getMessage('image-only')?.images).toEqual([image]);
+		await dispatcher.close();
+		store.close();
+	});
+
 	it('fails recovered generic attachments without sending metadata as content', async () => {
 		const store = makeStore();
 		store.acceptMessage({

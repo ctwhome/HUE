@@ -135,7 +135,7 @@ test('reads, updates, pauses, and removes only the selected profile job', async 
 });
 
 test('normalizes profile-scoped Hermes cron run Sessions conservatively', async () => {
-	const runs = await listExternalHermesCronRuns(
+	const { runs } = await listExternalHermesCronRuns(
 		{
 			async json() {
 				return {
@@ -182,5 +182,26 @@ test('normalizes profile-scoped Hermes cron run Sessions conservatively', async 
 		profile: 'default',
 		messageCount: 2,
 		endReason: 'cron_complete'
+	});
+});
+
+test('reports possibly truncated history without inventing unsupported pagination parameters', async () => {
+	const calls: string[] = [];
+	const history = await listExternalHermesCronRuns(
+		{
+			async json(path) {
+				calls.push(path);
+				return { runs: Array.from({ length: 100 }, () => ({ is_active: true })), limit: 100 };
+			}
+		},
+		'default',
+		'job-1'
+	);
+	expect(calls).toEqual(['/api/cron/jobs/job-1/runs?profile=default&limit=100']);
+	expect(history).toEqual({
+		runs: [],
+		limit: 100,
+		possiblyTruncated: true,
+		paginationSupported: false
 	});
 });

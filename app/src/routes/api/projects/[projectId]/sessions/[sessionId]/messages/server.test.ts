@@ -11,6 +11,66 @@ const operationReferences: string[] = [];
 let updatedEnvelope: Record<string, unknown> | null = null;
 let runtimeStarted = false;
 let negotiatedImageCapability = false;
+
+test('allows attachment-only queued edits in preserve mode', async () => {
+	const { PATCH } = await import('./+server');
+	const response = await PATCH({
+		params: { projectId: 'project-slug', sessionId: 'session' },
+		request: new Request('http://hue.test', {
+			method: 'PATCH',
+			body: JSON.stringify({ messageId: 'message', text: '', preserveAttachments: true })
+		})
+	} as never);
+	expect(response.status).toBe(200);
+	expect(updatedEnvelope).toMatchObject({
+		images: undefined,
+		attachments: [],
+		preserveAttachments: true
+	});
+});
+
+test('checks empty edits after omitted images have been retained by the store', async () => {
+	const { PATCH } = await import('./+server');
+	const response = await PATCH({
+		params: { projectId: 'project-slug', sessionId: 'session' },
+		request: new Request('http://hue.test', {
+			method: 'PATCH',
+			body: JSON.stringify({ messageId: 'message', text: '' })
+		})
+	} as never);
+	expect(response.status).toBe(200);
+	expect(updatedEnvelope).toMatchObject({ images: undefined });
+});
+
+test('does not silently discard new attachments in preserve mode', async () => {
+	const { PATCH } = await import('./+server');
+	updatedEnvelope = null;
+	const response = await PATCH({
+		params: { projectId: 'project-slug', sessionId: 'session' },
+		request: new Request('http://hue.test', {
+			method: 'PATCH',
+			body: JSON.stringify({
+				messageId: 'message',
+				text: 'Update',
+				preserveAttachments: true,
+				attachments: [
+					{
+						name: 'new.txt',
+						mimeType: 'text/plain',
+						data: Buffer.from('new').toString('base64'),
+						size: 3
+					}
+				]
+			})
+		})
+	} as never);
+	expect(response.status).toBe(200);
+	expect(updatedEnvelope).toMatchObject({
+		preserveAttachments: true,
+		images: undefined,
+		attachments: [{ name: 'new.txt', data: 'bmV3' }]
+	});
+});
 mock.module('$lib/server/route-services', () => ({
 	...serviceExportStubs,
 	authoritativeProject: async () => ({ id: 'project' }),

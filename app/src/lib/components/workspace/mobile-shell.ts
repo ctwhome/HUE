@@ -36,12 +36,12 @@ export class MobileShellController {
 		});
 	}
 
-	start() {
+	start(restore = true) {
 		this.syncMobile();
 		this.query.addEventListener('change', this.syncMobile);
 		window.addEventListener('popstate', this.restoreHistory);
 		this.gesture.start();
-		void this.options.navigation.restoreSelection();
+		if (restore) void this.options.navigation.restoreSelection();
 	}
 
 	destroy() {

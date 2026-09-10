@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import ChevronDown from '~icons/lucide/chevron-down';
 	import ChevronRight from '~icons/lucide/chevron-right';
 	import FolderGit2 from '~icons/lucide/folder-git-2';
@@ -28,11 +28,13 @@
 
 	let {
 		projectId,
+		active = true,
 		onbranch,
 		onopenfile,
 		onchanges
 	}: {
 		projectId: string;
+		active?: boolean;
 		onbranch: (branch: string | null) => void;
 		onopenfile: (request: FileOpenRequest) => void;
 		onchanges: (count: number) => void;
@@ -49,6 +51,13 @@
 	let githubError = $state('');
 	let commitMessage = $state('');
 	let layout = $state(defaultRepositoryLayout());
+	let repositoryBlocked = $derived(
+		repositoryBusy ||
+			repositoryLoading ||
+			commitMessageGenerating ||
+			!repository ||
+			repository.repositoryPath !== layout.selectedRepository
+	);
 	let commitModel = $state('openai-codex:gpt-5.6-luna');
 	let commitReasoning = $state<'default' | 'none'>('default');
 	const commitReasoningOptions = [
@@ -60,10 +69,13 @@
 	]);
 	let mounted = false;
 	let repositoryRequestGeneration = 0;
+	let lastRefresh = 0;
 	const panel =
 		'workbench-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card';
 
 	async function loadRepository() {
+		if (repositoryBusy || commitMessageGenerating) return;
+		lastRefresh = Date.now();
 		const request = ++repositoryRequestGeneration;
 		repositoryLoading = true;
 		repositoryError = '';
@@ -95,13 +107,16 @@
 		);
 	}
 	async function loadGitHubItems() {
+		const generation = repositoryRequestGeneration;
 		githubError = '';
 		try {
 			const params = new URLSearchParams({ view: 'github' });
 			if (layout.selectedRepository) params.set('repository', layout.selectedRepository);
-			githubItems = await api<GitHubItems>(`/api/projects/${projectId}/repository?${params}`);
+			const result = await api<GitHubItems>(`/api/projects/${projectId}/repository?${params}`);
+			if (mounted && generation === repositoryRequestGeneration) githubItems = result;
 		} catch (cause) {
-			githubError = cause instanceof Error ? cause.message : String(cause);
+			if (mounted && generation === repositoryRequestGeneration)
+				githubError = cause instanceof Error ? cause.message : String(cause);
 		}
 	}
 	function refreshRepository() {
@@ -125,6 +140,7 @@
 	const unstagedChanges = () =>
 		repository?.changes.filter(({ index, worktree }) => index === '?' || worktree !== ' ') ?? [];
 	function openValidated(change: Repository['changes'][number], scope: 'staged' | 'unstaged') {
+		if (repositoryBlocked) return;
 		if (!change.fileUrl && !change.diffUrl) return;
 		onopenfile({
 			path: change.fileUrl ?? change.diffUrl!,
@@ -137,14 +153,26 @@
 		});
 	}
 	async function mutateRepository(operation: Record<string, string>) {
-		if (repositoryBusy) return false;
+		if (
+			repositoryBusy ||
+			repositoryLoading ||
+			commitMessageGenerating ||
+			!repository ||
+			repository.repositoryPath !== layout.selectedRepository
+		)
+			return false;
+		const target = repository.repositoryPath;
+		const generation = ++repositoryRequestGeneration;
 		repositoryBusy = true;
 		repositoryError = repositoryMessage = '';
 		try {
-			repository = await api<Repository>(`/api/projects/${projectId}/repository`, {
+			const result = await api<Repository>(`/api/projects/${projectId}/repository`, {
 				method: 'POST',
-				body: JSON.stringify({ ...operation, repository: layout.selectedRepository })
+				body: JSON.stringify({ ...operation, repository: target })
 			});
+			if (!mounted || generation !== repositoryRequestGeneration) return false;
+			repository = result;
+			onbranch(repository.branch);
 			onchanges(repository.changes.length);
 			repositoryMessage =
 				operation.action === 'commit'
@@ -152,7 +180,7 @@
 					: operation.action === 'push'
 						? 'Pushed'
 						: 'Git status updated';
-			if (operation.action === 'commit') commitMessage = '';
+			if (operation.action === 'commit' && commitMessage === operation.message) commitMessage = '';
 			return true;
 		} catch (cause) {
 			repositoryError = cause instanceof Error ? cause.message : String(cause);
@@ -166,7 +194,8 @@
 			await mutateRepository({ action: 'push' });
 	}
 	async function generateCommitMessage() {
-		if (commitMessageGenerating || !stagedChanges().length) return;
+		if (repositoryBlocked || !stagedChanges().length) return;
+		const submitted = commitMessage;
 		commitMessageGenerating = true;
 		repositoryError = repositoryMessage = '';
 		commitSessionPath = '';
@@ -202,7 +231,7 @@
 					`${result.error ?? `Commit generation ${result.status}`}${result.sessionId ? ` (Session ${result.sessionId})` : ''}`
 				);
 			}
-			commitMessage = result.message;
+			if (commitMessage === submitted) commitMessage = result.message;
 			repositoryMessage = `Drafted in Session ${result.sessionId}`;
 			commitSessionPath = result.path ?? '';
 		} catch (cause) {
@@ -228,6 +257,9 @@
 		}
 	}
 	function selectRepository() {
+		commitOperationId = '';
+		commitMessage = repositoryMessage = commitSessionPath = '';
+		githubItems = null;
 		saveRepositorySelection(localStorage, projectId, layout.selectedRepository);
 		void loadRepository();
 	}
@@ -241,6 +273,21 @@
 		commitReasoning = value === 'none' ? 'none' : 'default';
 		localStorage.setItem('hue:commit-message-reasoning', commitReasoning);
 	}
+	function refreshOnFocus() {
+		if (
+			active &&
+			document.visibilityState === 'visible' &&
+			!repositoryLoading &&
+			Date.now() - lastRefresh > 5_000
+		)
+			void loadRepository();
+	}
+	$effect(() => {
+		if (active)
+			untrack(() => {
+				if (mounted && !repositoryLoading) void loadRepository();
+			});
+	});
 	onMount(() => {
 		mounted = true;
 		commitModel = localStorage.getItem('hue:commit-message-model') || commitModel;
@@ -248,7 +295,11 @@
 		layout = readRepositoryLayout(localStorage, projectId);
 		void loadRepository();
 		void loadCommitModels();
+		window.addEventListener('focus', refreshOnFocus);
+		document.addEventListener('visibilitychange', refreshOnFocus);
 		return () => {
+			window.removeEventListener('focus', refreshOnFocus);
+			document.removeEventListener('visibilitychange', refreshOnFocus);
 			mounted = false;
 			repositoryRequestGeneration += 1;
 		};
@@ -276,7 +327,7 @@
 				class="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs max-[700px]:h-11"
 				aria-label="Repository"
 				bind:value={layout.selectedRepository}
-				disabled={repositoryBusy || repositoryLoading}
+				disabled={repositoryBusy || repositoryLoading || commitMessageGenerating}
 				onchange={selectRepository}
 			>
 				{#each repository?.repositories ?? [] as item}<option value={item.path}
@@ -288,7 +339,7 @@
 				variant="outline"
 				size="sm"
 				title="Push branch"
-				disabled={repositoryBusy || !repository?.isRepository}
+				disabled={repositoryBlocked || !repository?.isRepository}
 				onclick={() => mutateRepository({ action: 'push' })}>Push</Button
 			><Button
 				variant="outline"
@@ -296,7 +347,7 @@
 				class="size-8"
 				title="Refresh Git status"
 				aria-label="Refresh Git status"
-				disabled={repositoryBusy}
+				disabled={repositoryBusy || repositoryLoading || commitMessageGenerating}
 				onclick={refreshRepository}><RefreshCw width={15} height={15} aria-hidden="true" /></Button
 			>{#each repositoryLinks().slice(0, 1) as link}<a
 					class="grid size-8 shrink-0 place-items-center rounded-md border border-border bg-background hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring max-[700px]:size-11"
@@ -329,6 +380,13 @@
 			{#if repositoryError}<p class="panel-error text-xs text-destructive" role="alert">
 					{repositoryError}
 				</p>{/if}
+			{#if repository && repository.repositoryPath !== layout.selectedRepository}<p
+					class="text-xs text-muted-foreground"
+					role="status"
+				>
+					Showing previous repository {repository.repositoryPath}. Actions are disabled until the
+					selected repository loads.
+				</p>{/if}
 			{#if repository && !repository.isRepository}<div
 					class="panel-empty grid min-h-32 place-content-center gap-1 text-center text-xs text-muted-foreground"
 				>
@@ -344,7 +402,7 @@
 						>{#if stagedChanges().length}<button
 								class="ml-auto text-[0.68rem] text-sky-400"
 								title="Unstage all changes"
-								disabled={repositoryBusy}
+								disabled={repositoryBlocked}
 								onclick={() => mutateRepository({ action: 'unstageAll' })}>Unstage all</button
 							>{/if}
 					</header>
@@ -356,13 +414,14 @@
 									class="grid size-6 place-items-center"
 									title={`Unstage ${change.path}`}
 									aria-label={`Unstage ${change.path}`}
-									disabled={repositoryBusy}
+									disabled={repositoryBlocked}
 									onclick={() => mutateRepository({ action: 'unstage', path: change.path })}
 									><Minus width={14} height={14} aria-hidden="true" /></button
 								><code class="text-amber-300">{change.index}</code
 								>{#if change.fileUrl || change.diffUrl}<button
 										class="overflow-hidden text-left text-ellipsis whitespace-nowrap hover:underline"
 										title={`Open ${change.path}`}
+										disabled={repositoryBlocked}
 										onclick={() => openValidated(change, 'staged')}>{change.path}</button
 									>{:else}<span class="overflow-hidden text-ellipsis whitespace-nowrap"
 										>{change.path}</span
@@ -377,7 +436,7 @@
 						>{#if unstagedChanges().length}<button
 								class="ml-auto text-[0.68rem] text-sky-400"
 								title="Stage all changes"
-								disabled={repositoryBusy}
+								disabled={repositoryBlocked}
 								onclick={() => mutateRepository({ action: 'stageAll' })}>Stage all</button
 							>{/if}
 					</header>
@@ -389,13 +448,14 @@
 									class="grid size-6 place-items-center"
 									title={`Stage ${change.path}`}
 									aria-label={`Stage ${change.path}`}
-									disabled={repositoryBusy}
+									disabled={repositoryBlocked}
 									onclick={() => mutateRepository({ action: 'stage', path: change.path })}
 									><Plus width={14} height={14} aria-hidden="true" /></button
 								><code class="text-amber-300">{change.worktree}</code
 								>{#if change.fileUrl || change.diffUrl}<button
 										class="overflow-hidden text-left text-ellipsis whitespace-nowrap hover:underline"
 										title={`Open ${change.path}`}
+										disabled={repositoryBlocked}
 										onclick={() => openValidated(change, 'unstaged')}>{change.path}</button
 									>{:else}<span class="overflow-hidden text-ellipsis whitespace-nowrap"
 										>{change.path}</span
@@ -446,7 +506,7 @@
 						title={stagedChanges().length
 							? 'Generate commit message with Hermes'
 							: 'Stage files first'}
-						disabled={repositoryBusy || commitMessageGenerating || !stagedChanges().length}
+						disabled={repositoryBlocked || !stagedChanges().length}
 						onclick={generateCommitMessage}
 					>
 						{#if commitMessageGenerating}<RefreshCw
@@ -471,7 +531,7 @@
 					type="submit"
 					title="Commit staged changes"
 					aria-label="Commit staged changes"
-					disabled={repositoryBusy || !commitMessage.trim() || !stagedChanges().length}
+					disabled={repositoryBlocked || !commitMessage.trim() || !stagedChanges().length}
 					>Commit</Button
 				><Button
 					variant="outline"
@@ -479,7 +539,7 @@
 					type="button"
 					title="Commit and push staged changes"
 					aria-label="Commit and push staged changes"
-					disabled={repositoryBusy || !commitMessage.trim() || !stagedChanges().length}
+					disabled={repositoryBlocked || !commitMessage.trim() || !stagedChanges().length}
 					onclick={commitAndPush}>Commit &amp; push</Button
 				>
 			</div>

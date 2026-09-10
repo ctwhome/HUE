@@ -19,14 +19,49 @@ import {
 	sessionMatchesProjectRoot
 } from './services';
 import { HUEStore } from './store';
+import { runCommand } from './command';
+import { DeliveryUncertainError, MessageDispatcher } from './message-dispatcher';
 
 const temporaryDirectories: string[] = [];
+
+test('Git branch lookup yields to unrelated event-loop work', async () => {
+	const root = mkdtempSync(join(tmpdir(), 'hue-async-git-'));
+	temporaryDirectories.push(root);
+	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: root });
+	const pending = projectBranch(root);
+	expect(pending).toBeInstanceOf(Promise);
+	expect(await pending).toBe('main');
+});
+
+test('process waits leave timers responsive and enforce timeout and output bounds', async () => {
+	let ticked = false;
+	const timer = setTimeout(() => (ticked = true), 5);
+	const pending = runCommand(
+		process.execPath,
+		['-e', 'setTimeout(() => console.log("finished"), 50)'],
+		{ timeout: 1_000 }
+	);
+	await Bun.sleep(20);
+	expect(ticked).toBe(true);
+	expect((await pending).stdout.toString()).toBe('finished\n');
+	clearTimeout(timer);
+	const timeout = await runCommand(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+		timeout: 20
+	});
+	expect(timeout.status).not.toBe(0);
+	const overflow = await runCommand(process.execPath, ['-e', 'console.log("x".repeat(10000))'], {
+		timeout: 1_000,
+		maxBuffer: 100
+	});
+	expect(overflow.error?.code).toBe('ERR_CHILD_PROCESS_STDIO_MAXBUFFER');
+	expect(overflow.stdout.byteLength).toBeLessThanOrEqual(100);
+});
 
 afterEach(() => {
 	for (const path of temporaryDirectories.splice(0)) rmSync(path, { recursive: true, force: true });
 });
 
-test('matches Session cwd under any canonical Project folder without prefix confusion', () => {
+test('matches Session cwd under any canonical Project folder without prefix confusion', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-folders-'));
 	const docsRoot = mkdtempSync(join(tmpdir(), 'hue-project-docs-'));
 	const nested = join(docsRoot, 'packages', 'site');
@@ -38,7 +73,7 @@ test('matches Session cwd under any canonical Project folder without prefix conf
 	expect(sessionMatchesProjectFolders([docsRoot], `${docsRoot}-sibling`)).toBe(false);
 });
 
-test('matches Hermes session cwd to Project root by canonical path', () => {
+test('matches Hermes session cwd to Project root by canonical path', async () => {
 	const temporary = mkdtempSync(join(tmpdir(), 'hue-project-root-'));
 	temporaryDirectories.push(temporary);
 	const projectRoot = join(temporary, 'project');
@@ -53,7 +88,7 @@ test('matches Hermes session cwd to Project root by canonical path', () => {
 	expect(sessionMatchesProjectRoot(projectRoot, join(temporary, 'missing'))).toBe(false);
 });
 
-test('keeps old-root Sessions visible with an explicit restore contract after Project relocation', () => {
+test('keeps old-root Sessions visible with an explicit restore contract after Project relocation', async () => {
 	const current = [{ sessionId: 'new-session', cwd: '/work/hue-new', title: 'Current' }];
 	const stored = [
 		{ sessionId: 'old-session', cwd: '/work/hue-old', icon: '🕰️' },
@@ -71,7 +106,7 @@ test('keeps old-root Sessions visible with an explicit restore contract after Pr
 	]);
 });
 
-test('keeps a stored zero-history Session available while its cwd exists', () => {
+test('keeps a stored zero-history Session available while its cwd exists', async () => {
 	const stored = [{ sessionId: 'new-session', cwd: '/work/hue', icon: null }];
 
 	expect(mergeProjectSessionViews([], stored, new Set(['/work/hue']))).toEqual([
@@ -79,10 +114,10 @@ test('keeps a stored zero-history Session available while its cwd exists', () =>
 	]);
 });
 
-test('reports distinct actionable health for a missing Project root', () => {
+test('reports distinct actionable health for a missing Project root', async () => {
 	const missing = join(tmpdir(), `hue-missing-${crypto.randomUUID()}`);
 
-	expect(projectRuntimeHealth(missing, { acp: 'idle', admin: 'idle' })).toEqual([
+	expect(await projectRuntimeHealth(missing, { acp: 'idle', admin: 'idle' })).toEqual([
 		expect.objectContaining({
 			id: 'project',
 			status: 'unavailable',
@@ -96,11 +131,11 @@ test('reports distinct actionable health for a missing Project root', () => {
 	]);
 });
 
-test('distinguishes a healthy Project root from optional Git and idle preview', () => {
+test('distinguishes a healthy Project root from optional Git and idle preview', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-health-'));
 	temporaryDirectories.push(projectRoot);
 
-	expect(projectRuntimeHealth(projectRoot, { acp: 'ready', admin: 'unavailable' })).toEqual([
+	expect(await projectRuntimeHealth(projectRoot, { acp: 'ready', admin: 'unavailable' })).toEqual([
 		expect.objectContaining({ id: 'project', status: 'ready' }),
 		expect.objectContaining({ id: 'git', status: 'idle', summary: 'Not a Git repository' }),
 		expect.objectContaining({ id: 'terminal', status: 'ready' }),
@@ -114,20 +149,57 @@ test('replaces services retained from an older server module', async () => {
 	const globals = globalThis as typeof globalThis & { __hueServices?: unknown };
 	const previousServices = globals.__hueServices;
 	const previousDatabasePath = process.env.HUE_DATABASE_PATH;
+	const previousCommand = process.env.HUE_HERMES_COMMAND;
+	process.env.HUE_HERMES_COMMAND = '/usr/bin/false';
 	process.env.HUE_DATABASE_PATH = ':memory:';
-	globals.__hueServices = { store: {} };
+	const calls: string[] = [];
+	let drained!: () => void;
+	globals.__hueServices = {
+		store: { close: () => calls.push('store') },
+		terminals: { dispose: () => calls.push('terminals') },
+		schedules: { close: () => calls.push('schedules') },
+		externalCron: { close: async () => calls.push('externalCron') },
+		dispatcher: {
+			close: () =>
+				new Promise<void>((resolve) => {
+					calls.push('dispatcher');
+					drained = resolve;
+				})
+		},
+		notifications: { close: async () => calls.push('notifications') },
+		runtime: { close: async () => calls.push('runtime') },
+		opencodeRuntime: { close: async () => calls.push('opencode') },
+		admin: { close: async () => calls.push('admin') }
+	};
 
 	try {
+		expect(() => services()).toThrow('Services are restarting');
+		await Bun.sleep(1);
+		expect(calls).not.toContain('store');
+		expect(() => services()).toThrow('Services are restarting');
+		expect(calls.filter((call) => call === 'dispatcher')).toHaveLength(1);
+		drained();
+		await Bun.sleep(1);
+		expect(calls.at(-1)).toBe('store');
 		const current = services();
 		expect(current.store).toBeInstanceOf(HUEStore);
 		current.terminals.dispose();
 		current.schedules.close();
-		await Promise.all([current.runtime.close(), current.admin.close()]);
+		await current.externalCron.close();
+		await current.dispatcher.close();
+		await current.notifications.close();
+		await Promise.all([
+			current.runtime.close(),
+			current.opencodeRuntime.close(),
+			current.admin.close()
+		]);
 		current.store.close();
 	} finally {
 		globals.__hueServices = previousServices;
 		if (previousDatabasePath === undefined) delete process.env.HUE_DATABASE_PATH;
 		else process.env.HUE_DATABASE_PATH = previousDatabasePath;
+		if (previousCommand === undefined) delete process.env.HUE_HERMES_COMMAND;
+		else process.env.HUE_HERMES_COMMAND = previousCommand;
 	}
 });
 
@@ -168,15 +240,68 @@ test('shuts down the aggregate service set only once', async () => {
 	}
 });
 
-test('reports the current Git branch for a Project root', () => {
+test('aggregate retirement persists interrupted delivery before closing its store', async () => {
+	const globals = globalThis as typeof globalThis & { __hueServices?: unknown };
+	const previous = globals.__hueServices;
+	const store = new HUEStore(':memory:');
+	store.upsertSession(null, { sessionId: 'retiring-session', cwd: '/tmp' });
+	let interrupt!: (cause: Error) => void;
+	let started!: () => void;
+	const running = new Promise<void>((resolve) => (started = resolve));
+	const runtime = {
+		hasSessionState: () => true,
+		resumeSession: async () => {},
+		prompt: () =>
+			new Promise<void>((_, reject) => {
+				interrupt = reject;
+				started();
+			}),
+		close: async () => interrupt(new DeliveryUncertainError('Retired ACP connection'))
+	};
+	const dispatcher = new MessageDispatcher(store, runtime);
+	dispatcher.submit({
+		id: 'retiring-message',
+		projectId: null,
+		sessionId: 'retiring-session',
+		text: 'Run once',
+		images: []
+	});
+	await running;
+	let statusAtClose: string | undefined;
+	const closeStore = store.close.bind(store);
+	store.close = () => {
+		statusAtClose = store.getMessage('retiring-message')?.status;
+		closeStore();
+	};
+	globals.__hueServices = {
+		store,
+		dispatcher,
+		runtime,
+		opencodeRuntime: { close: async () => {} },
+		admin: { close: async () => {} },
+		externalCron: { close: async () => {} },
+		notifications: { close: async () => {} },
+		schedules: { close: () => {} },
+		terminals: { dispose: () => {} }
+	};
+	try {
+		expect(() => services()).toThrow('Services are restarting');
+		await shutdownServices();
+		expect(statusAtClose).toBe('unknown');
+	} finally {
+		globals.__hueServices = previous;
+	}
+});
+
+test('reports the current Git branch for a Project root', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-branch-'));
 	temporaryDirectories.push(projectRoot);
 	Bun.spawnSync(['git', 'init', '-b', 'feature/context-bar'], { cwd: projectRoot });
 
-	expect(projectBranch(projectRoot)).toBe('feature/context-bar');
+	expect(await projectBranch(projectRoot)).toBe('feature/context-bar');
 });
 
-test('reports read-only repository status, remotes, and worktrees', () => {
+test('reports read-only repository status, remotes, and worktrees', async () => {
 	const temporary = mkdtempSync(join(tmpdir(), 'hue-project-repository-'));
 	temporaryDirectories.push(temporary);
 	const projectRoot = join(temporary, 'project');
@@ -196,7 +321,7 @@ test('reports read-only repository status, remotes, and worktrees', () => {
 	writeFileSync(join(projectRoot, 'new file.txt'), 'new\n');
 	symlinkSync('/etc/passwd', join(projectRoot, 'unsafe-link'));
 
-	expect(projectRepository(projectRoot)).toEqual({
+	expect(await projectRepository(projectRoot)).toEqual({
 		isRepository: true,
 		branch: 'main',
 		changes: [
@@ -217,9 +342,9 @@ test('reports read-only repository status, remotes, and worktrees', () => {
 	});
 });
 
-test('groups open GitHub issues by milestone and lists pull requests for origin', () => {
+test('groups open GitHub issues by milestone and lists pull requests for origin', async () => {
 	const calls: string[][] = [];
-	const run = (_command: string, args: string[]) => {
+	const run = async (_command: string, args: string[]) => {
 		calls.push(args);
 		if (args.includes('get-url')) {
 			return { status: 0, stdout: 'https://github.com/curi/hue.git\n' };
@@ -254,7 +379,7 @@ test('groups open GitHub issues by milestone and lists pull requests for origin'
 				};
 	};
 
-	expect(projectGitHubItems('/project', run)).toEqual({
+	expect(await projectGitHubItems('/project', run)).toEqual({
 		issueGroups: [
 			{
 				milestone: '1.0',
@@ -306,11 +431,11 @@ test('groups open GitHub issues by milestone and lists pull requests for origin'
 	]);
 });
 
-test('reports a project without Git without treating it as an error', () => {
+test('reports a project without Git without treating it as an error', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-no-git-'));
 	temporaryDirectories.push(projectRoot);
 
-	expect(projectRepository(projectRoot)).toEqual({
+	expect(await projectRepository(projectRoot)).toEqual({
 		isRepository: false,
 		branch: null,
 		changes: [],
@@ -319,7 +444,7 @@ test('reports a project without Git without treating it as an error', () => {
 	});
 });
 
-test('discovers nested Git repositories and mutates only the selected repository', () => {
+test('discovers nested Git repositories and mutates only the selected repository', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-repositories-'));
 	temporaryDirectories.push(projectRoot);
 	const appRoot = join(projectRoot, 'app');
@@ -331,21 +456,24 @@ test('discovers nested Git repositories and mutates only the selected repository
 	writeFileSync(join(appRoot, 'app.txt'), 'app\n');
 	writeFileSync(join(docsRoot, 'docs.txt'), 'docs\n');
 
-	expect(projectRepositories(projectRoot)).toEqual([{ path: 'app' }, { path: 'packages/docs' }]);
-	expect(resolveProjectRepository(projectRoot)).toBe(realpathSync(appRoot));
-	const selectedRoot = resolveProjectRepository(projectRoot, 'packages/docs');
+	expect(await projectRepositories(projectRoot)).toEqual([
+		{ path: 'app' },
+		{ path: 'packages/docs' }
+	]);
+	expect(await resolveProjectRepository(projectRoot)).toBe(realpathSync(appRoot));
+	const selectedRoot = await resolveProjectRepository(projectRoot, 'packages/docs');
 	expect(selectedRoot).toBe(realpathSync(docsRoot));
 
-	projectRepositoryAction(selectedRoot, { action: 'stageAll' });
-	expect(projectRepository(appRoot).changes).toEqual([
+	await projectRepositoryAction(selectedRoot, { action: 'stageAll' });
+	expect((await projectRepository(appRoot)).changes).toEqual([
 		expect.objectContaining({ path: 'app.txt', index: '?' })
 	]);
-	expect(projectRepository(docsRoot).changes).toEqual([
+	expect((await projectRepository(docsRoot)).changes).toEqual([
 		expect.objectContaining({ path: 'docs.txt', index: 'A' })
 	]);
 });
 
-test('prefers a project-root repository and rejects undiscovered paths', () => {
+test('prefers a project-root repository and rejects undiscovered paths', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-repository-root-'));
 	temporaryDirectories.push(projectRoot);
 	const nestedRoot = join(projectRoot, 'nested');
@@ -353,17 +481,36 @@ test('prefers a project-root repository and rejects undiscovered paths', () => {
 	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
 	Bun.spawnSync(['git', 'init', '-b', 'nested'], { cwd: nestedRoot });
 
-	expect(projectRepositories(projectRoot)).toEqual([{ path: '.' }, { path: 'nested' }]);
-	expect(resolveProjectRepository(projectRoot)).toBe(realpathSync(projectRoot));
-	expect(() => resolveProjectRepository(projectRoot, '../outside')).toThrow(
+	expect(await projectRepositories(projectRoot)).toEqual([{ path: '.' }, { path: 'nested' }]);
+	expect(await resolveProjectRepository(projectRoot)).toBe(realpathSync(projectRoot));
+	await expect(resolveProjectRepository(projectRoot, '../outside')).rejects.toThrow(
 		'Repository is not part of this project'
 	);
-	expect(() => resolveProjectRepository(projectRoot, 'missing')).toThrow(
+	await expect(resolveProjectRepository(projectRoot, 'missing')).rejects.toThrow(
 		'Repository is not part of this project'
 	);
 });
 
-test('stages, unstages, and commits project files without shell interpolation', () => {
+test('cached repository discovery cannot authorize removed repositories or symlink escapes', async () => {
+	const root = mkdtempSync(join(tmpdir(), 'hue-repository-canonical-'));
+	const outside = mkdtempSync(join(tmpdir(), 'hue-repository-outside-'));
+	temporaryDirectories.push(root, outside);
+	const nested = join(root, 'nested');
+	mkdirSync(nested);
+	Bun.spawnSync(['git', 'init'], { cwd: nested });
+	const repositories = await projectRepositories(root);
+	rmSync(join(nested, '.git'), { recursive: true });
+	await expect(resolveProjectRepository(root, 'nested', repositories)).rejects.toThrow(
+		'Repository is not part'
+	);
+	rmSync(nested, { recursive: true });
+	symlinkSync(outside, nested);
+	await expect(resolveProjectRepository(root, 'nested', repositories)).rejects.toThrow(
+		'Repository is not part'
+	);
+});
+
+test('stages, unstages, and commits project files without shell interpolation', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-actions-'));
 	temporaryDirectories.push(projectRoot);
 	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
@@ -375,18 +522,20 @@ test('stages, unstages, and commits project files without shell interpolation', 
 	writeFileSync(join(projectRoot, 'tracked.txt'), 'changed\n');
 	writeFileSync(join(projectRoot, '--literal.txt'), 'safe\n');
 
-	projectRepositoryAction(projectRoot, { action: 'stage', path: '--literal.txt' });
+	await projectRepositoryAction(projectRoot, { action: 'stage', path: '--literal.txt' });
 	expect(
-		projectRepository(projectRoot).changes.find(({ path }) => path === '--literal.txt')?.index
+		(await projectRepository(projectRoot)).changes.find(({ path }) => path === '--literal.txt')
+			?.index
 	).toBe('A');
-	projectRepositoryAction(projectRoot, { action: 'unstage', path: '--literal.txt' });
+	await projectRepositoryAction(projectRoot, { action: 'unstage', path: '--literal.txt' });
 	expect(
-		projectRepository(projectRoot).changes.find(({ path }) => path === '--literal.txt')?.index
+		(await projectRepository(projectRoot)).changes.find(({ path }) => path === '--literal.txt')
+			?.index
 	).toBe('?');
-	projectRepositoryAction(projectRoot, { action: 'stageAll' });
-	projectRepositoryAction(projectRoot, { action: 'commit', message: 'Commit from HUE' });
+	await projectRepositoryAction(projectRoot, { action: 'stageAll' });
+	await projectRepositoryAction(projectRoot, { action: 'commit', message: 'Commit from HUE' });
 
-	expect(projectRepository(projectRoot).changes).toEqual([]);
+	expect((await projectRepository(projectRoot)).changes).toEqual([]);
 	expect(
 		Bun.spawnSync(['git', 'log', '-1', '--pretty=%s'], { cwd: projectRoot })
 			.stdout.toString()
@@ -394,7 +543,7 @@ test('stages, unstages, and commits project files without shell interpolation', 
 	).toBe('Commit from HUE');
 });
 
-test('reads only the bounded staged diff for commit generation', () => {
+test('reads only the bounded staged diff for commit generation', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-staged-diff-'));
 	temporaryDirectories.push(projectRoot);
 	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
@@ -402,12 +551,12 @@ test('reads only the bounded staged diff for commit generation', () => {
 	writeFileSync(join(projectRoot, 'unstaged.txt'), 'unstaged content\n');
 	Bun.spawnSync(['git', 'add', 'staged.txt'], { cwd: projectRoot });
 
-	const diff = projectStagedDiff(projectRoot);
+	const diff = await projectStagedDiff(projectRoot);
 	expect(diff).toContain('staged content');
 	expect(diff).not.toContain('unstaged content');
 });
 
-test('reads staged, unstaged, and branch diffs without mixing scopes', () => {
+test('reads staged, unstaged, and branch diffs without mixing scopes', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-review-diff-'));
 	temporaryDirectories.push(projectRoot);
 	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
@@ -424,9 +573,9 @@ test('reads staged, unstaged, and branch diffs without mixing scopes', () => {
 	Bun.spawnSync(['git', 'add', 'staged.txt'], { cwd: projectRoot });
 	writeFileSync(join(projectRoot, 'tracked.txt'), 'worktree only\n');
 
-	const staged = projectRepositoryDiff(projectRoot, { scope: 'staged' });
-	const unstaged = projectRepositoryDiff(projectRoot, { scope: 'unstaged' });
-	const branch = projectRepositoryDiff(projectRoot, { scope: 'branch', base: 'main' });
+	const staged = await projectRepositoryDiff(projectRoot, { scope: 'staged' });
+	const unstaged = await projectRepositoryDiff(projectRoot, { scope: 'unstaged' });
+	const branch = await projectRepositoryDiff(projectRoot, { scope: 'branch', base: 'main' });
 
 	expect(staged.diff).toContain('index only');
 	expect(staged.diff).not.toContain('worktree only');
@@ -439,7 +588,7 @@ test('reads staged, unstaged, and branch diffs without mixing scopes', () => {
 	expect(branch.diff).not.toContain('index only');
 });
 
-test('exposes staged and unstaged deleted files only through validated diff paths', () => {
+test('exposes staged and unstaged deleted files only through validated diff paths', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-deleted-diff-'));
 	temporaryDirectories.push(projectRoot);
 	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
@@ -451,7 +600,7 @@ test('exposes staged and unstaged deleted files only through validated diff path
 	rmSync(join(projectRoot, 'unstaged.txt'));
 	Bun.spawnSync(['git', 'add', 'staged.txt'], { cwd: projectRoot });
 
-	expect(projectRepository(projectRoot).changes).toEqual([
+	expect((await projectRepository(projectRoot)).changes).toEqual([
 		{
 			path: 'staged.txt',
 			index: 'D',
@@ -468,21 +617,21 @@ test('exposes staged and unstaged deleted files only through validated diff path
 		}
 	]);
 	expect(
-		projectRepositoryDiff(projectRoot, { scope: 'staged', file: 'staged.txt' }).diff
+		(await projectRepositoryDiff(projectRoot, { scope: 'staged', file: 'staged.txt' })).diff
 	).toContain('-staged deletion');
 	expect(
-		projectRepositoryDiff(projectRoot, { scope: 'unstaged', file: 'unstaged.txt' }).diff
+		(await projectRepositoryDiff(projectRoot, { scope: 'unstaged', file: 'unstaged.txt' })).diff
 	).toContain('-unstaged deletion');
 });
 
-test('reports untracked paths that Git diff cannot include', () => {
+test('reports untracked paths that Git diff cannot include', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-review-untracked-'));
 	temporaryDirectories.push(projectRoot);
 	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
 	writeFileSync(join(projectRoot, '--literal.txt'), 'not in Git diff\n');
 	writeFileSync(join(projectRoot, 'other.txt'), 'also untracked\n');
 
-	const result = projectRepositoryDiff(projectRoot, {
+	const result = await projectRepositoryDiff(projectRoot, {
 		scope: 'unstaged',
 		file: '--literal.txt'
 	});
@@ -492,7 +641,7 @@ test('reports untracked paths that Git diff cannot include', () => {
 	expect(result.untrackedPathsTruncated).toBe(false);
 });
 
-test('treats Git pathspec magic as a literal diff filename', () => {
+test('treats Git pathspec magic as a literal diff filename', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-review-literal-pathspec-'));
 	temporaryDirectories.push(projectRoot);
 	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
@@ -505,7 +654,7 @@ test('treats Git pathspec magic as a literal diff filename', () => {
 	writeFileSync(join(projectRoot, ':(glob)*.txt'), 'magic changed\n');
 	writeFileSync(join(projectRoot, 'other.txt'), 'other changed\n');
 
-	const tracked = projectRepositoryDiff(projectRoot, {
+	const tracked = await projectRepositoryDiff(projectRoot, {
 		scope: 'unstaged',
 		file: ':(glob)*.txt'
 	});
@@ -514,24 +663,24 @@ test('treats Git pathspec magic as a literal diff filename', () => {
 
 	writeFileSync(join(projectRoot, ':(glob)*.log'), 'magic untracked\n');
 	writeFileSync(join(projectRoot, 'other.log'), 'other untracked\n');
-	const untracked = projectRepositoryDiff(projectRoot, {
+	const untracked = await projectRepositoryDiff(projectRoot, {
 		scope: 'unstaged',
 		file: ':(glob)*.log'
 	});
 	expect(untracked.untrackedPaths).toEqual([':(glob)*.log']);
 });
 
-test('rejects control characters in repository diff filenames', () => {
+test('rejects control characters in repository diff filenames', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-review-control-path-'));
 	temporaryDirectories.push(projectRoot);
 	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
 
-	expect(() =>
+	await expect(
 		projectRepositoryDiff(projectRoot, { scope: 'unstaged', file: 'bad\nname.txt' })
-	).toThrow('Invalid diff file');
+	).rejects.toThrow('Invalid diff file');
 });
 
-test('only queries untracked paths for unstaged diffs', () => {
+test('only queries untracked paths for unstaged diffs', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-review-untracked-scope-'));
 	temporaryDirectories.push(projectRoot);
 	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
@@ -547,14 +696,14 @@ test('only queries untracked paths for unstaged diffs', () => {
 		{ scope: 'staged' as const, maxBytes: 1 },
 		{ scope: 'branch' as const, base: 'main', maxBytes: 1 }
 	]) {
-		const result = projectRepositoryDiff(projectRoot, options);
+		const result = await projectRepositoryDiff(projectRoot, options);
 		expect(result.maxBytes).toBe(1);
 		expect(result.untrackedPaths).toEqual([]);
 		expect(result.untrackedPathsTruncated).toBe(false);
 	}
 });
 
-test('resolves a branch diff base and rejects invalid refs', () => {
+test('resolves a branch diff base and rejects invalid refs', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-review-base-'));
 	temporaryDirectories.push(projectRoot);
 	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
@@ -565,19 +714,19 @@ test('resolves a branch diff base and rejects invalid refs', () => {
 	Bun.spawnSync(['git', 'commit', '-m', 'Initial'], { cwd: projectRoot });
 	Bun.spawnSync(['git', 'switch', '-c', 'feature'], { cwd: projectRoot });
 
-	expect(projectRepositoryDiff(projectRoot, { scope: 'branch' }).base).toBe('main');
-	expect(projectRepositoryDiff(projectRoot, { scope: 'branch', base: 'feature' }).base).toBe(
-		'feature'
-	);
-	expect(() =>
+	expect((await projectRepositoryDiff(projectRoot, { scope: 'branch' })).base).toBe('main');
+	expect(
+		(await projectRepositoryDiff(projectRoot, { scope: 'branch', base: 'feature' })).base
+	).toBe('feature');
+	await expect(
 		projectRepositoryDiff(projectRoot, { scope: 'branch', base: '--output=/tmp/hue' })
-	).toThrow('Invalid base ref');
-	expect(() => projectRepositoryDiff(projectRoot, { scope: 'branch', base: 'missing' })).toThrow(
-		'Base ref was not found'
-	);
+	).rejects.toThrow('Invalid base ref');
+	await expect(
+		projectRepositoryDiff(projectRoot, { scope: 'branch', base: 'missing' })
+	).rejects.toThrow('Base ref was not found');
 });
 
-test('caps repository diff output and reports truncation', () => {
+test('caps repository diff output and reports truncation', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-review-cap-'));
 	temporaryDirectories.push(projectRoot);
 	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
@@ -586,13 +735,13 @@ test('caps repository diff output and reports truncation', () => {
 	Bun.spawnSync(['git', 'commit', '-m', 'Initial'], { cwd: projectRoot });
 	writeFileSync(join(projectRoot, 'large.txt'), `${'changed content\n'.repeat(80)}`);
 
-	const result = projectRepositoryDiff(projectRoot, { scope: 'unstaged', maxBytes: 180 });
+	const result = await projectRepositoryDiff(projectRoot, { scope: 'unstaged', maxBytes: 180 });
 	expect(Buffer.byteLength(result.diff)).toBeLessThanOrEqual(180);
 	expect(result.truncated).toBe(true);
 	expect(result.maxBytes).toBe(180);
 });
 
-test('returns a truncated diff when Git output exceeds the process buffer default', () => {
+test('returns a truncated diff when Git output exceeds the process buffer default', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-review-large-cap-'));
 	temporaryDirectories.push(projectRoot);
 	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
@@ -601,14 +750,14 @@ test('returns a truncated diff when Git output exceeds the process buffer defaul
 	Bun.spawnSync(['git', 'commit', '-m', 'Initial'], { cwd: projectRoot });
 	writeFileSync(join(projectRoot, 'large.txt'), 'new content\n'.repeat(75_000));
 
-	const result = projectRepositoryDiff(projectRoot, { scope: 'unstaged' });
+	const result = await projectRepositoryDiff(projectRoot, { scope: 'unstaged' });
 
 	expect(Buffer.byteLength(result.diff)).toBeLessThanOrEqual(100_000);
 	expect(result.truncated).toBe(true);
 	expect(result.maxBytes).toBe(100_000);
 });
 
-test('pushes the current branch and creates its upstream', () => {
+test('pushes the current branch and creates its upstream', async () => {
 	const temporary = mkdtempSync(join(tmpdir(), 'hue-project-push-'));
 	temporaryDirectories.push(temporary);
 	const projectRoot = join(temporary, 'project');
@@ -623,7 +772,7 @@ test('pushes the current branch and creates its upstream', () => {
 	Bun.spawnSync(['git', 'commit', '-m', 'Initial'], { cwd: projectRoot });
 	Bun.spawnSync(['git', 'remote', 'add', 'origin', remoteRoot], { cwd: projectRoot });
 
-	projectRepositoryAction(projectRoot, { action: 'push' });
+	await projectRepositoryAction(projectRoot, { action: 'push' });
 
 	expect(
 		Bun.spawnSync(['git', 'rev-parse', '--abbrev-ref', '@{upstream}'], { cwd: projectRoot })
@@ -632,12 +781,12 @@ test('pushes the current branch and creates its upstream', () => {
 	).toBe('origin/main');
 });
 
-test('rejects unknown repository mutations', () => {
+test('rejects unknown repository mutations', async () => {
 	const projectRoot = mkdtempSync(join(tmpdir(), 'hue-project-invalid-action-'));
 	temporaryDirectories.push(projectRoot);
 	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: projectRoot });
 
-	expect(() => projectRepositoryAction(projectRoot, { action: 'destroy' } as never)).toThrow(
-		'Unknown Git action'
-	);
+	await expect(
+		projectRepositoryAction(projectRoot, { action: 'destroy' } as never)
+	).rejects.toThrow('Unknown Git action');
 });

@@ -44,7 +44,7 @@ type WebPushClient = {
 	sendNotification(
 		subscription: PushTarget,
 		payload: string,
-		options: { TTL: number }
+		options: { TTL: number; timeout: number }
 	): Promise<unknown>;
 };
 
@@ -54,7 +54,8 @@ export function createWebPushTransport(
 ): PushTransport {
 	client.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
 	return {
-		send: (target, payload) => client.sendNotification(target, payload, { TTL: 300 })
+		send: (target, payload) =>
+			client.sendNotification(target, payload, { TTL: 300, timeout: 10_000 })
 	};
 }
 type EndpointInput = {

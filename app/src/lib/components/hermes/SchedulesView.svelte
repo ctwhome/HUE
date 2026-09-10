@@ -6,9 +6,11 @@
 
 	let {
 		jobs,
+		busy = false,
 		onaction
 	}: {
 		jobs: Job[];
+		busy?: boolean;
 		onaction: (action: string, input: Record<string, unknown>) => Promise<unknown>;
 	} = $props();
 	let filter = $state('');
@@ -24,6 +26,7 @@
 	let historyJob = $state('');
 	let history = $state<Record<string, unknown> | null>(null);
 	let historyError = $state('');
+	let historyGeneration = 0;
 	const inputClass =
 		'h-10 min-w-0 rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring max-[700px]:min-h-11';
 	const card = 'rounded-xl border border-border bg-card p-4';
@@ -76,6 +79,7 @@
 			.sort((a, b) => a.name.localeCompare(b.name));
 	};
 	async function loadHistory(job: Job) {
+		const generation = ++historyGeneration;
 		historyJob = job.id;
 		history = null;
 		historyError = '';
@@ -85,12 +89,14 @@
 			);
 			const result = await parseApiResponse<Record<string, unknown>>(response);
 			if (!response.ok) throw new Error(result.error ?? `Request failed (${response.status})`);
-			history = result;
+			if (generation === historyGeneration) history = result;
 		} catch (cause) {
-			historyError = cause instanceof Error ? cause.message : String(cause);
+			if (generation === historyGeneration)
+				historyError = cause instanceof Error ? cause.message : String(cause);
 		}
 	}
 	function editJob(job: Job) {
+		if (busy) return;
 		const name = window.prompt('Schedule name', job.name ?? job.id);
 		if (name === null) return;
 		const promptText = window.prompt('Schedule prompt', job.prompt ?? '');
@@ -110,6 +116,7 @@
 	class="schedule-create mb-4 grid grid-cols-2 gap-2 rounded-xl border border-border bg-card p-4 max-[700px]:grid-cols-1"
 	onsubmit={(event) => {
 		event.preventDefault();
+		if (busy) return;
 		void onaction('schedule.create', {
 			name: newName,
 			prompt: newPrompt,
@@ -154,7 +161,7 @@
 		placeholder="Prompt"
 		required
 	/>
-	<Button type="submit">Create schedule</Button>
+	<Button type="submit" disabled={busy}>Create schedule</Button>
 </form>
 
 <section
@@ -223,6 +230,7 @@
 							<Button
 								size="sm"
 								variant="outline"
+								disabled={busy}
 								onclick={() => onaction('schedule.run', { id: job.id, runId: crypto.randomUUID() })}
 								>Run now</Button
 							>
@@ -232,15 +240,19 @@
 							<Button
 								size="sm"
 								variant="outline"
+								disabled={busy}
 								onclick={() =>
 									onaction(job.status === 'active' ? 'schedule.pause' : 'schedule.resume', {
 										id: job.id
 									})}>{job.status === 'active' ? 'Pause' : 'Resume'}</Button
 							>
-							<Button size="sm" variant="outline" onclick={() => editJob(job)}>Edit</Button>
+							<Button size="sm" variant="outline" disabled={busy} onclick={() => editJob(job)}
+								>Edit</Button
+							>
 							<Button
 								size="sm"
 								variant="destructive"
+								disabled={busy}
 								onclick={() => onaction('schedule.delete', { id: job.id })}>Delete</Button
 							>
 						</div>

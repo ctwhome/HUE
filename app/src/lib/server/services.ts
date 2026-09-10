@@ -1,5 +1,6 @@
-import { mkdirSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { mkdirSync, realpathSync, statSync } from 'node:fs';
+import { lstat, readdir, realpath, stat } from 'node:fs/promises';
+import { runCommand } from './command';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { HermesACP } from './hermes-acp';
@@ -41,6 +42,7 @@ type HUEServices = {
 const globalServices = globalThis as typeof globalThis & {
 	__hueServices?: HUEServices;
 	__hueShutdown?: Promise<void>;
+	__hueRetirement?: Promise<void>;
 };
 
 function createServices(): HUEServices {
@@ -75,8 +77,7 @@ function createServices(): HUEServices {
 				);
 			}
 		},
-		onDiagnostic: (message) =>
-			console.error(`[opencode-acp] ${String(redactHermesValue(message))}`)
+		onDiagnostic: (message) => console.error(`[opencode-acp] ${String(redactHermesValue(message))}`)
 	});
 	const admin = new HermesServe({
 		command: hermesCommand,
@@ -104,7 +105,9 @@ function createServices(): HUEServices {
 		archive: (projectId) => projects.archive(projectId)
 	});
 	const notifications = new NotificationService(store, notificationOptionsFromEnv(process.env));
-	const dispatcher = new MessageDispatcher(store, sessionRuntime, () => notifications.deliverPending());
+	const dispatcher = new MessageDispatcher(store, sessionRuntime, () =>
+		notifications.deliverPending()
+	);
 	const schedules = new ScheduleService({
 		store,
 		runtime,
@@ -134,11 +137,23 @@ function createServices(): HUEServices {
 }
 
 export function services(): HUEServices {
+	if (globalServices.__hueRetirement) throw new Error('Services are restarting; retry shortly');
 	if (
 		!(globalServices.__hueServices?.store instanceof HUEStore) ||
 		!(globalServices.__hueServices?.schedules instanceof ScheduleService) ||
 		!(globalServices.__hueServices?.externalCron instanceof ExternalCronService)
 	) {
+		const previous = globalServices.__hueServices;
+		if (previous) {
+			globalServices.__hueRetirement = retireServices(previous).then(() => {
+				if (globalServices.__hueServices === previous) globalServices.__hueServices = undefined;
+				globalServices.__hueRetirement = undefined;
+			});
+			void globalServices.__hueRetirement.catch((cause) =>
+				console.error('[hue] Service retirement failed', redactHermesValue(cause))
+			);
+			throw new Error('Services are restarting; retry shortly');
+		}
 		globalServices.__hueServices = createServices();
 	}
 	return globalServices.__hueServices;
@@ -146,19 +161,23 @@ export function services(): HUEServices {
 
 export function shutdownServices(): Promise<void> {
 	if (globalServices.__hueShutdown) return globalServices.__hueShutdown;
+	if (globalServices.__hueRetirement) return globalServices.__hueRetirement;
 	const state = globalServices.__hueServices;
 	if (!state) return Promise.resolve();
-	globalServices.__hueShutdown = (async () => {
-		state.terminals.dispose();
-		state.schedules.close();
-		await state.externalCron?.close();
-		const dispatcherDrain = state.dispatcher.close();
-		const notificationDrain = state.notifications.close();
-		await Promise.all([state.runtime.close(), state.opencodeRuntime.close(), state.admin.close()]);
-		await Promise.all([dispatcherDrain, notificationDrain]);
-		state.store.close();
-	})();
+	globalServices.__hueShutdown = retireServices(state);
 	return globalServices.__hueShutdown;
+}
+
+async function retireServices(state: HUEServices): Promise<void> {
+	state.terminals.dispose();
+	state.schedules.close();
+	const dispatcherDrain = state.dispatcher.close();
+	const notificationDrain = state.notifications.close();
+	await state.externalCron?.close();
+	// Persist interrupted prompts as unknown before another aggregate can recover this database.
+	await Promise.all([state.runtime.close(), state.opencodeRuntime.close(), state.admin.close()]);
+	await Promise.all([dispatcherDrain, notificationDrain]);
+	state.store.close();
 }
 
 export function unprojectedSessionRoot(): string {
@@ -306,18 +325,20 @@ export type RuntimeHealthCheck = {
 	action: string;
 };
 
-export function projectRuntimeHealth(
+export async function projectRuntimeHealth(
 	projectRoot: string,
 	runtime: { acp: 'idle' | 'ready' | 'unavailable'; admin: 'idle' | 'ready' | 'unavailable' }
-): RuntimeHealthCheck[] {
+): Promise<RuntimeHealthCheck[]> {
 	let rootReady = false;
 	try {
-		rootReady = statSync(projectRoot).isDirectory();
+		rootReady = (await stat(projectRoot)).isDirectory();
 	} catch {
 		// Missing roots are normal recoverable persisted state.
 	}
 	let repository = false;
-	if (rootReady) repository = projectRepository(projectRoot).isRepository;
+	if (rootReady)
+		repository =
+			(await git(projectRoot, ['rev-parse', '--is-inside-work-tree'], true))?.trim() === 'true';
 	let shellReady = false;
 	if (rootReady) {
 		try {
@@ -420,12 +441,12 @@ export function sessionMatchesProjectFolders(
 	});
 }
 
-export function projectBranch(projectRoot: string): string | null {
-	const result = spawnSync('git', ['-C', projectRoot, 'branch', '--show-current'], {
+export async function projectBranch(projectRoot: string): Promise<string | null> {
+	const result = await runCommand('git', ['-C', projectRoot, 'branch', '--show-current'], {
 		encoding: 'utf8',
 		timeout: 2_000
 	});
-	const branch = result.status === 0 ? result.stdout.trim() : '';
+	const branch = result.status === 0 ? result.stdout.toString().trim() : '';
 	return branch || null;
 }
 
@@ -458,22 +479,21 @@ const GENERATED_DIRECTORIES = new Set([
 	'target'
 ]);
 
-export function projectRepositories(
+export async function projectRepositories(
 	projectRoot: string,
 	limits: { maxDepth?: number; maxDirectories?: number } = {}
-): Array<{ path: string }> {
-	const root = realpathSync(projectRoot);
+): Promise<Array<{ path: string }>> {
+	const root = await realpath(projectRoot);
 	const repositories: Array<{ path: string }> = [];
 	const maxDepth = Math.max(0, Math.trunc(limits.maxDepth ?? 8));
 	const maxDirectories = Math.max(1, Math.trunc(limits.maxDirectories ?? 10_000));
 	const pending: Array<{ directory: string; depth: number }> = [{ directory: root, depth: 0 }];
 	for (let index = 0; index < pending.length && index < maxDirectories; index += 1) {
 		const { directory, depth } = pending[index]!;
+		if (!pathWithinRoot(root, await realpath(directory).catch(() => ''))) continue;
 		try {
-			if (
-				statSync(join(directory, '.git')).isDirectory() ||
-				statSync(join(directory, '.git')).isFile()
-			) {
+			const marker = await lstat(join(directory, '.git'));
+			if (marker.isDirectory() || marker.isFile()) {
 				const path = relative(root, directory);
 				repositories.push({ path: path ? path.split(sep).join('/') : '.' });
 			}
@@ -482,10 +502,11 @@ export function projectRepositories(
 		}
 		if (depth >= maxDepth) continue;
 		try {
-			const entries = readdirSync(directory, { withFileTypes: true }).sort((left, right) =>
+			const entries = (await readdir(directory, { withFileTypes: true })).sort((left, right) =>
 				left.name.localeCompare(right.name)
 			);
 			for (const entry of entries) {
+				if (pending.length >= maxDirectories) break;
 				if (
 					entry.isDirectory() &&
 					entry.name !== '.git' &&
@@ -503,17 +524,33 @@ export function projectRepositories(
 	);
 }
 
-export function resolveProjectRepository(
+function pathWithinRoot(root: string, path: string): boolean {
+	if (!path) return false;
+	const difference = relative(root, path);
+	return !isAbsolute(difference) && difference !== '..' && !difference.startsWith(`..${sep}`);
+}
+
+export async function resolveProjectRepository(
 	projectRoot: string,
 	selected?: string,
-	repositories = projectRepositories(projectRoot)
-): string {
-	const path = selected ?? repositories[0]?.path;
-	if (!path) return realpathSync(projectRoot);
-	if (!repositories.some((repository) => repository.path === path)) {
+	repositories?: Array<{ path: string }>
+): Promise<string> {
+	const root = await realpath(projectRoot);
+	const inventory = repositories ?? (await projectRepositories(root));
+	const path = selected ?? inventory[0]?.path;
+	if (!path) return root;
+	if (
+		(path !== '.' && !validDiffFile(path)) ||
+		!inventory.some((repository) => repository.path === path)
+	) {
 		throw new Error('Repository is not part of this project');
 	}
-	return realpathSync(path === '.' ? projectRoot : join(projectRoot, path));
+	const target = await realpath(path === '.' ? root : join(root, path)).catch(() => '');
+	if (!pathWithinRoot(root, target)) throw new Error('Repository is not part of this project');
+	const marker = await lstat(join(target, '.git')).catch(() => null);
+	if (!marker || (!marker.isFile() && !marker.isDirectory()))
+		throw new Error('Repository is not part of this project');
+	return target;
 }
 
 export type ProjectGitHubItem = { number: number; title: string; url: string };
@@ -522,13 +559,13 @@ type CommandRunner = (
 	command: string,
 	args: string[],
 	options?: { cwd?: string; encoding?: BufferEncoding; timeout?: number }
-) => { status: number | null; stdout: string | Buffer };
+) => Promise<{ status: number | null; stdout: string | Buffer }>;
 
-export function projectGitHubItems(
+export async function projectGitHubItems(
 	projectRoot: string,
-	run: CommandRunner = (command, args, options) => spawnSync(command, args, options)
-): { issueGroups: ProjectGitHubIssueGroup[]; pullRequests: ProjectGitHubItem[] } {
-	const origin = run('git', ['-C', projectRoot, 'remote', 'get-url', 'origin'], {
+	run: CommandRunner = runCommand
+): Promise<{ issueGroups: ProjectGitHubIssueGroup[]; pullRequests: ProjectGitHubItem[] }> {
+	const origin = await run('git', ['-C', projectRoot, 'remote', 'get-url', 'origin'], {
 		encoding: 'utf8',
 		timeout: 2_000
 	});
@@ -537,8 +574,8 @@ export function projectGitHubItems(
 	if (!webUrl || new URL(webUrl).hostname !== 'github.com') {
 		throw new Error('Git origin is not hosted on GitHub');
 	}
-	const list = (kind: 'issue' | 'pr', fields: string) => {
-		const result = run(
+	const list = async (kind: 'issue' | 'pr', fields: string) => {
+		const result = await run(
 			'gh',
 			[kind, 'list', '--repo', webUrl, '--state', 'open', '--limit', '1000', '--json', fields],
 			{ cwd: projectRoot, encoding: 'utf8', timeout: 10_000 }
@@ -548,24 +585,29 @@ export function projectGitHubItems(
 		return JSON.parse(result.stdout.toString()) as unknown[];
 	};
 	const issueGroups = new Map<string | null, ProjectGitHubItem[]>();
-	for (const { milestone, ...issue } of list('issue', 'number,title,url,milestone') as Array<
-		ProjectGitHubItem & { milestone: { title: string } | null }
-	>) {
+	for (const { milestone, ...issue } of (await list(
+		'issue',
+		'number,title,url,milestone'
+	)) as Array<ProjectGitHubItem & { milestone: { title: string } | null }>) {
 		const title = milestone?.title ?? null;
 		issueGroups.set(title, [...(issueGroups.get(title) ?? []), issue]);
 	}
 	return {
 		issueGroups: [...issueGroups].map(([milestone, issues]) => ({ milestone, issues })),
-		pullRequests: list('pr', 'number,title,url') as ProjectGitHubItem[]
+		pullRequests: (await list('pr', 'number,title,url')) as ProjectGitHubItem[]
 	};
 }
 
-function git(projectRoot: string, args: string[], allowFailure = false): string | null {
-	const result = spawnSync('git', ['-C', projectRoot, ...args], {
+async function git(
+	projectRoot: string,
+	args: string[],
+	allowFailure = false
+): Promise<string | null> {
+	const result = await runCommand('git', ['-C', projectRoot, ...args], {
 		encoding: 'utf8',
 		timeout: 2_000
 	});
-	if (result.status === 0) return result.stdout;
+	if (result.status === 0) return result.stdout.toString();
 	if (allowFailure) return null;
 	throw new Error(`Git ${args[0]} failed`);
 }
@@ -592,17 +634,17 @@ function repositoryWebUrl(remote: string): string | null {
 	}
 }
 
-export function projectRepository(projectRoot: string): ProjectRepository {
-	if (git(projectRoot, ['rev-parse', '--is-inside-work-tree'], true)?.trim() !== 'true') {
+export async function projectRepository(projectRoot: string): Promise<ProjectRepository> {
+	if ((await git(projectRoot, ['rev-parse', '--is-inside-work-tree'], true))?.trim() !== 'true') {
 		return { isRepository: false, branch: null, changes: [], worktrees: [], remotes: [] };
 	}
 
-	const statusEntries = git(projectRoot, [
+	const statusEntries = (await git(projectRoot, [
 		'status',
 		'--porcelain=v1',
 		'-z',
 		'--untracked-files=all'
-	])!
+	]))!
 		.split('\0')
 		.filter(Boolean);
 	const changes: ProjectRepository['changes'] = [];
@@ -628,7 +670,7 @@ export function projectRepository(projectRoot: string): ProjectRepository {
 	}
 	changes.sort((left, right) => left.path.localeCompare(right.path));
 
-	const worktrees = (git(projectRoot, ['worktree', 'list', '--porcelain']) ?? '')
+	const worktrees = ((await git(projectRoot, ['worktree', 'list', '--porcelain'])) ?? '')
 		.trim()
 		.split(/\n\n+/)
 		.filter(Boolean)
@@ -648,26 +690,31 @@ export function projectRepository(projectRoot: string): ProjectRepository {
 			};
 		});
 
-	const remotes = (git(projectRoot, ['remote']) ?? '')
+	const remoteNames = ((await git(projectRoot, ['remote'])) ?? '')
 		.trim()
 		.split('\n')
-		.filter(Boolean)
-		.map((name) => ({
+		.filter(Boolean);
+	const remotes: ProjectRepository['remotes'] = [];
+	for (const name of remoteNames) {
+		remotes.push({
 			name,
-			webUrl: repositoryWebUrl(git(projectRoot, ['remote', 'get-url', name])!.trim())
-		}));
+			webUrl: repositoryWebUrl((await git(projectRoot, ['remote', 'get-url', name]))!.trim())
+		});
+	}
 
-	return { isRepository: true, branch: projectBranch(projectRoot), changes, worktrees, remotes };
+	return {
+		isRepository: true,
+		branch: await projectBranch(projectRoot),
+		changes,
+		worktrees,
+		remotes
+	};
 }
 
-export function projectStagedDiff(projectRoot: string) {
-	const diff = git(projectRoot, [
-		'diff',
-		'--cached',
-		'--no-ext-diff',
-		'--no-color',
-		'--unified=3'
-	])?.trim();
+export async function projectStagedDiff(projectRoot: string) {
+	const diff = (
+		await git(projectRoot, ['diff', '--cached', '--no-ext-diff', '--no-color', '--unified=3'])
+	)?.trim();
 	if (!diff) throw new Error('Stage files before generating a commit message');
 	return diff.slice(0, 100_000);
 }
@@ -697,15 +744,17 @@ function validDiffFile(file: string) {
 	);
 }
 
-function branchDiffBase(projectRoot: string, supplied?: string) {
+async function branchDiffBase(projectRoot: string, supplied?: string) {
 	if (supplied && !validBaseRef(supplied)) throw new Error('Invalid base ref');
-	const current = projectBranch(projectRoot);
-	const upstream = git(projectRoot, ['rev-parse', '--abbrev-ref', '@{upstream}'], true)?.trim();
+	const current = await projectBranch(projectRoot);
+	const upstream = (
+		await git(projectRoot, ['rev-parse', '--abbrev-ref', '@{upstream}'], true)
+	)?.trim();
 	const candidates = supplied ? [supplied] : [upstream, 'main', 'master'].filter(Boolean);
 	for (const candidate of candidates) {
 		if (!supplied && candidate === current) continue;
 		if (
-			git(
+			await git(
 				projectRoot,
 				['rev-parse', '--verify', '--quiet', '--end-of-options', `${candidate}^{commit}`],
 				true
@@ -718,7 +767,7 @@ function branchDiffBase(projectRoot: string, supplied?: string) {
 	throw new Error('Could not resolve a base ref');
 }
 
-export function projectRepositoryDiff(
+export async function projectRepositoryDiff(
 	projectRoot: string,
 	options: {
 		scope: ProjectRepositoryDiffScope;
@@ -726,8 +775,8 @@ export function projectRepositoryDiff(
 		file?: string;
 		maxBytes?: number;
 	}
-): ProjectRepositoryDiff {
-	if (git(projectRoot, ['rev-parse', '--is-inside-work-tree'], true)?.trim() !== 'true') {
+): Promise<ProjectRepositoryDiff> {
+	if ((await git(projectRoot, ['rev-parse', '--is-inside-work-tree'], true))?.trim() !== 'true') {
 		throw new Error('Selected folder is not a Git repository');
 	}
 	if (!['staged', 'unstaged', 'branch'].includes(options.scope))
@@ -736,7 +785,7 @@ export function projectRepositoryDiff(
 		throw new Error('Invalid diff file');
 	}
 
-	const base = options.scope === 'branch' ? branchDiffBase(projectRoot, options.base) : null;
+	const base = options.scope === 'branch' ? await branchDiffBase(projectRoot, options.base) : null;
 	const args = ['diff'];
 	if (options.scope === 'staged') args.push('--cached');
 	if (base) args.push(`${base}...HEAD`);
@@ -748,7 +797,7 @@ export function projectRepositoryDiff(
 	if (options.scope === 'unstaged') {
 		const untrackedArgs = ['ls-files', '--others', '--exclude-standard', '-z'];
 		if (options.file) untrackedArgs.push('--', options.file);
-		const untrackedResult = spawnSync(
+		const untrackedResult = await runCommand(
 			'git',
 			['--literal-pathspecs', '-C', projectRoot, ...untrackedArgs],
 			{
@@ -760,7 +809,7 @@ export function projectRepositoryDiff(
 			? untrackedResult.stdout
 			: Buffer.from(untrackedResult.stdout);
 		const untrackedOverflowed =
-			(untrackedResult.error as NodeJS.ErrnoException | undefined)?.code === 'ENOBUFS' &&
+			untrackedResult.error?.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' &&
 			untrackedOutput.byteLength > maxBytes;
 		if (!untrackedOverflowed && (untrackedResult.error || untrackedResult.status !== 0)) {
 			throw new Error('Git untracked file listing failed');
@@ -773,14 +822,13 @@ export function projectRepositoryDiff(
 		}
 		if (untrackedPaths.at(-1) === '') untrackedPaths.pop();
 	}
-	const result = spawnSync('git', ['--literal-pathspecs', '-C', projectRoot, ...args], {
+	const result = await runCommand('git', ['--literal-pathspecs', '-C', projectRoot, ...args], {
 		timeout: 10_000,
 		maxBuffer: maxBytes + 1
 	});
 	const output = Buffer.isBuffer(result.stdout) ? result.stdout : Buffer.from(result.stdout);
 	const overflowed =
-		(result.error as NodeJS.ErrnoException | undefined)?.code === 'ENOBUFS' &&
-		output.byteLength > maxBytes;
+		result.error?.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' && output.byteLength > maxBytes;
 	if (!overflowed && (result.error || result.status !== 0)) throw new Error('Git diff failed');
 	const truncated = overflowed || output.byteLength > maxBytes;
 	let diff = output.subarray(0, maxBytes).toString('utf8');
@@ -796,10 +844,10 @@ export function projectRepositoryDiff(
 	};
 }
 
-export function projectRepositoryAction(
+export async function projectRepositoryAction(
 	projectRoot: string,
 	operation: ProjectRepositoryAction
-): ProjectRepository {
+): Promise<ProjectRepository> {
 	let args: string[];
 	if (operation.action === 'stage') {
 		if (!operation.path) throw new Error('File path is required');
@@ -817,12 +865,14 @@ export function projectRepositoryAction(
 		if (message.length > 5_000) throw new Error('Commit message is too long');
 		args = ['commit', '-m', message];
 	} else if (operation.action === 'push') {
-		const upstream = git(projectRoot, ['rev-parse', '--abbrev-ref', '@{upstream}'], true)?.trim();
+		const upstream = (
+			await git(projectRoot, ['rev-parse', '--abbrev-ref', '@{upstream}'], true)
+		)?.trim();
 		if (upstream) {
 			args = ['push'];
 		} else {
-			const remote = git(projectRoot, ['remote'])?.trim().split('\n')[0];
-			const branch = projectBranch(projectRoot);
+			const remote = (await git(projectRoot, ['remote']))?.trim().split('\n')[0];
+			const branch = await projectBranch(projectRoot);
 			if (!remote) throw new Error('No Git remote is configured');
 			if (!branch) throw new Error('Cannot push a detached HEAD');
 			args = ['push', '--set-upstream', remote, branch];
@@ -831,7 +881,7 @@ export function projectRepositoryAction(
 		throw new Error('Unknown Git action');
 	}
 
-	const result = spawnSync('git', ['-C', projectRoot, ...args], {
+	const result = await runCommand('git', ['--literal-pathspecs', '-C', projectRoot, ...args], {
 		encoding: 'utf8',
 		timeout: operation.action === 'push' ? 60_000 : 15_000
 	});

@@ -223,7 +223,7 @@ describe('notification delivery boundary', () => {
 					keys: { p256dh: 'key', auth: 'auth' }
 				},
 				'{"title":"Task completed"}',
-				{ TTL: 300 }
+				{ TTL: 300, timeout: 10_000 }
 			]
 		]);
 	});

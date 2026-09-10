@@ -27,9 +27,24 @@
 		oncommand: (command: Command) => void;
 	} = $props();
 	let loading = $state(false);
+	let actionBusy = $state(false);
+	let skillGeneration = 0;
 	let error = $state('');
 	let notice = $state('');
 	let data = $state<Record<string, any>>({});
+	let runtimeDetails = $state<
+		Record<
+			'logs' | 'update',
+			{
+				loading: boolean;
+				error: string;
+				value: Record<string, any> | null;
+			}
+		>
+	>({
+		logs: { loading: false, error: '', value: null },
+		update: { loading: false, error: '', value: null }
+	});
 	let skills = $state<Skill[]>([]);
 	let jobs = $state<Job[]>([]);
 	let selectedSkill = $state('');
@@ -134,6 +149,11 @@
 
 	async function load(next: GlobalView) {
 		const request = ++requestGeneration;
+		runtimeDetails = {
+			logs: { loading: false, error: '', value: null },
+			update: { loading: false, error: '', value: null }
+		};
+		loading = false;
 		error = '';
 		notice = '';
 		if (next === 'app-settings' || next === 'settings' || next === 'commands') return;
@@ -159,19 +179,40 @@
 		}
 	}
 
+	async function loadRuntimeDetail(kind: 'logs' | 'update') {
+		if (view !== 'runtime' || runtimeDetails[kind].loading) return;
+		const origin = requestGeneration;
+		const detail = runtimeDetails[kind];
+		detail.loading = true;
+		detail.error = '';
+		try {
+			const result = await api<Record<string, any>>(`/api/hermes/admin?view=${kind}`);
+			if (origin === requestGeneration && view === 'runtime') detail.value = result[kind];
+		} catch (cause) {
+			if (origin === requestGeneration && view === 'runtime')
+				detail.error = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			detail.loading = false;
+		}
+	}
+
 	async function backup() {
-		loading = true;
+		if (loading || actionBusy) return;
+		actionBusy = true;
+		const origin = requestGeneration;
 		error = '';
 		try {
 			const result = await api<{ backup: Record<string, any> }>('/api/runtime', { method: 'POST' });
+			if (origin !== requestGeneration) return;
 			data = { ...data, backup: result.backup };
 			notice = result.backup.attachmentsPath
 				? `Validated HUE database and image backup created at ${result.backup.path}`
 				: `Validated HUE backup created at ${result.backup.path}`;
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : String(cause);
+			if (origin === requestGeneration)
+				error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
-			loading = false;
+			actionBusy = false;
 		}
 	}
 
@@ -185,6 +226,7 @@
 	}
 
 	function discardSkillChanges() {
+		skillGeneration += 1;
 		skillContent = originalSkillContent;
 		selectedSkill = '';
 		selectedSkillEditable = false;
@@ -201,12 +243,17 @@
 
 	function navigate(next: GlobalView | null) {
 		guarded(() => {
+			requestGeneration += 1;
+			loading = false;
 			discardSkillChanges();
 			onview(next);
 		});
 	}
 
 	async function openSkill(name: string) {
+		const generation = ++skillGeneration;
+		const origin = view;
+		selectedSkill = '';
 		loading = true;
 		error = '';
 		skillSaved = false;
@@ -217,33 +264,40 @@
 				provenance: string;
 				editable: boolean;
 			}>(`/api/hermes/skills/${encodeURIComponent(name)}`);
+			if (generation !== skillGeneration || view !== origin) return;
 			selectedSkill = skill.name;
 			selectedSkillEditable = skill.editable;
 			selectedSkillProvenance = skill.provenance;
 			skillContent = skill.content;
 			originalSkillContent = skill.content;
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : String(cause);
+			if (generation === skillGeneration && view === origin)
+				error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
-			loading = false;
+			if (generation === skillGeneration && view === origin) loading = false;
 		}
 	}
 
 	async function saveSkill() {
-		if (!selectedSkill || !selectedSkillEditable) return;
+		if (!selectedSkill || !selectedSkillEditable || skillSaving) return;
+		const name = selectedSkill;
+		const content = skillContent;
+		const generation = skillGeneration;
 		skillSaving = true;
 		skillSaved = false;
 		error = '';
 		try {
 			const skill = await api<{ content: string }>(
-				`/api/hermes/skills/${encodeURIComponent(selectedSkill)}`,
-				{ method: 'PUT', body: JSON.stringify({ content: skillContent }) }
+				`/api/hermes/skills/${encodeURIComponent(name)}`,
+				{ method: 'PUT', body: JSON.stringify({ content }) }
 			);
-			skillContent = skill.content;
+			if (generation !== skillGeneration || selectedSkill !== name) return;
+			if (skillContent === content) skillContent = skill.content;
 			originalSkillContent = skill.content;
-			skillSaved = true;
+			skillSaved = skillContent === originalSkillContent;
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : String(cause);
+			if (generation === skillGeneration && selectedSkill === name)
+				error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
 			skillSaving = false;
 		}
@@ -272,20 +326,24 @@
 	}
 
 	async function deleteSkill(name: string) {
+		if (loading || actionBusy) return;
 		if (window.prompt(`Type ${name} to confirm deletion`) !== name) return;
-		loading = true;
+		actionBusy = true;
+		const origin = requestGeneration;
 		error = '';
 		try {
 			const result = await api<Record<string, any>>(
 				`/api/hermes/skills/${encodeURIComponent(name)}`,
 				{ method: 'DELETE', body: JSON.stringify({ confirm: name }) }
 			);
+			if (origin !== requestGeneration) return;
 			await load('skills');
-			notice = actionNotice(result, name);
+			if (requestGeneration === origin + 1) notice = actionNotice(result, name);
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : String(cause);
+			if (requestGeneration === origin)
+				error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
-			loading = false;
+			actionBusy = false;
 		}
 	}
 
@@ -295,6 +353,7 @@
 	}
 
 	async function action(action: string, input: Record<string, unknown>) {
+		if (loading || actionBusy) return;
 		const target = String(input.name ?? input.id ?? '');
 		if (!confirmDestructive(action, target)) return;
 		if (
@@ -304,7 +363,9 @@
 			)
 		)
 			return;
-		loading = true;
+		actionBusy = true;
+		const origin = requestGeneration;
+		const originView = view;
 		error = '';
 		notice = '';
 		try {
@@ -315,14 +376,30 @@
 					input: { ...input, ...(action.endsWith('.delete') ? { confirm: target } : {}) }
 				})
 			});
-			data.lastAction = result;
-			await load(view);
-			notice = actionNotice(result, target || action);
+			if (origin !== requestGeneration || view !== originView) return;
+			if (action === 'schedule.run') {
+				const accepted = [
+					'queued',
+					'running',
+					'completed',
+					'failed',
+					'unknown',
+					'cancelled'
+				].includes(result.delivery?.status);
+				if (accepted)
+					notice = `${result.delivery.duplicate ? 'Run already accepted' : 'Run accepted'} for ${result.target?.name ?? target}. Review its Session for progress and results.`;
+				else error = 'Run acceptance could not be verified. Check its Session before trying again.';
+				return result;
+			}
+			await load(originView);
+			if (view === originView && requestGeneration === origin + 1)
+				notice = actionNotice(result, target || action);
 			return result;
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : String(cause);
+			if (view === originView && origin === requestGeneration)
+				error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
-			loading = false;
+			actionBusy = false;
 		}
 	}
 </script>
@@ -407,6 +484,7 @@
 					{error}
 				</p>{/if}
 			{#if notice}<p class="mb-3 text-sm text-[var(--success)]" role="status">{notice}</p>{/if}
+			{#if actionBusy}<p role="status">Applying Hermes action...</p>{/if}
 			{#if view === 'app-settings'}
 				<div class="grid gap-4">
 					<Button variant="outline" class="justify-self-start" onclick={() => navigate('settings')}
@@ -418,14 +496,15 @@
 				<SettingsView {sections} onview={navigate} />
 			{:else if view === 'skills'}
 				<SkillsView
+					busy={loading || actionBusy}
 					{skills}
 					{selectedSkill}
 					{selectedSkillEditable}
 					{selectedSkillProvenance}
 					bind:skillContent
 					{skillSaving}
-					{skillSaved}
-					onopen={openSkill}
+					skillSaved={skillSaved && skillContent === originalSkillContent}
+					onopen={(name) => guarded(() => void openSkill(name))}
 					onclose={closeSkill}
 					onsave={saveSkill}
 					ondelete={deleteSkill}
@@ -433,11 +512,19 @@
 					capabilities={data.capabilities ?? {}}
 				/>
 			{:else if view === 'schedules'}
-				<SchedulesView {jobs} onaction={action} />
+				<SchedulesView {jobs} busy={loading || actionBusy} onaction={action} />
 			{:else if view === 'commands'}
 				<InventoryView {commands} {oncommand} />
 			{:else}
-				<AdminResourceView {view} {data} onaction={action} onbackup={backup} />
+				<AdminResourceView
+					{view}
+					{data}
+					{runtimeDetails}
+					onruntimeDetail={loadRuntimeDetail}
+					busy={loading || actionBusy}
+					onaction={action}
+					onbackup={backup}
+				/>
 			{/if}
 		</div>
 	</section>

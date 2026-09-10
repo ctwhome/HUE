@@ -1,10 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { automaticSessionIcon } from '$lib/icon';
 import { parseSessionHarness, sessionHarnessLabel } from '$lib/session-harness';
-import {
-	listExternalHermesCron,
-	type ExternalHermesCronJob
-} from '$lib/server/external-hermes-cron';
+import type { ExternalCronProjection } from '$lib/server/external-cron-service';
 import { redactHermesValue } from '$lib/server/redaction';
 import {
 	quickAskSessionRoot,
@@ -15,13 +12,12 @@ import {
 import type { RequestHandler } from './$types';
 
 async function listRuntimeSessions(root: string) {
-	const sessions = await services().sessionRuntime.listSessions(root);
-	try {
-		sessions.push(...(await services().sessionRuntime.listSessions(root, 'opencode')));
-	} catch {
-		// OpenCode is optional; persisted Sessions remain visible for recovery.
-	}
-	return sessions;
+	const runtime = services().sessionRuntime;
+	const [hermes, opencode] = await Promise.all([
+		runtime.listSessions(root),
+		runtime.listSessions(root, 'opencode').catch(() => [])
+	]);
+	return [...hermes, ...opencode];
 }
 
 export const GET: RequestHandler = async ({ url }) => {
@@ -35,8 +31,8 @@ export const GET: RequestHandler = async ({ url }) => {
 					? services().store.getSession(null, requestedSessionId)
 					: null;
 			if (!stored) return json({ sessions: [], hasMore: false });
-			const busyStarts = services().store.getBusySessionStarts(null);
-			const indicators = services().store.getSessionIndicators(null);
+			const busyStarts = services().store.getBusySessionStarts(null, [stored.sessionId]);
+			const indicators = services().store.getSessionIndicators(null, 'all', [stored.sessionId]);
 			const title = stored.title ?? `Untitled ${sessionHarnessLabel(stored.harness)} Session`;
 			const available =
 				sessionMatchesProjectRoot(root, stored.cwd) ||
@@ -63,36 +59,34 @@ export const GET: RequestHandler = async ({ url }) => {
 				hasMore: false
 			});
 		}
-		const sessions = [
-			...(await listRuntimeSessions(root)).filter(
-				(session) =>
-					sessionMatchesProjectRoot(root, session.cwd) &&
-					!services().store.isSessionDismissed(null, session.sessionId)
-			),
-			...(await listRuntimeSessions(quickRoot)).filter(
-				(session) =>
-					sessionMatchesProjectRoot(quickRoot, session.cwd) &&
-					services().store.isKeptQuickAskSession(session.sessionId)
-			)
-		];
+		const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0) || 0);
+		const cached = url.searchParams.get('cached') === 'true' || offset > 0;
+		const sessions = cached
+			? []
+			: [
+					...(await listRuntimeSessions(root)).filter(
+						(session) =>
+							sessionMatchesProjectRoot(root, session.cwd) &&
+							!services().store.isSessionDismissed(null, session.sessionId)
+					),
+					...(await listRuntimeSessions(quickRoot)).filter(
+						(session) =>
+							sessionMatchesProjectRoot(quickRoot, session.cwd) &&
+							services().store.isKeptQuickAskSession(session.sessionId)
+					)
+				];
 		for (const session of sessions) services().store.upsertSession(null, session);
-		services().dispatcher.recover();
-		const busyStarts = services().store.getBusySessionStarts(null);
-		const indicators = services().store.getSessionIndicators(null);
+		if (!cached) services().dispatcher.recover();
 		const runtimeById = new Map(sessions.map((session) => [session.sessionId, session]));
 		const query = url.searchParams.get('q')?.trim() ?? '';
 		const includeArchived = url.searchParams.get('archived') === 'true';
 		const limit = Math.max(1, Math.min(Number(url.searchParams.get('limit') ?? 100) || 100, 100));
-		const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0) || 0);
 		const scope = url.searchParams.get('scope');
-		let externalCronJobs: Array<ExternalHermesCronJob & { unreadCount: number }> = [];
+		let externalCronJobs: ExternalCronProjection['jobs'] = [];
 		let externalCronError: unknown = null;
-		if (scope === 'scheduled') {
+		if (scope === 'scheduled' && !cached) {
 			try {
-				externalCronJobs = (await listExternalHermesCron(services().admin)).map((job) => ({
-					...job,
-					unreadCount: services().store.externalCronUnreadCount(job.profile, job.jobId)
-				}));
+				externalCronJobs = (await services().externalCron.refreshSurface()).jobs;
 			} catch (cause) {
 				externalCronError = redactHermesValue(
 					cause instanceof Error ? cause.message : String(cause)
@@ -106,7 +100,11 @@ export const GET: RequestHandler = async ({ url }) => {
 			offset,
 			...(scope === 'scheduled' || scope === 'unscheduled' ? { scope } : {})
 		});
+		const ids = page.sessions.map(({ sessionId }) => sessionId);
+		const busyStarts = services().store.getBusySessionStarts(null, ids);
+		const indicators = services().store.getSessionIndicators(null, 'all', ids);
 		return json({
+			reconciliation: cached ? 'cached' : 'complete',
 			externalCronJobs,
 			externalCronError,
 			sessions: page.sessions.map((stored) => {
@@ -151,7 +149,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		if (!harness) return json({ error: 'Invalid Session harness' }, { status: 400 });
 		const session = await services().sessionRuntime.createSession(root, harness);
 		if (!sessionMatchesProjectRoot(root, session.cwd)) {
-			throw new Error(`${sessionHarnessLabel(harness)} Session is outside the HUE session directory`);
+			throw new Error(
+				`${sessionHarnessLabel(harness)} Session is outside the HUE session directory`
+			);
 		}
 		services().store.upsertSession(null, session);
 		const stored = services().store.getSession(null, session.sessionId)!;

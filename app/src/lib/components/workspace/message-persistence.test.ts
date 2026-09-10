@@ -11,7 +11,17 @@ Object.defineProperty(globalThis, 'localStorage', {
 	}
 });
 
-beforeEach(() => values.clear());
+beforeEach(() => {
+	values.clear();
+	Object.defineProperty(globalThis, 'localStorage', {
+		configurable: true,
+		value: {
+			getItem: (key: string) => values.get(key) ?? null,
+			setItem: (key: string, value: string) => values.set(key, value),
+			removeItem: (key: string) => values.delete(key)
+		}
+	});
+});
 
 test('pending persistence strips generic bytes and restores explicit reattach state', () => {
 	const persistence = new MessagePersistence(

@@ -64,7 +64,8 @@ export type WorkspaceTimelineItem =
 	| {
 			sequence: number;
 			kind: 'status';
-			statusType: 'work-mode';
+			statusType: 'work-mode' | 'failure' | 'unknown';
+			messageId?: string;
 			label: string;
 			createdAt?: string;
 	  }
@@ -103,7 +104,10 @@ function upsertActivity(
 		status: String(event.payload.status ?? ''),
 		createdAt: event.createdAt
 	} as WorkspaceActivity;
-	const index = activity.findIndex((candidate) => candidate.kind === kind && candidate.id === id);
+	const index = activity.findIndex(
+		(candidate) =>
+			candidate.kind === kind && candidate.id === id && candidate.messageId === item.messageId
+	);
 	if (index < 0) return [...activity, item];
 	const next = [...activity];
 	next[index] = { ...next[index], ...item, createdAt: next[index].createdAt ?? item.createdAt };
@@ -119,6 +123,19 @@ function applyTimelineEvent(
 	event: WorkspaceSessionEvent
 ): WorkspaceTimelineItem[] {
 	const messageId = String(event.payload.messageId ?? '');
+	if (event.type === 'message.failed' || event.type === 'message.unknown') {
+		return [
+			...timeline,
+			{
+				sequence: event.sequence,
+				kind: 'status',
+				messageId,
+				statusType: event.type === 'message.failed' ? 'failure' : 'unknown',
+				label: `${event.type === 'message.failed' ? 'Message failed' : 'Delivery unconfirmed'}: ${String(event.payload.error ?? 'No further details available')}`,
+				createdAt: event.createdAt
+			}
+		];
+	}
 	if (event.type === 'message.accepted') {
 		const index = timeline.findIndex(
 			(item) => item.kind === 'message' && item.role === 'user' && item.messageId === messageId
@@ -216,7 +233,9 @@ function applyTimelineEvent(
 	const kind = ACTIVITY_TYPES.get(event.type as never);
 	const id = String(event.payload.id ?? '');
 	if (!kind || !id) return timeline;
-	const index = timeline.findIndex((item) => item.kind === kind && 'id' in item && item.id === id);
+	const index = timeline.findIndex(
+		(item) => item.kind === kind && 'id' in item && item.id === id && item.messageId === messageId
+	);
 	const previous = index < 0 ? null : timeline[index];
 	const item = {
 		...(previous ?? {}),
@@ -238,12 +257,14 @@ export function applyTimelineEvents(
 	state: { cursor: number; timeline: WorkspaceTimelineItem[] },
 	events: WorkspaceSessionEvent[]
 ): { cursor: number; timeline: WorkspaceTimelineItem[] } {
+	if (events.every((event) => event.sequence <= state.cursor)) return state;
 	let cursor = state.cursor;
-	let timeline = [...state.timeline];
+	let timeline = state.timeline;
+	const sequences = new Set(state.timeline.map((item) => item.sequence));
 	for (const event of events) {
 		if (event.sequence <= cursor) continue;
 		cursor = event.sequence;
-		if (!timeline.some((item) => item.sequence === event.sequence)) {
+		if (!sequences.has(event.sequence)) {
 			timeline = applyTimelineEvent(timeline, event);
 		}
 	}
@@ -275,7 +296,7 @@ export function timelineFromSession(
 	);
 	const deliveredMessages = messages.filter(
 		(message) =>
-			(message.status === 'running' || message.status === 'completed') &&
+			['running', 'completed', 'cancelled', 'failed', 'unknown'].includes(message.status) &&
 			deliveredEvents.has(message.id)
 	);
 	const userTurns = transcript
@@ -283,13 +304,19 @@ export function timelineFromSession(
 		.filter(({ message }) => message.role === 'user');
 	let firstStoredIndex = -1;
 	if (deliveredMessages.length) {
-		for (let start = 0; start <= userTurns.length - deliveredMessages.length; start += 1) {
-			if (
-				deliveredMessages.every(
-					(message, offset) => userTurns[start + offset].message.text === message.text
-				)
-			) {
-				firstStoredIndex = userTurns[start].index;
+		for (
+			let count = Math.min(userTurns.length, deliveredMessages.length);
+			count > 0 && firstStoredIndex < 0;
+			count--
+		) {
+			for (let start = 0; start <= userTurns.length - count; start += 1) {
+				if (
+					deliveredMessages
+						.slice(0, count)
+						.every((message, offset) => userTurns[start + offset].message.text === message.text)
+				) {
+					firstStoredIndex = userTurns[start].index;
+				}
 			}
 		}
 	}
@@ -340,7 +367,9 @@ function upsertSubagentTree(
 ): WorkspaceSubagentTree[] {
 	const tree = payload as WorkspaceSubagentTree;
 	if (!tree.id || !Array.isArray(tree.children)) return trees;
-	const index = trees.findIndex(({ id }) => id === tree.id);
+	const index = trees.findIndex(
+		({ id, messageId }) => id === tree.id && messageId === tree.messageId
+	);
 	if (index < 0) return [...trees, tree];
 	const next = [...trees];
 	next[index] = tree;
@@ -361,10 +390,10 @@ export function applySessionEvents(
 ): WorkspaceDeliveryState {
 	let next = {
 		...state,
-		transcript: [...state.transcript],
-		subagents: [...(state.subagents ?? [])],
-		activity: [...(state.activity ?? [])],
-		plan: [...(state.plan ?? [])]
+		transcript: state.transcript,
+		subagents: state.subagents ?? [],
+		activity: state.activity ?? [],
+		plan: state.plan ?? []
 	};
 	for (const event of events) {
 		if (event.sequence <= next.cursor) continue;
@@ -401,11 +430,14 @@ export function applySessionEvents(
 							? 'cancelled'
 							: 'delivery unknown';
 			if (next.pendingAssistant || next.pendingImages?.length) {
-				next.transcript.push({
-					role: 'assistant',
-					text: next.pendingAssistant,
-					...(next.pendingImages?.length ? { images: next.pendingImages } : {})
-				});
+				next.transcript = [
+					...next.transcript,
+					{
+						role: 'assistant',
+						text: next.pendingAssistant,
+						...(next.pendingImages?.length ? { images: next.pendingImages } : {})
+					}
+				];
 			}
 			next.pendingAssistant = '';
 			next.pendingImages = [];

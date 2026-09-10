@@ -49,10 +49,7 @@
 	} from './types';
 	import type { WorkMode } from '$lib/work-mode';
 	import type { CatalogPrompt } from '$lib/prompt-catalog';
-	import type {
-		PromptImprovementAnswer,
-		PromptImprovementResult
-	} from './message-state.svelte';
+	import type { PromptImprovementAnswer, PromptImprovementResult } from './message-state.svelte';
 
 	let {
 		composer,
@@ -126,6 +123,7 @@
 		contextPercent,
 		showContextUsage = true,
 		ready = true,
+		readingAttachments = false,
 		busy
 	}: {
 		composer: string;
@@ -167,6 +165,7 @@
 		showScrollToLatest: boolean;
 		busy: boolean;
 		ready?: boolean;
+		readingAttachments?: boolean;
 		onsubmit: (event: SubmitEvent) => void;
 		ondrop: (event: DragEvent) => void;
 		onpaste: (event: ClipboardEvent) => void;
@@ -486,9 +485,10 @@
 						>
 						<button
 							type="button"
-							aria-label="Send queued message now"
-							title="Send queued message now"
-							onclick={onstop}>Send now</button
+							aria-label="Stop current turn"
+							disabled={stopping || delivery === 'cancelling'}
+							title="Stop the current turn; queued messages keep their existing order"
+							onclick={onstop}>Stop current turn</button
 						>
 					</div>
 				</article>{/each}
@@ -833,12 +833,13 @@
 					>{contextPercent()}%</span
 				>{/if}
 		</div>
+		{#if readingAttachments}<span role="status">Reading attachments...</span>{/if}
 		{#if pendingEnvelope}<button
 				type="button"
 				class="retry-message rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
 				title="Retry exact message"
 				onclick={onretry}
-				disabled={busy}>Retry exact message</button
+				disabled={readingAttachments || !ready}>Retry exact message</button
 			>{:else if busy}<button
 				type="button"
 				class="composer-send stop-message grid size-9 place-items-center rounded-lg text-orange-300 hover:bg-accent"
@@ -853,7 +854,8 @@
 				class="composer-send grid size-9 place-items-center rounded-lg hover:bg-accent disabled:opacity-40"
 				aria-label="Send"
 				title="Send message"
-				disabled={!ready ||
+				disabled={readingAttachments ||
+					!ready ||
 					(!composer.trim() && !images.length && !attachments.length && !reviewContexts.length)}
 			>
 				<Send width={20} height={20} aria-hidden="true" /></button
@@ -876,7 +878,8 @@
 			class="grid size-11 shrink-0 place-items-center rounded-lg hover:bg-accent"
 			aria-label="Close prompt improvement"
 			title="Close"
-			onclick={() => improvementDialog?.close()}><X width={18} height={18} aria-hidden="true" /></button
+			onclick={() => improvementDialog?.close()}
+			><X width={18} height={18} aria-hidden="true" /></button
 		>
 	</header>
 	<div class="grid gap-4 p-4">
@@ -886,17 +889,19 @@
 			>
 				{improvementError}
 				{#if improvementSessionPath}<a class="ml-1 underline" href={improvementSessionPath}
-					>Open Session</a
-				>{/if}
+						>Open Session</a
+					>{/if}
 			</div>{/if}
 		{#if improvedPrompt}<label class="grid gap-1.5 text-sm font-medium">
 				Improved prompt
 				<textarea
 					class="min-h-36 w-full resize-y rounded-lg border border-input bg-background p-3 font-normal text-foreground"
-					bind:value={improvedPrompt}
-				></textarea>
+					bind:value={improvedPrompt}></textarea>
 			</label>{/if}
-		{#if improvementQuestions.length}<section class="grid gap-3" aria-label="Clarification questions">
+		{#if improvementQuestions.length}<section
+				class="grid gap-3"
+				aria-label="Clarification questions"
+			>
 				<div>
 					<h3 class="text-sm font-bold">A few details are still unclear</h3>
 					<p class="text-xs text-muted-foreground">Answer these to refine the prompt.</p>
@@ -924,9 +929,7 @@
 					type="button"
 					class="min-h-11 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-40"
 					disabled={promptImproving ||
-						improvementQuestions.some(
-							(question) => !improvementAnswers[question.id]?.trim()
-						)}
+						improvementQuestions.some((question) => !improvementAnswers[question.id]?.trim())}
 					onclick={refinePrompt}>{promptImproving ? 'Refining…' : 'Refine prompt'}</button
 				>{:else if improvedPrompt}<button
 					type="button"

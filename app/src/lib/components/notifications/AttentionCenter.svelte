@@ -7,6 +7,7 @@
 	import Trash2 from '~icons/lucide/trash-2';
 	import X from '~icons/lucide/x';
 	import { parseApiResponse } from '$lib/api-response';
+	import type { Project } from '../workspace/types';
 	import {
 		acknowledgeThenNavigate,
 		attentionState,
@@ -20,6 +21,7 @@
 	type Item = {
 		id: string;
 		projectId: string | null;
+		projectName?: string | null;
 		sessionId: string;
 		kind: 'completed' | 'permission' | 'clarify' | 'failed' | 'unknown';
 		priority: 'normal' | 'high';
@@ -44,6 +46,7 @@
 
 	let {
 		open,
+		projects = [],
 		projectId,
 		sessionId,
 		onclose,
@@ -51,6 +54,7 @@
 		onindicators
 	}: {
 		open: boolean;
+		projects?: Pick<Project, 'id' | 'name'>[];
 		projectId: string | null;
 		sessionId: string | null;
 		onclose: () => void;
@@ -84,6 +88,11 @@
 	let markingAllRead = $state(false);
 	let centerState = $derived(attentionState({ loading, error, items, unread }));
 	let groupedItems = $derived(groupNotifications(items));
+	let projectNames = $derived(new Map(projects.map(({ id, name }) => [id, name])));
+	function notificationTitle(item: Item) {
+		const name = item.projectId ? projectNames.get(item.projectId) ?? item.projectName : null;
+		return name ? `${name} · ${item.title}` : item.title;
+	}
 	const endpointKey = 'hue:notification:endpoint-id';
 	const deviceKey = 'hue:notification:device-id';
 	const soundKey = 'hue:notification:sound';
@@ -603,6 +612,7 @@
 						<ul class="mx-auto grid max-w-3xl gap-3">
 							{#each groupedItems as group (group.item.id)}
 								{@const item = group.item}
+								{@const title = notificationTitle(item)}
 								<li
 									class="flex min-w-0 items-start gap-3 rounded-xl border border-border bg-card p-4"
 									class:opacity-65={group.items.every((entry) => entry.readAt || entry.dismissedAt)}
@@ -617,7 +627,7 @@
 										<a
 											class="font-semibold hover:underline"
 											href={item.path}
-											onclick={(event) => void openNotification(event, group.items)}>{item.title}</a
+											onclick={(event) => void openNotification(event, group.items)}>{title}</a
 										>
 										{#if group.items.length > 1}<p class="text-xs font-medium text-foreground">
 												{group.items.length} pending requests
@@ -630,13 +640,13 @@
 									<div class="flex shrink-0 gap-1" aria-label="Notification actions">
 										{#if group.items.some((entry) => !entry.readAt)}<button
 												class="grid size-11 place-items-center rounded-md border border-border"
-												aria-label={`Mark ${group.items.length > 1 ? `${group.items.length} notifications` : item.title} read`}
+												aria-label={`Mark ${group.items.length > 1 ? `${group.items.length} notifications` : title} read`}
 												title="Mark read"
 												onclick={() => void mutate(group.items, 'read')}
 												><Check class="size-4" aria-hidden="true" /></button
 											>{/if}<button
 											class="grid size-11 place-items-center rounded-md border border-border"
-											aria-label={`Dismiss ${group.items.length > 1 ? `${group.items.length} notifications` : item.title}`}
+											aria-label={`Dismiss ${group.items.length > 1 ? `${group.items.length} notifications` : title}`}
 											title="Dismiss"
 											onclick={() => void mutate(group.items, 'dismissed')}
 											><X class="size-4" aria-hidden="true" /></button

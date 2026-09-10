@@ -86,12 +86,13 @@ dialog.global-panel::backdrop {
 .project-files-dock,
 .project-tool-dock,
 .workspace-terminal-dock {
+	--project-tool-border-surface: var(--project-shell-color);
 	--project-tool-surface: var(--navigation-surface);
 }
 .project-browser-dock {
 	position: relative;
 	flex: 0 1 var(--project-browser-width, 440px);
-	background: var(--project-tool-surface);
+	background: var(--project-tool-border-surface);
 }
 .project-browser-dock:not(.open) {
 	flex-basis: 0;
@@ -159,7 +160,7 @@ dialog.global-panel::backdrop {
 .project-excalidraw-dock {
 	position: relative;
 	flex: 0 0 var(--project-excalidraw-width, 720px);
-	background: var(--project-tool-surface);
+	background: var(--project-tool-border-surface);
 }
 .project-excalidraw-dock:not(.open) {
 	flex-basis: 0;
@@ -179,7 +180,7 @@ dialog.global-panel::backdrop {
 .project-files-dock {
 	position: relative;
 	flex: 0 0 var(--project-files-width, 440px);
-	background: var(--project-tool-surface);
+	background: var(--project-tool-border-surface);
 	container: project-files / inline-size;
 }
 .project-files-dock:not(.open) {
@@ -341,9 +342,12 @@ dialog.global-panel::backdrop {
 	background: var(--project-tool-surface);
 }
 .project-tool-dock:not(.docked),
-.project-tool-dock:not(.docked) > section,
-.workspace-terminal-dock {
+.project-tool-dock:not(.docked) > section {
 	background: var(--project-tool-surface);
+}
+.project-workbench,
+.workspace-terminal-dock {
+	background: var(--project-tool-border-surface);
 }
 .project-tool-dock.docked {
 	padding-right: calc(52px + var(--panel-gap));
@@ -355,12 +359,15 @@ dialog.global-panel::backdrop {
 .git-panel-resizer {
 	display: none;
 }
+.project-workbench.compact {
+	gap: var(--panel-gap);
+}
 .project-workbench.compact > .git-panel-resizer {
 	position: relative;
 	z-index: 1;
 	display: block;
-	min-height: 10px;
-	margin: -5px 0;
+	min-height: var(--panel-gap);
+	margin: calc(-1 * var(--panel-gap)) 0;
 	cursor: row-resize;
 	touch-action: none;
 }

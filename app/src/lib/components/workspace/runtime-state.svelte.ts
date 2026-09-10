@@ -4,6 +4,8 @@ import type { SessionState } from './session-state.svelte';
 type RuntimeStateOptions = {
 	api: Api;
 	getSession: () => Session | null;
+	captureSelection: () => unknown;
+	isCurrentSelection: (selection: unknown) => boolean;
 	sessionPath: (sessionId: string) => string;
 	session: SessionState;
 	setError: (message: string) => void;
@@ -11,7 +13,11 @@ type RuntimeStateOptions = {
 };
 
 export class RuntimeState {
-	changing = $state(false);
+	private changingValue = $state(false);
+	get changing() {
+		return this.changingValue && this.options.isCurrentSelection(this.changingSelection);
+	}
+	private changingSelection = $state<unknown>(undefined);
 
 	constructor(private options: RuntimeStateOptions) {}
 
@@ -28,36 +34,52 @@ export class RuntimeState {
 
 	change = async (kind: 'modelId' | 'modeId', value: string) => {
 		const selectedSession = this.options.getSession();
-		if (!selectedSession) return;
-		this.changing = true;
+		if (
+			!selectedSession ||
+			(this.changing && this.options.isCurrentSelection(this.changingSelection))
+		)
+			return;
+		const selection = this.options.captureSelection();
+		this.changingSelection = selection;
+		this.changingValue = true;
 		try {
 			const body = await this.options.api<{ runtime: HermesRuntime }>(
 				this.options.sessionPath(selectedSession.sessionId),
 				{ method: 'PATCH', body: JSON.stringify({ [kind]: value }) }
 			);
+			if (!this.options.isCurrentSelection(selection)) return;
 			this.options.session.runtime = { ...this.options.session.runtime, ...body.runtime };
 			this.options.rememberSelection({ [kind]: value });
 		} catch (cause) {
-			this.options.setError(cause instanceof Error ? cause.message : String(cause));
+			if (this.options.isCurrentSelection(selection))
+				this.options.setError(cause instanceof Error ? cause.message : String(cause));
 		} finally {
-			this.changing = false;
+			if (this.options.isCurrentSelection(selection)) this.changingValue = false;
 		}
 	};
 
 	changeConfig = async (configId: string, configValue: string | boolean) => {
 		const selectedSession = this.options.getSession();
-		if (!selectedSession) return;
-		this.changing = true;
+		if (
+			!selectedSession ||
+			(this.changing && this.options.isCurrentSelection(this.changingSelection))
+		)
+			return;
+		const selection = this.options.captureSelection();
+		this.changingSelection = selection;
+		this.changingValue = true;
 		try {
 			const body = await this.options.api<{ runtime: HermesRuntime }>(
 				this.options.sessionPath(selectedSession.sessionId),
 				{ method: 'PATCH', body: JSON.stringify({ configId, configValue }) }
 			);
+			if (!this.options.isCurrentSelection(selection)) return;
 			this.options.session.runtime = { ...this.options.session.runtime, ...body.runtime };
 		} catch (cause) {
-			this.options.setError(cause instanceof Error ? cause.message : String(cause));
+			if (this.options.isCurrentSelection(selection))
+				this.options.setError(cause instanceof Error ? cause.message : String(cause));
 		} finally {
-			this.changing = false;
+			if (this.options.isCurrentSelection(selection)) this.changingValue = false;
 		}
 	};
 

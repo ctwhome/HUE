@@ -6,7 +6,8 @@ export interface HermesAdminTransport {
 	json<T>(path: string, init?: RequestInit): Promise<T>;
 }
 
-export type HermesAdminView = 'runtime' | 'memory' | 'skills' | 'profiles' | 'mcp' | 'models';
+export type HermesAdminView =
+	'runtime' | 'logs' | 'update' | 'memory' | 'skills' | 'profiles' | 'mcp' | 'models';
 
 export type HermesAdminAction =
 	| 'skill.create'
@@ -85,6 +86,10 @@ export class HermesAdmin {
 	constructor(private readonly transport: HermesAdminTransport) {}
 
 	async view(view: HermesAdminView): Promise<Record<string, unknown>> {
+		if (view === 'logs')
+			return safe({ logs: await this.transport.json('/api/logs?file=errors&lines=100') });
+		if (view === 'update')
+			return safe({ update: await this.transport.json('/api/hermes/update/check') });
 		if (view === 'skills') {
 			return safe({
 				capabilities: { create: true, edit: true, toggle: true, delete: true, linkedFiles: false },
@@ -132,18 +137,14 @@ export class HermesAdmin {
 				]
 			});
 		}
-		const [health, status, logs, update] = await Promise.all([
+		const [health, status] = await Promise.all([
 			this.transport.json('/api/health'),
-			this.transport.json('/api/status'),
-			this.transport.json('/api/logs?file=errors&lines=100'),
-			this.transport.json('/api/hermes/update/check')
+			this.transport.json('/api/status')
 		]);
 		return safe({
 			capabilities: { logs: true, updateCheck: true, adminRestart: true, acpReconnect: true },
 			health,
-			status,
-			logs,
-			update
+			status
 		});
 	}
 

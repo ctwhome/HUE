@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { runCommand } from './command';
 import { homedir } from 'node:os';
 import { requestOriginMatches } from './same-origin';
 
@@ -47,36 +47,49 @@ export function parseDevServers(
 			url: `http://localhost:${port}`,
 			pid,
 			process: processName || 'Unknown process',
-			folder: cwd ? (cwd === home ? '~' : cwd.startsWith(`${home}/`) ? `~${cwd.slice(home.length)}` : cwd) : 'Unknown folder',
+			folder: cwd
+				? cwd === home
+					? '~'
+					: cwd.startsWith(`${home}/`)
+						? `~${cwd.slice(home.length)}`
+						: cwd
+				: 'Unknown folder',
 			canStop: pid !== protectedPid
 		});
 	}
 	return [...servers.values()]
 		.sort((left, right) => left.port - right.port || left.pid - right.pid)
-		.slice(0, 200)
+		.slice(0, 200);
 }
 
-export function discoverDevServers(): DevServer[] {
+export async function discoverDevServers(
+	run: (
+		command: string,
+		args: string[],
+		options: { timeout: number; maxBuffer: number }
+	) => Promise<{ status: number | null; stdout: string | Buffer; error?: unknown }> = runCommand
+): Promise<DevServer[]> {
 	const uid = process.getuid?.();
 	if (uid === undefined) return [];
-	const listeners = spawnSync(
+	const listeners = await run(
 		'lsof',
 		['-nP', '+c', '80', `-u${uid}`, '-a', '-iTCP', '-sTCP:LISTEN', '-Fpcn'],
 		{
-			encoding: 'utf8',
 			timeout: 1_500,
 			maxBuffer: 1_000_000
 		}
 	);
-	if (listeners.error) return [];
-	const pids = [...listeners.stdout.matchAll(/^p(\d+)$/gm)].map((match) => match[1]);
+	if (listeners.status !== 0 && listeners.status !== 1)
+		throw new Error('Local server discovery failed');
+	const pids = [...listeners.stdout.toString().matchAll(/^p(\d+)$/gm)].map((match) => match[1]);
 	if (!pids.length) return [];
-	const directories = spawnSync('lsof', ['-a', '-p', pids.join(','), '-d', 'cwd', '-Fpn'], {
-		encoding: 'utf8',
+	const directories = await run('lsof', ['-a', '-p', pids.join(','), '-d', 'cwd', '-Fpn'], {
 		timeout: 1_500,
 		maxBuffer: 1_000_000
 	});
-	return parseDevServers(listeners.stdout, directories.error ? '' : directories.stdout);
+	if (directories.status !== 0 && directories.status !== 1)
+		throw new Error('Local server folder discovery failed');
+	return parseDevServers(listeners.stdout.toString(), directories.stdout.toString());
 }
 
 export function stoppableDevServer(
@@ -87,8 +100,8 @@ export function stoppableDevServer(
 	return servers.find((server) => server.pid === pid && server.port === port && server.canStop);
 }
 
-export function stopDevServer(pid: number, port: number): void {
-	if (!stoppableDevServer(discoverDevServers(), pid, port)) {
+export async function stopDevServer(pid: number, port: number): Promise<void> {
+	if (!stoppableDevServer(await discoverDevServers(), pid, port)) {
 		throw new Error('This listener is protected or no longer running');
 	}
 	process.kill(pid, 'SIGTERM');

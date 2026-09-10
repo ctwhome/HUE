@@ -29,6 +29,8 @@ function required(value: unknown, label: string, maximum: number): string {
 export class ScheduleService {
 	private timer?: ReturnType<typeof setTimeout>;
 	private closed = false;
+	private readonly retryAt = new Map<string, number>();
+	private retryAllAt = 0;
 
 	constructor(
 		private readonly dependencies: {
@@ -99,7 +101,7 @@ export class ScheduleService {
 		id: string,
 		input: { name?: unknown; prompt?: unknown; cron?: unknown; timezone?: unknown }
 	): Schedule {
-		const current = this.require(id);
+		const current = this.get(id);
 		const patch: Partial<Pick<Schedule, 'name' | 'prompt' | 'cron' | 'timezone' | 'nextRunAt'>> =
 			{};
 		if (input.name !== undefined) patch.name = required(input.name, 'Schedule name', 128);
@@ -123,7 +125,7 @@ export class ScheduleService {
 	}
 
 	pause(id: string): Schedule {
-		const schedule = this.dependencies.store.updateSchedule(this.require(id).id, {
+		const schedule = this.dependencies.store.updateSchedule(this.get(id).id, {
 			enabled: false
 		});
 		this.arm();
@@ -131,7 +133,7 @@ export class ScheduleService {
 	}
 
 	resume(id: string): Schedule {
-		const current = this.require(id);
+		const current = this.get(id);
 		const schedule = this.dependencies.store.updateSchedule(id, {
 			enabled: true,
 			nextRunAt: nextCronOccurrence(current.cron, this.now(), current.timezone).toISOString()
@@ -141,14 +143,14 @@ export class ScheduleService {
 	}
 
 	delete(id: string): { deleted: Schedule } {
-		const schedule = this.require(id);
+		const schedule = this.get(id);
 		this.dependencies.store.deleteSchedule(id);
 		this.arm();
 		return { deleted: schedule };
 	}
 
 	runNow(id: string, runId: string) {
-		const schedule = this.require(id);
+		const schedule = this.get(id);
 		const messageId = required(runId, 'runId', 500);
 		const envelope: MessageEnvelope = {
 			id: messageId,
@@ -164,14 +166,32 @@ export class ScheduleService {
 
 	async runDue(): Promise<void> {
 		const now = this.now();
-		for (const schedule of this.dependencies.store.listDueSchedules(now.toISOString())) {
-			const accepted = this.dependencies.store.acceptDueSchedule(
-				schedule.id,
-				schedule.nextRunAt,
-				nextCronOccurrence(schedule.cron, now, schedule.timezone).toISOString()
-			);
-			if (accepted)
-				this.dependencies.dispatcher.submitAccepted(accepted.envelope, accepted.accepted);
+		if (now.getTime() < this.retryAllAt) return;
+		let due: Schedule[];
+		try {
+			due = this.dependencies.store.listDueSchedules(now.toISOString());
+		} catch (cause) {
+			this.retryAllAt = now.getTime() + 30_000;
+			throw cause;
+		}
+		for (const schedule of due) {
+			if (now.getTime() < (this.retryAt.get(schedule.id) ?? 0)) continue;
+			try {
+				const accepted = this.dependencies.store.acceptDueSchedule(
+					schedule.id,
+					schedule.nextRunAt,
+					nextCronOccurrence(schedule.cron, now, schedule.timezone).toISOString()
+				);
+				if (accepted)
+					await this.dependencies.dispatcher.submitAccepted(accepted.envelope, accepted.accepted);
+				this.retryAt.delete(schedule.id);
+			} catch {
+				this.retryAt.set(schedule.id, this.now().getTime() + 30_000);
+				console.error(
+					'[schedules] Failed to process schedule; retrying after 30 seconds',
+					schedule.id
+				);
+			}
 		}
 	}
 
@@ -181,7 +201,7 @@ export class ScheduleService {
 		this.timer = undefined;
 	}
 
-	private require(id: string): Schedule {
+	get(id: string): Schedule {
 		const schedule = this.dependencies.store.getSchedule(required(id, 'Schedule id', 128));
 		if (!schedule) throw new Error('Schedule not found');
 		return schedule;
@@ -194,18 +214,24 @@ export class ScheduleService {
 	private arm(): void {
 		if (this.closed || this.dependencies.startTimer === false) return;
 		if (this.timer) clearTimeout(this.timer);
-		const next = this.dependencies.store
-			.listSchedules()
-			.filter(({ enabled }) => enabled)
-			.sort((left, right) => left.nextRunAt.localeCompare(right.nextRunAt))[0];
-		if (!next) {
+		const now = this.now().getTime();
+		let next = Infinity;
+		try {
+			for (const [id, retryAt] of this.retryAt) {
+				if (retryAt <= now) this.retryAt.delete(id);
+				else next = Math.min(next, retryAt);
+			}
+			const scheduled = this.dependencies.store.getNextScheduleRunAt([...this.retryAt.keys()]);
+			if (scheduled) next = Math.min(next, Date.parse(scheduled));
+		} catch {
+			this.retryAllAt = now + 30_000;
+			next = this.retryAllAt;
+		}
+		if (next === Infinity) {
 			this.timer = undefined;
 			return;
 		}
-		const delay = Math.max(
-			0,
-			Math.min(Date.parse(next.nextRunAt) - this.now().getTime(), 2_147_483_647)
-		);
+		const delay = Math.max(0, Math.min(Math.max(next, this.retryAllAt) - now, 2_147_483_647));
 		this.timer = setTimeout(() => this.tick(), delay);
 		this.timer.unref?.();
 	}

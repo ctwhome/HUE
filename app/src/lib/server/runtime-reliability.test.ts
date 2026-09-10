@@ -13,6 +13,23 @@ afterEach(() => {
 });
 
 describe('HUE runtime reliability', () => {
+	it('basic diagnostics never run an integrity scan', async () => {
+		const queries: string[] = [];
+		const result = await runtimeDiagnostics({
+			store: {
+				database: {
+					query: (sql: string) => {
+						queries.push(sql);
+						return { get: () => ({ ready: 1 }) };
+					}
+				}
+			} as never,
+			runtime: { healthStatus: () => 'idle', getRuntimeInfo: () => ({ profile: 'default' }) },
+			admin: { healthStatus: () => 'idle' }
+		});
+		expect(queries).toEqual(['SELECT 1']);
+		expect(result.database).toEqual({ status: 'ready' });
+	});
 	it('creates and validates a consistent backup of the HUE database', () => {
 		const root = join(tmpdir(), `hue-backup-${crypto.randomUUID()}`);
 		const source = join(root, 'hue.db');
@@ -141,7 +158,7 @@ describe('HUE runtime reliability', () => {
 			}
 		});
 
-		expect(diagnostics.database).toEqual({ status: 'ready', integrity: 'ok' });
+		expect(diagnostics.database).toEqual({ status: 'ready' });
 		expect(diagnostics.acp).toMatchObject({
 			status: 'ready',
 			protocolVersion: 1,
@@ -195,7 +212,10 @@ describe('HUE runtime reliability', () => {
 			},
 			admin: {
 				healthStatus: () => 'ready',
-				json: async <T>(path: string) => (path === '/api/health' ? { version: '0.20.5' } : {}) as T
+				json: async <T>(path: string) => {
+					expect(path).toBe('/api/health');
+					return { version: '0.20.5' } as T;
+				}
 			}
 		});
 

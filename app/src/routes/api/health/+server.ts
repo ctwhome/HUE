@@ -11,7 +11,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 404 });
 	}
 	const checks = project
-		? projectRuntimeHealth(project.primary_path, {
+		? await projectRuntimeHealth(project.primary_path, {
 				acp: services().runtime.healthStatus(),
 				admin: services().admin.healthStatus()
 			})

@@ -134,6 +134,7 @@ test('Session creation sends the explicitly selected harness', async () => {
 		endVoice() {},
 		saveDraft() {},
 		cacheSession() {},
+		stopPolling() {},
 		clearSession() {},
 		clearSessionState() {},
 		setLoading() {},
@@ -150,6 +151,40 @@ test('Session creation sends the explicitly selected harness', async () => {
 
 	expect(JSON.parse(String(request?.body))).toEqual({ harness: 'opencode' });
 	expect(created?.harness).toBe('opencode');
+});
+
+test('creation cannot focus a different selection after its initial tick', async () => {
+	let resolve!: (body: unknown) => void;
+	let focused = 0;
+	const state = new WorkspaceNavigation(null, {
+		api: () =>
+			new Promise((done) => {
+				resolve = done;
+			}),
+		guard: () => false,
+		endVoice() {},
+		saveDraft() {},
+		cacheSession() {},
+		stopPolling() {},
+		clearSession() {},
+		clearSessionState() {},
+		setLoading() {},
+		setError() {},
+		adjustChatSessionCount() {},
+		adjustCronSessionCount() {},
+		applyCreatedSession() {},
+		restoreDraft() {},
+		focusComposer() {
+			focused++;
+		}
+	} as never);
+	state.persistSelection = () => {};
+	const creating = state.createSession();
+	state.selectedSession = { sessionId: 'destination', cwd: '/' };
+	resolve({ session: { sessionId: 'created', cwd: '/' } });
+	await creating;
+	expect(focused).toBe(0);
+	expect(state.selectedSession.sessionId).toBe('destination');
 });
 
 test('removing a Session from its row preserves the delete impact confirmation', async () => {
@@ -283,6 +318,7 @@ test('workflow launch resolves its Hermes bundle and sends one complete native b
 			endVoice() {},
 			saveDraft() {},
 			cacheSession() {},
+			stopPolling() {},
 			clearSession() {},
 			clearSessionState() {},
 			setLoading() {},

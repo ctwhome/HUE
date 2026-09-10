@@ -29,11 +29,11 @@ make dev
 
 Open [http://127.0.0.1:44010](http://127.0.0.1:44010). Development uses the canonical `~/.hue/hue.db`.
 
-For native desktop previews with developer tools, run `make desktop` in another terminal after `make dev`. See [desktop/README.md](desktop/README.md) for authenticated HTTPS, SSH forwarding, and Tailscale guidance. Web and mobile clients continue using the existing responsive interface.
+`make dev` starts the HUE server and Electrobun desktop app together. Use `make web-dev` for browser/mobile-only development or `make desktop` to attach the app to an already-running local or remote server. See [desktop/README.md](desktop/README.md) for authenticated HTTPS, SSH forwarding, and Tailscale guidance.
 
 ## Build and serve
 
-Production runs continuously under its KeepAlive LaunchAgent. `make restart` builds documentation and the app, then restarts production onto an immutable snapshot of that build. `make dev` hands the canonical database from production to the foreground development server, then restores production when development stops.
+Production runs continuously under its KeepAlive LaunchAgent. `make restart` builds documentation and the app, then restarts production onto an immutable snapshot of that build. `make dev` and `make web-dev` hand the canonical database from production to the foreground development server, then restore production when development stops.
 
 ```bash
 make restart
