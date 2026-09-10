@@ -1,4 +1,4 @@
-.PHONY: install dev web-dev desktop build serve restart stop stop-dev stop-build stop-production
+.PHONY: install dev web-dev desktop build serve restart restart-production release stop stop-dev stop-build stop-production
 
 HOST ?= 127.0.0.1
 PORT ?= 44011
@@ -15,7 +15,7 @@ web-dev: install
 	@HUE_DATABASE_PATH="$(HUE_DATABASE_PATH)" ./scripts/dev-stack.sh web
 
 desktop: install
-	bun run --cwd desktop dev
+	HUE_DESKTOP_ORIGIN=http://127.0.0.1:44010 bun run --cwd desktop dev
 
 build: install
 	HUE_DOCS_BASE=/docs HUE_DOCS_OUT_DIR=../app/static/docs bun run --cwd docs build
@@ -26,7 +26,13 @@ serve:
 	cd app && HOST="$(HOST)" PORT="$(PORT)" ORIGIN="$(ORIGIN)" HUE_DATABASE_PATH="$(HUE_DATABASE_PATH)" BODY_SIZE_LIMIT="$${BODY_SIZE_LIMIT:-60000000}" ../scripts/serve-build.sh build bun --env-file=.env
 
 restart: build
+	@$(MAKE) restart-production
+
+restart-production:
 	launchctl bootstrap "gui/$$(id -u)" "$(HOME)/Library/LaunchAgents/com.ctw.hue-production.plist" 2>/dev/null || launchctl kickstart -k "gui/$$(id -u)/com.ctw.hue-production"
+
+release:
+	bun scripts/release.ts
 
 stop-dev:
 	@./scripts/stop-services.sh dev
