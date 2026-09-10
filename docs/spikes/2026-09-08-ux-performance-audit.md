@@ -69,8 +69,8 @@ These are browser observations on a busy local development server, without CPU/n
 
 Local screenshots, containing no conversation body:
 
-- [Mobile file selection with invisible error](../../ux-audit-hidden-file-error-320.png)
-- [App Settings at 320px](../../ux-audit-settings-320.png)
+- [Mobile file selection with invisible error](../screenshots/ux-audit-hidden-file-error-320.png)
+- [App Settings at 320px](../screenshots/ux-audit-settings-320.png)
 
 ## Findings: protect work and context
 

@@ -27,12 +27,12 @@ def decision_slug(path: Path) -> str:
 PAGES: list[tuple[Path, Path]] = [
     *[(path, Path("spec") / path.name) for path in DOCS],
     *[(path, Path("decisions") / f"{decision_slug(path)}.md") for path in DECISIONS],
-    (ROOT / "CONTRIBUTING.md", Path("contributing.md")),
+    (ROOT / ".github/CONTRIBUTING.md", Path("contributing.md")),
 ]
 
 ROUTES = {
     "README.md": "/",
-    "CONTRIBUTING.md": "/contributing/",
+    ".github/CONTRIBUTING.md": "/contributing/",
     **{path.relative_to(ROOT).as_posix(): f"/spec/{path.stem}/" for path in DOCS},
     **{
         path.relative_to(ROOT).as_posix(): f"/decisions/{decision_slug(path)}/"
