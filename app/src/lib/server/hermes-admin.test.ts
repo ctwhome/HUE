@@ -14,6 +14,16 @@ class FakeTransport implements HermesAdminTransport {
 }
 
 describe('Hermes administration boundary', () => {
+	it('loads basic runtime without logs or update checks', async () => {
+		const transport = new FakeTransport();
+		transport.responses.set('GET /api/health', { version: 'test' });
+		transport.responses.set('GET /api/status', { ready: true });
+		expect(await new HermesAdmin(transport).view('runtime')).toMatchObject({
+			health: { version: 'test' },
+			status: { ready: true }
+		});
+		expect(transport.requests.map(({ path }) => path)).toEqual(['/api/health', '/api/status']);
+	});
 	it('redacts nested secrets, credential URLs, bearer text, and secret-looking environment keys', () => {
 		expect(
 			redactHermesValue({

@@ -33,6 +33,13 @@ export type ExternalHermesCronRun = {
 	readAt?: string | null;
 };
 
+export type ExternalHermesCronHistory = {
+	runs: ExternalHermesCronRun[];
+	limit: number;
+	possiblyTruncated: boolean;
+	paginationSupported: false;
+};
+
 type Transport = { json(path: string, init?: RequestInit): Promise<unknown> };
 
 const safeString = (value: unknown, maximum: number) => {
@@ -103,7 +110,7 @@ export async function listExternalHermesCronRuns(
 	transport: Transport,
 	profile: string,
 	jobId: string
-): Promise<ExternalHermesCronRun[]> {
+): Promise<ExternalHermesCronHistory> {
 	const safeProfile = reference(profile, 'Profile');
 	const safeJobId = reference(jobId, 'Job id');
 	const result = await transport.json(
@@ -111,7 +118,8 @@ export async function listExternalHermesCronRuns(
 	);
 	if (!result || typeof result !== 'object' || !Array.isArray((result as { runs?: unknown }).runs))
 		throw new Error('Hermes returned invalid cron run history');
-	return (result as { runs: unknown[] }).runs.flatMap((value) => {
+	const rawRuns = (result as { runs: unknown[] }).runs;
+	const runs = rawRuns.slice(0, 100).flatMap((value): ExternalHermesCronRun[] => {
 		if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
 		const run = value as Record<string, unknown>;
 		const sessionId = rawString(run.id, 300);
@@ -148,6 +156,8 @@ export async function listExternalHermesCronRuns(
 			}
 		];
 	});
+	// Hermes clamps this endpoint to 100 and hardcodes offset=0; no catch-up cursor is exposed.
+	return { runs, limit: 100, possiblyTruncated: rawRuns.length >= 100, paginationSupported: false };
 }
 
 const reference = (value: unknown, name: string) => {

@@ -39,3 +39,14 @@ test('repository layout ignores malformed saved sizes', () => {
 		github: 4
 	});
 });
+
+test('inner Git visibility never reads or changes the ambiguous legacy dock key', () => {
+	const store = storage({ 'hue:project-tools:p:git-open': 'false' });
+	const layout = readRepositoryLayout(store, 'p');
+	expect(layout.gitOpen).toBe(true);
+	toggleRepositoryPanel(store, 'p', layout, 'git');
+	expect(store.getItem('hue:project-tools:p:git-section-open')).toBe('false');
+	expect(store.getItem('hue:project-tools:p:git-open')).toBe('false');
+	toggleRepositoryPanel(store, 'p', layout, 'git');
+	expect(store.getItem('hue:project-tools:p:git-open')).toBe('false');
+});

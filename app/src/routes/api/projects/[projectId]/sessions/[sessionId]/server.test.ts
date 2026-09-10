@@ -47,6 +47,8 @@ mock.module('$lib/server/route-services', () => ({
 			hasSession: () => associated,
 			getSession: () => ({
 				sessionId: 'session-1',
+				externalSessionId: 'session-1',
+				harness: 'hermes',
 				cwd: '/work/hue-old',
 				icon: null,
 				title: sourceTitle,
@@ -88,6 +90,11 @@ mock.module('$lib/server/route-services', () => ({
 			},
 			getBusySessionStarts: () => ({}),
 			getSessionIndicators: () => ({})
+		},
+		admin: {
+			loadTranscriptWithCoverage: async () => {
+				throw new Error('Hermes transcript read unavailable');
+			}
 		},
 		sessionRuntime: {
 			loadTranscript: async () => {
@@ -144,7 +151,8 @@ test('returns stored turn state when the lightweight Hermes transcript read is u
 	};
 	const { GET } = await import('./+server');
 	const response = await GET({
-		params: { projectId: 'project-1', sessionId: 'session-1' }
+		params: { projectId: 'project-1', sessionId: 'session-1' },
+		url: new URL('http://hue.test/api/projects/project-1/sessions/session-1')
 	} as never);
 
 	expect(response.status).toBe(200);
@@ -152,6 +160,11 @@ test('returns stored turn state when the lightweight Hermes transcript read is u
 	expect(runtimeTranscriptCalls).toBe(0);
 	expect(await response.json()).toEqual({
 		transcript: [],
+		history: {
+			mode: 'recent',
+			complete: false,
+			fullUrl: '/api/projects/project-1/sessions/session-1?history=full'
+		},
 		transcriptError: 'Hermes transcript read unavailable',
 		workMode: 'autonomous',
 		commands: [],

@@ -39,7 +39,7 @@ Production runs continuously under the `com.ctw.hue-production` KeepAlive Launch
 
 Use `make stop-production` to unload the KeepAlive LaunchAgent and stop production permanently.
 
-`make dev` hands the canonical `~/.hue/hue.db` from production to a foreground server on `http://127.0.0.1:44010`. Stopping development restores production. `make build` compiles without restarting production, and `make serve` is the lower-level foreground command used by the production LaunchAgent. App preview and Playwright use `44014`, docs development and preview use `44015`, and Android proof uses `44016`.
+`make dev` hands the canonical `~/.hue/hue.db` from production to a foreground server on `http://127.0.0.1:44010` and opens Electrobun after that server is ready. Use `make web-dev` for the server alone. Stopping either development command restores production. `make build` compiles without restarting production, and `make serve` is the lower-level foreground command used by the production LaunchAgent. App preview and Playwright use `44014`, docs development and preview use `44015`, and Android proof uses `44016`.
 
 ### Authenticated LAN or tailnet access
 

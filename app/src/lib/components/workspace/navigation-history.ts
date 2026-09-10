@@ -107,7 +107,16 @@ export function persistNavigationSelection(
 export async function restoreNavigationSelection(
 	navigation: NavigationState,
 	effects: RestoreEffects,
-	guard?: () => boolean
+	guard?: () => boolean,
+	captureCurrent: () => () => boolean = () => {
+		const href = window.location.href;
+		const project = navigation.selectedProject;
+		const session = navigation.selectedSession;
+		return () =>
+			window.location.href === href &&
+			navigation.selectedProject === project &&
+			navigation.selectedSession === session;
+	}
 ): Promise<LaunchDestination | null> {
 	const url = new URL(window.location.href);
 	const destination = resolveLaunchDestination(
@@ -118,8 +127,13 @@ export async function restoreNavigationSelection(
 	const notificationTarget = url.searchParams.has('event') || url.searchParams.has('cronRun');
 	const cronProfile = url.searchParams.get('cronProfile');
 	const cronJob = url.searchParams.get('cronJob');
+	const unresolvedProject =
+		url.searchParams.has('project') &&
+		url.searchParams.get('project') !== 'none' &&
+		destination.projectId === null;
 	const mobilePane = effects.isMobile() ? resolveInitialMobilePane(destination) : null;
 	const sameWorkspace =
+		!unresolvedProject &&
 		!notificationTarget &&
 		navigation.ready &&
 		destination.projectId === (navigation.selectedProject?.id ?? null) &&
@@ -146,10 +160,13 @@ export async function restoreNavigationSelection(
 			: (effects.getProjects().find(({ id }) => id === destination.projectId) ?? null);
 	navigation.selectedSession = null;
 	navigation.selectedExternalCronJob = null;
+	navigation.sessions = [];
+	navigation.externalCronJobs = [];
 	navigation.sessionCollection = destination.collection;
 	effects.clearSession();
 	navigation.activeTab = 'sessions';
-	navigation.mobileDrawer = null;
+	navigation.mobileDrawer = mobilePane;
+	let isCurrent = captureCurrent();
 	if (navigation.selectedProject?.rootAvailable === false) {
 		navigation.ready = true;
 		return destination;
@@ -157,6 +174,7 @@ export async function restoreNavigationSelection(
 	// Shell and workbench stay usable while slower Session discovery continues.
 	navigation.ready = true;
 	await navigation.loadActiveTab(destination.sessionId);
+	if (!isCurrent()) return null;
 	if (!navigation.selectedProject && destination.collection === 'cron' && cronProfile && cronJob) {
 		navigation.selectedExternalCronJob =
 			navigation.externalCronJobs.find(
@@ -164,21 +182,30 @@ export async function restoreNavigationSelection(
 			) ?? null;
 	}
 	const session = navigation.sessions.find(({ sessionId }) => sessionId === destination.sessionId);
-	const sessionRestored = session
-		? await navigation.openSession(session, 'none', url.searchParams.get('event'))
-		: false;
+	let sessionRestored = false;
+	if (session) {
+		const opening = navigation.openSession(session, 'none', url.searchParams.get('event'));
+		isCurrent = captureCurrent();
+		sessionRestored = await opening;
+		if (!isCurrent()) return null;
+	}
 	if (destination.sessionId && !sessionRestored) {
 		navigation.selectedSession = null;
 		effects.clearSession();
 	}
-	if (destination.sessionId) await navigation.loadActiveTab(null);
+	if (destination.sessionId) void navigation.loadActiveTab(null);
 	navigation.mobileDrawer =
 		effects.isMobile() && (!destination.sessionId || sessionRestored)
 			? mobilePane
 			: destination.sessionId && !sessionRestored
 				? 'sessions'
 				: null;
-	if (!notificationTarget)
+	if (
+		!notificationTarget &&
+		(!destination.sessionId || sessionRestored) &&
+		!unresolvedProject &&
+		(!cronJob || navigation.selectedExternalCronJob)
+	)
 		navigation.persistSelection(
 			'replace',
 			false,

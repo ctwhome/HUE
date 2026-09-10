@@ -45,7 +45,7 @@ test('changed-file clicks request split diff mode in the Files pane', () => {
 	expect(files).toContain('Diff unavailable:');
 	expect(files).toContain('signal: request.controller.signal');
 	expect(preview).toContain("import('./FileDiffViewer.svelte')");
-	expect(preview).toContain('Boolean(preview || diffData)');
+	expect(preview).toContain('Boolean(selectedPath || preview || diffData)');
 	expect(viewer).toContain("from '@git-diff-view/svelte'");
 	expect(viewer).toContain('narrow ? DiffModeEnum.Unified : DiffModeEnum.Split');
 	expect(workbench).toContain('document.activeElement instanceof HTMLElement');

@@ -2,6 +2,7 @@
 	type TerminalTab = {
 		id: string;
 		label: string;
+		initialCwd: string;
 		terminalId: string;
 		cursor: number;
 		inputSequence: number;
@@ -34,7 +35,7 @@
 	import Button from '../ui/Button.svelte';
 	import { api } from './api';
 
-	let { projectId }: { projectId: string } = $props();
+	let { projectId, rootPath = '' }: { projectId: string; rootPath?: string } = $props();
 	let scopedProjectId = '';
 	let terminalTabs = $state<TerminalTab[]>([]);
 	let activeTerminalTabId = $state('');
@@ -44,6 +45,9 @@
 	let terminalFit: FitAddon | null = null;
 	let terminalResizeObserver: ResizeObserver | null = null;
 	let terminalPollTimer: ReturnType<typeof setTimeout> | null = null;
+	let terminalPollGeneration = 0;
+	let terminalPollController: AbortController | null = null;
+	let terminalCreating = $state(false);
 	let terminalClosing = false;
 	let terminalThemeObserver: MutationObserver | null = null;
 	let terminalThemeMedia: MediaQueryList | null = null;
@@ -104,7 +108,9 @@
 		terminalRenderer.focus();
 	}
 	async function addTerminalTab() {
-		if (!terminalElement) return;
+		if (!terminalElement || terminalCreating || terminalClosing) return;
+		terminalCreating = true;
+		const initialCwd = rootPath;
 		if (!terminalRenderer) mountTerminal();
 		terminalError = '';
 		try {
@@ -119,9 +125,17 @@
 					})
 				}
 			);
+			if (terminalClosing) {
+				await api(`/api/projects/${scopedProjectId}/terminal`, {
+					method: 'POST',
+					body: JSON.stringify({ action: 'close', terminalId: body.terminalId })
+				});
+				return;
+			}
 			const tab: TerminalTab = {
 				id: crypto.randomUUID(),
 				label: `Terminal ${terminalTabs.length + 1}`,
+				initialCwd,
 				terminalId: body.terminalId,
 				cursor: body.cursor,
 				inputSequence: 0,
@@ -134,6 +148,8 @@
 			startTerminalPolling();
 		} catch (cause) {
 			terminalError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			terminalCreating = false;
 		}
 	}
 	function chooseTerminalTab(id: string) {
@@ -149,6 +165,9 @@
 		reportTerminalCount();
 		if (activeTerminalTabId === tab.id) {
 			activeTerminalTabId = terminalTabs[0]?.id ?? '';
+			terminalTabs = terminalTabs.map((item) =>
+				item.id === activeTerminalTabId ? { ...item, cursor: 0 } : item
+			);
 			terminalRenderer?.reset();
 		}
 		void api(`/api/projects/${scopedProjectId}/terminal`, {
@@ -213,9 +232,12 @@
 	}
 	function startTerminalPolling() {
 		if (terminalPollTimer) clearTimeout(terminalPollTimer);
-		if (!terminalClosing) void pollTerminal();
+		terminalPollController?.abort();
+		terminalPollController = new AbortController();
+		const generation = ++terminalPollGeneration;
+		if (!terminalClosing) void pollTerminal(generation);
 	}
-	async function pollTerminal() {
+	async function pollTerminal(generation: number) {
 		const tab = activeTerminalTab();
 		if (!tab) return;
 		try {
@@ -226,9 +248,16 @@
 				reset: boolean;
 				status: 'running' | 'exited';
 			}>(
-				`/api/projects/${scopedProjectId}/terminal?terminalId=${encodeURIComponent(tab.terminalId)}&after=${tab.cursor}`
+				`/api/projects/${scopedProjectId}/terminal?terminalId=${encodeURIComponent(tab.terminalId)}&after=${tab.cursor}`,
+				{ signal: terminalPollController?.signal }
 			);
-			if (activeTerminalTabId !== tab.id) return;
+			if (
+				terminalClosing ||
+				generation !== terminalPollGeneration ||
+				activeTerminalTabId !== tab.id
+			)
+				return;
+			terminalError = '';
 			if (body.reset) terminalRenderer?.reset();
 			if (body.output) terminalRenderer?.write(body.output);
 			terminalTabs = terminalTabs.map((item) =>
@@ -241,10 +270,14 @@
 						}
 					: item
 			);
-			if (!terminalClosing)
+			if (!terminalClosing && body.status === 'running')
 				terminalPollTimer = setTimeout(startTerminalPolling, body.output ? 30 : 120);
 		} catch (cause) {
-			if (activeTerminalTabId === tab.id) {
+			if (
+				!terminalClosing &&
+				generation === terminalPollGeneration &&
+				activeTerminalTabId === tab.id
+			) {
 				terminalError = cause instanceof Error ? cause.message : String(cause);
 				if (!terminalClosing) terminalPollTimer = setTimeout(startTerminalPolling, 1_000);
 			}
@@ -256,6 +289,8 @@
 	function detachTerminal() {
 		if (terminalClosing) return;
 		terminalClosing = true;
+		terminalPollGeneration += 1;
+		terminalPollController?.abort();
 		if (terminalPollTimer) clearTimeout(terminalPollTimer);
 		terminalResizeObserver?.disconnect();
 		terminalThemeObserver?.disconnect();
@@ -306,7 +341,7 @@
 					<button
 						class="flex h-full min-w-0 flex-1 items-center gap-2 pl-2.5"
 						aria-pressed={tab.id === activeTerminalTabId}
-						title={`Open ${tab.label}`}
+						title={`Open ${tab.label}; started in ${tab.initialCwd || 'unknown directory'}`}
 						onclick={() => chooseTerminalTab(tab.id)}
 						><span class="min-w-0 flex-1 overflow-hidden text-left text-ellipsis whitespace-nowrap"
 							>{tab.label}</span
@@ -333,9 +368,18 @@
 			class="size-8"
 			title="New terminal"
 			aria-label="New terminal"
+			disabled={terminalCreating}
 			onclick={addTerminalTab}><Plus width={16} height={16} aria-hidden="true" /></Button
 		>
 	</header>
+	<p
+		class="m-0 truncate px-2 py-1 text-xs text-muted-foreground"
+		title={activeTerminalTab()?.initialCwd || 'Starting directory unknown'}
+	>
+		Started in: {activeTerminalTab()?.initialCwd || 'unknown directory'}
+		{#if rootPath && activeTerminalTab()?.initialCwd !== rootPath}
+			(Project root changed; use New terminal for the current root){/if}
+	</p>
 	<div
 		class="terminal-screen min-h-0 flex-1 bg-[var(--terminal-background)] p-2"
 		bind:this={terminalElement}

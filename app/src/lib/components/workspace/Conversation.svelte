@@ -41,7 +41,7 @@
 	import GeneratedOutputs from './GeneratedOutputs.svelte';
 	import MarkdownControls from './MarkdownControls.svelte';
 	import { permissionDetails } from './permission-consequence';
-	import { activeTurnStatus, skillsUsed } from './thinking-state';
+	import { activeTurnStatus, skillsByTurn } from './thinking-state';
 	import {
 		selectTranscriptTimeline,
 		type WorkspaceActivity,
@@ -137,7 +137,13 @@
 		});
 	const timestampTitle = (value: string) =>
 		new Date(value).toLocaleString([], { dateStyle: 'full', timeStyle: 'long' });
-	let transcriptTimeline = $derived(selectTranscriptTimeline(timeline));
+	let transcriptTimeline = $derived(
+		[
+			...selectTranscriptTimeline(timeline),
+			...timeline.filter((item) => item.kind === 'status' && item.statusType !== 'work-mode')
+		].sort((a, b) => a.sequence - b.sequence)
+	);
+	let turnSkills = $derived(skillsByTurn(timeline));
 	let turnStatus = $derived(activeTurnStatus(timeline, busy));
 	let expandedUserMessages = $state<string[]>([]);
 	let truncatedUserMessages = $state<string[]>([]);
@@ -270,6 +276,7 @@
 			for (const code of node.querySelectorAll<HTMLElement>(
 				'code.language-mermaid:not([data-mermaid-state])'
 			)) {
+				if (code.closest('[data-streaming="true"]')) continue;
 				const source = code.textContent?.trim() ?? '';
 				code.dataset.mermaidState = 'rendering';
 				if (!source || source.length > 50_000) {
@@ -299,7 +306,12 @@
 			}
 		};
 		const observer = new MutationObserver(enhanceMermaid);
-		observer.observe(node, { childList: true, subtree: true });
+		observer.observe(node, {
+			childList: true,
+			subtree: true,
+			attributes: true,
+			attributeFilter: ['data-streaming']
+		});
 		enhanceMermaid();
 		return {
 			destroy: () => {
@@ -349,7 +361,6 @@
 	tabindex="0"
 	bind:this={element}
 	use:follow
-	use:markdownInteractions
 >
 	<div class="transcript-content min-h-full">
 		{#if messageNotice}<span class="copy-notice" role="status">{messageNotice}</span>{/if}
@@ -357,7 +368,7 @@
 			{#if item.kind === 'message'}
 				{@const message = item}
 				{@const messageKey = userMessageKey(message)}
-				{@const messageSkills = skillsUsed(timeline, message.messageId)}
+				{@const messageSkills = turnSkills.get(message.messageId ?? '') ?? []}
 				{@const messageCollapsible =
 					truncatedUserMessages.includes(messageKey) || Boolean(message.images?.length)}
 				<article
@@ -426,7 +437,11 @@
 								{onmedia}
 							/>{/if}
 						{#if message.role === 'assistant'}
-							<div class="message markdown leading-relaxed">
+							<div
+								class="message markdown leading-relaxed"
+								data-streaming={busy && index === transcriptTimeline.length - 1}
+								use:markdownInteractions
+							>
 								{#if message.images?.length}<div
 										class="message-images mb-2 grid grid-cols-2 gap-1.5"
 									>
@@ -543,6 +558,30 @@
 						</div>
 					</div>
 				</article>
+			{:else if item.kind === 'status'}
+				<div
+					role="alert"
+					class="mx-auto mb-4 max-w-[774px] rounded-xl border border-destructive p-3"
+					data-message-id={item.messageId}
+				>
+					<p>{item.label}</p>
+					{#if item.statusType === 'unknown'}<p>
+							Check delivery before resending. Use Retry exact message when available.
+						</p>
+					{:else}{@const user = timeline.find(
+							(candidate) =>
+								candidate.kind === 'message' &&
+								candidate.role === 'user' &&
+								candidate.messageId === item.messageId
+						)}
+						{#if user?.kind === 'message'}<button
+								type="button"
+								class="min-h-11"
+								disabled={busy}
+								onclick={() => onedit(user)}>Edit failed message</button
+							>{/if}
+					{/if}
+				</div>
 			{:else if item.kind === 'permission'}{@const permission = permissionDetails(
 					item.toolCall ?? {}
 				)}

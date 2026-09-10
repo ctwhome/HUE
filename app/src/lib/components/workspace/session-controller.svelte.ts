@@ -10,6 +10,96 @@ import { SessionState } from './session-state.svelte';
 import { TranscriptFollow } from './transcript-follow.svelte';
 import type { Api, Project, Session, SessionLoad } from './types';
 
+export function createSessionHistoryController(options: {
+	api: Api;
+	getSession: () => Session | null;
+	getNavigation: () => WorkspaceNavigation;
+	sessionState: SessionState;
+	startPolling: () => void;
+}) {
+	let loading = $state(false);
+	let error = $state('');
+	let requestSelection = $state<ReturnType<WorkspaceNavigation['captureSessionSelection']>>(null);
+	let attemptedSelection: typeof requestSelection = null;
+	let abort: AbortController | null = null;
+	let operation = 0;
+	const current = () =>
+		!!requestSelection && options.getNavigation().isCurrentSessionSelection(requestSelection);
+	const loadFullHistory = async (): Promise<boolean> => {
+		const navigation = options.getNavigation();
+		const selection = navigation.captureSessionSelection();
+		if (!selection || options.getSession()?.pending || (loading && current())) return false;
+		abort?.abort();
+		abort = new AbortController();
+		const id = ++operation;
+		requestSelection = selection;
+		attemptedSelection = selection;
+		loading = true;
+		error = '';
+		const origin = options.sessionState.captureLoad();
+		try {
+			const body = await options.api<SessionLoad>(
+				navigation.sessionApiPath(selection.sessionId, '?history=full'),
+				{
+					signal: AbortSignal.any([abort.signal, AbortSignal.timeout(60_000)])
+				}
+			);
+			if (id !== operation || !navigation.isCurrentSessionSelection(selection)) return false;
+			options.sessionState.applyLoaded(body, origin);
+			options.sessionState.cache(options.getSession());
+			if (isTurnBusy(options.sessionState.delivery)) options.startPolling();
+			error =
+				body.transcriptError ??
+				(body.history?.complete
+					? ''
+					: 'Older history is not available yet. Try again after the active turn finishes.');
+			return !error;
+		} catch (cause) {
+			if (id === operation && navigation.isCurrentSessionSelection(selection))
+				error = cause instanceof Error ? cause.message : String(cause);
+			return false;
+		} finally {
+			if (id === operation) loading = false;
+		}
+	};
+	return {
+		loadFullHistory,
+		get historyLoading() {
+			return loading && current();
+		},
+		get historyError() {
+			return current() ? error : '';
+		},
+		hydrateEmptyHistory(): Promise<boolean> {
+			if (loading && !current()) {
+				operation++;
+				abort?.abort();
+				loading = false;
+			}
+			const state = options.sessionState;
+			if (isTurnBusy(state.delivery) || state.delivery === 'delivery unknown') {
+				attemptedSelection = null;
+				return Promise.resolve(false);
+			}
+			if (
+				options.getSession()?.harness !== 'opencode' ||
+				!state.history ||
+				state.history.complete ||
+				state.timeline.some((item) => item.kind === 'message') ||
+				(attemptedSelection &&
+					options.getNavigation().isCurrentSessionSelection(attemptedSelection))
+			)
+				return Promise.resolve(false);
+			return loadFullHistory();
+		},
+		dispose() {
+			operation++;
+			abort?.abort();
+			loading = false;
+		}
+	};
+}
+
 export function createSessionController(options: {
 	api: Api;
 	getProject: () => Project | null;
@@ -42,6 +132,14 @@ export function createSessionController(options: {
 	});
 	const runtimeState = new RuntimeState({
 		api: options.api,
+		captureSelection: () => options.getNavigation().captureSessionSelection(),
+		isCurrentSelection: (selection) =>
+			!!selection &&
+			options
+				.getNavigation()
+				.isCurrentSessionSelection(
+					selection as NonNullable<ReturnType<WorkspaceNavigation['captureSessionSelection']>>
+				),
 		getSession: options.getSession,
 		sessionPath: (sessionId) => options.getNavigation().sessionApiPath(sessionId),
 		session: sessionState,
@@ -57,11 +155,28 @@ export function createSessionController(options: {
 		reportError: options.setError
 	});
 	let workModeChanging = $state(false);
+	const historyController = createSessionHistoryController({
+		...options,
+		sessionState,
+		startPolling: messageState.startPolling
+	});
+	$effect(() => {
+		void historyController.hydrateEmptyHistory();
+	});
+	let workModeSelection = $state<ReturnType<WorkspaceNavigation['captureSessionSelection']>>(null);
 
 	async function changeWorkMode(workMode: WorkMode) {
 		const navigation = options.getNavigation();
 		const selected = navigation.selectedSession;
-		if (!selected || workModeChanging) return;
+		const selection = navigation.captureSessionSelection();
+		if (
+			!selected ||
+			(workModeChanging &&
+				workModeSelection &&
+				navigation.isCurrentSessionSelection(workModeSelection))
+		)
+			return;
+		workModeSelection = selection;
 		workModeChanging = true;
 		try {
 			const body = await options.api<{
@@ -72,31 +187,45 @@ export function createSessionController(options: {
 				method: 'PATCH',
 				body: JSON.stringify({ workMode })
 			});
+			if (!selection || !navigation.isCurrentSessionSelection(selection)) return;
 			navigation.replaceSession({ ...selected, ...body.session, workMode: body.workMode });
 			options.rememberSelection({ workMode: body.workMode });
 			messageState.messageNotice = formatWorkModeAnnouncement(body.workMode);
 			if (body.event) sessionState.previewEvents([body.event]);
 		} catch (cause) {
-			options.setError(cause instanceof Error ? cause.message : String(cause));
+			if (selection && navigation.isCurrentSessionSelection(selection))
+				options.setError(cause instanceof Error ? cause.message : String(cause));
 		} finally {
-			workModeChanging = false;
+			if (selection && navigation.isCurrentSessionSelection(selection)) workModeChanging = false;
 		}
 	}
 
 	onDestroy(() => {
+		historyController.dispose();
 		messageState.saveCurrentDraft();
 		messageState.stopPolling();
 		voice.end(false);
 	});
 
 	return {
+		loadFullHistory: historyController.loadFullHistory,
+		get historyLoading() {
+			return historyController.historyLoading;
+		},
+		get historyError() {
+			return historyController.historyError;
+		},
 		sessionState,
 		transcriptFollow,
 		messageState,
 		runtimeState,
 		voice,
 		get workModeChanging() {
-			return workModeChanging;
+			return (
+				workModeChanging &&
+				!!workModeSelection &&
+				options.getNavigation().isCurrentSessionSelection(workModeSelection)
+			);
 		},
 		changeWorkMode,
 		navigationEffects: {
@@ -110,7 +239,6 @@ export function createSessionController(options: {
 			clearSessionState: sessionState.clear,
 			showCachedSession: sessionState.showCached,
 			applyLoadedSession: (body: SessionLoad) => {
-				messageState.clear();
 				sessionState.applyLoaded(body);
 			},
 			focusNotificationTarget: options.focusNotificationTarget,

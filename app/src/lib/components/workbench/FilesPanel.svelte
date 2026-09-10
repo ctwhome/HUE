@@ -69,6 +69,9 @@
 	let loading = $state(false);
 	let busy = $state(false);
 	let error = $state('');
+	let treeError = $state('');
+	let treeGeneration = 0;
+	let treeController: AbortController | undefined;
 	let status = $state('');
 	let selectedPath = $state('');
 	let focusedPath = $state('');
@@ -84,6 +87,9 @@
 	let movedDeleted = $state(false);
 	let view = $state<'files' | 'artifacts'>('files');
 	let artifacts = $state<Artifact[]>([]);
+	let artifactsLoading = $state(false);
+	let artifactsError = $state('');
+	let artifactsGeneration = 0;
 	let actionOpen = $state(false),
 		deleteOpen = $state(false);
 	let action = $state<'file' | 'folder' | 'move'>('file');
@@ -95,6 +101,8 @@
 	let hiddenFilePatterns = $state(defaultPreferences.hiddenFilePatterns);
 	const expandedStorageKey = () => `hue:project-files:${projectId}:expanded`;
 	const previewRequests = createPreviewRequests();
+	let selectionGeneration = 0;
+	const versionRequests = createPreviewRequests();
 	const treeItems = new Map<string, HTMLButtonElement>();
 	let dirty = $derived(Boolean(preview?.content !== null && editor !== loadedContent));
 	let contentUrl = $derived(previewContentUrl(projectId, preview?.path));
@@ -112,7 +120,11 @@
 	}
 	const dirtySource = untrack(() => dirtyGuard.register(discardChanges));
 	function clearPreviewSelection() {
+		selectionGeneration += 1;
 		previewRequests.cancel();
+		versionRequests.cancel();
+		busy = false;
+		error = status = '';
 		preview = null;
 		diffData = null;
 		diffTruncated = false;
@@ -133,32 +145,47 @@
 		treeItems.get(path)?.focus();
 	}
 	async function loadTree() {
+		const generation = ++treeGeneration;
+		treeController?.abort();
+		treeController = new AbortController();
+		const signal = treeController.signal;
 		loading = true;
-		error = '';
+		treeError = '';
 		try {
 			const body = query.trim()
 				? await api<{ results: Entry[]; truncated: boolean }>(
-						`/api/projects/${projectId}/files?mode=search&query=${encodeURIComponent(query)}`
+						`/api/projects/${projectId}/files?mode=search&query=${encodeURIComponent(query)}`,
+						{ signal }
 					)
 				: await api<{ entries: Entry[]; truncated: boolean }>(
-						`/api/projects/${projectId}/files?mode=tree`
+						`/api/projects/${projectId}/files?mode=tree`,
+						{ signal }
 					);
+			if (generation !== treeGeneration) return;
 			entries = 'entries' in body ? body.entries : body.results;
 			truncated = body.truncated;
 			focusedPath = restoreTreeFocus(visibleEntries, expanded, focusedPath || selectedPath);
-			if (selectedPath) await checkSelected();
+			if (selectedPath) void checkSelected();
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : String(cause);
+			if (generation === treeGeneration)
+				treeError = cause instanceof Error ? cause.message : String(cause);
 		} finally {
-			loading = false;
+			if (generation === treeGeneration) loading = false;
 		}
 	}
 	async function checkSelected() {
-		const request = previewRequests.begin(projectId, selectedPath);
+		if (!preview || busy) return;
+		const target = preview;
+		const request = versionRequests.begin(projectId, selectedPath);
 		try {
 			const current = await request.result;
 			if (!current) return;
-			if (!previewRequests.isCurrent(request, selectedPath) || current.path !== request.path)
+			if (
+				!versionRequests.isCurrent(request, selectedPath) ||
+				preview !== target ||
+				busy ||
+				current.path !== request.path
+			)
 				return;
 			movedDeleted = false;
 			if (preview && !sameFileVersion(current.version, preview.version)) {
@@ -166,7 +193,8 @@
 				if (!dirty) applyPreview(current);
 			}
 		} catch {
-			if (previewRequests.isCurrent(request, selectedPath)) movedDeleted = true;
+			if (versionRequests.isCurrent(request, selectedPath) && preview === target && !busy)
+				movedDeleted = true;
 		}
 	}
 	function requestSelect(request: FileOpenRequest) {
@@ -177,6 +205,8 @@
 		guarded(clearPreviewSelection);
 	}
 	async function selectFile(selection: FileOpenRequest) {
+		selectionGeneration += 1;
+		versionRequests.cancel();
 		const request = previewRequests.begin(
 			projectId,
 			selection.path,
@@ -191,6 +221,8 @@
 		diffScope = selection.diff?.scope ?? null;
 		diffLoading = Boolean(selection.diff);
 		movedDeleted = externalChange = false;
+		editor = loadedContent = '';
+		status = '';
 		const diffRequest = selection.diff
 			? api<RepositoryDiffResponse>(repositoryDiffUrl(projectId, selection.diff), {
 					signal: request.controller.signal
@@ -254,24 +286,38 @@
 	}
 	function scheduleSearch() {
 		clearTimeout(searchTimer);
+		treeGeneration += 1;
+		treeController?.abort();
+		loading = true;
 		searchTimer = setTimeout(loadTree, 180);
 	}
 	async function saveFile() {
 		const target = preview;
 		if (!canSavePreview(target, selectedPath, dirty, busy)) return;
+		const submitted = editor;
+		const generation = selectionGeneration;
 		busy = true;
 		error = status = '';
 		try {
-			const saved = await savePreview(projectId, target, editor);
-			if (!isCurrentSave(saved, target, selectedPath, preview)) return;
-			applyPreview(saved);
-			status = 'File saved';
+			const saved = await savePreview(projectId, target, submitted);
+			if (
+				generation !== selectionGeneration ||
+				!isCurrentSave(saved, target, selectedPath, preview)
+			)
+				return;
+			preview = saved;
+			loadedContent = saved.content ?? submitted;
+			if (editor === submitted) editor = loadedContent;
+			externalChange = false;
+			status = editor === loadedContent ? 'File saved' : 'Saved; newer edits remain unsaved';
 			await loadTree();
 		} catch (cause) {
+			if (generation !== selectionGeneration || selectedPath !== target.path || preview !== target)
+				return;
 			error = cause instanceof Error ? cause.message : String(cause);
 			if (error.includes('File changed outside HUE')) externalChange = true;
 		} finally {
-			busy = false;
+			if (generation === selectionGeneration) busy = false;
 		}
 	}
 	function openAction(kind: 'file' | 'folder' | 'move') {
@@ -369,12 +415,19 @@
 	}
 	async function loadArtifacts() {
 		view = 'artifacts';
+		const generation = ++artifactsGeneration;
+		artifactsLoading = true;
+		artifactsError = '';
 		try {
-			artifacts = (
+			const result = (
 				await api<{ artifacts: Artifact[] }>(`/api/projects/${projectId}/files?mode=artifacts`)
 			).artifacts;
+			if (generation === artifactsGeneration) artifacts = result;
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : String(cause);
+			if (generation === artifactsGeneration)
+				artifactsError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			if (generation === artifactsGeneration) artifactsLoading = false;
 		}
 	}
 	$effect(() => dirtySource.setDirty(dirty));
@@ -396,7 +449,12 @@
 			window.removeEventListener('hue:preferences', updatePreferences);
 			dirtySource.unregister();
 			clearTimeout(searchTimer);
+			selectionGeneration += 1;
 			previewRequests.cancel();
+			versionRequests.cancel();
+			treeGeneration += 1;
+			treeController?.abort();
+			artifactsGeneration += 1;
 		};
 	});
 </script>
@@ -487,7 +545,7 @@
 					size="icon"
 					aria-label="Refresh files"
 					title="Refresh files"
-					onclick={() => guarded(() => void loadTree())}
+					onclick={() => (view === 'artifacts' ? void loadArtifacts() : void loadTree())}
 					><RefreshCw width={16} height={16} aria-hidden="true" /></Button
 				>
 				<Button
@@ -536,6 +594,10 @@
 				>{/if}
 		</header>
 		{#if view === 'files'}
+			{#if treeError}<p class="p-2 text-xs text-destructive" role="alert">{treeError}</p>{/if}
+			{#if error && !selectedPath}<p class="p-2 text-xs text-destructive" role="alert">
+					{error}
+				</p>{/if}
 			<div class="min-h-0 flex-1 overflow-auto p-1" role="tree" aria-label="Project file tree">
 				{#if loading}<p class="p-2 text-xs text-muted-foreground" role="status">
 						Indexing files…
@@ -578,6 +640,18 @@
 					</p>{/if}
 			</div>
 		{:else}
+			{#if artifactsLoading}<p class="p-2 text-xs text-muted-foreground" role="status">
+					Refreshing artifacts; previous results may be stale.
+				</p>{/if}
+			{#if artifactsError}<p class="p-2 text-xs text-destructive" role="alert">
+					Artifacts unavailable: {artifactsError}. Previous results may be stale.
+				</p>{/if}
+			{#if !artifactsLoading && !artifactsError && !artifacts.length}<p
+					class="p-2 text-xs text-muted-foreground"
+					role="status"
+				>
+					No artifacts or evidence found.
+				</p>{/if}
 			<ul class="min-h-0 flex-1 list-none overflow-auto p-2">
 				{#each artifacts as artifact}<li>
 						<button

@@ -5,6 +5,7 @@ __pycache__/
 prototype/screenshots/
 node_modules/
 .hutch/
+.cottontail-tmp/
 dist/
 .astro/
 *.tsbuildinfo

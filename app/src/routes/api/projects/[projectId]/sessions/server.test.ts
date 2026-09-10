@@ -16,6 +16,8 @@ const listRoots: string[] = [];
 const createdRoots: string[] = [];
 const createdHarnesses: string[] = [];
 let authoritativeCalls = 0;
+const harnessCalls: string[] = [];
+let heldHermes: Promise<unknown[]> | null = null;
 const stored: Array<{
 	projectId: string;
 	sessionId: string;
@@ -79,6 +81,8 @@ mock.module('$lib/server/route-services', () => ({
 		},
 		sessionRuntime: {
 			listSessions: async (root: string, harness = 'hermes') => {
+				harnessCalls.push(harness);
+				if (harness === 'hermes' && heldHermes) return heldHermes;
 				if (harness === 'opencode') return [];
 				listRoots.push(root);
 				return root === '/work/app'
@@ -142,6 +146,69 @@ test('returns cached Session titles without listing Hermes Sessions', async () =
 	]);
 	expect(listRoots).toEqual([]);
 	expect(authoritativeCalls).toBe(0);
+});
+
+test('subsequent pages do not repeat harness discovery', async () => {
+	const { GET } = await import('./+server');
+	const response = await GET({
+		params: { projectId: 'p_1' },
+		url: new URL('http://localhost/sessions?offset=100')
+	} as never);
+	expect(response.status).toBe(200);
+	expect(listRoots).toEqual([]);
+	expect(authoritativeCalls).toBe(0);
+	expect(await response.json()).toMatchObject({ reconciliation: 'cached' });
+});
+
+test('cached alias requests resolve canonical ownership before listing', async () => {
+	const { GET } = await import('./+server');
+	const response = await GET({
+		params: { projectId: 'project-slug' },
+		url: new URL('http://localhost/sessions?cached=true')
+	} as never);
+	expect(response.status).toBe(200);
+	expect(authoritativeCalls).toBe(1);
+	expect(listRoots).toEqual([]);
+	expect((await response.json()).projectId).toBe('p_1');
+});
+
+test('returns a canonical scope for local continuation pages after alias reconciliation', async () => {
+	const { GET } = await import('./+server');
+	const first = await GET({
+		params: { projectId: 'project-slug' },
+		url: new URL('http://localhost/sessions')
+	} as never);
+	const body = await first.json();
+	expect(body.projectId).toBe('p_1');
+	listRoots.length = 0;
+	const next = await GET({
+		params: { projectId: body.projectId },
+		url: new URL('http://localhost/sessions?offset=100')
+	} as never);
+	expect(next.status).toBe(200);
+	expect(authoritativeCalls).toBe(1);
+	expect(listRoots).toEqual([]);
+});
+
+test('starts optional Project harness discovery while Hermes enumeration is pending', async () => {
+	const { GET } = await import('./+server');
+	let release!: (value: unknown[]) => void;
+	heldHermes = new Promise((resolve) => {
+		release = resolve;
+	});
+	harnessCalls.length = 0;
+	const pending = GET({
+		params: { projectId: 'p_1' },
+		url: new URL('http://localhost/sessions')
+	} as never);
+	await Bun.sleep(1);
+	try {
+		expect(harnessCalls).toContain('opencode');
+	} finally {
+		heldHermes = null;
+		release([]);
+		await pending;
+	}
 });
 
 test('creates new Hermes Session in primary folder', async () => {

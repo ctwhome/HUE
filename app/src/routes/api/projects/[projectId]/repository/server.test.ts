@@ -14,11 +14,20 @@ import {
 
 const temporaryDirectories: string[] = [];
 
+test('nearby repository status reads reuse discovery but still validate canonical selection', async () => {
+	const root = mkdtempSync(join(tmpdir(), 'hue-repository-discovery-cache-'));
+	temporaryDirectories.push(root);
+	Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: root });
+	const first = await _projectFolderRepositories(root);
+	const second = await _projectFolderRepositories(root);
+	expect(second).toBe(first);
+});
+
 afterEach(() => {
 	for (const path of temporaryDirectories.splice(0)) rmSync(path, { recursive: true, force: true });
 });
 
-test('restricts repository discovery to the primary Project folder', () => {
+test('restricts repository discovery to the primary Project folder', async () => {
 	const parent = mkdtempSync(join(tmpdir(), 'hue-project-repository-folders-'));
 	temporaryDirectories.push(parent);
 	const primary = join(parent, 'workspace');
@@ -32,15 +41,15 @@ test('restricts repository discovery to the primary Project folder', () => {
 	writeFileSync(join(app, 'app.txt'), 'app\n');
 	writeFileSync(join(docs, 'docs.txt'), 'docs\n');
 
-	const repositories = _projectFolderRepositories(primary);
+	const repositories = await _projectFolderRepositories(primary);
 	expect(repositories).toEqual([{ path: 'apps/web', label: 'web' }]);
-	expect(() => resolveProjectRepository(primary, '../documentation/site', repositories)).toThrow(
-		'Repository is not part of this project'
-	);
-	expect(resolveProjectRepository(primary, 'apps/web', repositories)).toBe(realpathSync(app));
+	await expect(
+		resolveProjectRepository(primary, '../documentation/site', repositories)
+	).rejects.toThrow('Repository is not part of this project');
+	expect(await resolveProjectRepository(primary, 'apps/web', repositories)).toBe(realpathSync(app));
 });
 
-test('repository discovery skips generated trees and obeys explicit traversal bounds', () => {
+test('repository discovery skips generated trees and obeys explicit traversal bounds', async () => {
 	const root = mkdtempSync(join(tmpdir(), 'hue-project-repository-bounds-'));
 	temporaryDirectories.push(root);
 	const shallow = join(root, 'packages', 'app');
@@ -51,17 +60,17 @@ test('repository discovery skips generated trees and obeys explicit traversal bo
 		Bun.spawnSync(['git', 'init', '-b', 'main'], { cwd: path });
 	}
 
-	expect(projectRepositories(root, { maxDepth: 2, maxDirectories: 20 })).toEqual([
+	expect(await projectRepositories(root, { maxDepth: 2, maxDirectories: 20 })).toEqual([
 		{ path: 'packages/app' }
 	]);
-	expect(projectRepositories(root, { maxDepth: 10, maxDirectories: 1 })).toEqual([]);
+	expect(await projectRepositories(root, { maxDepth: 10, maxDirectories: 1 })).toEqual([]);
 });
 
-test('repository reads replace a stale selection with the first discovered repository', () => {
+test('repository reads replace a stale selection with the first discovered repository', async () => {
 	expect(_selectedRepositoryPath([{ path: 'app' }, { path: 'docs' }], '.')).toBe('app');
 });
 
-test('diff reads reject an invalid selected repository and parse bounded options', () => {
+test('diff reads reject an invalid selected repository and parse bounded options', async () => {
 	expect(() => _selectedRepositoryPath([{ path: 'app' }], '../outside', true)).toThrow(
 		'Repository is not part of this project'
 	);
@@ -75,7 +84,7 @@ test('diff reads reject an invalid selected repository and parse bounded options
 	);
 });
 
-test('repository mutations require a loopback same-origin request', () => {
+test('repository mutations require a loopback same-origin request', async () => {
 	const localUrl = new URL('http://127.0.0.1/api/projects/project-1/repository');
 	const local = new Request(localUrl, {
 		method: 'POST',
@@ -102,7 +111,7 @@ test('repository mutations require a loopback same-origin request', () => {
 	).toBe(false);
 });
 
-test('commit generation requires and combines the selected ACP model', () => {
+test('commit generation requires and combines the selected ACP model', async () => {
 	expect(_commitModelSelection('openai', 'gpt-5')).toBe('openai:gpt-5');
 	expect(() => _commitModelSelection('openai')).toThrow('Commit model is required');
 	expect(_commitReasoningSelection('none')).toBe('none');

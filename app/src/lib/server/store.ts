@@ -14,6 +14,7 @@ import type { Database as BunDatabase } from 'bun:sqlite';
 import { validateIcon } from '$lib/icon';
 import { DEFAULT_BUNDLE, parseBundleReference } from '$lib/bundle';
 import type { ImageAttachment, InputAttachment, ReviewContext } from '$lib/message-content';
+import { attachmentLimits } from '$lib/message-content';
 import { validateProjectColor } from '$lib/project-color';
 import type { SessionHarness } from '$lib/session-harness';
 import { DEFAULT_WORK_MODE, parseWorkMode, type WorkMode } from '$lib/work-mode';
@@ -1849,14 +1850,17 @@ export class HUEStore {
 		const rows = this.database
 			.query(
 				`WITH input(needle, status_filter) AS (VALUES (?, ?)),
-				message_order AS (
-					SELECT m.session_id, m.id, m.status, m.created_at, MAX(e.sequence) AS lifecycle_sequence
+				lifecycle AS (
+					SELECT project_id, session_id, CAST(json_extract(payload, '$.messageId') AS TEXT) AS message_id, MAX(sequence) AS lifecycle_sequence
+					FROM session_events
+					WHERE type IN ('message.accepted', 'message.running', 'message.completed', 'message.failed', 'message.unknown', 'message.cancelled')
+					GROUP BY project_id, session_id, json_extract(payload, '$.messageId')
+				), message_order AS (
+					SELECT m.session_id, m.id, m.status, m.created_at, e.lifecycle_sequence
 					FROM messages m
-					LEFT JOIN session_events e
+					LEFT JOIN lifecycle e
 						ON e.project_id IS m.project_id AND e.session_id = m.session_id
-						AND json_extract(e.payload, '$.messageId') = m.id
-						AND e.type IN ('message.accepted', 'message.running', 'message.completed', 'message.failed', 'message.unknown', 'message.cancelled')
-					GROUP BY m.id
+						AND e.message_id = m.id
 				), latest_message AS (
 					SELECT session_id, id, status,
 						ROW_NUMBER() OVER (
@@ -2364,13 +2368,17 @@ export class HUEStore {
 	}
 
 	listWorkflows(projectId: string, includeArchived = false): Workflow[] {
+		return this.readWorkflows(projectId, includeArchived);
+	}
+
+	private readWorkflows(projectId: string, includeArchived: boolean, id?: string): Workflow[] {
 		const rows = this.database
 			.query(
 				`SELECT id, project_id, name, prompt, folder, favorite, profile, bundle, archived, created_at, updated_at
-				 FROM workflows WHERE project_id = ? ${includeArchived ? '' : 'AND archived = 0'}
+				 FROM workflows WHERE project_id = ? ${includeArchived ? '' : 'AND archived = 0'} ${id === undefined ? '' : 'AND id = ?'}
 				 ORDER BY archived, updated_at DESC, id`
 			)
-			.all(projectId) as Array<{
+			.all(...(id === undefined ? [projectId] : [projectId, id])) as Array<{
 			id: string;
 			project_id: string;
 			name: string;
@@ -2408,7 +2416,7 @@ export class HUEStore {
 		if (patch.bundle !== undefined && !parseBundleReference(patch.bundle)) {
 			throw new Error('Invalid bundle reference');
 		}
-		const current = this.listWorkflows(projectId, true).find((workflow) => workflow.id === id);
+		const current = this.readWorkflows(projectId, true, id)[0];
 		if (!current) return null;
 		const updated = {
 			...current,
@@ -2866,6 +2874,16 @@ export class HUEStore {
 		).map(({ id }) => this.getSchedule(id)!);
 	}
 
+	getNextScheduleRunAt(excludeIds: string[] = []): string | null {
+		const row = this.database
+			.query(
+				`SELECT next_run_at FROM schedules WHERE enabled = 1
+				 AND id NOT IN (SELECT value FROM json_each(?)) ORDER BY next_run_at LIMIT 1`
+			)
+			.get(JSON.stringify(excludeIds)) as { next_run_at: string } | null;
+		return row?.next_run_at ?? null;
+	}
+
 	listDueSchedules(now: string): Schedule[] {
 		return (
 			this.database
@@ -3032,12 +3050,23 @@ export class HUEStore {
 		return row ? this.mapMessage(row) : null;
 	}
 
-	listMessages(projectId: string | null, sessionId: string): StoredMessage[] {
+	listMessages(projectId: string | null, sessionId: string, recentLimit?: number): StoredMessage[] {
 		const rows = this.database
 			.query(
-				'SELECT id, project_id, session_id, text, review_contexts, status, created_at, updated_at FROM messages WHERE project_id IS ? AND session_id = ? ORDER BY created_at, id'
+				`SELECT id, project_id, session_id, text, review_contexts, status, created_at, updated_at FROM messages WHERE project_id IS ? AND session_id = ?
+				${
+					recentLimit === undefined
+						? ''
+						: `AND (status IN ('queued', 'running', 'unknown') OR id IN (
+					SELECT id FROM messages WHERE project_id IS ? AND session_id = ? ORDER BY created_at DESC, id DESC LIMIT ?
+				))`
+				} ORDER BY created_at, id`
 			)
-			.all(projectId, sessionId) as Array<{
+			.all(
+				projectId,
+				sessionId,
+				...(recentLimit === undefined ? [] : [projectId, sessionId, recentLimit])
+			) as Array<{
 			id: string;
 			project_id: string | null;
 			session_id: string;
@@ -3047,7 +3076,22 @@ export class HUEStore {
 			created_at: string;
 			updated_at: string;
 		}>;
-		return rows.map((row) => this.mapMessage(row));
+		const attachments = this.database
+			.query(
+				`SELECT message_id, name, mime_type, data, size, file_path FROM message_attachments
+			 WHERE message_id IN (SELECT value FROM json_each(?))
+			 ORDER BY message_id, position`
+			)
+			.all(JSON.stringify(rows.map(({ id }) => id))) as Array<
+			StoredAttachmentRow & { message_id: string }
+		>;
+		const byMessage = new Map<string, StoredAttachmentRow[]>();
+		for (const attachment of attachments) {
+			const entries = byMessage.get(attachment.message_id) ?? [];
+			entries.push(attachment);
+			byMessage.set(attachment.message_id, entries);
+		}
+		return rows.map((row) => this.mapMessage(row, byMessage.get(row.id) ?? []));
 	}
 
 	updateQueuedMessage(
@@ -3056,8 +3100,9 @@ export class HUEStore {
 			projectId: string | null;
 			sessionId: string;
 			text: string;
-			images: ImageAttachment[];
+			images?: ImageAttachment[];
 			attachments?: InputAttachment[];
+			preserveAttachments?: boolean;
 			reviewContexts?: ReviewContext[];
 		}
 	): StoredMessage {
@@ -3071,7 +3116,29 @@ export class HUEStore {
 		}
 		if (message.status !== 'queued') throw new Error(`Message ${id} is no longer queued`);
 		const updatedAt = new Date().toISOString();
-		const replacesAttachments = input.attachments !== undefined || input.images.length > 0;
+		const nextImages = input.images ?? message.images;
+		const nextAttachments =
+			input.preserveAttachments || input.attachments === undefined
+				? [
+						...message.attachments.map(({ name, mimeType, size }) => ({ name, mimeType, size, data: '' })),
+						...(input.attachments ?? [])
+					]
+				: input.attachments;
+		const replacesAttachments = input.attachments !== undefined || input.images !== undefined;
+		if (
+			nextImages.reduce((sum, { data }) => sum + Buffer.from(data, 'base64').byteLength, 0) +
+				nextAttachments.reduce((sum, { size }) => sum + size, 0) > attachmentLimits.maxTotalBytes
+		) {
+			throw new Error('Attachments must total 40 MB or smaller');
+		}
+		if (
+			!input.text.trim() &&
+			!(input.reviewContexts ?? message.reviewContexts).length &&
+			!nextImages.length &&
+			!nextAttachments.length
+		) {
+			throw new Error('Message content is required');
+		}
 		const oldFilePaths = replacesAttachments
 			? (
 					this.database
@@ -3084,7 +3151,7 @@ export class HUEStore {
 		const createdAttachmentPaths: string[] = [];
 		try {
 			const attachments = replacesAttachments
-				? normalizeStoredAttachments(input.images, input.attachments ?? []).map((attachment) => ({
+				? normalizeStoredAttachments(nextImages, nextAttachments).map((attachment) => ({
 						...attachment,
 						filePath:
 							attachment.data && attachment.mimeType.startsWith('image/')
@@ -3131,18 +3198,21 @@ export class HUEStore {
 		return this.getMessage(id)!;
 	}
 
-	getBusySessionStarts(projectId: string | null): Record<string, string> {
+	getBusySessionStarts(projectId: string | null, sessionIds?: string[]): Record<string, string> {
 		const rows = this.database
 			.query(
-				"SELECT session_id, MIN(created_at) AS started_at FROM messages WHERE project_id IS ? AND status IN ('queued', 'running') GROUP BY session_id"
+				`SELECT session_id, MIN(created_at) AS started_at FROM messages WHERE project_id IS ? AND status IN ('queued', 'running') ${sessionIds === undefined ? '' : 'AND session_id IN (SELECT value FROM json_each(?))'} GROUP BY session_id`
 			)
-			.all(projectId) as Array<{ session_id: string; started_at: string }>;
+			.all(
+				...(sessionIds === undefined ? [projectId] : [projectId, JSON.stringify(sessionIds)])
+			) as Array<{ session_id: string; started_at: string }>;
 		return Object.fromEntries(rows.map((row) => [row.session_id, row.started_at]));
 	}
 
 	getSessionIndicators(
 		projectId: string | null,
-		scope: 'all' | 'scheduled' | 'unscheduled' = 'all'
+		scope: 'all' | 'scheduled' | 'unscheduled' = 'all',
+		sessionIds?: string[]
 	): Record<
 		string,
 		{
@@ -3168,15 +3238,19 @@ export class HUEStore {
 		const rows = this.database
 			.query(
 				`
-			WITH message_order AS (
-				SELECT m.session_id, m.id, m.status, m.created_at, MAX(e.sequence) AS lifecycle_sequence
+			WITH selected_sessions AS (
+				SELECT ps.session_id FROM project_sessions ps WHERE ps.project_id IS ? ${scheduleFilter}
+				${sessionIds === undefined ? '' : 'AND ps.session_id IN (SELECT value FROM json_each(?))'}
+			), lifecycle AS (
+				SELECT session_id, CAST(json_extract(payload, '$.messageId') AS TEXT) AS message_id, MAX(sequence) AS lifecycle_sequence
+				FROM session_events WHERE project_id IS ? AND session_id IN selected_sessions
+				AND type IN ('message.accepted', 'message.running', 'message.completed', 'message.failed', 'message.unknown', 'message.cancelled')
+				GROUP BY session_id, json_extract(payload, '$.messageId')
+			), message_order AS (
+				SELECT m.session_id, m.id, m.status, m.created_at, e.lifecycle_sequence
 				FROM messages m
-				LEFT JOIN session_events e
-					ON e.project_id IS m.project_id AND e.session_id = m.session_id
-					AND json_extract(e.payload, '$.messageId') = m.id
-					AND e.type IN ('message.accepted', 'message.running', 'message.completed', 'message.failed', 'message.unknown', 'message.cancelled')
-				WHERE m.project_id IS ?
-				GROUP BY m.id
+				LEFT JOIN lifecycle e ON e.session_id = m.session_id AND e.message_id = m.id
+				WHERE m.project_id IS ? AND m.session_id IN selected_sessions
 			), latest_message AS (
 				SELECT session_id, id, status,
 					ROW_NUMBER() OVER (
@@ -3190,12 +3264,12 @@ export class HUEStore {
 						PARTITION BY session_id, type, json_extract(payload, '$.id') ORDER BY sequence DESC
 					) AS rank
 				FROM session_events
-				WHERE project_id IS ? AND type IN ('agent.permission', 'agent.clarify')
+				WHERE project_id IS ? AND session_id IN selected_sessions AND type IN ('agent.permission', 'agent.clarify')
 			), latest_terminal AS (
 				SELECT session_id, type, json_extract(payload, '$.messageId') AS message_id,
 					ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY sequence DESC) AS rank
 				FROM session_events
-				WHERE project_id IS ? AND type IN ('message.completed', 'message.failed', 'message.unknown', 'message.cancelled')
+				WHERE project_id IS ? AND session_id IN selected_sessions AND type IN ('message.completed', 'message.failed', 'message.unknown', 'message.cancelled')
 			)
 			SELECT ps.session_id,
 				MAX(CASE WHEN lm.status IN ('failed', 'unknown') AND COALESCE(lt.type, '') != 'message.cancelled' THEN 1 ELSE 0 END) AS error,
@@ -3220,11 +3294,19 @@ export class HUEStore {
 				ON li.session_id = ps.session_id AND li.message_id = lm.id AND li.rank = 1
 			LEFT JOIN latest_terminal lt
 				ON lt.session_id = ps.session_id AND lt.message_id = lm.id AND lt.rank = 1
-			WHERE ps.project_id IS ? ${scheduleFilter}
+			WHERE ps.project_id IS ? AND ps.session_id IN selected_sessions
 			GROUP BY ps.session_id
 		`
 			)
-			.all(projectId, projectId, projectId, projectId) as Array<{
+			.all(
+				projectId,
+				...(sessionIds === undefined ? [] : [JSON.stringify(sessionIds)]),
+				projectId,
+				projectId,
+				projectId,
+				projectId,
+				projectId
+			) as Array<{
 			session_id: string;
 			error: number;
 			pending: number;
@@ -3267,37 +3349,43 @@ export class HUEStore {
 		};
 	}
 
-	private mapMessage(row: {
-		id: string;
-		project_id: string | null;
-		session_id: string;
-		text: string;
-		review_contexts: string;
-		status: MessageStatus;
-		created_at: string;
-		updated_at: string;
-	}): StoredMessage {
-		const attachments = this.database
-			.query(
-				'SELECT name, mime_type, data, size, file_path FROM message_attachments WHERE message_id = ? ORDER BY position'
-			)
-			.all(row.id)
-			.map((attachment) => {
-				const value = attachment as {
-					name: string;
-					mime_type: string;
-					data: string;
-					size: number | null;
-					file_path: string | null;
-				};
-				const data = value.file_path ? this.readAttachment(value.file_path) : value.data;
-				return {
-					name: value.name,
-					mimeType: value.mime_type,
-					data,
-					size: value.size ?? Buffer.from(data, 'base64').byteLength
-				};
-			});
+	getProjectIndicatorCounts(): Record<
+		string,
+		{ running: number; attention: number; unread: number }
+	> {
+		const projects = this.database.query('SELECT id FROM projects').all() as Array<{ id: string }>;
+		return Object.fromEntries(projects.map(({ id }) => [id, this.getSessionIndicatorCounts(id)]));
+	}
+
+	private mapMessage(
+		row: {
+			id: string;
+			project_id: string | null;
+			session_id: string;
+			text: string;
+			review_contexts: string;
+			status: MessageStatus;
+			created_at: string;
+			updated_at: string;
+		},
+		attachmentRows?: StoredAttachmentRow[]
+	): StoredMessage {
+		const attachments = (
+			attachmentRows ??
+			(this.database
+				.query(
+					'SELECT name, mime_type, data, size, file_path FROM message_attachments WHERE message_id = ? ORDER BY position'
+				)
+				.all(row.id) as StoredAttachmentRow[])
+		).map((value) => {
+			const data = value.file_path ? this.readAttachment(value.file_path) : value.data;
+			return {
+				name: value.name,
+				mimeType: value.mime_type,
+				data,
+				size: value.size ?? Buffer.from(data, 'base64').byteLength
+			};
+		});
 		return {
 			id: row.id,
 			projectId: row.project_id,
@@ -3414,12 +3502,23 @@ export class HUEStore {
 		};
 	}
 
-	listEvents(projectId: string | null, sessionId: string, after = 0): SessionEvent[] {
+	listEvents(
+		projectId: string | null,
+		sessionId: string,
+		after = 0,
+		messageIds?: string[]
+	): SessionEvent[] {
 		const rows = this.database
 			.query(
-				'SELECT sequence, project_id, session_id, type, payload, created_at FROM session_events WHERE project_id IS ? AND session_id = ? AND sequence > ? ORDER BY sequence'
+				`SELECT sequence, project_id, session_id, type, payload, created_at FROM session_events WHERE project_id IS ? AND session_id = ? AND sequence > ?
+				${messageIds === undefined ? '' : "AND (json_extract(payload, '$.messageId') IS NULL OR json_extract(payload, '$.messageId') IN (SELECT value FROM json_each(?)))"} ORDER BY sequence`
 			)
-			.all(projectId, sessionId, after) as Array<{
+			.all(
+				projectId,
+				sessionId,
+				after,
+				...(messageIds === undefined ? [] : [JSON.stringify(messageIds)])
+			) as Array<{
 			sequence: number;
 			project_id: string | null;
 			session_id: string;
@@ -3439,7 +3538,8 @@ export class HUEStore {
 
 	getSessionSnapshot(
 		projectId: string | null,
-		sessionId: string
+		sessionId: string,
+		recentLimit?: number
 	): {
 		messages: StoredMessage[];
 		events: SessionEvent[];
@@ -3453,8 +3553,23 @@ export class HUEStore {
 			error: string | null;
 		} | null;
 	} {
-		const messages = this.listMessages(projectId, sessionId);
-		const events = this.listEvents(projectId, sessionId);
+		const messages = this.listMessages(projectId, sessionId, recentLimit);
+		const events = this.listEvents(
+			projectId,
+			sessionId,
+			0,
+			recentLimit === undefined ? undefined : messages.map(({ id }) => id)
+		);
+		const cursor =
+			recentLimit === undefined
+				? (events.at(-1)?.sequence ?? 0)
+				: (
+						this.database
+							.query(
+								'SELECT COALESCE(MAX(sequence), 0) AS cursor FROM session_events WHERE project_id IS ? AND session_id = ?'
+							)
+							.get(projectId, sessionId) as { cursor: number }
+					).cursor;
 		const activeMessageRecord =
 			messages.find(({ status }) => status === 'running' || status === 'unknown') ??
 			messages.find(({ status }) => status === 'queued');
@@ -3493,7 +3608,7 @@ export class HUEStore {
 		return {
 			messages,
 			events: compactInitialEvents(events),
-			cursor: events.at(-1)?.sequence ?? 0,
+			cursor,
 			activeTurn
 		};
 	}
@@ -3562,6 +3677,14 @@ export class HUEStore {
 		}
 	}
 }
+
+type StoredAttachmentRow = {
+	name: string;
+	mime_type: string;
+	data: string;
+	size: number | null;
+	file_path: string | null;
+};
 
 function attachmentPath(directory: string, filePath: string): string | null {
 	return validAttachmentFilePath(filePath) ? join(directory, filePath) : null;

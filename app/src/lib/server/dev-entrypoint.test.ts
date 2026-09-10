@@ -2,23 +2,28 @@ import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-test('make dev explicitly loads app env when present', () => {
-	const makefile = readFileSync(resolve(import.meta.dir, '../../../../Makefile'), 'utf8');
+const root = resolve(import.meta.dir, '../../../../');
+const makefile = readFileSync(resolve(root, 'Makefile'), 'utf8');
+const devStack = readFileSync(resolve(root, 'scripts/dev-stack.sh'), 'utf8');
 
-	expect(makefile).toContain('bun --env-file=.env --bun vite dev');
+test('make dev explicitly loads app env when present', () => {
+	expect(devStack).toContain('bun --env-file=.env --bun vite dev');
 });
 
 test('make dev hands the canonical database between production and development', () => {
-	const makefile = readFileSync(resolve(import.meta.dir, '../../../../Makefile'), 'utf8');
-
 	expect(makefile).not.toContain('hue-dev.db');
-	expect(makefile).toContain('launchctl bootout');
 	expect(makefile).toContain('HUE_DATABASE_PATH="$(HUE_DATABASE_PATH)"');
-	expect(makefile).toContain("trap 'launchctl bootstrap");
+	expect(devStack).toContain('launchctl bootout');
+	expect(devStack).toContain('trap cleanup');
+});
+
+test('make dev opens desktop while web-dev keeps the browser-only server', () => {
+	expect(makefile).toContain('./scripts/dev-stack.sh desktop');
+	expect(makefile).toContain('./scripts/dev-stack.sh web');
+	expect(makefile).toContain('desktop: install\n\tbun run --cwd desktop dev');
 });
 
 test('make stop-production unloads KeepAlive before stopping serve processes', () => {
-	const makefile = readFileSync(resolve(import.meta.dir, '../../../../Makefile'), 'utf8');
 	const target = makefile.slice(
 		makefile.indexOf('stop-production:'),
 		makefile.indexOf('\nstop:', makefile.indexOf('stop-production:'))

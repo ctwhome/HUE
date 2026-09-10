@@ -76,16 +76,10 @@ export function systemTimeZone(): string {
 	return normalizeTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
 }
 
-function matches(cron: ParsedCron, date: Temporal.PlainDateTime): boolean {
+function matchesDay(cron: ParsedCron, date: Temporal.PlainDateTime): boolean {
 	const day = cron.day.values.has(date.day);
 	const weekday = cron.weekday.values.has(date.dayOfWeek % 7);
-	const calendarDay = cron.day.wildcard ? weekday : cron.weekday.wildcard ? day : day || weekday;
-	return (
-		cron.minute.values.has(date.minute) &&
-		cron.hour.values.has(date.hour) &&
-		cron.month.values.has(date.month) &&
-		calendarDay
-	);
+	return cron.day.wildcard ? weekday : cron.weekday.wildcard ? day : day || weekday;
 }
 
 export function nextCronOccurrence(
@@ -103,15 +97,33 @@ export function nextCronOccurrence(
 		.toPlainDateTime()
 		.with({ second: 0, millisecond: 0, microsecond: 0, nanosecond: 0 })
 		.add({ minutes: 1 });
-	for (let minute = 0; minute < maximumMinutes; minute += 1) {
-		if (matches(cron, candidate)) {
+	const end = candidate.add({ minutes: Math.max(0, Math.ceil(maximumMinutes)) });
+	while (Temporal.PlainDateTime.compare(candidate, end) < 0) {
+		// Skip only civil fields; resolve matching wall times with ADR-0015's earlier/skip policy.
+		if (!cron.month.values.has(candidate.month)) {
+			candidate = candidate.with({ day: 1, hour: 0, minute: 0 }).add({ months: 1 });
+			continue;
+		}
+		if (!matchesDay(cron, candidate)) {
+			candidate = candidate.with({ hour: 0, minute: 0 }).add({ days: 1 });
+			continue;
+		}
+		if (!cron.hour.values.has(candidate.hour)) {
+			candidate = candidate.with({ minute: 0 }).add({ hours: 1 });
+			continue;
+		}
+		if (cron.minute.values.has(candidate.minute)) {
 			const zoned = candidate.toZonedDateTime(zone, { disambiguation: 'earlier' });
 			const milliseconds = Number(zoned.epochMilliseconds);
 			if (zoned.toPlainDateTime().equals(candidate) && milliseconds > afterMilliseconds) {
 				return new Date(milliseconds);
 			}
 		}
-		candidate = candidate.add({ minutes: 1 });
+		const nextMinute = Math.min(
+			...[...cron.minute.values].filter((value) => value > candidate.minute),
+			60
+		);
+		candidate = candidate.add({ minutes: nextMinute - candidate.minute });
 	}
 	throw new Error('Cron expression has no occurrence within five years');
 }

@@ -4,6 +4,25 @@ import { join } from 'node:path';
 
 const read = (name: string) => readFileSync(join(import.meta.dir, name), 'utf8');
 
+test('queue controls describe stopping the current turn and intake blocks send', () => {
+	const composer = read('Composer.svelte');
+	expect(composer).not.toContain('>Send now</button');
+	expect(composer).toContain('Stop current turn');
+	expect(composer).toContain('Reading attachments');
+	expect(composer).toContain('disabled={readingAttachments');
+});
+
+test('failure diagnostics are visible and streaming diagrams remain source-only', () => {
+	const conversation = read('Conversation.svelte');
+	expect(conversation).toContain("item.statusType !== 'work-mode'");
+	expect(conversation).toContain('role="alert"');
+	expect(conversation).toContain('code.closest(\'[data-streaming="true"]\')');
+	expect(conversation).not.toContain('skillsUsed(timeline, message.messageId)');
+	expect(conversation).toMatch(
+		/class="message markdown leading-relaxed"[^>]*use:markdownInteractions/s
+	);
+});
+
 test('the floating delivery status toggles thinking details without a toolbar trigger', () => {
 	const composer = read('Composer.svelte');
 	const thinkingDialog = read('ThinkingDialog.svelte');

@@ -84,6 +84,8 @@ export class WorkspaceNavigation {
 	workflowFolder = $state('');
 	workflowProfile = $state('default');
 	workflowBundle = $state('autonomous');
+	workflowSaving = $state(false);
+	workflowError = $state('');
 	editSessionMenu = $state<HTMLElement>();
 	sessionIconMenu = $state<HTMLElement>();
 	sessionIconAnchor = $state<HTMLElement>();
@@ -101,6 +103,7 @@ export class WorkspaceNavigation {
 	sessionSaving = $state(false);
 	private sessionRequestGeneration = 0;
 	private tabRequestGeneration = 0;
+	private restoreRequestGeneration = 0;
 	private sessionSaveChain = Promise.resolve();
 	private sessionLists = new Map<string, Session[]>();
 	private workflowLists = new Map<string, Workflow[]>();
@@ -148,8 +151,23 @@ export class WorkspaceNavigation {
 		persistNavigationSelection(this, mode, drawerEntry, remember);
 	}
 	restoreSelection = async () => {
-		const launch = await restoreNavigationSelection(this, this.effects, () =>
-			this.effects.guard(() => void this.restoreSelection())
+		const restore = ++this.restoreRequestGeneration;
+		let started = false;
+		const launch = await restoreNavigationSelection(
+			this,
+			this.effects,
+			() => this.effects.guard(() => void this.restoreSelection()),
+			() => {
+				if (!started) {
+					started = true;
+					this.sessionRequestGeneration++;
+					this.tabRequestGeneration++;
+					this.loadedSessionListProjectId = undefined;
+				}
+				const session = this.sessionRequestGeneration;
+				return () =>
+					restore === this.restoreRequestGeneration && session === this.sessionRequestGeneration;
+			}
 		);
 		if (!launch) return false;
 		if (launch.intent === 'new-session') await this.createProjectlessSession();
@@ -160,20 +178,29 @@ export class WorkspaceNavigation {
 	chooseProject = async (
 		project: Project | null,
 		historyMode: HistoryMode = 'push',
-		collection: SessionCollection = 'chats'
+		collection: SessionCollection = 'chats',
+		targetSessionId: string | null = null
 	) => {
-		if (this.effects.guard(() => void this.chooseProject(project, historyMode, collection))) return;
+		if (
+			this.effects.guard(() =>
+				void this.chooseProject(project, historyMode, collection, targetSessionId)
+			)
+		)
+			return;
 		const drillingFromProjects = this.effects.isMobile() && this.mobileDrawer === 'projects';
 		this.effects.endVoice();
 		this.effects.cacheSession();
 		this.effects.saveDraft();
 		this.sessionRequestGeneration += 1;
+		this.tabRequestGeneration += 1;
 		this.effects.stopPolling();
 		this.selectedProject = project;
 		this.sessionCollection = project ? 'chats' : collection;
 		this.selectedExternalCronJob = null;
+		this.externalCronJobs = [];
+		this.externalCronError = '';
 		this.loadedSessionListProjectId = undefined;
-		if (!project) this.activeTab = 'sessions';
+		if (!project || targetSessionId) this.activeTab = 'sessions';
 		this.selectedSession = null;
 		this.composingSession = false;
 		this.newSessionHarness = 'hermes';
@@ -188,8 +215,8 @@ export class WorkspaceNavigation {
 			if (this.effects.isMobile()) this.mobileDrawer = null;
 			return;
 		}
-		await this.loadActiveTab();
-		if (this.effects.isMobile()) this.setMobileDrawer('sessions', 'push');
+		if (this.effects.isMobile() && !targetSessionId) this.setMobileDrawer('sessions', 'push');
+		await this.loadActiveTab(targetSessionId);
 	};
 	chooseSessionCollection = (collection: SessionCollection, historyMode: HistoryMode = 'push') =>
 		this.chooseProject(null, historyMode, collection);
@@ -215,19 +242,21 @@ export class WorkspaceNavigation {
 		sessionId: string,
 		collection: SessionCollection = 'chats'
 	) => {
+		if (this.effects.guard(() => void this.openFinderSession(project, sessionId, collection)))
+			return;
 		const generation = this.sessionRequestGeneration + 1;
 		const projectId = project?.id ?? null;
 		const isCurrent = () =>
 			generation === this.sessionRequestGeneration &&
 			projectId === (this.selectedProject?.id ?? null);
-		await this.chooseProject(project, 'none', collection);
+		await this.chooseProject(project, 'none', collection, sessionId);
 		if (!isCurrent()) return;
-		if (!this.sessions.some((session) => session.sessionId === sessionId)) {
-			await this.loadActiveTab(sessionId);
-			if (!isCurrent()) return;
-		}
 		const session = this.sessions.find((candidate) => candidate.sessionId === sessionId);
-		if (session) await this.openSession(session, 'push');
+		if (session) {
+			const opening = this.openSession(session, 'push');
+			void this.loadActiveTab();
+			await opening;
+		} else void this.loadActiveTab();
 	};
 	createProjectlessSession = async () => {
 		if (this.effects.guard(() => void this.createProjectlessSession())) return;
@@ -269,6 +298,11 @@ export class WorkspaceNavigation {
 		const sessionPath = this.selectedProject
 			? `/api/projects/${request.projectId}/sessions`
 			: '/api/sessions';
+		const projectId = this.selectedProject?.id ?? null;
+		const collection = this.sessionCollection;
+		const search = this.sessionSearch.trim();
+		const archived = this.showArchived;
+		this.loadedSessionListProjectId = undefined;
 		this.effects.setLoading(true);
 		this.effects.setError('');
 		try {
@@ -276,54 +310,68 @@ export class WorkspaceNavigation {
 				const fetchSessions = async (cached = false) => {
 					const sessions: Session[] = [];
 					let offset = 0;
+					let reconciled = false;
 					for (;;) {
 						const query = new URLSearchParams();
 						if (targetSessionId) query.set('sessionId', targetSessionId);
-						if (!this.selectedProject)
-							query.set('scope', this.sessionCollection === 'cron' ? 'scheduled' : 'unscheduled');
-						if (cached) query.set('cached', 'true');
+						if (!projectId)
+							query.set('scope', collection === 'cron' ? 'scheduled' : 'unscheduled');
+						if (cached || offset || targetSessionId) query.set('cached', 'true');
 						if (offset) {
 							query.set('limit', '100');
 							query.set('offset', String(offset));
 						}
-						if (this.sessionSearch.trim()) query.set('q', this.sessionSearch.trim());
-						if (this.showArchived) query.set('archived', 'true');
+						if (search && !targetSessionId) query.set('q', search);
+						if (archived && !targetSessionId) query.set('archived', 'true');
 						const body = await this.effects.api<{
 							sessions: Session[];
 							hasMore?: boolean;
+							projectId: string | null;
+							reconciliation: 'cached' | 'complete';
 							externalCronJobs?: ExternalCronJob[];
 							externalCronError?: unknown;
 						}>(`${sessionPath}${query.size ? `?${query}` : ''}`);
 						if (!isCurrentTabRequest(request, this.currentTabRequest())) return null;
-						if (!this.selectedProject && this.sessionCollection === 'cron') {
-							this.externalCronJobs = Array.isArray(body.externalCronJobs)
-								? body.externalCronJobs
-								: [];
-							this.externalCronError =
-								typeof body.externalCronError === 'string' ? body.externalCronError : '';
+						if (!offset) reconciled = body.reconciliation === 'complete';
+						if (!projectId && collection === 'cron') {
+							if (Array.isArray(body.externalCronJobs))
+								this.externalCronJobs = body.externalCronJobs;
+							if ('externalCronError' in body)
+								this.externalCronError =
+									typeof body.externalCronError === 'string' ? body.externalCronError : '';
 						}
 						sessions.push(...body.sessions);
-						if (targetSessionId || !body.hasMore || !body.sessions.length) return sessions;
+						this.sessions = targetSessionId
+							? [
+									...this.sessions.filter(
+										(session) => !sessions.some((item) => item.sessionId === session.sessionId)
+									),
+									...sessions
+								]
+							: [...sessions];
+						this.sessionLists.set(request.projectId, this.sessions);
+						if (targetSessionId || !body.hasMore || !body.sessions.length) {
+							if (
+								!targetSessionId && !cached && reconciled && !body.hasMore && !search && !archived
+							)
+								this.loadedSessionListProjectId = body.projectId ?? request.projectId;
+							return sessions;
+						}
 						offset += body.sessions.length;
 					}
 				};
-				if (!targetSessionId && this.selectedProject) {
+				if (!targetSessionId) {
 					try {
 						const cached = await fetchSessions(true);
 						if (!cached) return;
-						this.sessions = cached;
-						this.sessionLists.set(request.projectId, cached);
-						this.loadedSessionListProjectId = request.projectId;
 					} catch {
 						// An authoritative refresh still follows a missing local cache.
 					}
 				}
+				if (!isCurrentTabRequest(request, this.currentTabRequest())) return;
 				const sessions = await fetchSessions();
 				if (!sessions) return;
 				if (!isCurrentTabRequest(request, this.currentTabRequest())) return;
-				this.sessions = sessions;
-				this.sessionLists.set(request.projectId, sessions);
-				this.loadedSessionListProjectId = request.projectId;
 				if (this.selectedSession) {
 					this.selectedSession =
 						this.sessions.find(
@@ -370,10 +418,12 @@ export class WorkspaceNavigation {
 	): Promise<Session | null> => {
 		if (this.effects.guard(() => void this.createSession(workMode, harness))) return null;
 		if (this.creatingSession) return null;
+		const generation = ++this.sessionRequestGeneration;
 		const replacingSession = this.selectedSession !== null;
 		this.effects.endVoice();
 		this.effects.saveDraft();
 		this.effects.cacheSession();
+		this.effects.stopPolling();
 		const projectId = this.selectedProject?.id ?? null;
 		const pendingSession: Session = {
 			sessionId: `pending-${crypto.randomUUID()}`,
@@ -403,7 +453,8 @@ export class WorkspaceNavigation {
 				...(workMode || harness ? { body: JSON.stringify({ workMode, harness }) } : {})
 			});
 			await tick();
-			this.effects.focusComposer();
+			if (generation === this.sessionRequestGeneration && this.selectedSession?.sessionId === pendingSession.sessionId)
+				this.effects.focusComposer();
 			const body = await request;
 			if ((this.selectedProject?.id ?? null) !== projectId) return null;
 			this.prependSession(body.session);
@@ -413,11 +464,13 @@ export class WorkspaceNavigation {
 			this.mobileDrawer = null;
 			this.persistSelection('push');
 			this.effects.saveDraft();
+			const selection = this.captureSessionSelection();
 			await this.effects.applyCreatedSession(body, Boolean(workMode));
+			if (!selection || !this.isCurrentSessionSelection(selection)) return body.session;
 			this.effects.setError('');
-			this.effects.restoreDraft();
 			this.mobileDrawer = null;
 			await tick();
+			if (!this.isCurrentSessionSelection(selection)) return body.session;
 			this.effects.focusComposer();
 			return body.session;
 		} catch (cause) {
@@ -428,11 +481,12 @@ export class WorkspaceNavigation {
 				this.selectedSession = null;
 				this.persistSelection('replace');
 			}
-			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
+			if (generation === this.sessionRequestGeneration)
+				this.effects.setError(cause instanceof Error ? cause.message : String(cause));
 			return null;
 		} finally {
 			this.creatingSession = false;
-			this.effects.setLoading(false);
+			if (generation === this.sessionRequestGeneration) this.effects.setLoading(false);
 		}
 	};
 	openSession = async (
@@ -442,7 +496,8 @@ export class WorkspaceNavigation {
 	) => {
 		if (this.effects.guard(() => void this.openSession(session, historyMode, launchEventId)))
 			return false;
-		if (this.selectedSession?.sessionId !== session.sessionId) this.effects.endVoice();
+		const changingSession = this.selectedSession?.sessionId !== session.sessionId;
+		if (changingSession) this.effects.endVoice();
 		const sourceEventId =
 			launchEventId ??
 			(historyMode === 'none' ? new URL(window.location.href).searchParams.get('event') : null);
@@ -457,7 +512,10 @@ export class WorkspaceNavigation {
 		this.selectedExternalCronJob = null;
 		this.selectedSession = session;
 		this.composingSession = false;
-		this.effects.restoreDraft();
+		if (changingSession) {
+			this.effects.clearSession();
+			this.effects.restoreDraft();
+		}
 		this.effects.showCachedSession(session);
 		this.effects.beginTranscriptEntryStick();
 		await this.effects.scrollToLatest();
@@ -507,16 +565,18 @@ export class WorkspaceNavigation {
 					})
 					.catch(() => undefined);
 			}
+			if (request.generation !== this.sessionRequestGeneration) return false;
 			if (session.available === false)
 				this.effects.setError(session.recovery ?? 'Hermes Session is unavailable.');
-			this.effects.restoreDraft();
 			this.mobileDrawer = null;
 			this.effects.cacheSession();
 			this.effects.beginTranscriptEntryStick();
 			await this.effects.scrollToLatest();
+			if (request.generation !== this.sessionRequestGeneration) return false;
 			if (sourceEventId) this.persistSelection('replace');
 			await this.effects.focusNotificationTarget(body.events, sourceEventId);
-			if (body.activeTurn && body.activeTurn.status !== 'unknown') this.effects.startPolling();
+			if (request.generation !== this.sessionRequestGeneration) return false;
+			if (['saving', 'accepted', 'running', 'reconnecting', 'cancelling'].includes(this.effects.getDelivery())) this.effects.startPolling();
 			return true;
 		} catch (cause) {
 			if (request.generation === this.sessionRequestGeneration) {
@@ -535,39 +595,51 @@ export class WorkspaceNavigation {
 	};
 	addWorkflow = async (event: SubmitEvent) => {
 		event.preventDefault();
-		if (!this.selectedProject) return false;
+		const project = this.selectedProject;
+		if (!project || this.workflowSaving) return false;
+		const draft = {
+			name: this.workflowName,
+			prompt: this.workflowPrompt,
+			folder: this.workflowFolder,
+			profile: this.workflowProfile,
+			bundle: this.workflowBundle
+		};
+		this.workflowLists.set(project.id, this.workflows);
+		this.workflowSaving = true;
+		this.workflowError = '';
 		try {
 			const body = await this.effects.api<{ workflow: Workflow }>(
-				`/api/projects/${this.selectedProject.id}/workflows`,
+				`/api/projects/${project.id}/workflows`,
 				{
 					method: 'POST',
-					body: JSON.stringify({
-						name: this.workflowName,
-						prompt: this.workflowPrompt,
-						folder: this.workflowFolder,
-						profile: this.workflowProfile,
-						bundle: this.workflowBundle
-					})
+					body: JSON.stringify(draft)
 				}
 			);
-			this.workflows = [...this.workflows, body.workflow];
-			this.workflowLists.set(this.selectedProject.id, this.workflows);
-			this.workflowName = '';
-			this.workflowPrompt = '';
-			this.workflowFolder = '';
+			const current = this.selectedProject?.id === project.id;
+			const items = [
+				...(current ? this.workflows : (this.workflowLists.get(project.id) ?? [])),
+				body.workflow
+			];
+			this.workflowLists.set(project.id, items);
+			if (current) this.workflows = items;
 			return true;
 		} catch (cause) {
-			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
+			this.workflowError = cause instanceof Error ? cause.message : String(cause);
 			return false;
+		} finally {
+			this.workflowSaving = false;
 		}
 	};
 	favoriteCatalogPrompt = async (prompt: CatalogPrompt) => {
 		const project = this.selectedProject;
-		if (!project) return false;
+		if (!project || this.workflowSaving) return false;
 		const existing = this.workflows.find(
 			(workflow) => workflow.name === prompt.title && workflow.prompt === prompt.prompt
 		);
 		if (existing) return this.updateWorkflow(existing, { favorite: true });
+		this.workflowLists.set(project.id, this.workflows);
+		this.workflowSaving = true;
+		this.workflowError = '';
 		try {
 			const body = await this.effects.api<{ workflow: Workflow }>(
 				`/api/projects/${project.id}/workflows`,
@@ -583,13 +655,19 @@ export class WorkspaceNavigation {
 					})
 				}
 			);
-			if (this.selectedProject?.id !== project.id) return false;
-			this.workflows = [...this.workflows, body.workflow];
-			this.workflowLists.set(project.id, this.workflows);
+			const current = this.selectedProject?.id === project.id;
+			const items = [
+				...(current ? this.workflows : (this.workflowLists.get(project.id) ?? [])),
+				body.workflow
+			];
+			this.workflowLists.set(project.id, items);
+			if (current) this.workflows = items;
 			return true;
 		} catch (cause) {
-			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
+			this.workflowError = cause instanceof Error ? cause.message : String(cause);
 			return false;
+		} finally {
+			this.workflowSaving = false;
 		}
 	};
 	updateWorkflow = async (
@@ -599,21 +677,27 @@ export class WorkspaceNavigation {
 		>
 	) => {
 		const project = this.selectedProject;
-		if (!project) return false;
+		if (!project || this.workflowSaving) return false;
+		this.workflowLists.set(project.id, this.workflows);
+		this.workflowSaving = true;
+		this.workflowError = '';
 		try {
 			const body = await this.effects.api<{ workflow: Workflow }>(
 				`/api/projects/${project.id}/workflows/${workflow.id}`,
 				{ method: 'PATCH', body: JSON.stringify(patch) }
 			);
-			if (this.selectedProject?.id !== project.id) return false;
-			this.workflows = this.workflows.map((item) =>
-				item.id === workflow.id ? body.workflow : item
+			const current = this.selectedProject?.id === project.id;
+			const items = (current ? this.workflows : (this.workflowLists.get(project.id) ?? [])).map(
+				(item) => (item.id === workflow.id ? body.workflow : item)
 			);
-			this.workflowLists.set(project.id, this.workflows);
+			this.workflowLists.set(project.id, items);
+			if (current) this.workflows = items;
 			return true;
 		} catch (cause) {
-			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
+			this.workflowError = cause instanceof Error ? cause.message : String(cause);
 			return false;
+		} finally {
+			this.workflowSaving = false;
 		}
 	};
 	deleteWorkflow = async (workflow: Workflow) => {
@@ -634,7 +718,10 @@ export class WorkspaceNavigation {
 	};
 	duplicateWorkflow = async (workflow: Workflow) => {
 		const project = this.selectedProject;
-		if (!project) return false;
+		if (!project || this.workflowSaving) return false;
+		this.workflowLists.set(project.id, this.workflows);
+		this.workflowSaving = true;
+		this.workflowError = '';
 		try {
 			const body = await this.effects.api<{ workflow: Workflow }>(
 				`/api/projects/${project.id}/workflows`,
@@ -650,13 +737,19 @@ export class WorkspaceNavigation {
 					})
 				}
 			);
-			if (this.selectedProject?.id !== project.id) return false;
-			this.workflows = [...this.workflows, body.workflow];
-			this.workflowLists.set(project.id, this.workflows);
+			const current = this.selectedProject?.id === project.id;
+			const items = [
+				...(current ? this.workflows : (this.workflowLists.get(project.id) ?? [])),
+				body.workflow
+			];
+			this.workflowLists.set(project.id, items);
+			if (current) this.workflows = items;
 			return true;
 		} catch (cause) {
-			this.effects.setError(cause instanceof Error ? cause.message : String(cause));
+			this.workflowError = cause instanceof Error ? cause.message : String(cause);
 			return false;
+		} finally {
+			this.workflowSaving = false;
 		}
 	};
 	runWorkflow = async (workflow: Workflow) => {

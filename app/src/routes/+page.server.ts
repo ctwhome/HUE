@@ -1,27 +1,37 @@
 import { HermesProjectsCapabilityError } from '$lib/server/hermes-projects';
-import { loadProjectViews } from '$lib/server/route-services';
+import { loadProjectViews, services } from '$lib/server/route-services';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async () => {
-	try {
-		const loaded = await loadProjectViews();
-		return {
+export const load = ((_event) => {
+	const store = services().store;
+	const initial = {
+		projects: [] as Awaited<ReturnType<typeof loadProjectViews>>['projects'],
+		chatSessionCount: store.countSessions(null, 'unscheduled'),
+		chatIndicators: store.getSessionIndicatorCounts(null, 'unscheduled'),
+		cronSessionCount: store.countSessions(null, 'scheduled'),
+		projectsCapability: 'available' as const,
+		projectsError: '',
+		reconciliationIssues: [] as Awaited<
+			ReturnType<typeof loadProjectViews>
+		>['reconciliationIssues'],
+		projectsLoading: true
+	};
+	const projectReconciliation = loadProjectViews().then(
+		(loaded) => ({
 			...loaded,
 			projectsCapability: 'available' as const,
-			projectsError: ''
-		};
-	} catch (cause) {
-		return {
-			projects: [],
-			chatSessionCount: 0,
-			chatIndicators: { running: 0, attention: 0, unread: 0 },
-			cronSessionCount: 0,
+			projectsError: '',
+			projectsLoading: false
+		}),
+		(cause: unknown) => ({
+			...initial,
+			projectsLoading: false,
 			projectsCapability:
 				cause instanceof HermesProjectsCapabilityError
 					? ('unavailable' as const)
 					: ('outage' as const),
-			projectsError: cause instanceof Error ? cause.message : String(cause),
-			reconciliationIssues: []
-		};
-	}
-};
+			projectsError: cause instanceof Error ? cause.message : String(cause)
+		})
+	);
+	return { ...initial, projectReconciliation };
+}) satisfies PageServerLoad;

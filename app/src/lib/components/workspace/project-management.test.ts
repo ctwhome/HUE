@@ -36,6 +36,172 @@ function manager(api: <T>(url: string, options?: RequestInit) => Promise<T>) {
 }
 
 describe('ProjectManagement Hermes authority', () => {
+	it('keeps the newest icon file choice when two reads finish in selection order', async () => {
+		const previous = globalThis.FileReader;
+		const finishes: Array<() => void> = [];
+		Object.assign(globalThis, {
+			FileReader: class {
+				result = '';
+				onload?: () => void;
+				readAsDataURL(file: { content: string }) {
+					this.result = file.content;
+					finishes.push(() => this.onload?.());
+				}
+			}
+		});
+		try {
+			const state = manager(async <T>() => ({ project: original }) as T);
+			state.editingProject = original;
+			const read = (content: string) =>
+				state.chooseProjectImage({
+					currentTarget: { value: '', files: [{ type: 'image/png', size: 1, content }] }
+				} as unknown as Event);
+			const older = read('first');
+			const newer = read('second');
+			finishes[0]!();
+			await older;
+			finishes[1]!();
+			await newer;
+			expect(state.projectIcon).toBe('second');
+		} finally {
+			Object.assign(globalThis, { FileReader: previous });
+		}
+	});
+	it('does not apply a delayed icon file to a different Project', async () => {
+		const previous = globalThis.FileReader;
+		let finish!: () => void;
+		Object.assign(globalThis, {
+			FileReader: class {
+				result = 'data:image/png;base64,icon';
+				onload?: () => void;
+				readAsDataURL() {
+					finish = () => this.onload?.();
+				}
+			}
+		});
+		try {
+			let calls = 0;
+			const state = manager(async <T>() => {
+				calls++;
+				return { project: original } as T;
+			});
+			state.editingProject = original;
+			const reading = state.chooseProjectImage({
+				currentTarget: { value: '', files: [{ type: 'image/png', size: 1 }] }
+			} as unknown as Event);
+			state.editingProject = { ...original, id: 'other' };
+			state.projectIcon = 'Other icon';
+			finish();
+			await reading;
+			expect(calls).toBe(0);
+			expect(state.projectIcon).toBe('Other icon');
+		} finally {
+			Object.assign(globalThis, { FileReader: previous });
+		}
+	});
+	it('keeps saving true until metadata and Project creation both settle', async () => {
+		const create = deferred<{ project: Project }>();
+		const update = deferred<{ project: Project }>();
+		const state = manager(
+			<T>(url: string) => (url === '/api/projects' ? create.promise : update.promise) as Promise<T>
+		);
+		state.projectName = 'New';
+		state.selectedFolders = ['/work'];
+		state.primaryFolder = '/work';
+		const creating = state.createProject({ preventDefault() {} } as SubmitEvent);
+		state.editingProject = original;
+		const saving = state.saveProjectColor('blue');
+		create.resolve({ project: { ...original, id: 'new' } });
+		await creating;
+		expect(state.projectSaving).toBe(true);
+		update.resolve({ project: { ...original, color: 'blue' } });
+		await saving;
+		expect(state.projectSaving).toBe(false);
+	});
+	it('keeps newer group typing while a metadata save settles', async () => {
+		const response = deferred<{ project: Project }>();
+		const state = manager(<T>() => response.promise as Promise<T>);
+		state.editingProject = original;
+		const saving = state.saveProjectGroup('Submitted');
+		state.projectGroup = 'Still typing';
+		response.resolve({ project: { ...original, group: 'Submitted' } });
+		await saving;
+		expect(state.projects[0].group).toBe('Submitted');
+		expect(state.projectGroup).toBe('Still typing');
+	});
+
+	it('does not let an older metadata failure replace a newly opened Project error', async () => {
+		let reject!: (cause: unknown) => void;
+		const state = manager(
+			<T>() =>
+				new Promise<T>((_, fail) => {
+					reject = fail;
+				})
+		);
+		state.editingProject = original;
+		const saving = state.saveProjectGroup('Submitted');
+		state.editingProject = { ...original, id: 'other' };
+		state.projectEditError = 'Other Project error';
+		reject(new Error('Old Project failure'));
+		await saving;
+		expect(state.projectEditError).toBe('Other Project error');
+	});
+	it('does not let an older refresh revert metadata and synchronizes selected Project', async () => {
+		const read = deferred<{ projects: Project[] }>();
+		let selected = original;
+		const state = new ProjectManagement({
+			initialProjects: [original],
+			api: (<T>(url: string) =>
+				url === '/api/projects'
+					? read.promise
+					: Promise.resolve({ project: { ...original, color: 'blue' } })) as never,
+			getSelectedProject: () => selected,
+			setSelectedProject: (project) => {
+				selected = project;
+			},
+			chooseProject: async () => {}
+		});
+		state.editingProject = original;
+		const refreshing = state.refreshProjects();
+		await state.saveProjectColor('blue');
+		read.resolve({ projects: [original] });
+		await refreshing;
+		expect(state.projects[0].color).toBe('blue');
+		expect(selected.color).toBe('blue');
+	});
+
+	it('orders color and group readbacks with shared pending state', async () => {
+		const first = deferred<{ project: Project }>();
+		const second = deferred<{ project: Project }>();
+		let call = 0;
+		const state = manager(<T>() => (++call === 1 ? first.promise : second.promise) as Promise<T>);
+		state.editingProject = original;
+		const color = state.saveProjectColor('blue');
+		const group = state.saveProjectGroup('New');
+		second.resolve({ project: { ...original, color: 'blue', group: 'New' } });
+		await group;
+		expect(state.projectSaving).toBe(true);
+		first.resolve({ project: { ...original, color: 'blue' } });
+		await color;
+		expect(state.projects[0].group).toBe('New');
+		expect(state.projectSaving).toBe(false);
+	});
+
+	it('refreshes selected Project metadata along with the list', async () => {
+		let selected = original;
+		const updated = { ...original, name: 'Updated' };
+		const state = new ProjectManagement({
+			initialProjects: [original],
+			api: async <T>() => ({ projects: [updated] }) as T,
+			getSelectedProject: () => selected,
+			setSelectedProject: (project) => {
+				selected = project;
+			},
+			chooseProject: async () => {}
+		});
+		await state.refreshProjects();
+		expect(selected.name).toBe('Updated');
+	});
 	it('asks the server to discover the automatic Project icon', async () => {
 		const requests: Array<{ url: string; options?: RequestInit }> = [];
 		const state = manager(async <T>(url: string, options?: RequestInit) => {
@@ -155,7 +321,10 @@ describe('ProjectManagement Hermes authority', () => {
 
 		await state.pickFolder();
 
-		expect(requests[0]).toMatchObject({ url: '/api/directories/pick', options: { method: 'POST' } });
+		expect(requests[0]).toMatchObject({
+			url: '/api/directories/pick',
+			options: { method: 'POST' }
+		});
 		expect(requests[0]?.options?.signal).toBeInstanceOf(AbortSignal);
 		expect(state.selectedFolders).toEqual(['/work/new-project']);
 		expect(state.primaryFolder).toBe('/work/new-project');

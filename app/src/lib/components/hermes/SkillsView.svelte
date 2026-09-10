@@ -8,6 +8,7 @@
 
 	let {
 		skills,
+		busy = false,
 		selectedSkill,
 		selectedSkillEditable,
 		selectedSkillProvenance,
@@ -22,6 +23,7 @@
 		capabilities
 	}: {
 		skills: Skill[];
+		busy?: boolean;
 		selectedSkill: string;
 		selectedSkillEditable: boolean;
 		selectedSkillProvenance: string;
@@ -141,7 +143,7 @@
 			placeholder="Category"
 			required
 		/>
-		<Button type="submit" disabled={!capabilities.create}>Create skill</Button>
+		<Button type="submit" disabled={busy || !capabilities.create}>Create skill</Button>
 	</form>
 	<section
 		class="skill-statistics grid grid-cols-4 gap-2 max-[700px]:grid-cols-2"
@@ -215,7 +217,7 @@
 							<Button
 								variant="outline"
 								size="sm"
-								disabled={!capabilities.toggle}
+								disabled={busy || !capabilities.toggle}
 								onclick={() =>
 									onaction('skill.toggle', {
 										name: skill.name,
@@ -225,7 +227,7 @@
 							{#if skill.source === 'custom'}<Button
 									variant="destructive"
 									size="sm"
-									disabled={!capabilities.delete}
+									disabled={busy || !capabilities.delete}
 									onclick={() => ondelete(skill.name)}>Delete</Button
 								>{/if}
 						</article>

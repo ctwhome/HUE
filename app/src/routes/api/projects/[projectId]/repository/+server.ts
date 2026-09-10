@@ -10,6 +10,7 @@ import {
 	authoritativeProject,
 	services,
 	type ProjectRepositoryAction,
+	type ProjectRepository,
 	type ProjectRepositoryDiffScope
 } from '$lib/server/services';
 import { commitModelId, generateRepositoryCommitMessage } from '$lib/server/commit-generation';
@@ -19,11 +20,10 @@ import { basename, join } from 'node:path';
 import type { RequestHandler } from './$types';
 
 function repositoryResponse(
-	repositoryRoot: string,
+	status: ProjectRepository,
 	repositoryPath: string,
 	repositories: Array<{ path: string; label: string }>
 ) {
-	const status = projectRepository(repositoryRoot);
 	return {
 		...status,
 		changes: status.changes.map((change) => ({
@@ -67,13 +67,29 @@ export function _repositoryDiffOptions(searchParams: URLSearchParams): {
 	};
 }
 
-export function _projectFolderRepositories(
+// ponytail: retain only the last Project inventory for two seconds, not repository status.
+let repositoryInventory:
+	| { root: string; expires: number; pending: Promise<Array<{ path: string; label: string }>> }
+	| undefined;
+
+export async function _projectFolderRepositories(
 	primaryPath: string
-): Array<{ path: string; label: string }> {
-	return projectRepositories(primaryPath).map(({ path }) => ({
-		path,
-		label: basename(path === '.' ? primaryPath : join(primaryPath, path))
-	}));
+): Promise<Array<{ path: string; label: string }>> {
+	if (repositoryInventory?.root === primaryPath && repositoryInventory.expires > Date.now())
+		return repositoryInventory.pending;
+	const pending = projectRepositories(primaryPath).then((repositories) =>
+		repositories.map(({ path }) => ({
+			path,
+			label: basename(path === '.' ? primaryPath : join(primaryPath, path))
+		}))
+	);
+	repositoryInventory = { root: primaryPath, expires: Date.now() + 2_000, pending };
+	try {
+		return await pending;
+	} catch (cause) {
+		if (repositoryInventory?.pending === pending) repositoryInventory = undefined;
+		throw cause;
+	}
 }
 
 export function _commitModelSelection(provider?: string, model?: string): string {
@@ -90,7 +106,7 @@ export function _commitReasoningSelection(value?: string): 'default' | 'none' {
 export const GET: RequestHandler = async ({ params, url }) => {
 	try {
 		const project = await authoritativeProject(params.projectId);
-		const repositories = _projectFolderRepositories(project.primary_path);
+		const repositories = await _projectFolderRepositories(project.primary_path);
 		const view = url.searchParams.get('view');
 		const selected = _selectedRepositoryPath(
 			repositories,
@@ -98,20 +114,31 @@ export const GET: RequestHandler = async ({ params, url }) => {
 			view === 'diff'
 		);
 		const repositoryPath = selected ?? '.';
-		const repositoryRoot = resolveProjectRepository(project.primary_path, selected, repositories);
+		const repositoryRoot = await resolveProjectRepository(
+			project.primary_path,
+			selected,
+			repositories
+		);
 		if (view === 'github') {
-			return json(projectGitHubItems(repositoryRoot));
+			return json(await projectGitHubItems(repositoryRoot));
 		}
 		if (view === 'diff')
-			return json(projectRepositoryDiff(repositoryRoot, _repositoryDiffOptions(url.searchParams)));
-		return json(repositoryResponse(repositoryRoot, repositoryPath, repositories));
+			return json(
+				await projectRepositoryDiff(repositoryRoot, _repositoryDiffOptions(url.searchParams))
+			);
+		return json(
+			repositoryResponse(await projectRepository(repositoryRoot), repositoryPath, repositories)
+		);
 	} catch (error) {
 		return json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
 	}
 };
 
 export const POST: RequestHandler = async ({ params, request, url, getClientAddress }) => {
-	if (!requestOriginMatches(request, url) || !requestAccessAllowed(request, url, getClientAddress())) {
+	if (
+		!requestOriginMatches(request, url) ||
+		!requestAccessAllowed(request, url, getClientAddress())
+	) {
 		return json({ error: 'Repository changes are limited to this device' }, { status: 403 });
 	}
 	try {
@@ -126,8 +153,8 @@ export const POST: RequestHandler = async ({ params, request, url, getClientAddr
 					repository?: string;
 					operationId?: string;
 			  };
-		const repositories = _projectFolderRepositories(project.primary_path);
-		const repositoryRoot = resolveProjectRepository(
+		const repositories = await _projectFolderRepositories(project.primary_path);
+		const repositoryRoot = await resolveProjectRepository(
 			project.primary_path,
 			operation.repository,
 			repositories
@@ -141,7 +168,7 @@ export const POST: RequestHandler = async ({ params, request, url, getClientAddr
 					{
 						projectId: project.id,
 						repositoryRoot,
-						diff: projectStagedDiff(repositoryRoot),
+						diff: await projectStagedDiff(repositoryRoot),
 						modelId: _commitModelSelection(operation.provider, operation.model),
 						operationId: operation.operationId,
 						reasoning: _commitReasoningSelection(operation.reasoning)
@@ -150,8 +177,8 @@ export const POST: RequestHandler = async ({ params, request, url, getClientAddr
 				)
 			);
 		}
-		projectRepositoryAction(repositoryRoot, operation);
-		return json(repositoryResponse(repositoryRoot, repositoryPath, repositories));
+		const status = await projectRepositoryAction(repositoryRoot, operation);
+		return json(repositoryResponse(status, repositoryPath, repositories));
 	} catch (error) {
 		return json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
 	}

@@ -4,14 +4,15 @@ HUE Desktop adds native, inspectable project previews while the existing Bun/Sve
 
 ## Local development
 
-Start HUE, then launch the desktop shell from another terminal:
+Start the complete local development stack:
 
 ```bash
 make dev
-make desktop
 ```
 
-The shell opens `http://127.0.0.1:44010` by default. Its Project browser uses sandboxed Electrobun webviews with native developer tools and cross-origin element selection. Ordinary browsers and mobile devices continue using iframe previews.
+This hands the canonical database from production to the development server, waits for `http://127.0.0.1:44010`, then opens Electrobun. Closing the stack stops the development server and restores production. Use `make web-dev` for browser/mobile-only development, or `make desktop` to attach Electrobun to a server that is already running.
+
+The Project browser uses sandboxed Electrobun webviews with native developer tools and cross-origin element selection. Ordinary browsers and mobile devices continue using iframe previews.
 
 ## Remote HUE server
 

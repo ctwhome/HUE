@@ -351,6 +351,7 @@ export function normalizeDelegateTaskUpdate(
 }
 
 export type HermesACPOptions = {
+	controlTimeoutMs?: number;
 	command?: string;
 	profile?: string;
 	args?: string[];
@@ -379,6 +380,7 @@ export function isolatedHermesEnvironment(
 
 export class HermesACP implements PromptRuntime {
 	private readonly command: string;
+	private readonly controlTimeoutMs: number;
 	private readonly profile: string;
 	private readonly args: string[] | null;
 	private readonly agentLabel: string;
@@ -403,6 +405,7 @@ export class HermesACP implements PromptRuntime {
 	private agentCapabilities?: acp.AgentCapabilities;
 
 	constructor(options: HermesACPOptions = {}) {
+		this.controlTimeoutMs = options.controlTimeoutMs ?? 30_000;
 		this.command = options.command ?? 'hermes';
 		this.profile = options.profile ?? 'default';
 		this.args = options.args ?? null;
@@ -414,8 +417,8 @@ export class HermesACP implements PromptRuntime {
 	}
 
 	async start(): Promise<void> {
-		if (this.connection && !this.connection.signal.aborted) return;
 		if (this.starting) return this.starting;
+		if (this.connection && !this.connection.signal.aborted) return;
 		this.closing = false;
 		this.starting = this.open();
 		try {
@@ -430,7 +433,8 @@ export class HermesACP implements PromptRuntime {
 	}
 
 	private async open(): Promise<void> {
-		const args = this.args ?? (this.profile === 'default' ? ['acp'] : ['--profile', this.profile, 'acp']);
+		const args =
+			this.args ?? (this.profile === 'default' ? ['acp'] : ['--profile', this.profile, 'acp']);
 		const child = spawn(this.command, args, {
 			env: this.env,
 			stdio: ['pipe', 'pipe', 'pipe']
@@ -465,6 +469,7 @@ export class HermesACP implements PromptRuntime {
 		this.connection = connection;
 
 		child.once('exit', (code, signal) => {
+			if (this.child !== child) return;
 			if (this.child === child) this.child = null;
 			if (this.connection === connection) this.connection = null;
 			this.clearRuntimeState();
@@ -477,29 +482,36 @@ export class HermesACP implements PromptRuntime {
 		});
 
 		try {
-			const initialized = await connection.agent.request(acp.methods.agent.initialize, {
-				protocolVersion: acp.PROTOCOL_VERSION,
-				clientCapabilities: { elicitation: { form: {} } },
-				clientInfo: { name: 'hue-workspace', version: '0.1.0' }
-			});
-			this.captureInitialization(initialized);
+			const initialized = await this.requestRaw<acp.InitializeResponse>(
+				connection.agent,
+				acp.methods.agent.initialize,
+				{
+					protocolVersion: acp.PROTOCOL_VERSION,
+					clientCapabilities: { elicitation: { form: {} } },
+					clientInfo: { name: 'hue-workspace', version: '0.1.0' }
+				}
+			);
+			if (this.connection !== connection || connection.signal.aborted)
+				throw new Error(`${this.agentLabel} ACP startup was closed`);
 			if (initialized.protocolVersion !== acp.PROTOCOL_VERSION) {
 				throw new Error(
 					`${this.agentLabel} negotiated ACP v${initialized.protocolVersion}; HUE requires v${acp.PROTOCOL_VERSION}`
 				);
 			}
+			this.captureInitialization(initialized);
 			this.assertRequiredCapabilities();
 		} catch (error) {
 			connection.close(error);
-			child.kill('SIGTERM');
+			child.kill('SIGKILL');
 			this.connection = null;
 			this.child = null;
+			this.clearRuntimeState();
 			throw error;
 		}
 	}
 
 	healthStatus(): 'idle' | 'ready' | 'unavailable' {
-		if (this.runtimeInfo.protocolVersion === acp.PROTOCOL_VERSION) return 'ready';
+		if (!this.starting && this.runtimeInfo.protocolVersion === acp.PROTOCOL_VERSION) return 'ready';
 		return this.unavailable ? 'unavailable' : 'idle';
 	}
 
@@ -561,14 +573,30 @@ export class HermesACP implements PromptRuntime {
 		return this.connection.agent;
 	}
 
-	private requestRaw<Response>(context: acp.ClientContext, method: string, params: unknown) {
-		const raw = context as unknown as {
-			sendRequest?: (method: string, params: unknown) => Promise<Response>;
-			request?: (method: string, params: unknown) => Promise<Response>;
-		};
-		if (raw.sendRequest) return raw.sendRequest(method, params);
-		if (raw.request) return raw.request(method, params);
-		throw new Error('ACP context does not support requests');
+	private async requestRaw<Response>(
+		context: acp.ClientContext,
+		method: string,
+		params: unknown
+	): Promise<Response> {
+		if (method === acp.methods.agent.session.prompt)
+			return context.request<Response>(method, params);
+		const controller = new AbortController();
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		try {
+			return await Promise.race([
+				context.request<Response>(method, params, { cancellationSignal: controller.signal }),
+				new Promise<never>((_, reject) => {
+					timer = setTimeout(() => {
+						reject(
+							new Error(`${this.agentLabel} ACP ${method} timed out; its outcome may be unknown`)
+						);
+						controller.abort();
+					}, this.controlTimeoutMs);
+				})
+			]);
+		} finally {
+			clearTimeout(timer);
+		}
 	}
 
 	async createSession(cwd: string): Promise<HermesSession> {
@@ -598,7 +626,8 @@ export class HermesACP implements PromptRuntime {
 			acp.methods.agent.session.fork,
 			{ cwd, sessionId, mcpServers: [] }
 		);
-		if (!response.sessionId) throw new Error(`${this.agentLabel} did not return a forked Session id`);
+		if (!response.sessionId)
+			throw new Error(`${this.agentLabel} did not return a forked Session id`);
 		this.captureSessionResponse(response.sessionId, response);
 		return { sessionId: response.sessionId, cwd };
 	}
@@ -611,7 +640,7 @@ export class HermesACP implements PromptRuntime {
 		const seenCursors = new Set<string>();
 		let cursor: string | undefined;
 		do {
-			const response = (await context.request(acp.methods.agent.session.list, {
+			const response = (await this.requestRaw(context, acp.methods.agent.session.list, {
 				cwd,
 				...(cursor ? { cursor } : {})
 			})) as acp.ListSessionsResponse;
@@ -798,7 +827,8 @@ export class HermesACP implements PromptRuntime {
 		} catch (error) {
 			if (
 				error instanceof TurnCancelledError ||
-				(error instanceof Error && error.message.startsWith(`${this.agentLabel} ended the turn with `))
+				(error instanceof Error &&
+					error.message.startsWith(`${this.agentLabel} ended the turn with `))
 			) {
 				throw error;
 			}
@@ -964,7 +994,7 @@ export class HermesACP implements PromptRuntime {
 
 	async setMode(sessionId: string, modeId: string): Promise<HermesSessionState> {
 		const context = await this.context();
-		await context.request(acp.methods.agent.session.setMode, { sessionId, modeId });
+		await this.requestRaw(context, acp.methods.agent.session.setMode, { sessionId, modeId });
 		const current = this.getSessionState(sessionId);
 		if (current.modes) {
 			this.sessionStates.set(sessionId, {
@@ -981,7 +1011,7 @@ export class HermesACP implements PromptRuntime {
 		value: string | boolean
 	): Promise<HermesSessionState> {
 		const context = await this.context();
-		const response = (await context.request(acp.methods.agent.session.setConfigOption, {
+		const response = (await this.requestRaw(context, acp.methods.agent.session.setConfigOption, {
 			sessionId,
 			configId,
 			value,

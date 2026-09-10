@@ -20,6 +20,18 @@ export function skillsUsed(timeline: WorkspaceTimelineItem[], messageId?: string
 	];
 }
 
+export function skillsByTurn(timeline: WorkspaceTimelineItem[]) {
+	const turns = new Map<string, string[]>();
+	for (const item of timeline) {
+		const name = skillName(item);
+		if (!name || !('messageId' in item) || !item.messageId) continue;
+		const names = turns.get(item.messageId) ?? [];
+		if (!names.includes(name)) names.push(name);
+		turns.set(item.messageId, names);
+	}
+	return turns;
+}
+
 export function activeThought(timeline: WorkspaceTimelineItem[], busy: boolean) {
 	if (!busy) return undefined;
 	const user = timeline.findLast((item) => item.kind === 'message' && item.role === 'user');

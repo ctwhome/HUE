@@ -61,6 +61,20 @@
 		{/if}
 	</button>
 	<Button
+		variant="ghost"
+		size="icon"
+		class="global-navigation-toggle size-8 text-muted-foreground"
+		aria-label={navigationCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+		aria-controls="project-drawer session-drawer"
+		aria-expanded={!navigationCollapsed}
+		title={navigationCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+		onclick={ontogglenavigation}
+	>
+		{#if navigationCollapsed}<PanelLeftOpen aria-hidden="true" />{:else}<PanelLeftClose
+				aria-hidden="true"
+			/>{/if}
+	</Button>
+	<Button
 		variant="outline"
 		size="icon"
 		class={action}
@@ -115,18 +129,4 @@
 		aria-label="Open documentation in a new tab"
 		title="Documentation"><FileText aria-hidden="true" /></a
 	>
-	<Button
-		variant="ghost"
-		size="icon"
-		class="global-navigation-toggle size-8 text-muted-foreground"
-		aria-label={navigationCollapsed ? 'Expand navigation' : 'Collapse navigation'}
-		aria-controls="project-drawer session-drawer"
-		aria-expanded={!navigationCollapsed}
-		title={navigationCollapsed ? 'Expand navigation' : 'Collapse navigation'}
-		onclick={ontogglenavigation}
-	>
-		{#if navigationCollapsed}<PanelLeftOpen aria-hidden="true" />{:else}<PanelLeftClose
-				aria-hidden="true"
-			/>{/if}
-	</Button>
 </nav>

@@ -7,10 +7,20 @@ const store = new HUEStore(':memory:');
 store.upsertSession(null, { sessionId: 'session-1', cwd: '/private/session' });
 store.appendEvent(null, 'session-1', 'message.completed', { messageId: 'private-message' });
 const notifications = new NotificationService(store, {});
+let projectCalls = 0;
 
 mock.module('$lib/server/services', () => ({
 	...serviceExportStubs,
-	services: () => ({ store, notifications })
+	services: () => ({
+		store,
+		notifications,
+		projects: {
+			list: async () => {
+				projectCalls += 1;
+				return { projects: [] };
+			}
+		}
+	})
 }));
 
 function mutation(url: string, body: unknown, origin = 'http://localhost') {
@@ -39,14 +49,13 @@ test('lists bounded canonical metadata and counts', async () => {
 	expect(JSON.stringify(body)).not.toContain('private-message');
 });
 
-test('notification reads replace sentinel names with Hermes Project names', async () => {
-	const { _withAuthoritativeProjectNames } = await import('./+server');
-	expect(
-		_withAuthoritativeProjectNames(
-			[{ projectId: 'project-1', projectName: '' }],
-			[{ id: 'project-1', name: 'Current Hermes name' }]
-		)
-	).toEqual([{ projectId: 'project-1', projectName: 'Current Hermes name' }]);
+test('notification reads do not request optional Project metadata', async () => {
+	projectCalls = 0;
+	const { GET } = await import('./+server');
+	expect((await GET({ url: new URL('http://localhost/api/notifications') } as never)).status).toBe(
+		200
+	);
+	expect(projectCalls).toBe(0);
 });
 
 test('notification lifecycle mutations require exact same origin', async () => {

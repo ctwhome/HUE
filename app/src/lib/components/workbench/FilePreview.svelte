@@ -106,7 +106,7 @@
 
 <article
 	class="file-preview flex min-h-0 min-w-0 flex-col"
-	class:open={Boolean(preview || diffData)}
+	class:open={Boolean(selectedPath || preview || diffData)}
 	aria-busy={busy || diffLoading || diffViewerLoading}
 	tabindex="-1"
 >
@@ -165,6 +165,8 @@
 			role="alert"
 		>
 			{error}
+			{#if selectedPath && !preview && !busy}<Button size="sm" onclick={onreload}>Retry file</Button
+				>{/if}
 		</p>{/if}
 	{#if status}<p class="m-2 text-xs text-[var(--success)]" role="status">{status}</p>{/if}
 	{#if movedDeleted}<div

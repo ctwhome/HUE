@@ -18,7 +18,8 @@ export const defaultRepositoryLayout = (): RepositoryLayout => ({
 
 export function readRepositoryLayout(storage: LayoutStorage, projectId: string) {
 	const layout = defaultRepositoryLayout();
-	layout.gitOpen = storage.getItem(key(projectId, 'git-open')) !== 'false';
+	// The legacy git-open key also belongs to the outer dock; its intent cannot be migrated safely.
+	layout.gitOpen = storage.getItem(key(projectId, 'git-section-open')) !== 'false';
 	layout.worktreesOpen = storage.getItem(key(projectId, 'worktrees-open')) !== 'false';
 	layout.selectedRepository = storage.getItem(key(projectId, 'repository')) ?? '';
 	try {
@@ -41,7 +42,10 @@ export function toggleRepositoryPanel(
 ) {
 	const field = panel === 'git' ? 'gitOpen' : 'worktreesOpen';
 	layout[field] = !layout[field];
-	storage.setItem(key(projectId, `${panel}-open`), String(layout[field]));
+	storage.setItem(
+		key(projectId, panel === 'git' ? 'git-section-open' : 'worktrees-open'),
+		String(layout[field])
+	);
 }
 
 export function resizeRepositoryPanels(

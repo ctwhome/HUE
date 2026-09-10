@@ -10,6 +10,7 @@
 	import Plus from '~icons/lucide/plus';
 	import RefreshCw from '~icons/lucide/refresh-cw';
 	import ScanSearch from '~icons/lucide/scan-search';
+	import CircleStop from '~icons/lucide/circle-stop';
 	import Smartphone from '~icons/lucide/smartphone';
 	import SquareTerminal from '~icons/lucide/square-terminal';
 	import Tablet from '~icons/lucide/tablet';
@@ -24,6 +25,7 @@
 		browserDeviceSizes,
 		normalizeBrowserUrl,
 		restoreHiddenPorts,
+		restorePortNotes,
 		restoreBrowserTabId,
 		type BrowserDevice
 	} from './browser-canvas';
@@ -43,16 +45,19 @@
 		source: string;
 		reload: number;
 		mounted: boolean;
+		status: 'idle' | 'loading' | 'unverified' | 'error';
 	};
 	let {
 		projectId,
 		active = true,
 		onpreviewchange,
+		onpreviewstatus,
 		onreviewcontext
 	}: {
 		projectId: string;
 		active?: boolean;
 		onpreviewchange: (url: string) => void;
+		onpreviewstatus?: (status: BrowserTab['status'], url: string) => void;
 		onreviewcontext?: (context: ReviewContextSeed) => void;
 	} = $props();
 	let browserTabs = $state<BrowserTab[]>([]);
@@ -73,8 +78,10 @@
 	let devServers = $state<DevServer[]>([]);
 	let discoveringServers = $state(false);
 	let discoveryStarted = $state(false);
+	let discoveryError = $state('');
 	let stoppingPid = $state<number>();
 	let hiddenPorts = $state<number[]>([]);
+	let portNotes = $state<Record<string, string>>({});
 	let elementPickerButton: HTMLButtonElement;
 	let stopElementPicker: (() => void) | null = null;
 	type BrowserFrame = HTMLIFrameElement | NativeBrowserViewElement;
@@ -91,6 +98,7 @@
 	const storageKey = () => `hue:browser:${projectId}`;
 	const activeStorageKey = () => `${storageKey()}:active`;
 	const hiddenPortsStorageKey = 'hue:browser:hidden-ports';
+	const portNotesStorageKey = 'hue:browser:port-notes';
 	const newBrowserTab = (): BrowserTab => ({
 		id: crypto.randomUUID(),
 		title: 'New tab',
@@ -98,7 +106,8 @@
 		draft: '',
 		source: '',
 		reload: 0,
-		mounted: true
+		mounted: true,
+		status: 'idle'
 	});
 	function restoreBrowserTabs() {
 		try {
@@ -112,7 +121,17 @@
 					return [];
 				try {
 					const url = tab.url ? normalizeBrowserUrl(tab.url) : '';
-					return [{ ...tab, url, draft: url, source: url, reload: 0, mounted: false }];
+					return [
+						{
+							...tab,
+							url,
+							draft: url,
+							source: url,
+							reload: 0,
+							mounted: false,
+							status: url ? 'loading' : 'idle'
+						}
+					];
 				} catch {
 					return [];
 				}
@@ -167,7 +186,8 @@
 						draft: url.href,
 						source: url.href,
 						reload: item.reload + 1,
-						mounted: true
+						mounted: true,
+						status: 'loading'
 					}
 				: item
 		);
@@ -184,16 +204,20 @@
 		if (discoveringServers) return;
 		discoveryStarted = true;
 		discoveringServers = true;
+		discoveryError = '';
 		try {
 			devServers = (await api<{ servers: DevServer[] }>('/api/dev-servers')).servers;
-		} catch {
-			devServers = [];
+		} catch (cause) {
+			discoveryError = cause instanceof Error ? cause.message : String(cause);
 		} finally {
 			discoveringServers = false;
 		}
 	}
 	async function stopServer(server: DevServer) {
-		if (!server.canStop || !confirm(`Stop ${server.process} (PID ${server.pid}) on port ${server.port}?`))
+		if (
+			!server.canStop ||
+			!confirm(`Stop ${server.process} (PID ${server.pid}) on port ${server.port}?`)
+		)
 			return;
 		stoppingPid = server.pid;
 		try {
@@ -223,6 +247,19 @@
 	function showHiddenServers() {
 		hiddenPorts = [];
 		saveHiddenPorts();
+	}
+	function updatePortNote(port: number, event: Event) {
+		const note = (event.currentTarget as HTMLInputElement).value.slice(0, 200);
+		if (note) portNotes = { ...portNotes, [port]: note };
+		else {
+			const { [port]: _, ...remaining } = portNotes;
+			portNotes = remaining;
+		}
+		try {
+			localStorage.setItem(portNotesStorageKey, JSON.stringify(portNotes));
+		} catch {
+			browserError = 'Port notes could not be saved in this browser.';
+		}
 	}
 	function addBrowserTab() {
 		cancelElementSelection();
@@ -262,7 +299,9 @@
 		cancelElementSelection();
 		if (!currentBrowserTab?.url) return;
 		browserTabs = browserTabs.map((tab) =>
-			tab.id === activeBrowserTabId ? { ...tab, source: tab.url, reload: tab.reload + 1 } : tab
+			tab.id === activeBrowserTabId
+				? { ...tab, source: tab.url, reload: tab.reload + 1, status: 'loading' }
+				: tab
 		);
 	}
 	function cleanReloadBrowser() {
@@ -291,7 +330,13 @@
 		}
 		browserTabs = browserTabs.map((item) =>
 			item.id === tabId
-				? { ...item, title: title || url.hostname || 'Browser', url: url.href, draft: url.href }
+				? {
+						...item,
+						title: title || url.hostname || 'Browser',
+						url: url.href,
+						draft: url.href,
+						status: 'unverified'
+					}
 				: item
 		);
 		saveBrowserTabs();
@@ -316,6 +361,10 @@
 		if (tabId === activeBrowserTabId) cancelElementSelection();
 		const frame = event.currentTarget as HTMLIFrameElement;
 		if (browserFrames.get(tabId) !== frame) return;
+		// Iframe load also fires for blocked/error documents; it is not a health check.
+		browserTabs = browserTabs.map((tab) =>
+			tab.id === tabId ? { ...tab, status: 'unverified' } : tab
+		);
 		try {
 			if (frame.contentWindow)
 				syncBrowserNavigation(
@@ -353,6 +402,10 @@
 	}
 	$effect(() => {
 		if (!active) cancelElementSelection();
+	});
+	$effect(() => {
+		if (active)
+			onpreviewstatus?.(currentBrowserTab?.status ?? 'idle', currentBrowserTab?.url ?? '');
 	});
 	$effect(() => {
 		if (active && currentBrowserTab && !currentBrowserTab.url && !discoveryStarted) {
@@ -399,6 +452,7 @@
 	onMount(() => {
 		nativePreview = nativeBrowserPreviewAvailable(window);
 		hiddenPorts = restoreHiddenPorts(localStorage.getItem(hiddenPortsStorageKey));
+		portNotes = restorePortNotes(localStorage.getItem(portNotesStorageKey));
 		restoreBrowserTabs();
 		const receiveNavigation = (event: MessageEvent) => {
 			if (event.data?.type !== 'hue:browser:navigation') return;
@@ -496,9 +550,11 @@
 			<Button
 				size="icon"
 				variant="ghost"
-				disabled={!currentBrowserTab?.url}
+				disabled={!nativePreview || !currentBrowserTab?.url}
 				aria-label="Clean reload preview"
-				title="Clear site data and reload preview"
+				title={nativePreview
+					? 'Clear site data and reload preview'
+					: 'Clean reload requires the HUE desktop app'}
 				onclick={cleanReloadBrowser}><Eraser width={15} height={15} aria-hidden="true" /></Button
 			>
 			<Input
@@ -625,6 +681,11 @@
 						src={tab.source}
 						aria-hidden={tab.id !== activeBrowserTabId}
 						onload={(event) => syncBrowserFrame(event, tab.id)}
+						onerror={() => {
+							browserTabs = browserTabs.map((item) =>
+								item.id === tab.id ? { ...item, status: 'error' } : item
+							);
+						}}
 						sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
 					></iframe>{/if}{/key}
 		{/each}
@@ -639,53 +700,79 @@
 			{#if visibleDevServers.length}
 				<div class="grid w-full max-w-sm gap-1 text-left" aria-label="Available local servers">
 					{#each visibleDevServers as server}
-						<div class="flex min-w-0 gap-1 rounded-md bg-secondary p-1">
+						<div
+							class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-1.5 gap-y-1 rounded-md bg-secondary p-2"
+						>
 							<Button
 								variant="ghost"
-								size="icon"
-								class="self-center"
-								aria-label={`Hide port ${server.port}`}
-								title={`Hide port ${server.port}`}
-								onclick={() => hideServer(server.port)}
-							>
-								<EyeOff width={14} height={14} aria-hidden="true" />
-							</Button>
-							<Button
-								variant="ghost"
-								class="h-auto min-w-0 flex-1 justify-start px-2 py-1.5 text-left font-normal"
+								class="h-auto min-w-0 justify-start px-1 py-0.5 text-left font-normal"
 								aria-label={`Open localhost:${server.port}`}
 								onclick={() => openBrowserUrl(server.url)}
 							>
 								<Globe width={14} height={14} class="shrink-0" aria-hidden="true" />
 								<span class="min-w-0">
-									<strong class="block truncate text-xs text-foreground">localhost:{server.port}</strong>
-									<span class="block truncate text-[11px] text-muted-foreground" title={server.folder}
-										>{server.process} · PID {server.pid}{server.canStop ? '' : ' · HUE'}<br />{server.folder}</span
+									<strong class="block truncate text-xs text-foreground"
+										>localhost:{server.port}</strong
+									>
+									<span
+										class="block truncate text-[11px] text-muted-foreground"
+										title={`${server.process} · PID ${server.pid} · ${server.folder}`}
+										>{server.process} · PID {server.pid} · {server.folder}{server.canStop
+											? ''
+											: ' · HUE'}</span
 									>
 								</span>
 							</Button>
-							<Button
-								variant="ghost"
-								size="sm"
-								class="self-center"
-								disabled={!server.canStop || stoppingPid === server.pid}
-								aria-label={`Stop ${server.process} on port ${server.port}`}
-								title={server.canStop ? `Stop PID ${server.pid}` : 'HUE cannot stop itself'}
-								onclick={() => stopServer(server)}
-							>
-								{stoppingPid === server.pid ? 'Stopping…' : 'Stop'}
-							</Button>
+							<div class="flex items-start gap-0.5">
+								<Button
+									variant="ghost"
+									size="icon"
+									aria-label={`Hide port ${server.port}`}
+									title={`Hide port ${server.port}`}
+									onclick={() => hideServer(server.port)}
+								>
+									<EyeOff width={14} height={14} aria-hidden="true" />
+								</Button>
+								<Button
+									variant="ghost"
+									size="icon"
+									disabled={!server.canStop || stoppingPid === server.pid}
+									aria-label={`Stop ${server.process} on port ${server.port}`}
+									title={server.canStop ? `Stop PID ${server.pid}` : 'HUE cannot stop itself'}
+									onclick={() => stopServer(server)}
+								>
+									{#if stoppingPid === server.pid}<RefreshCw
+											width={14}
+											height={14}
+											class="animate-spin"
+											aria-hidden="true"
+										/>{:else}<CircleStop width={14} height={14} aria-hidden="true" />{/if}
+								</Button>
+							</div>
+							<Input
+								class="col-span-2 h-(--control-height-sm) min-w-0 text-xs"
+								value={portNotes[server.port] ?? ''}
+								maxlength={200}
+								placeholder="Add note"
+								aria-label={`Note for port ${server.port}`}
+								oninput={(event) => updatePortNote(server.port, event)}
+							/>
 						</div>
 					{/each}
 				</div>
-			{:else if !discoveringServers}
-				<span>{hiddenServerCount ? 'All local servers are hidden.' : 'No local servers found.'}</span>
+			{:else if !discoveringServers && !discoveryError}
+				<span
+					>{hiddenServerCount ? 'All local servers are hidden.' : 'No local servers found.'}</span
+				>
 			{/if}
 			{#if hiddenServerCount}
 				<Button variant="ghost" size="sm" class="mx-auto" onclick={showHiddenServers}
 					>Show hidden ({hiddenServerCount})</Button
 				>
 			{/if}
+			{#if discoveryError}<p role="alert" class="text-destructive">
+					Local server discovery failed: {discoveryError}. Previous results may be stale.
+				</p>{/if}
 			<Button
 				variant="ghost"
 				size="sm"

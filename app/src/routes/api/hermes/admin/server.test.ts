@@ -1,7 +1,34 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
+import * as serviceModule from '$lib/server/services';
 import { _scheduleAction, GET, POST } from './+server';
 
 describe('Hermes admin API boundary', () => {
+	for (const [view, path] of [
+		['logs', '/api/logs?file=errors&lines=100'],
+		['update', '/api/hermes/update/check']
+	]) {
+		it(`allows the separate ${view} view and requests only its upstream resource`, async () => {
+			const requests: string[] = [];
+			const stub = spyOn(serviceModule, 'services').mockReturnValue({
+				admin: {
+					async json(path: string) {
+						requests.push(path);
+						return { ready: true };
+					}
+				}
+			} as never);
+			try {
+				const response = await GET({
+					url: new URL(`http://localhost/api/hermes/admin?view=${view}`)
+				} as never);
+				expect(response.status).toBe(200);
+				expect(await response.json()).toEqual({ [view!]: { ready: true } });
+				expect(requests).toEqual([path!]);
+			} finally {
+				stub.mockRestore();
+			}
+		});
+	}
 	const event = (request: Request, clientAddress = '127.0.0.1') => ({
 		request,
 		url: new URL(request.url),
@@ -77,7 +104,10 @@ describe('Hermes admin API boundary', () => {
 			update: (id: string, input: unknown) => (calls.push(['update', id, input]), { id }),
 			pause: (id: string) => (calls.push(['pause', id]), { id }),
 			resume: (id: string) => (calls.push(['resume', id]), { id }),
-			detail: (id: string) => ({ id }),
+			get: (id: string) => ({ id }),
+			detail: () => {
+				throw new Error('Run now must not hydrate history');
+			},
 			runNow: (id: string, runId: string) => (calls.push(['run', id, runId]), { status: 'queued' }),
 			delete: (id: string) => (calls.push(['delete', id]), { deleted: { id } })
 		};
@@ -102,5 +132,37 @@ describe('Hermes admin API boundary', () => {
 			],
 			['run', 'daily', 'client-1']
 		]);
+	});
+
+	it('returns accepted run status and lightweight schedule metadata without history', async () => {
+		const calls: string[] = [];
+		const target = {
+			id: 'daily',
+			name: 'Daily',
+			sessionId: 's-1',
+			nextRunAt: '2026-01-02T00:00:00Z',
+			prompt: 'Review',
+			cron: '0 0 * * *',
+			timezone: 'UTC',
+			enabled: true,
+			createdAt: '2026-01-01T00:00:00Z',
+			updatedAt: '2026-01-01T00:00:00Z'
+		};
+		const result = await _scheduleAction(
+			{
+				detail: () => {
+					throw new Error('Full history unavailable');
+				},
+				get: () => target,
+				runNow: async () => {
+					calls.push('accepted');
+					return { status: 'queued', duplicate: false };
+				}
+			} as never,
+			'schedule.run',
+			{ id: 'daily', runId: 'run-1' }
+		);
+		expect(calls).toEqual(['accepted']);
+		expect(result).toEqual({ target, delivery: { status: 'queued', duplicate: false } });
 	});
 });

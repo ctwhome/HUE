@@ -220,15 +220,34 @@ export class HermesServe {
 		return this.projectsRpc.request<T>(url.toString(), method, params);
 	}
 
-	async loadTranscript(sessionId: string, profile?: string): Promise<HermesTranscriptMessage[]> {
+	async loadTranscript(
+		sessionId: string,
+		profile?: string,
+		recentLimit?: number
+	): Promise<HermesTranscriptMessage[]> {
+		return (await this.loadTranscriptWithCoverage(sessionId, profile, recentLimit)).transcript;
+	}
+
+	async loadTranscriptWithCoverage(
+		sessionId: string,
+		profile?: string,
+		recentLimit?: number
+	): Promise<{ transcript: HermesTranscriptMessage[]; complete: boolean }> {
+		if (
+			recentLimit !== undefined &&
+			(!Number.isSafeInteger(recentLimit) || recentLimit < 1 || recentLimit > TRANSCRIPT_PAGE_SIZE)
+		) {
+			throw new Error(`Recent transcript limit must be 1-${TRANSCRIPT_PAGE_SIZE}`);
+		}
 		const transcript: HermesTranscriptMessage[] = [];
 		const messageIds = new Set<string>();
 		let resolvedSessionId = '';
-		for (let offset = 0; ; offset += TRANSCRIPT_PAGE_SIZE) {
+		const pageSize = recentLimit ?? TRANSCRIPT_PAGE_SIZE;
+		for (let offset = 0; ; offset += pageSize) {
 			if (offset >= MAX_TRANSCRIPT_MESSAGES) {
 				throw new Error(`Hermes Session transcript exceeds ${MAX_TRANSCRIPT_MESSAGES} messages`);
 			}
-			const path = `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=${TRANSCRIPT_PAGE_SIZE}&offset=${offset}&order=oldest&include_compacted=true${profile ? `&profile=${encodeURIComponent(profile)}` : ''}`;
+			const path = `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=${pageSize}&offset=${offset}&order=${recentLimit === undefined ? 'oldest' : 'newest'}&include_compacted=true${profile ? `&profile=${encodeURIComponent(profile)}` : ''}`;
 			const page = await this.json<{
 				session_id?: unknown;
 				messages?: unknown;
@@ -243,7 +262,7 @@ export class HermesServe {
 				throw new Error('Hermes changed resolved Session during transcript pagination');
 			}
 			resolvedSessionId = page.session_id;
-			if (page.pagination?.returned !== page.messages.length) {
+			if (page.pagination?.returned !== page.messages.length || page.messages.length > pageSize) {
 				throw new Error('Hermes returned invalid Session transcript pagination');
 			}
 			if (offset + page.messages.length > MAX_TRANSCRIPT_MESSAGES) {
@@ -275,7 +294,9 @@ export class HermesServe {
 					...(typeof message.timestamp === 'string' ? { createdAt: message.timestamp } : {})
 				});
 			}
-			if (page.messages.length < TRANSCRIPT_PAGE_SIZE) return transcript;
+			if (recentLimit !== undefined)
+				return { transcript: transcript.reverse(), complete: page.messages.length < pageSize };
+			if (page.messages.length < pageSize) return { transcript, complete: true };
 		}
 	}
 

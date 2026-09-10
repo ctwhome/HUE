@@ -1,9 +1,39 @@
 import { expect, test } from 'bun:test';
 import {
+	discoverDevServers,
 	localDiscoveryAllowed,
 	parseDevServers,
 	stoppableDevServer
 } from './dev-servers';
+
+test('listener discovery awaits bounded asynchronous processes', async () => {
+	const calls: string[][] = [];
+	const servers = await discoverDevServers(async (_command, args, options) => {
+		calls.push(args);
+		expect(options).toMatchObject({ timeout: 1_500, maxBuffer: 1_000_000 });
+		await Bun.sleep(1);
+		return {
+			status: 0,
+			stdout: calls.length === 1 ? 'p101\ncnode\nn*:5173\n' : 'p101\nn/tmp/app\n'
+		};
+	});
+	expect(calls).toHaveLength(2);
+	expect(servers).toMatchObject([{ port: 5173, folder: '/tmp/app' }]);
+});
+
+test('discovery distinguishes empty listeners from process failures', async () => {
+	expect(await discoverDevServers(async () => ({ status: 1, stdout: '' }))).toEqual([]);
+	expect(
+		await discoverDevServers(async () => ({
+			status: 1,
+			stdout: '',
+			error: Object.assign(new Error('No matches'), { code: 1 })
+		}))
+	).toEqual([]);
+	await expect(
+		discoverDevServers(async () => ({ status: null, stdout: '', error: new Error('timeout') }))
+	).rejects.toThrow('discovery failed');
+});
 
 test('parses listener process metadata into sorted localhost servers', () => {
 	expect(

@@ -23,9 +23,19 @@ test('Excalidraw is independent from the browser panel', () => {
 	expect(workspace).toContain('<ProjectExcalidrawDock');
 });
 
-test('project tools use the navigation surface instead of the chat background', () => {
+test('project tool panel gutters use the selected project color', () => {
 	const styles = readFileSync(join(import.meta.dir, '../../../styles/project-browser.css'), 'utf8');
 
+	expect(styles).toContain('--project-tool-border-surface: var(--project-shell-color)');
 	expect(styles).toContain('--project-tool-surface: var(--navigation-surface)');
+	expect(styles).toContain('background: var(--project-tool-border-surface)');
 	expect(styles).toContain('background: var(--project-tool-surface)');
+});
+
+test('Git panel resizers occupy one panel gap', () => {
+	const styles = readFileSync(join(import.meta.dir, '../../../styles/project-browser.css'), 'utf8');
+
+	expect(styles).toContain('gap: var(--panel-gap)');
+	expect(styles).toContain('min-height: var(--panel-gap)');
+	expect(styles).toContain('margin: calc(-1 * var(--panel-gap)) 0');
 });

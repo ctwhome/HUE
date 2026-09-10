@@ -3,17 +3,6 @@ import { sameOriginMutationAllowed } from '$lib/server/same-origin';
 import { services } from '$lib/server/services';
 import type { RequestHandler } from './$types';
 
-export function _withAuthoritativeProjectNames<
-	T extends { projectId: string | null; projectName?: string | null }
->(items: T[], projects: Array<{ id: string; name: string }>): T[] {
-	const names = new Map(projects.map(({ id, name }) => [id, name]));
-	return items.map((item) =>
-		item.projectId && names.has(item.projectId)
-			? { ...item, projectName: names.get(item.projectId)! }
-			: item
-	);
-}
-
 export const GET: RequestHandler = async ({ url }) => {
 	try {
 		const view = url.searchParams.get('view') ?? 'unread';
@@ -31,15 +20,11 @@ export const GET: RequestHandler = async ({ url }) => {
 			limit,
 			cursor: url.searchParams.get('cursor')
 		});
-		const projects = await state.projects?.list().catch(() => ({ projects: [] }));
 		return json({
 			...notifications,
-			items: _withAuthoritativeProjectNames(notifications.items, projects?.projects ?? []),
 			counts: state.store.notificationCounts(),
 			chatIndicators: state.store.getSessionIndicatorCounts(null, 'unscheduled'),
-			projectIndicators: Object.fromEntries(
-				(projects?.projects ?? []).map(({ id }) => [id, state.store.getSessionIndicatorCounts(id)])
-			)
+			projectIndicators: state.store.getProjectIndicatorCounts()
 		});
 	} catch {
 		return json({ error: 'Unable to list notifications' }, { status: 400 });

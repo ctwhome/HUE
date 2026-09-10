@@ -33,7 +33,11 @@ async function scopeOrNotFound(projectId: string | null, sessionId: string) {
 	try {
 		return await resolveSessionScope(projectId, sessionId);
 	} catch (cause) {
-		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 404 });
+		const error = cause instanceof Error ? cause.message : String(cause);
+		return json(
+			{ error },
+			{ status: error === 'Project not found' || error === 'Session not found' ? 404 : 503 }
+		);
 	}
 }
 
@@ -79,28 +83,57 @@ export async function getSession(projectId: string | null, { params, url }: Sess
 	const scope = await scopeOrNotFound(projectId, params.sessionId);
 	if (scope instanceof Response) return scope;
 	const session = services().store.getSession(scope.projectId, params.sessionId)!;
-	const snapshot = services().store.getSessionSnapshot(scope.projectId, params.sessionId);
-	const format = url?.searchParams.get('format');
-	if (session.harness === 'opencode' && snapshot.activeTurn) {
+	const format = url.searchParams.get('format');
+	const full =
+		url.searchParams.get('history') === 'full' || format === 'json' || format === 'markdown';
+	const snapshot = services().store.getSessionSnapshot(
+		scope.projectId,
+		params.sessionId,
+		full ? undefined : 50
+	);
+	// ponytail: older history is an explicit full read, not a second pagination system.
+	const fullUrl = new URL(url);
+	fullUrl.searchParams.set('history', 'full');
+	const history = {
+		mode: full ? 'full' : 'recent',
+		complete: full,
+		fullUrl: `${fullUrl.pathname}${fullUrl.search}`
+	};
+	if (session.harness === 'opencode' && (snapshot.activeTurn || !full)) {
 		if (format === 'json' || format === 'markdown') {
-			return json({ error: 'Wait for the active turn to finish before exporting' }, { status: 409 });
+			return json(
+				{ error: 'Wait for the active turn to finish before exporting' },
+				{ status: 409 }
+			);
 		}
 		return json({
 			transcript: [],
+			history: { ...history, complete: false },
 			workMode: session.workMode,
 			commands: services().sessionRuntime.getAvailableCommands(params.sessionId),
 			runtime: services().sessionRuntime.getSessionState(params.sessionId),
-			branch: scope.project ? projectBranch(scope.project.primary_path) : null,
+			branch: scope.project ? await projectBranch(scope.project.primary_path) : null,
 			...snapshot
 		});
 	}
 	try {
+		const recent =
+			!full && session.harness !== 'opencode'
+				? await services().admin.loadTranscriptWithCoverage(
+						session.externalSessionId,
+						undefined,
+						100
+					)
+				: null;
+		if (recent) history.complete = recent.complete && snapshot.messages.length < 50;
 		const transcript =
 			session.harness === 'opencode'
 				? await services().dispatcher.withSessionLock(params.sessionId, () =>
 						services().sessionRuntime.loadTranscript(params.sessionId)
 					)
-				: await services().sessionRuntime.loadTranscript(params.sessionId);
+				: full
+					? await services().sessionRuntime.loadTranscript(params.sessionId)
+					: recent!.transcript;
 		if (format === 'json' || format === 'markdown') {
 			const exported = exportSession(format, {
 				session: {
@@ -131,25 +164,27 @@ export async function getSession(projectId: string | null, { params, url }: Sess
 		}
 		return json({
 			transcript,
+			history,
 			workMode: session.workMode,
 			commands: services().sessionRuntime.getAvailableCommands(params.sessionId),
 			runtime: services().sessionRuntime.getSessionState(params.sessionId),
-			branch: scope.project ? projectBranch(scope.project.primary_path) : null,
+			branch: scope.project ? await projectBranch(scope.project.primary_path) : null,
 			...snapshot
 		});
 	} catch (cause) {
-		if (snapshot.messages.length) {
+		if (format !== 'json' && format !== 'markdown') {
 			return json({
 				transcript: [],
+				history: { ...history, complete: false },
 				transcriptError: cause instanceof Error ? cause.message : String(cause),
 				workMode: session.workMode,
 				commands: services().sessionRuntime.getAvailableCommands(params.sessionId),
 				runtime: services().sessionRuntime.getSessionState(params.sessionId),
-				branch: scope.project ? projectBranch(scope.project.primary_path) : null,
+				branch: scope.project ? await projectBranch(scope.project.primary_path) : null,
 				...snapshot
 			});
 		}
-		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 404 });
+		return json({ error: cause instanceof Error ? cause.message : String(cause) }, { status: 503 });
 	}
 }
 
@@ -375,7 +410,10 @@ export async function postMessage(projectId: string | null, { params, request }:
 		if (images.length) {
 			await services().sessionRuntime.start(params.sessionId);
 			if (!services().sessionRuntime.getCapabilities(params.sessionId).promptImage) {
-				return json({ error: 'This Session harness does not support image prompts' }, { status: 400 });
+				return json(
+					{ error: 'This Session harness does not support image prompts' },
+					{ status: 400 }
+				);
 			}
 		}
 		const reviewContexts = validateReviewContexts(body.reviewContexts);
@@ -430,31 +468,29 @@ export async function patchMessage(projectId: string | null, { params, request }
 		const messageId = body.messageId?.trim();
 		const text = body.text ?? '';
 		const preserveAttachments = body.preserveAttachments === true;
-		const { images, attachments } = validateMessageAttachments(
-			body.images,
-			preserveAttachments ? [] : body.attachments
-		);
+		const { images, attachments } = validateMessageAttachments(body.images, body.attachments);
 		if (images.length) {
 			await services().sessionRuntime.start(params.sessionId);
 			if (!services().sessionRuntime.getCapabilities(params.sessionId).promptImage) {
-				return json({ error: 'This Session harness does not support image prompts' }, { status: 400 });
+				return json(
+					{ error: 'This Session harness does not support image prompts' },
+					{ status: 400 }
+				);
 			}
 		}
 		const reviewContexts =
 			body.reviewContexts === undefined ? undefined : validateReviewContexts(body.reviewContexts);
-		if (
-			!messageId ||
-			(!text.trim() && !images.length && !attachments.length && !reviewContexts?.length)
-		) {
-			return json({ error: 'messageId and message content are required' }, { status: 400 });
+		if (!messageId) {
+			return json({ error: 'messageId is required' }, { status: 400 });
 		}
 		const message = await withMessageScope(projectId, params.sessionId, (resolvedProjectId) =>
 			services().dispatcher.updateQueuedMessage(messageId, {
 				projectId: resolvedProjectId,
 				sessionId: params.sessionId,
 				text,
-				images: preserveAttachments ? [] : images,
-				attachments: preserveAttachments ? undefined : attachments,
+				images: body.images === undefined ? undefined : images,
+				attachments,
+				preserveAttachments,
 				reviewContexts
 			})
 		);

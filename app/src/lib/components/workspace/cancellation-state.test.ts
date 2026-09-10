@@ -8,3 +8,14 @@ test('accepted cancellation remains a distinct busy state until an authoritative
 
 	expect(accepted).toBeGreaterThan(stop.indexOf("method: 'POST'"));
 });
+
+test('work mode locks and completions are scoped to captured selection', () => {
+	const source = readFileSync(new URL('./session-controller.svelte.ts', import.meta.url), 'utf8');
+	expect(source).toContain('navigation.isCurrentSessionSelection(workModeSelection)');
+	expect(source).toContain(
+		'if (selection && navigation.isCurrentSessionSelection(selection)) workModeChanging = false'
+	);
+	expect(source.split('get workModeChanging()')[1].split('},')[0]).toContain(
+		'isCurrentSessionSelection(workModeSelection)'
+	);
+});

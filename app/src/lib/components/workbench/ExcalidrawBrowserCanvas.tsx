@@ -18,11 +18,15 @@ type MountOptions = {
 	onsave: (scene: string) => Promise<void>;
 	onready: (restoredUrl: string) => void;
 	onerror: (message: string) => void;
+	ondirtychange: (dirty: boolean) => void;
 };
 
 export type BrowserCanvasController = {
 	addEmbed: (device: BrowserDevice, url: string) => void;
 	flush: () => Promise<void>;
+	exportScene: () => string;
+	replaceScene: (scene: string) => void;
+	discard: () => void;
 	destroy: () => void;
 };
 
@@ -69,21 +73,46 @@ export async function mountExcalidrawBrowserCanvas(
 	let latestAppState: Partial<AppState> = restored.appState;
 	let destroyed = false;
 	let saveChain = Promise.resolve();
+	let acknowledgedScene = serializeBrowserScene(latestElements, latestAppState);
+	let saveGeneration = 0;
+	const reportDirty = () => {
+		const scene = serializeBrowserScene(latestElements, latestAppState);
+		options.ondirtychange(
+			scene !== acknowledgedScene || JSON.parse(scene).elements.length !== latestElements.length
+		);
+	};
 
 	const flush = () => {
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = undefined;
 		const scene = serializeBrowserScene(latestElements, latestAppState);
-		saveChain = saveChain
-			.then(() => options.onsave(scene))
+		const generation = saveGeneration;
+		const elementCount = latestElements.length;
+		const request = saveChain
+			.then(async () => {
+				if (destroyed || generation !== saveGeneration) return;
+				if (JSON.parse(scene).elements.length !== elementCount)
+					throw new Error(
+						'Canvas exceeds safe save limits. Export a recovery copy before simplifying it.'
+					);
+				if (scene === acknowledgedScene) return;
+				await options.onsave(scene);
+				if (generation !== saveGeneration) return;
+				acknowledgedScene = scene;
+				reportDirty();
+			})
 			.catch((cause) => {
-				options.onerror(cause instanceof Error ? cause.message : 'Canvas could not be saved to HUE.');
+				options.onerror(
+					cause instanceof Error ? cause.message : 'Canvas could not be saved to HUE.'
+				);
+				throw cause;
 			});
-		return saveChain;
+		saveChain = request.catch(() => undefined);
+		return request;
 	};
 	const scheduleSave = () => {
 		if (saveTimer) clearTimeout(saveTimer);
-		saveTimer = setTimeout(flush, 300);
+		saveTimer = setTimeout(() => void flush().catch(() => undefined), 300);
 	};
 	const onChange = (
 		elements: readonly ExcalidrawElement[],
@@ -92,6 +121,7 @@ export async function mountExcalidrawBrowserCanvas(
 	) => {
 		latestElements = elements;
 		latestAppState = appState;
+		reportDirty();
 		scheduleSave();
 	};
 	const renderEmbeddable = (element: ExcalidrawEmbeddableElement) => {
@@ -158,10 +188,34 @@ export async function mountExcalidrawBrowserCanvas(
 		attributes: true,
 		attributeFilter: ['data-theme']
 	});
-	const pageHide = () => void flush();
+	// Best-effort early flush only. Page termination cannot guarantee delivery of a large scene.
+	const pageHide = () => {
+		if (document.visibilityState === 'hidden') void flush().catch(() => undefined);
+	};
 	window.addEventListener('pagehide', pageHide);
 	document.addEventListener('visibilitychange', pageHide);
 	render();
+	const replaceScene = (scene: string) => {
+		if (saveTimer) clearTimeout(saveTimer);
+		saveGeneration += 1;
+		const parsed = parseStoredBrowserScene(scene);
+		const next = restore(
+			parsed
+				? { elements: parsed.elements as never, appState: parsed.appState as never, files: {} }
+				: null,
+			null,
+			null
+		);
+		latestElements = next.elements;
+		latestAppState = next.appState;
+		acknowledgedScene = serializeBrowserScene(latestElements, latestAppState);
+		api?.updateScene({
+			elements: next.elements,
+			appState: next.appState,
+			captureUpdate: CaptureUpdateAction.NEVER
+		});
+		reportDirty();
+	};
 
 	return {
 		addEmbed(device, url) {
@@ -181,9 +235,21 @@ export async function mountExcalidrawBrowserCanvas(
 			});
 		},
 		flush,
+		exportScene: () =>
+			JSON.stringify({
+				type: 'excalidraw',
+				version: 2,
+				source: 'HUE',
+				elements: latestElements,
+				appState: latestAppState,
+				files: {}
+			}),
+		replaceScene,
+		discard: () => replaceScene(acknowledgedScene),
 		destroy() {
 			destroyed = true;
-			void flush();
+			if (saveTimer) clearTimeout(saveTimer);
+			saveGeneration += 1;
 			themeObserver.disconnect();
 			window.removeEventListener('pagehide', pageHide);
 			document.removeEventListener('visibilitychange', pageHide);

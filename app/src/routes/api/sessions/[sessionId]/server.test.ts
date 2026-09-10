@@ -7,6 +7,10 @@ let runtimeTranscriptCalls = 0;
 let sessionHarness: 'hermes' | 'opencode' = 'hermes';
 let activeTurn: { status: string } | null = { status: 'running' };
 let lockCalls = 0;
+let snapshotLimit: number | undefined;
+let transcriptLimit: number | undefined;
+let transcriptFailure = false;
+let transcriptComplete = false;
 
 mock.module('$lib/server/route-services', () => ({
 	...serviceExportStubs,
@@ -15,6 +19,7 @@ mock.module('$lib/server/route-services', () => ({
 			hasSession: () => true,
 			getSession: () => ({
 				sessionId: 'session-1',
+				externalSessionId: 'native-1',
 				cwd: '/work/topic',
 				icon: null,
 				title: 'Topic',
@@ -25,12 +30,15 @@ mock.module('$lib/server/route-services', () => ({
 				folder: null,
 				tags: []
 			}),
-			getSessionSnapshot: () => ({
-				messages: [],
-				events: [],
-				cursor: 0,
-				activeTurn
-			}),
+			getSessionSnapshot: (_projectId: null, _sessionId: string, limit?: number) => (
+				(snapshotLimit = limit),
+				{
+					messages: [],
+					events: [],
+					cursor: 0,
+					activeTurn
+				}
+			),
 			updateSessionWorkMode: (
 				_projectId: null,
 				sessionId: string,
@@ -39,6 +47,17 @@ mock.module('$lib/server/route-services', () => ({
 			) => {
 				workModeCalls.push({ sessionId, workMode, source });
 				return { session: { sessionId, workMode }, event: null };
+			}
+		},
+		admin: {
+			loadTranscriptWithCoverage: async (_id: string, _profile?: string, limit?: number) => {
+				if (transcriptFailure) throw new Error('History unavailable');
+				transcriptLimit = limit;
+				lightweightTranscriptCalls += 1;
+				return {
+					transcript: [{ role: 'assistant', text: 'Loaded without ACP' }],
+					complete: transcriptComplete
+				};
 			}
 		},
 		sessionRuntime: {
@@ -58,7 +77,7 @@ mock.module('$lib/server/route-services', () => ({
 	})
 }));
 
-test('GET reads one projectless transcript without loading the ACP Session', async () => {
+test('GET reads a recent projectless window with an explicit full-history URL', async () => {
 	sessionHarness = 'hermes';
 	activeTurn = { status: 'running' };
 	lightweightTranscriptCalls = 0;
@@ -70,11 +89,32 @@ test('GET reads one projectless transcript without loading the ACP Session', asy
 	} as never);
 
 	expect(response.status).toBe(200);
-	expect((await response.json()).transcript).toEqual([
-		{ role: 'assistant', text: 'Loaded without ACP' }
-	]);
+	const body = await response.json();
+	expect(body.transcript).toEqual([{ role: 'assistant', text: 'Loaded without ACP' }]);
 	expect(lightweightTranscriptCalls).toBe(1);
 	expect(runtimeTranscriptCalls).toBe(0);
+	expect(snapshotLimit).toBe(50);
+	expect(transcriptLimit).toBe(100);
+	expect(body.history).toEqual({
+		mode: 'recent',
+		complete: false,
+		fullUrl: '/api/sessions/session-1?history=full'
+	});
+});
+
+test('marks a small recent Hermes history complete when both sources fit', async () => {
+	sessionHarness = 'hermes';
+	transcriptComplete = true;
+	try {
+		const { GET } = await import('./+server');
+		const response = await GET({
+			params: { sessionId: 'session-1' },
+			url: new URL('http://hue.test/api/sessions/session-1')
+		} as never);
+		expect(await response.json()).toMatchObject({ history: { mode: 'recent', complete: true } });
+	} finally {
+		transcriptComplete = false;
+	}
 });
 
 test('GET does not replay an OpenCode transcript into an active turn', async () => {
@@ -84,7 +124,7 @@ test('GET does not replay an OpenCode transcript into an active turn', async () 
 	const { GET } = await import('./+server');
 	const response = await GET({
 		params: { sessionId: 'session-1' },
-		url: new URL('http://hue.test/api/sessions/session-1')
+		url: new URL('http://hue.test/api/sessions/session-1?history=full')
 	} as never);
 
 	expect(response.status).toBe(200);
@@ -100,12 +140,47 @@ test('GET serializes an inactive OpenCode transcript replay with message deliver
 	const { GET } = await import('./+server');
 	const response = await GET({
 		params: { sessionId: 'session-1' },
-		url: new URL('http://hue.test/api/sessions/session-1')
+		url: new URL('http://hue.test/api/sessions/session-1?history=full')
 	} as never);
 
 	expect(response.status).toBe(200);
 	expect(lockCalls).toBe(1);
 	expect(lightweightTranscriptCalls).toBe(1);
+});
+
+test('recent OpenCode detail defers replay even when idle', async () => {
+	sessionHarness = 'opencode';
+	activeTurn = null;
+	lightweightTranscriptCalls = 0;
+	const { GET } = await import('./+server');
+	const response = await GET({
+		params: { sessionId: 'session-1' },
+		url: new URL('http://hue.test/api/sessions/session-1')
+	} as never);
+	expect(await response.json()).toMatchObject({
+		transcript: [],
+		history: { mode: 'recent', complete: false }
+	});
+	expect(lightweightTranscriptCalls).toBe(0);
+});
+
+test('returns explicit partial history on outage even without local messages', async () => {
+	sessionHarness = 'hermes';
+	transcriptFailure = true;
+	try {
+		const { GET } = await import('./+server');
+		const response = await GET({
+			params: { sessionId: 'session-1' },
+			url: new URL('http://hue.test/api/sessions/session-1')
+		} as never);
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({
+			transcriptError: 'History unavailable',
+			history: { complete: false }
+		});
+	} finally {
+		transcriptFailure = false;
+	}
 });
 
 test('PATCH updates projectless HUE work mode while a turn is running', async () => {
