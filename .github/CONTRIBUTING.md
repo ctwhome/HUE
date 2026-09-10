@@ -17,6 +17,8 @@ Include the behavior changed, focused test evidence, applicable canonical gate o
 
 Canonical Markdown lives in `docs/*.md` and `docs/decisions/*.md`. The Starlight site projection is generated; do not edit `docs/src/content/docs/`. Obsolete broad roadmap and prototype sources have been removed and must not be restored as implicit backlog.
 
+Store UI verification screenshots in `docs/screenshots/`, promotional captures in `docs/screenshots/promo/`, and historical documents in `docs/archive/`. Keep local run logs in the ignored `.tmp/logs/` directory.
+
 ## Local validation
 
 ```bash

@@ -64,7 +64,7 @@ The real-Hermes seam is optional and isolated:
 HUE_REAL_HERMES=1 bun test app/src/lib/server/hermes-acp.test.ts
 ```
 
-See the [active status](docs/00-status-and-review.md), [focused architecture](docs/05-system-architecture.md), [decision register](docs/14-decision-register.md), and [contribution guide](CONTRIBUTING.md).
+See the [active status](docs/00-status-and-review.md), [focused architecture](docs/05-system-architecture.md), [decision register](docs/14-decision-register.md), and [contribution guide](.github/CONTRIBUTING.md).
 
 ## License
 

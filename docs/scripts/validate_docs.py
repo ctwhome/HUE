@@ -9,7 +9,7 @@ from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[2]
 ERRORS: list[str] = []
-DOCS = [ROOT / "README.md", ROOT / "CONTRIBUTING.md", *sorted((ROOT / "docs").glob("*.md")), *sorted((ROOT / "docs/decisions").glob("*.md"))]
+DOCS = [ROOT / "README.md", ROOT / ".github/CONTRIBUTING.md", *sorted((ROOT / "docs").glob("*.md")), *sorted((ROOT / "docs/decisions").glob("*.md"))]
 
 
 def fail(message: str) -> None:
