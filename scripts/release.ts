@@ -52,14 +52,15 @@ async function release() {
   const destination = "/Applications/HUE.app";
   const staged = `/Applications/.HUE-release-${process.pid}.app`;
   const backup = `/Applications/.HUE-previous-${process.pid}.app`;
+  const buildId = `release-${process.pid}-${crypto.randomUUID()}`;
   let installed = false;
   let committed = false;
   try {
     await Bun.write(file, JSON.stringify({ ...pkg, version }, null, 2) + "\n");
     run("bun", "install", "--lockfile-only", "--ignore-scripts");
     run("make", "build");
-    run("bun", "run", "--cwd", "desktop", "build");
-    const bundle = `desktop/build/stable-macos-${process.arch}/HUE.app`;
+    run("env", `HUE_RELEASE_BUILD_ID=${buildId}`, "bun", "run", "--cwd", "desktop", "build");
+    const bundle = `desktop/build/${buildId}/stable-macos-${process.arch}/HUE.app`;
     if (!existsSync(bundle)) throw new Error(`Desktop build missing: ${bundle}`);
     run("ditto", bundle, staged);
     // Ask the existing app to quit before replacing its bundle.
@@ -101,6 +102,8 @@ async function release() {
     throw error;
   } finally {
     rmSync(staged, { recursive: true, force: true });
+    rmSync(`desktop/build/${buildId}`, { recursive: true, force: true });
+    rmSync(`desktop/artifacts/${buildId}`, { recursive: true, force: true });
   }
 }
 

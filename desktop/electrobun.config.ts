@@ -8,6 +8,10 @@ export default {
     version,
   },
   build: {
+    ...(process.env.HUE_RELEASE_BUILD_ID ? {
+      buildFolder: `build/${process.env.HUE_RELEASE_BUILD_ID}`,
+      artifactFolder: `artifacts/${process.env.HUE_RELEASE_BUILD_ID}`,
+    } : {}),
     mainProcess: "bun",
     bun: {
       entrypoint: "src/index.ts",

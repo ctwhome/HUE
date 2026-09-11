@@ -18,6 +18,8 @@ The Project browser uses sandboxed Electrobun webviews with native developer too
 
 Run `make release` from a clean `main` checkout after closing the development stack. It installs dependencies, builds the docs, web server, and stable desktop bundle, replaces `/Applications/HUE.app`, restarts the existing `com.ctw.hue-production` LaunchAgent, waits for port 44011, and opens HUE. The LaunchAgent must already be installed; the installed app defaults to production on port 44011. Development commands explicitly use port 44010.
 
+Each release builds into unique temporary desktop build/artifact directories, so a concurrent ordinary desktop build cannot remove the bundle during installation. Those directories are removed when the release finishes.
+
 `desktop/package.json` is the desktop version source. Commits since the latest reachable `vX.Y.Z` tag determine the next version: `BREAKING CHANGE:` / `BREAKING-CHANGE:` footers or `type!:` headers bump major, `feat` bumps minor, and `fix` / `perf` bump patch. The highest bump wins, including on 0.x. With no tags, all commits are considered against the current version. Other commits rebuild and reinstall without bumping.
 
 After successful installation and server readiness, the command commits the version as `chore(release): vX.Y.Z` and creates a local annotated tag. It never pushes. A failed release restores the previous desktop bundle and uncommitted version; web build output is not rolled back. If tagging fails after the version commit, that commit remains for manual recovery.
