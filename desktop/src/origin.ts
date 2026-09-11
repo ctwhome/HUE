@@ -1,4 +1,4 @@
-const DEFAULT_ORIGIN = "http://127.0.0.1:44011";
+const DEFAULT_ORIGIN = "https://m3-max.tail33436f.ts.net:44011";
 
 export function resolveHueDesktopOrigin(value = DEFAULT_ORIGIN) {
   try {
