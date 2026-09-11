@@ -20,7 +20,7 @@ test('make dev hands the canonical database between production and development',
 test('make dev opens desktop while web-dev keeps the browser-only server', () => {
 	expect(makefile).toContain('./scripts/dev-stack.sh desktop');
 	expect(makefile).toContain('./scripts/dev-stack.sh web');
-	expect(makefile).toContain('desktop: install\n\tbun run --cwd desktop dev');
+	expect(makefile).toContain('desktop: install\n\tHUE_DESKTOP_ORIGIN=http://127.0.0.1:44010 bun run --cwd desktop dev');
 });
 
 test('make stop-production unloads KeepAlive before stopping serve processes', () => {
