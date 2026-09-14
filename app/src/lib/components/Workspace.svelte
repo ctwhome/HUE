@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
+	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { formatElapsed, selectSessionArtifacts, selectTranscriptTimeline } from '$lib';
 	import { automaticSessionIcon } from '$lib/icon';
@@ -431,6 +432,9 @@
 		if (!navigation.selectedSession && !(await ensureDraftSession())) return;
 		await messageState.submit(event);
 	}
+	let markRouterReady!: () => void;
+	const routerReady = new Promise<void>((resolve) => (markRouterReady = resolve));
+	afterNavigate(() => markRouterReady());
 	onMount(() => {
 		let mounted = true;
 		const refreshChatBackground = () => (chatBackgroundRevision += 1);
@@ -451,11 +455,11 @@
 			onMobile: (value) => (mobile = value),
 			onVisual: (active) => (gestureActive = active)
 		});
-		mobileShell.start(!projectReconciliation);
-		if (projectReconciliation) {
-			navigation.ready = true;
-			void projectReconciliation.then((loaded) => {
+		mobileShell.start(false);
+		navigation.ready = true;
+		void Promise.all([routerReady, projectReconciliation]).then(([, loaded]) => {
 				if (!mounted) return;
+				if (loaded) {
 				// Preserve Projects created or edited while the initial list was in flight.
 				projectManagement.projects = [
 					...new Map(
@@ -465,9 +469,11 @@
 				projectsCapability = loaded.projectsCapability ?? 'available';
 				projectsError = loaded.projectsError ?? '';
 				reconciliationIssues = loaded.reconciliationIssues ?? [];
+				}
 				return navigation.restoreInitialSelection();
+			}).catch((cause) => {
+				if (mounted) error = cause instanceof Error ? cause.message : String(cause);
 			});
-		}
 		return () => {
 			mounted = false;
 			window.removeEventListener(CHAT_BACKGROUND_EVENT, refreshChatBackground);

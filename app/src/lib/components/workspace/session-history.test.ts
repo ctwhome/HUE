@@ -28,7 +28,23 @@ const message = (id: string, text: string) => ({
 	status: 'running'
 });
 
-test('nonempty recent history retains a complete cached prefix and applies new replay events', () => {
+test('a partial refresh updates overlapping harness history without a new HUE event cursor', () => {
+	const state = new SessionState(() => null, () => {});
+	const old = [{ role: 'user' as const, text: 'Old', harnessMessageId: '1' }, { role: 'assistant' as const, text: 'Answer', harnessMessageId: '2' }];
+	state.applyLoaded(load({ history: history(false), transcript: old }));
+	state.cache({ sessionId: 'a', cwd: '/' });
+	state.clear();
+	state.showCached({ sessionId: 'a', cwd: '/' });
+	state.applyLoaded(load({ history: history(false), transcript: [
+		{ ...old[1], text: 'Updated answer' }, { role: 'user', text: 'External', harnessMessageId: '3' },
+		{ role: 'assistant', text: 'External answer', harnessMessageId: '4' }
+	] }));
+	expect(state.timeline.filter((item) => item.kind === 'message').map((item) => item.text))
+		.toEqual(['Old', 'Updated answer', 'External', 'External answer']);
+	expect(state.eventCursor).toBe(0);
+});
+
+test('nonoverlapping recent history retains cached messages and reports incomplete coverage', () => {
 	const state = new SessionState(
 		() => null,
 		() => {}
@@ -67,7 +83,7 @@ test('nonempty recent history retains a complete cached prefix and applies new r
 		'recent',
 		'new answer'
 	]);
-	expect(state.history?.complete).toBe(true);
+	expect(state.history?.complete).toBe(false);
 	expect(state.eventCursor).toBe(4);
 });
 
@@ -275,15 +291,20 @@ test('an active incomplete OpenCode full response waits for idle before trying o
 	expect(h.requests).toHaveLength(2);
 });
 
-test('unknown delivery and visible local messages never trigger automatic full replay', async () => {
+test('unknown delivery blocks replay; idle local history refreshes once per selection', async () => {
 	const h = controllerHarness();
 	h.sessionState.history = history(false);
 	h.sessionState.delivery = 'delivery unknown';
 	await h.controller.hydrateEmptyHistory();
+	expect(h.requests).toHaveLength(0);
 	h.sessionState.delivery = '';
 	h.sessionState.timeline = [{ kind: 'message', role: 'user', text: 'visible', sequence: 1 }];
+	const refresh = h.controller.hydrateEmptyHistory();
+	expect(h.requests).toHaveLength(1);
+	h.requests[0].resolve(load({ history: history(true), transcript: [{ role: 'user', text: 'visible' }] }));
+	await refresh;
 	await h.controller.hydrateEmptyHistory();
-	expect(h.requests).toHaveLength(0);
+	expect(h.requests).toHaveLength(1);
 });
 
 test('full history may finish after a new local send without clearing its delivery or draft', async () => {

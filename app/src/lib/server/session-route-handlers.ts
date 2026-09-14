@@ -41,6 +41,12 @@ async function scopeOrNotFound(projectId: string | null, sessionId: string) {
 	}
 }
 
+function localScopeOrNotFound(projectId: string | null, sessionId: string) {
+	return services().store.hasSession(projectId, sessionId)
+		? { projectId }
+		: json({ error: 'Session not found' }, { status: 404 });
+}
+
 export async function improvePrompt(projectId: string | null, event: SessionEvent) {
 	if (!sameOriginMutationAllowed(event.request, event.url)) {
 		return json({ error: 'Prompt improvement requires a same-origin request' }, { status: 403 });
@@ -80,7 +86,7 @@ export async function improvePrompt(projectId: string | null, event: SessionEven
 }
 
 export async function getSession(projectId: string | null, { params, url }: SessionEvent) {
-	const scope = await scopeOrNotFound(projectId, params.sessionId);
+	const scope = localScopeOrNotFound(projectId, params.sessionId);
 	if (scope instanceof Response) return scope;
 	const session = services().store.getSession(scope.projectId, params.sessionId)!;
 	const format = url.searchParams.get('format');
@@ -112,7 +118,7 @@ export async function getSession(projectId: string | null, { params, url }: Sess
 			workMode: session.workMode,
 			commands: services().sessionRuntime.getAvailableCommands(params.sessionId),
 			runtime: services().sessionRuntime.getSessionState(params.sessionId),
-			branch: scope.project ? await projectBranch(scope.project.primary_path) : null,
+			branch: scope.projectId !== null ? await projectBranch(session.cwd) : null,
 			...snapshot
 		});
 	}
@@ -168,7 +174,7 @@ export async function getSession(projectId: string | null, { params, url }: Sess
 			workMode: session.workMode,
 			commands: services().sessionRuntime.getAvailableCommands(params.sessionId),
 			runtime: services().sessionRuntime.getSessionState(params.sessionId),
-			branch: scope.project ? await projectBranch(scope.project.primary_path) : null,
+			branch: scope.projectId !== null ? await projectBranch(session.cwd) : null,
 			...snapshot
 		});
 	} catch (cause) {
@@ -180,7 +186,7 @@ export async function getSession(projectId: string | null, { params, url }: Sess
 				workMode: session.workMode,
 				commands: services().sessionRuntime.getAvailableCommands(params.sessionId),
 				runtime: services().sessionRuntime.getSessionState(params.sessionId),
-				branch: scope.project ? await projectBranch(scope.project.primary_path) : null,
+				branch: scope.projectId !== null ? await projectBranch(session.cwd) : null,
 				...snapshot
 			});
 		}
@@ -565,7 +571,7 @@ export async function postMedia(projectId: string | null, event: SessionEvent) {
 }
 
 export async function getEvents(projectId: string | null, { params, url }: SessionEvent) {
-	const scope = await scopeOrNotFound(projectId, params.sessionId);
+	const scope = localScopeOrNotFound(projectId, params.sessionId);
 	if (scope instanceof Response) return scope;
 	const rawAfter = Number(url.searchParams.get('after') ?? '0');
 	const after = Number.isSafeInteger(rawAfter) && rawAfter >= 0 ? rawAfter : 0;
@@ -576,7 +582,7 @@ export async function getEvents(projectId: string | null, { params, url }: Sessi
 }
 
 export async function postInteraction(projectId: string | null, { params, request }: SessionEvent) {
-	const scope = await scopeOrNotFound(projectId, params.sessionId);
+	const scope = localScopeOrNotFound(projectId, params.sessionId);
 	if (scope instanceof Response) return scope;
 	let body: { interactionId?: unknown; response?: BrowserInteractionResponse };
 	try {
@@ -599,7 +605,7 @@ export async function postInteraction(projectId: string | null, { params, reques
 }
 
 export async function postCancel(projectId: string | null, { params }: SessionEvent) {
-	const scope = await scopeOrNotFound(projectId, params.sessionId);
+	const scope = localScopeOrNotFound(projectId, params.sessionId);
 	if (scope instanceof Response) return scope;
 	try {
 		await services().sessionRuntime.cancelSession(params.sessionId);

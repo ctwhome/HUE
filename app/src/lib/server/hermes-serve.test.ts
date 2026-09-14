@@ -26,8 +26,8 @@ describe('HermesServe', () => {
 		const result = await hermes.loadTranscriptWithCoverage('s', undefined, 4);
 		expect(result.complete).toBe(false);
 		expect(result.transcript).toEqual([
-			{ role: 'user', text: 'Question' },
-			{ role: 'assistant', text: '', images: [{ name: 'Hermes image', mimeType: 'image/png', data: 'aGk=' }] }
+			{ harnessMessageId: '1', role: 'user', text: 'Question' },
+			{ harnessMessageId: '4', role: 'assistant', text: '', images: [{ name: 'Hermes image', mimeType: 'image/png', data: 'aGk=' }] }
 		]);
 	});
 	it('reports recent completeness from raw page coverage rather than rendered message count', async () => {
@@ -37,16 +37,16 @@ describe('HermesServe', () => {
 			json: async () => ({ session_id: 's', messages, pagination: { returned: messages.length } })
 		});
 		expect(await hermes.loadTranscriptWithCoverage('s', undefined, 2)).toEqual({
-			transcript: [{ role: 'user', text: 'Question' }],
+			transcript: [{ harnessMessageId: '1', role: 'user', text: 'Question' }],
 			complete: true
 		});
 		messages = [...messages, { id: 2, role: 'tool', content: 'Ignored' }];
 		expect(await hermes.loadTranscriptWithCoverage('s', undefined, 2)).toEqual({
-			transcript: [{ role: 'user', text: 'Question' }],
+			transcript: [{ harnessMessageId: '1', role: 'user', text: 'Question' }],
 			complete: false
 		});
 		expect(await hermes.loadTranscript('s', undefined, 2)).toEqual([
-			{ role: 'user', text: 'Question' }
+			{ harnessMessageId: '1', role: 'user', text: 'Question' }
 		]);
 	});
 	it('rejects invalid recent bounds and oversized upstream pages', async () => {
@@ -85,8 +85,8 @@ describe('HermesServe', () => {
 			}
 		});
 		expect(await hermes.loadTranscript('session', undefined, 2)).toEqual([
-			{ role: 'user', text: 'Recent question' },
-			{ role: 'assistant', text: 'Recent answer' }
+			{ harnessMessageId: '2', role: 'user', text: 'Recent question' },
+			{ harnessMessageId: '3', role: 'assistant', text: 'Recent answer' }
 		]);
 		expect(paths).toEqual([
 			'/api/sessions/session/messages?limit=2&offset=0&order=latest&include_compacted=true'
@@ -239,14 +239,15 @@ describe('HermesServe', () => {
 		};
 
 		await expect(hermes.loadTranscript('session/one')).resolves.toEqual([
-			{ role: 'user', text: 'First question', createdAt: '2026-08-28T12:00:00Z' },
+			{ harnessMessageId: '1', role: 'user', text: 'First question', createdAt: '2026-08-28T12:00:00Z' },
 			{
+				harnessMessageId: '2',
 				role: 'assistant',
 				text: 'Answer',
 				images: [{ name: 'Hermes image', mimeType: 'image/png', data: 'AQID' }],
 				createdAt: '2026-08-28T12:00:01Z'
 			},
-			{ role: 'user', text: 'Final question', createdAt: '2026-08-28T12:00:02Z' }
+			{ harnessMessageId: '501', role: 'user', text: 'Final question', createdAt: '2026-08-28T12:00:02Z' }
 		]);
 		expect(paths).toEqual([
 			'/api/sessions/session%2Fone/messages?limit=500&offset=0&order=oldest&include_compacted=true',

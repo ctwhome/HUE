@@ -42,7 +42,7 @@ test('returns 409 when restart replay leaves no actionable interaction', async (
 	expect(await response.json()).toEqual({
 		error: 'Interaction is unavailable or response is invalid'
 	});
-	expect(projectIds).toEqual(['canonical-project', 'canonical-project']);
+	expect(projectIds).toEqual(['hue', 'hue']);
 });
 
 test('returns 400 for malformed JSON instead of throwing', async () => {

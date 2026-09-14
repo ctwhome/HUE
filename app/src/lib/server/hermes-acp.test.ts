@@ -97,6 +97,7 @@ it('bounds ACP control requests without timing out prompts or closing other turn
 it('groups replayed ACP transcript chunks by message and strips HUE cadence context', () => {
 	const transcript: Array<{
 		messageId: string;
+		harnessMessageId?: string;
 		role: 'user' | 'assistant';
 		text: string;
 	}> = [];
@@ -113,8 +114,8 @@ it('groups replayed ACP transcript chunks by message and strips HUE cadence cont
 	});
 
 	expect(transcript.map(({ messageId: _, ...message }) => message)).toEqual([
-		{ role: 'user', text: 'Ship it' },
-		{ role: 'assistant', text: 'Done.' }
+		{ harnessMessageId: 'user-1', role: 'user', text: 'Ship it' },
+		{ harnessMessageId: 'assistant-1', role: 'assistant', text: 'Done.' }
 	]);
 });
 

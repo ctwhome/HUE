@@ -1,6 +1,7 @@
 import type { ImageAttachment, InputAttachment, ReviewContext } from './message-content';
 
 export type WorkspaceTranscriptMessage = {
+	harnessMessageId?: string;
 	role: 'user' | 'assistant';
 	text: string;
 	images?: ImageAttachment[];
@@ -82,6 +83,29 @@ export type WorkspaceDeliveryState = {
 	activity?: WorkspaceActivity[];
 	plan?: WorkspacePlanEntry[];
 };
+
+export function isHarnessMessage(item: WorkspaceTimelineItem): boolean {
+	return item.kind === 'message' && !item.messageId;
+}
+
+export function mergeHarnessHistory(
+	previous: WorkspaceTranscriptMessage[], incoming: WorkspaceTranscriptMessage[],
+	previousComplete: boolean, incomingComplete: boolean
+): { messages: WorkspaceTranscriptMessage[]; complete: boolean } {
+	if (incomingComplete) return { messages: incoming, complete: true };
+	if (!incoming.length) return { messages: previous, complete: previousComplete };
+	const key = (message: WorkspaceTranscriptMessage) => message.harnessMessageId
+		? `id:${message.harnessMessageId}`
+		: JSON.stringify([message.role, message.text, message.createdAt, message.images]);
+	const oldKeys = previous.map(key);
+	const newKeys = incoming.map(key);
+	// Recent pages overlap the cached suffix. No overlap means coverage has a gap, not a complete history.
+	for (let overlap = Math.min(previous.length, incoming.length); overlap > 0; overlap--) {
+		if (newKeys.slice(0, overlap).every((id, index) => id === oldKeys[oldKeys.length - overlap + index]))
+			return { messages: [...previous.slice(0, previous.length - overlap), ...incoming], complete: previousComplete };
+	}
+	return { messages: [...previous, ...incoming], complete: false };
+}
 
 const ACTIVITY_TYPES = new Map([
 	['agent.tool', 'tool'],
@@ -299,36 +323,7 @@ export function timelineFromSession(
 			['running', 'completed', 'cancelled', 'failed', 'unknown'].includes(message.status) &&
 			deliveredEvents.has(message.id)
 	);
-	const userTurns = transcript
-		.map((message, index) => ({ message, index }))
-		.filter(({ message }) => message.role === 'user');
-	let firstStoredIndex = -1;
-	if (deliveredMessages.length) {
-		for (
-			let count = Math.min(userTurns.length, deliveredMessages.length);
-			count > 0 && firstStoredIndex < 0;
-			count--
-		) {
-			for (let start = 0; start <= userTurns.length - count; start += 1) {
-				if (
-					deliveredMessages
-						.slice(0, count)
-						.every(
-							(message, offset) =>
-								userTurns[start + offset].message.text.trim() === message.text.trim()
-						)
-				) {
-					firstStoredIndex = userTurns[start].index;
-				}
-			}
-		}
-	}
-	const historical = firstStoredIndex < 0 ? transcript : transcript.slice(0, firstStoredIndex);
-	let timeline: WorkspaceTimelineItem[] = historical.map((message, index) => ({
-		...message,
-		sequence: index - historical.length,
-		kind: 'message'
-	}));
+	let timeline: WorkspaceTimelineItem[] = [];
 	const byId = new Map(messages.map((message) => [message.id, message]));
 	for (const event of events) {
 		if (event.type === 'message.accepted') {
@@ -351,7 +346,81 @@ export function timelineFromSession(
 		}
 		timeline = applyTimelineEvent(timeline, event);
 	}
-	return timeline;
+	return reconcileTimelineHistory(transcript, timeline, deliveredMessages);
+}
+
+export function reconcileTimelineHistory(
+	transcript: WorkspaceTranscriptMessage[], timeline: WorkspaceTimelineItem[],
+	messages: Array<{ id: string; text: string; status: string }>
+): WorkspaceTimelineItem[] {
+	const deliveredMessages = messages.filter((message) => ['running', 'completed', 'cancelled', 'failed', 'unknown'].includes(message.status));
+	const userTurns = transcript.map((message, index) => ({ message, index })).filter(({ message }) => message.role === 'user');
+	let matchedStart = -1;
+	let matchedCount = 0;
+	let bestScore = -1;
+	const localAnswers = new Map<string, string>();
+	for (const item of timeline) if (item.kind === 'message' && item.role === 'assistant' && item.messageId)
+		localAnswers.set(item.messageId, (localAnswers.get(item.messageId) ?? '') + item.text);
+	const harnessAnswers = userTurns.map((turn, index) => transcript.slice(turn.index + 1, userTurns[index + 1]?.index ?? transcript.length).map((message) => message.text).join('').trim());
+	for (let count = Math.min(userTurns.length, deliveredMessages.length); count > 0 && matchedStart < 0; count--) {
+		for (let start = 0; start <= userTurns.length - count; start++) {
+			if (deliveredMessages.slice(0, count).every((message, offset) => userTurns[start + offset].message.text.trim() === message.text.trim())) {
+				const score = deliveredMessages.slice(0, count).reduce((score, message, offset) =>
+					score + Number(Boolean(localAnswers.get(message.id)?.trim()) && localAnswers.get(message.id)!.trim() === harnessAnswers[start + offset]), 0);
+				if (score < bestScore) continue;
+				bestScore = score;
+				matchedStart = start;
+				matchedCount = count;
+			}
+		}
+	}
+	// Replace only matched turns, never the entire harness suffix: it can contain external work.
+	const matches: Array<{ start: number; end: number; id: string; status: string }> = [];
+	let nextTurn = 0;
+	for (let index = 0; index < deliveredMessages.length; index++) {
+		const message = deliveredMessages[index];
+		const turn = index < matchedCount ? matchedStart + index
+			: userTurns.findIndex((entry, candidate) => candidate >= nextTurn && entry.message.text.trim() === message.text.trim());
+		if (turn < 0 || !timeline.some((item) => item.kind === 'message' && item.role === 'user' && item.messageId === message.id)) continue;
+		nextTurn = turn + 1;
+		matches.push({ start: userTurns[turn].index, end: userTurns[turn + 1]?.index ?? transcript.length, id: message.id, status: message.status });
+	}
+	const recovered = new Set<string>();
+	for (const match of matches) {
+		const harness = transcript.slice(match.start + 1, match.end);
+		const local = timeline.filter((item) => item.kind === 'message' && item.role === 'assistant' && item.messageId === match.id);
+		const text = (items: WorkspaceTranscriptMessage[]) => items.map((item) => item.text).join('').trim();
+		const images = (items: WorkspaceTranscriptMessage[]) => JSON.stringify(items.flatMap((item) => item.images ?? []).map(({ mimeType, data }) => [mimeType, data]));
+		if (match.status !== 'running' && harness.length &&
+			(text(harness) !== text(local as WorkspaceTranscriptMessage[]) || images(harness) !== images(local as WorkspaceTranscriptMessage[]))) recovered.add(match.id);
+	}
+	timeline = timeline.filter((item) => !(item.kind === 'message' && item.role === 'assistant' && item.messageId && recovered.has(item.messageId)));
+	const insertions = new Map<number, WorkspaceTranscriptMessage[]>();
+	const insert = (index: number, items: WorkspaceTranscriptMessage[]) =>
+		insertions.set(index, [...(insertions.get(index) ?? []), ...items]);
+	let cursor = 0;
+	let lastPosition = 0;
+	for (const match of matches) {
+		const first = timeline.findIndex((item) => 'messageId' in item && item.messageId === match.id);
+		const last = timeline.findLastIndex((item) => 'messageId' in item && item.messageId === match.id) + 1;
+		insert(first, transcript.slice(cursor, match.start));
+		if (recovered.has(match.id)) insert(last, transcript.slice(match.start + 1, match.end));
+		cursor = match.end;
+		lastPosition = last;
+	}
+	insert(lastPosition, transcript.slice(cursor));
+	const result: WorkspaceTimelineItem[] = [];
+	for (let index = 0; index <= timeline.length; index++) {
+		const items = insertions.get(index) ?? [];
+		const left = timeline[index - 1]?.sequence ?? -items.length - 1;
+		const right = timeline[index]?.sequence ?? left + 1;
+		result.push(...items.map((message, offset): WorkspaceTimelineItem => ({
+			...message, kind: 'message',
+			sequence: index === 0 ? offset - items.length : left + (right - left) * (offset + 1) / (items.length + 1)
+		})));
+		if (timeline[index]) result.push(timeline[index]);
+	}
+	return result;
 }
 
 export function planFromEvents(events: WorkspaceSessionEvent[]): WorkspacePlanEntry[] {

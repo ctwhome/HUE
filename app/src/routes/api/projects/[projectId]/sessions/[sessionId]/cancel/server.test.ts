@@ -17,11 +17,11 @@ mock.module('$lib/server/route-services', () => ({
 	})
 }));
 
-test('checks cancel ownership under canonical Hermes id when route uses slug', async () => {
+test('checks cancel ownership against the supplied local canonical Project id', async () => {
 	projectIds.length = 0;
 	const { POST } = await import('./+server');
 	const response = await POST({
-		params: { projectId: 'project-slug', sessionId: 'session' }
+		params: { projectId: 'canonical-project', sessionId: 'session' }
 	} as never);
 
 	expect(response.status).toBe(202);

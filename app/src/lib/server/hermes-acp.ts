@@ -40,6 +40,7 @@ export type HermesSession = {
 };
 
 export type HermesTranscriptMessage = {
+	harnessMessageId?: string;
 	role: 'user' | 'assistant';
 	text: string;
 	images?: ImageAttachment[];
@@ -137,7 +138,7 @@ export function appendACPTranscriptUpdate(
 			? message.messageId
 			: `${role}-${transcript.length}`);
 	if (!message || message.messageId !== messageId || message.role !== role) {
-		message = { messageId, role, text: '' };
+		message = { messageId, role, text: '', ...(update.messageId ? { harnessMessageId: update.messageId } : {}) };
 		transcript.push(message);
 	}
 	if (update.content.type === 'text') {

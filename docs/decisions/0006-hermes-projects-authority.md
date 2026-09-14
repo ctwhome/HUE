@@ -31,8 +31,8 @@ Legacy single-root rows reconcile by canonical folder equality. One unambiguous 
 
 - Project identity and folder lifecycle have one source of truth.
 - HUE's SQLite `projects` table remains only as a foreign-key anchor and migration ledger; sentinel name/root fields are not user-facing authority.
-- Project availability depends on both Hermes administration transport and local folder availability.
-- Older Hermes runtimes cannot use Project-scoped HUE features until upgraded; projectless Sessions remain available.
+- Project discovery and mutations depend on both Hermes administration transport and local folder availability. Known Session reads, event replay, cancellation, and explicit interaction responses instead validate the exact HUE-owned Project/Session association, so an administration outage cannot block local delivery controls. This does not authorize folder access or new execution from stale Project metadata.
+- Older Hermes runtimes cannot discover or mutate Projects until upgraded; retained local Session controls and projectless Sessions remain available.
 - Archive is blocked while HUE owns queued, running, or unknown delivery state.
 
 ## Revisit triggers

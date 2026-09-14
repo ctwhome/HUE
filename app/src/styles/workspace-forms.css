@@ -389,6 +389,15 @@
 	color: var(--muted-foreground);
 }
 
+.project-edit {
+	pointer-events: none;
+}
+.project-row:hover .project-edit,
+.project-row:focus-within .project-edit,
+.project-select.active + .project-edit {
+	pointer-events: auto;
+	opacity: 1;
+}
 .project-row:hover .project-edit,
 .project-select.active + .project-edit,
 .session-row:hover .session-archive,

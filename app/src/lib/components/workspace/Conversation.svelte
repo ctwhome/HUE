@@ -76,7 +76,9 @@
 		onretrylast,
 		onquote,
 		element = $bindable(),
-		follow
+		follow,
+		harnessName = 'Hermes', history, historyLoading = false, historyError = '', historyBlocked = false,
+		onloadhistory = () => {}
 	}: {
 		timeline: WorkspaceTimelineItem[];
 		messageNotice: string;
@@ -102,6 +104,12 @@
 		onquote: (context: ReviewContextSeed) => void;
 		element?: HTMLElement;
 		follow: (node: HTMLElement) => { destroy: () => void };
+		harnessName?: string;
+		history?: { complete: boolean };
+		historyLoading?: boolean;
+		historyError?: string;
+		historyBlocked?: boolean;
+		onloadhistory?: () => void;
 	} = $props();
 
 	function mediaOutputs(text: string): string[] {
@@ -358,11 +366,22 @@
 	class="transcript min-h-0 flex-1 overflow-auto overflow-x-hidden px-[clamp(12px,2.5vw,40px)] pt-8"
 	class:empty={transcriptTimeline.length === 0}
 	aria-label="Conversation"
+	aria-busy={historyLoading}
 	tabindex="0"
 	bind:this={element}
 	use:follow
 >
 	<div class="transcript-content min-h-full">
+		{#if historyLoading || historyError || history?.complete === false}
+			<div class="mx-auto mb-4 flex w-full max-w-3xl flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 text-sm" aria-label="Conversation history">
+				{#if historyError}<p class="text-destructive" role="alert">{historyError}</p>
+				{:else if historyLoading}<p role="status">Loading conversation history…</p>
+				{:else}<p class="text-muted-foreground">{historyBlocked ? 'Older history is unavailable while delivery is running or unconfirmed.' : 'More conversation history may be available.'}</p>{/if}
+				<button class="min-h-11 rounded-md border border-border px-3 disabled:opacity-50"
+					disabled={historyLoading || historyBlocked} onclick={onloadhistory}
+					>{historyError ? 'Retry history loading' : 'Load older messages'}</button>
+			</div>
+		{/if}
 		{#if messageNotice}<span class="copy-notice" role="status">{messageNotice}</span>{/if}
 		{#each transcriptTimeline as item, index (item.kind + ':' + item.sequence)}
 			{#if item.kind === 'message'}
@@ -675,11 +694,11 @@
 				</span>
 				<span>{turnStatus}</span>
 			</div>{/if}
-		{#if transcriptTimeline.length === 0}<div
+		{#if transcriptTimeline.length === 0 && !historyLoading && !historyError && history?.complete !== false}<div
 				class="welcome mx-auto max-w-2xl text-center text-muted-foreground"
 			>
 				<BrandMark class="welcome-mark mx-auto mb-[18px] size-14" />
-				<h2>Start this Hermes Session</h2>
+				<h2>Start this {harnessName} Session</h2>
 				<p>Your complete message is saved before HUE sends it.</p>
 			</div>{/if}
 		{#if transcriptTimeline.length}<div

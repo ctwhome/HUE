@@ -85,7 +85,6 @@ export function createSessionHistoryController(options: {
 				options.getSession()?.harness !== 'opencode' ||
 				!state.history ||
 				state.history.complete ||
-				state.timeline.some((item) => item.kind === 'message') ||
 				(attemptedSelection &&
 					options.getNavigation().isCurrentSessionSelection(attemptedSelection))
 			)

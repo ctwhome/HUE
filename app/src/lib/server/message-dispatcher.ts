@@ -321,14 +321,16 @@ export class MessageDispatcher {
 
 	private async process(envelope: MessageEnvelope, resumeCwd?: string): Promise<void> {
 		try {
+			if (this.store.getMessage(envelope.id)?.status !== 'queued') return;
+			if (resumeCwd && !this.runtime.hasSessionState(envelope.sessionId)) {
+				await this.runtime.resumeSession(resumeCwd, envelope.sessionId);
+			}
+			// Edits remain valid during resumption; capture the envelope only when claiming the turn.
 			const queued = this.store.getMessage(envelope.id);
 			if (!queued || queued.status !== 'queued') return;
 			const attachments = this.turnAttachments.get(envelope.id);
 			if (queued.attachments.length && !attachments?.length) {
 				throw new Error('Attachments unavailable after restart; reattach required');
-			}
-			if (resumeCwd && !this.runtime.hasSessionState(envelope.sessionId)) {
-				await this.runtime.resumeSession(resumeCwd, envelope.sessionId);
 			}
 			const current = {
 				...envelope,

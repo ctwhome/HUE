@@ -1,5 +1,8 @@
 import {
 	activityFromEvents,
+	isHarnessMessage,
+	mergeHarnessHistory,
+	reconcileTimelineHistory,
 	applySessionEvents,
 	applyTimelineEvents,
 	isTurnBusy,
@@ -27,6 +30,7 @@ import type {
 export class SessionState {
 	timeline = $state<WorkspaceTimelineItem[]>([]);
 	transcript = $state<TranscriptMessage[]>([]);
+	harnessTranscript = $state<TranscriptMessage[]>([]);
 	subagents = $state<WorkspaceSubagentTree[]>([]);
 	activity = $state<WorkspaceActivity[]>([]);
 	plan = $state<WorkspacePlanEntry[]>([]);
@@ -44,6 +48,7 @@ export class SessionState {
 	private views = new Map<string, CachedSessionView>();
 	private loadOrigin: ReturnType<SessionState['captureLoad']> | null = null;
 	captureLoad = () => ({
+		harnessTranscript: this.harnessTranscript,
 		activeMessageId: this.activeMessageId,
 		delivery: this.delivery,
 		runtime: this.runtime,
@@ -66,6 +71,7 @@ export class SessionState {
 
 	private loadedView(body: SessionLoad): CachedSessionView {
 		return {
+			harnessTranscript: body.transcript,
 			history: body.history,
 			timeline: timelineFromSession(body.transcript, body.messages, body.events ?? []),
 			transcript: body.transcript,
@@ -129,6 +135,7 @@ export class SessionState {
 		if (!session) return;
 		this.views.delete(this.viewKey(session.sessionId));
 		this.views.set(this.viewKey(session.sessionId), {
+			harnessTranscript: [...this.harnessTranscript],
 			history: this.history,
 			timeline: [...this.timeline],
 			transcript: [...this.transcript],
@@ -157,6 +164,7 @@ export class SessionState {
 		}
 		this.timeline = cached?.timeline ?? [];
 		this.transcript = cached?.transcript ?? [];
+		this.harnessTranscript = cached?.harnessTranscript ?? [];
 		this.subagents = cached?.subagents ?? [];
 		this.activity = cached?.activity ?? [];
 		this.plan = cached?.plan ?? [];
@@ -179,6 +187,7 @@ export class SessionState {
 		this.loadOrigin = null;
 		this.timeline = [];
 		this.transcript = [];
+		this.harnessTranscript = [];
 		this.subagents = [];
 		this.activity = [];
 		this.plan = [];
@@ -211,6 +220,16 @@ export class SessionState {
 	applyLoaded = (body: SessionLoad, origin = this.loadOrigin) => {
 		if (origin === this.loadOrigin) this.loadOrigin = null;
 		const newerEvents = body.cursor < this.eventCursor;
+		const incomingComplete = body.history?.complete === true;
+		const receivedHistory = body.transcript.length > 0;
+		const timelineChanged = newerEvents || !!(origin && origin.timeline !== this.timeline);
+		const previousHistory = this.harnessTranscript.length ? this.harnessTranscript
+			: this.timeline.flatMap((item) => item.kind === 'message' && isHarnessMessage(item) ? [item] : []);
+		const history = origin && origin.harnessTranscript !== this.harnessTranscript
+			? mergeHarnessHistory(body.transcript, previousHistory, body.history?.complete === true, this.history?.complete === true)
+			: mergeHarnessHistory(previousHistory, body.transcript, this.history?.complete === true, body.history?.complete === true);
+		body = { ...body, transcript: history.messages,
+			...(body.history ? { history: { ...body.history, complete: history.complete && (receivedHistory || incomingComplete) } } : {}) };
 		const deliveryChanged =
 			newerEvents ||
 			!!(
@@ -230,7 +249,7 @@ export class SessionState {
 					origin.timeline !== this.timeline)
 			);
 		const view = this.loadedView(body);
-		const retain = keepCurrent || (this.timeline.length > 0 && body.history?.complete !== true);
+		const retain = keepCurrent || (this.timeline.length > 0 && !incomingComplete);
 		if (retain) {
 			const cursor = this.eventCursor;
 			const userIds = new Set(
@@ -255,20 +274,21 @@ export class SessionState {
 					? `user:${item.messageId}`
 					: `${item.kind}:${item.sequence}`;
 			const current = new Map(
-				this.timeline.filter((item) => item.sequence >= 0).map((item) => [key(item), item])
+				this.timeline.filter((item) => !isHarnessMessage(item) &&
+					(timelineChanged || !('messageId' in item && body.messages.some((message) => message.id === item.messageId))))
+					.map((item) => [key(item), item])
 			);
 			const merged = new Map(
-				view.timeline.filter((item) => item.sequence >= 0).map((item) => [key(item), item])
+				view.timeline.filter((item) => !isHarnessMessage(item)).map((item) => [key(item), item])
 			);
 			for (const [id, item] of current) merged.set(id, item);
-			const historical =
-				body.history?.complete || !this.timeline.some((item) => item.sequence < 0)
-					? view.timeline.filter((item) => item.sequence < 0)
-					: this.timeline.filter((item) => item.sequence < 0);
-			view.timeline = [
-				...historical,
-				...[...merged.values()].sort((a, b) => a.sequence - b.sequence)
-			];
+			const local = [...merged.values()].sort((a, b) => a.sequence - b.sequence);
+			const messages = local.flatMap((item) => item.kind === 'message' && item.role === 'user' && item.messageId
+				? [{ id: item.messageId, text: item.text,
+					status: body.messages.find(({ id }) => id === item.messageId)?.status ??
+						(local.some((candidate) => candidate.kind === 'status' && candidate.statusType === 'unknown' && candidate.messageId === item.messageId) ? 'unknown' : 'completed') }]
+				: []);
+			view.timeline = reconcileTimelineHistory(body.transcript, local, messages);
 			const activeMessageId = deliveryChanged ? this.activeMessageId : view.activeMessageId;
 			const busy = isTurnBusy(deliveryChanged ? this.delivery : view.delivery);
 			view.transcript = view.timeline.flatMap((item) => {
@@ -277,7 +297,6 @@ export class SessionState {
 				const { kind, sequence, messageId, ...message } = item;
 				return [message];
 			});
-			if (!body.history?.complete && this.history?.complete) view.history = this.history;
 			if (deliveryChanged)
 				Object.assign(view, {
 					activeMessageId: this.activeMessageId,
@@ -298,6 +317,7 @@ export class SessionState {
 			view.eventCursor = Math.max(cursor, this.eventCursor, body.cursor);
 		}
 		this.history = view.history;
+		this.harnessTranscript = view.harnessTranscript;
 		this.timeline = view.timeline;
 		this.transcript = view.transcript;
 		this.subagents = view.subagents;

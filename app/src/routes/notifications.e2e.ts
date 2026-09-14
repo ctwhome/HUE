@@ -34,21 +34,20 @@ async function expectMinimumTouchTargets(locator: import('@playwright/test').Loc
 
 async function openNotifications(page: import('@playwright/test').Page) {
 	const viewport = page.viewportSize();
-	for (const button of await page.getByRole('button', { name: /Notifications/ }).all()) {
-		const box = await button.boundingBox();
-		if (
-			box &&
-			viewport &&
-			box.x < viewport.width &&
-			box.y < viewport.height &&
-			box.x + box.width > 0 &&
-			box.y + box.height > 0
-		) {
-			await button.click();
-			return;
+	let visibleIndex = -1;
+	await expect.poll(async () => {
+		const buttons = await page.getByRole('button', { name: /Notifications/ }).all();
+		for (const [index, button] of buttons.entries()) {
+			const box = await button.boundingBox();
+			if (box && viewport && box.x < viewport.width && box.y < viewport.height &&
+				box.x + box.width > 0 && box.y + box.height > 0) {
+				visibleIndex = index;
+				return true;
+			}
 		}
-	}
-	throw new Error('No on-screen Notifications control');
+		return false;
+	}).toBe(true);
+	await page.getByRole('button', { name: /Notifications/ }).nth(visibleIndex).click();
 }
 
 function item(kind: Item['kind'], index: number): Item {

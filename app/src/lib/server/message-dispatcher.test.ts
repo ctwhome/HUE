@@ -91,6 +91,34 @@ function makeStore() {
 }
 
 describe('MessageDispatcher', () => {
+	it('delivers the latest queued envelope edited while Session resumption is pending', async () => {
+		const store = makeStore();
+		const runtime = new RecordingRuntime(false);
+		let release!: () => void;
+		let entered!: () => void;
+		const resuming = new Promise<void>((resolve) => (entered = resolve));
+		runtime.resumeSession = async () => {
+			entered();
+			await new Promise<void>((resolve) => (release = resolve));
+		};
+		const dispatcher = new MessageDispatcher(store, runtime);
+		try {
+			dispatcher.submit({ id: 'edited', projectId: 'hue', sessionId: 'session-1', text: 'Original' });
+			await resuming;
+			const attachments = [{ name: 'updated.txt', mimeType: 'text/plain', size: 2, data: 'aGk=' }];
+			dispatcher.updateQueuedMessage('edited', {
+				projectId: 'hue', sessionId: 'session-1', text: 'Updated', attachments, images: []
+			});
+			release();
+			await dispatcher.whenIdle('session-1');
+			expect(runtime.calls[0]).toMatchObject({ text: 'Updated', attachments });
+			expect(store.getMessage('edited')?.text).toBe('Updated');
+		} finally {
+			release?.();
+			await dispatcher.close();
+			store.close();
+		}
+	});
 	it('loads an uncached existing Session before delivering a new message', async () => {
 		const store = makeStore();
 		const runtime = new RecordingRuntime(false);

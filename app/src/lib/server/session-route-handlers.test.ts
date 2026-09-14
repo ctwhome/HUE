@@ -1,11 +1,14 @@
 import { expect, mock, test } from 'bun:test';
 import { serviceExportStubs } from './services-test-stubs';
+import { HUEStore } from './store';
 
 const authoritativeReferences: string[] = [];
 const sessionScopes: Array<string | null> = [];
 let scopeFailure: Error | null = null;
 let associated = true;
 let eventReads = 0;
+let localStore: HUEStore | null = null;
+let cancellations = 0;
 
 mock.module('$lib/server/route-services', () => ({
 	...serviceExportStubs,
@@ -15,21 +18,47 @@ mock.module('$lib/server/route-services', () => ({
 		return { id: 'canonical-project', primary_path: '/work/hue' };
 	},
 	services: () => ({
-		store: {
+		store: localStore ?? {
 			hasSession: (projectId: string | null) => {
 				sessionScopes.push(projectId);
-				return associated;
+				return associated && (projectId === null || projectId === 'canonical-project');
 			},
 			listEvents: () => {
 				eventReads++;
 				return [];
 			}
 		},
-		sessionRuntime: { getSessionState: () => ({}) }
+		sessionRuntime: { getSessionState: () => ({}), getAvailableCommands: () => [], cancelSession: async () => { cancellations++; } },
+		dispatcher: { resolveInteraction: () => true }
 	})
 }));
 
-test('replay rechecks revocation and association after a formerly valid alias read', async () => {
+test('exact cached Project lookup finds an older or archived Session beyond the first page', async () => {
+	const store = new HUEStore(':memory:');
+	localStore = store;
+	try {
+		store.ensureProjectMetadata('project', 'Project');
+		for (let i = 0; i < 101; i++) store.upsertSession('project', {
+			sessionId: `s-${i}`, cwd: '/tmp', title: `Session ${i}`,
+			updatedAt: new Date(1700000000000 + i * 1000).toISOString()
+		});
+		const { GET } = await import('../../routes/api/projects/[projectId]/sessions/+server');
+		for (const archived of [false, true]) {
+			store.updateSession('project', 's-0', { archived });
+			const response = await GET({ params: { projectId: 'project' },
+				url: new URL('http://hue.test/api/projects/project/sessions?sessionId=s-0&cached=true') } as never);
+			const body = await response.json();
+			expect(body.sessions.map((session: { sessionId: string }) => session.sessionId)).toEqual(['s-0']);
+			expect(body.hasMore).toBe(false);
+		}
+		store.ensureProjectMetadata('other', 'Other');
+		const missing = await GET({ params: { projectId: 'other' },
+			url: new URL('http://hue.test/api/projects/other/sessions?sessionId=s-0&cached=true') } as never);
+		expect((await missing.json()).sessions).toEqual([]);
+	} finally { localStore = null; store.close(); }
+});
+
+test('local replay keeps working during an admin outage but rejects a removed association', async () => {
 	const { getEvents } = await import('./session-route-handlers');
 	const event = {
 		params: { sessionId: 'session-1' },
@@ -37,38 +66,51 @@ test('replay rechecks revocation and association after a formerly valid alias re
 	} as never;
 	eventReads = 0;
 	try {
-		expect((await getEvents('project-slug', event)).status).toBe(200);
+		authoritativeReferences.length = 0;
+		expect((await getEvents('canonical-project', event)).status).toBe(200);
 		expect(eventReads).toBe(1);
-		scopeFailure = new Error('Project not found');
-		expect((await getEvents('project-slug', event)).status).toBe(404);
-		expect(eventReads).toBe(1);
+		scopeFailure = new Error('Hermes admin unavailable');
+		expect((await getEvents('canonical-project', event)).status).toBe(200);
+		expect(eventReads).toBe(2);
+		expect(authoritativeReferences).toEqual([]);
 		scopeFailure = null;
 		associated = false;
-		expect((await getEvents('project-slug', event)).status).toBe(404);
-		expect(eventReads).toBe(1);
+		expect((await getEvents('canonical-project', event)).status).toBe(404);
+		expect(eventReads).toBe(2);
 	} finally {
 		scopeFailure = null;
 		associated = true;
 	}
 });
 
-test('distinguishes event replay administration outages from missing scope', async () => {
-	const { getEvents } = await import('./session-route-handlers');
+test('known Session cancellation and explicit interactions do not depend on Hermes admin', async () => {
+	const { postCancel, postInteraction } = await import('./session-route-handlers');
 	try {
-		for (const [message, status] of [
-			['Hermes Projects request timed out', 503],
-			['Project not found', 404]
-		] as const) {
-			scopeFailure = new Error(message);
-			const response = await getEvents('project-slug', {
-				params: { sessionId: 'session-1' },
-				url: new URL('http://hue.test/events')
-			} as never);
-			expect(response.status).toBe(status);
-		}
+		scopeFailure = new Error('Hermes admin unavailable');
+		cancellations = 0;
+		const event = { params: { sessionId: 'session-1' }, url: new URL('http://hue.test/session'),
+			request: { json: async () => ({ interactionId: 'permission', response: { kind: 'permission', optionId: 'allow-once' } }) } } as never;
+		expect((await postCancel('canonical-project', event)).status).toBe(202);
+		expect((await postInteraction('canonical-project', event)).status).toBe(200);
+		expect((await postCancel('wrong-project', event)).status).toBe(404);
+		expect(cancellations).toBe(1);
 	} finally {
 		scopeFailure = null;
 	}
+});
+
+test('OpenCode Session reads use the stored association while Hermes admin is unavailable', async () => {
+	const store = new HUEStore(':memory:');
+	localStore = store;
+	scopeFailure = new Error('Hermes admin unavailable');
+	try {
+		store.ensureProjectMetadata('project', 'Project');
+		store.upsertSession('project', { sessionId: 'opencode:test', externalSessionId: 'test', harness: 'opencode', cwd: '/tmp' });
+		const { getSession } = await import('./session-route-handlers');
+		const event = { params: { sessionId: 'opencode:test' }, url: new URL('http://hue.test/session') } as never;
+		expect((await getSession('project', event)).status).toBe(200);
+		expect((await getSession('wrong-project', event)).status).toBe(404);
+	} finally { scopeFailure = null; localStore = null; store.close(); }
 });
 
 for (const scope of [

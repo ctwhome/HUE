@@ -67,7 +67,7 @@ test('uses canonical Hermes id for Session export, duplicate, patch, delete, and
 	const params = { projectId: 'project-slug', sessionId: 'session' };
 
 	expect(
-		(await GET({ params, url: new URL('http://hue.test/session?format=json') } as never)).status
+		(await GET({ params: { ...params, projectId: 'canonical-project' }, url: new URL('http://hue.test/session?format=json') } as never)).status
 	).toBe(200);
 	expect(
 		(

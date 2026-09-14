@@ -21,11 +21,11 @@ mock.module('$lib/server/route-services', () => ({
 	})
 }));
 
-test('reads events under canonical Hermes id when route uses slug', async () => {
+test('reads events under the supplied local canonical Project id', async () => {
 	projectIds.length = 0;
 	const { GET } = await import('./+server');
 	const response = await GET({
-		params: { projectId: 'project-slug', sessionId: 'session' },
+		params: { projectId: 'canonical-project', sessionId: 'session' },
 		url: new URL('http://hue.test/events?after=3')
 	} as never);
 

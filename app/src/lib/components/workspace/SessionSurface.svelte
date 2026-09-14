@@ -65,6 +65,12 @@
 
 <Conversation
 	{timeline}
+	harnessName={harnessName}
+	history={sessionState.history}
+	historyLoading={navigation.sessionLoading || controller.historyLoading}
+	historyError={controller.historyError}
+	historyBlocked={harness === 'opencode' && (isTurnBusy(sessionState.delivery) || sessionState.delivery === 'delivery unknown')}
+	onloadhistory={() => void controller.loadFullHistory()}
 	{sessionLabel}
 	messageNotice={messageState.messageNotice}
 	agentLabel={compactModelLabel(

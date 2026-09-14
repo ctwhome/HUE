@@ -1,6 +1,48 @@
 import { describe, expect, it } from 'bun:test';
 import * as workspaceState from './index';
 
+it('retains external turns after and between HUE-owned turns', () => {
+	const transcript = [
+		{ role: 'user' as const, text: 'Local one' }, { role: 'assistant' as const, text: 'Answer one' },
+		{ role: 'user' as const, text: 'External middle' }, { role: 'assistant' as const, text: 'Middle answer' },
+		{ role: 'user' as const, text: 'Local two' }, { role: 'assistant' as const, text: 'Answer two' },
+		{ role: 'user' as const, text: 'External last' }, { role: 'assistant' as const, text: 'Last answer' }
+	];
+	const messages = [{ id: 'one', text: 'Local one', status: 'completed' }, { id: 'two', text: 'Local two', status: 'completed' }];
+	const events = messages.flatMap((message, index) => [
+		{ sequence: index * 3 + 1, type: 'message.accepted', payload: { messageId: message.id } },
+		{ sequence: index * 3 + 2, type: 'agent.chunk', payload: { messageId: message.id, text: index ? 'Answer two' : 'Answer one' } }
+	]);
+	const timeline = workspaceState.timelineFromSession(transcript, messages, events);
+	expect(timeline.filter((item) => item.kind === 'message').map((item) => item.text)).toEqual(transcript.map((item) => item.text));
+	expect(timeline.map((item) => item.sequence)).toEqual(timeline.map((item) => item.sequence).toSorted((a, b) => a - b));
+});
+
+it('shows a recovered harness answer without discarding unknown delivery state', () => {
+	const timeline = workspaceState.timelineFromSession(
+		[{ role: 'user', text: 'Question' }, { role: 'assistant', text: 'Complete answer' }],
+		[{ id: 'turn', text: 'Question', status: 'unknown' }],
+		[{ sequence: 1, type: 'message.accepted', payload: { messageId: 'turn' } },
+		 { sequence: 2, type: 'message.running', payload: { messageId: 'turn' } },
+		 { sequence: 3, type: 'message.unknown', payload: { messageId: 'turn', error: 'Interrupted' } }]
+	);
+	expect(timeline.filter((item) => item.kind === 'message').map((item) => item.text)).toEqual(['Question', 'Complete answer']);
+	expect(timeline.some((item) => item.kind === 'status' && item.statusType === 'unknown')).toBe(true);
+});
+
+it('does not attach HUE delivery metadata to a later external repeated prompt', () => {
+	const timeline = workspaceState.timelineFromSession(
+		[{ role: 'user', text: 'Repeat' }, { role: 'assistant', text: 'Local answer' },
+		 { role: 'user', text: 'Repeat' }, { role: 'assistant', text: 'External answer' }],
+		[{ id: 'local', text: 'Repeat', status: 'completed' }],
+		[{ sequence: 1, type: 'message.accepted', payload: { messageId: 'local' } },
+		 { sequence: 2, type: 'agent.chunk', payload: { messageId: 'local', text: 'Local answer' } }]
+	);
+	expect(timeline[0]).toMatchObject({ messageId: 'local', text: 'Repeat' });
+	expect(timeline[2]).not.toHaveProperty('messageId');
+	expect(timeline[3]).toMatchObject({ text: 'External answer' });
+});
+
 it('reconstructs cancelled and failed turns without duplicating harness history', () => {
 	for (const status of ['cancelled', 'failed', 'unknown']) {
 		const timeline = workspaceState.timelineFromSession(

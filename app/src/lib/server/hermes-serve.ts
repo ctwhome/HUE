@@ -286,6 +286,7 @@ export class HermesServe {
 				if (message.display_kind || isCompactionSummary(content.text)) continue;
 				if (!content.text.trim() && !content.images.length) continue;
 				transcript.push({
+					harnessMessageId: messageId,
 					role: message.role,
 					text:
 						message.role === 'user'

@@ -117,6 +117,20 @@
 		justify-content: center;
 		padding-inline: 10px;
 	}
+	.project-row {
+		display: grid;
+		justify-items: center;
+	}
+	.project-row .project-edit {
+		position: static;
+		--tw-translate-y: 0;
+		translate: 0 0;
+		opacity: 1;
+		pointer-events: auto;
+		width: 44px;
+		height: 44px;
+		margin-bottom: 4px;
+	}
 	.shell-resizer {
 		display: none;
 	}
@@ -293,6 +307,7 @@
 		width: 44px;
 		height: 44px;
 		opacity: 1;
+		pointer-events: auto;
 	}
 	.session-edit,
 	.session-archive {

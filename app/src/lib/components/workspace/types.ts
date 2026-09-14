@@ -162,6 +162,7 @@ export type HermesRuntime = {
 	usage?: { used: number; size: number };
 };
 export type TranscriptMessage = {
+	harnessMessageId?: string;
 	role: 'user' | 'assistant';
 	text: string;
 	images?: ImageAttachment[];
@@ -202,6 +203,7 @@ export type ActiveTurn = {
 	error: string | null;
 };
 export type CachedSessionView = {
+	harnessTranscript: TranscriptMessage[];
 	history?: SessionLoad['history'];
 	timeline: WorkspaceTimelineItem[];
 	transcript: TranscriptMessage[];

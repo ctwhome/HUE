@@ -636,6 +636,9 @@
 							class:bg-accent={dropProjectId === project.id && draggedProjectId !== project.id}
 							style={`--active-project-color: ${project.color ?? 'var(--primary)'}; --active-project-foreground: ${project.color ? projectColorForeground(project.color) : 'var(--primary-foreground)'}`}
 							aria-current={selectedProject?.id === project.id ? 'page' : undefined}
+							aria-label={project.name}
+							aria-describedby={`project-summary-${project.id}`}
+							title={project.name}
 							aria-controls={selectedProject?.id === project.id ? 'session-drawer' : undefined}
 							aria-expanded={selectedProject?.id === project.id ? sessionsOpen : undefined}
 							draggable="true"
@@ -701,6 +704,7 @@
 							onclick={(event) => onedit(event, project)}
 							><EllipsisVertical width={16} height={16} aria-hidden="true" /></button
 						>
+						<span id={`project-summary-${project.id}`} class="sr-only">{project.sessionCount ?? 0} Sessions; {project.runningCount ?? 0} running; {project.attentionCount ?? 0} need attention; {project.unreadCount ?? 0} unread</span>
 					</div>
 				{/each}
 			{/if}

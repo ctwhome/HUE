@@ -687,7 +687,7 @@ test('reorders Session rows live while dragging', async ({ page }) => {
 		.poll(() =>
 			page.evaluate(
 				() =>
-					Object.entries(localStorage).find(([key]) => key.startsWith('hue:session-order:'))?.[1]
+					localStorage.getItem(`hue:session-order:${new URL(location.href).searchParams.get('project')}`)
 			)
 		)
 		.toBe('["second-row","first-row"]');
@@ -701,7 +701,7 @@ test('reorders Session rows live while dragging', async ({ page }) => {
 		.poll(() =>
 			page.evaluate(
 				() =>
-					Object.entries(localStorage).find(([key]) => key.startsWith('hue:session-order:'))?.[1]
+					localStorage.getItem(`hue:session-order:${new URL(location.href).searchParams.get('project')}`)
 			)
 		)
 		.toBe('["first-row","second-row"]');
@@ -2268,6 +2268,11 @@ test('edits authoritative Project metadata and folders, then archives it', async
 	});
 	const project = (await response.json()).project as { id: string; primaryPath: string };
 	let currentName = 'Editable project';
+	const openEditor = async () => {
+		const button = page.getByRole('button', { name: `Edit ${currentName}` });
+		if (page.viewportSize()!.width > 1200) await button.locator('..').hover();
+		await button.click();
+	};
 	try {
 		const invalidIcon = await page.request.patch(`/api/projects/${project.id}`, {
 			data: { action: 'update', name: currentName, icon: 'data:text/html;base64,PHNjcmlwdD4=' }
@@ -2277,8 +2282,7 @@ test('edits authoritative Project metadata and folders, then archives it', async
 			await page.setViewportSize(viewport);
 			await page.goto('/');
 			await openMobileProjects(page);
-			const editButton = page.getByRole('button', { name: `Edit ${currentName}` });
-			await editButton.click();
+			await openEditor();
 			const dialog = page.getByRole('dialog', { name: 'Project options' });
 			await expect(dialog).toBeVisible();
 			if (viewport.width === 1440) {
@@ -2296,7 +2300,7 @@ test('edits authoritative Project metadata and folders, then archives it', async
 			await confirmation.getByRole('button', { name: 'Cancel' }).click();
 			await expect(confirmation).toBeHidden();
 			if (!(await dialog.isVisible())) {
-				await page.getByRole('button', { name: `Edit ${currentName}` }).click();
+				await openEditor();
 			}
 			await expect(dialog).toBeVisible();
 			if (viewport.width === 1440) {
@@ -2344,7 +2348,7 @@ test('edits authoritative Project metadata and folders, then archives it', async
 			}
 			const renamed = `Renamed ${viewport.width}`;
 			if (!(await dialog.isVisible())) {
-				await page.getByRole('button', { name: `Edit ${currentName}` }).click();
+				await openEditor();
 			}
 			await dialog.getByLabel('Name').fill(renamed);
 			await dialog.getByLabel('Name').press('Tab');
@@ -2364,7 +2368,7 @@ test('edits authoritative Project metadata and folders, then archives it', async
 		}
 		const editDialog = page.getByRole('dialog', { name: 'Project options' });
 		if (!(await editDialog.isVisible())) {
-			await page.getByRole('button', { name: `Edit ${currentName}` }).click();
+			await openEditor();
 		}
 		await editDialog.getByRole('button', { name: 'Archive Project' }).click();
 		const confirmation = page.getByRole('dialog', { name: 'Archive Hermes Project?' });

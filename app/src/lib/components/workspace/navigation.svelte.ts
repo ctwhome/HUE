@@ -102,6 +102,10 @@ export class WorkspaceNavigation {
 	sessionEditError = $state('');
 	sessionSaving = $state(false);
 	private sessionRequestGeneration = 0;
+	private loadingSessionGeneration = $state<number | null>(null);
+	get sessionLoading() {
+		return this.loadingSessionGeneration !== null && this.loadingSessionGeneration === this.sessionRequestGeneration;
+	}
 	private tabRequestGeneration = 0;
 	private restoreRequestGeneration = 0;
 	private sessionSaveChain = Promise.resolve();
@@ -175,10 +179,12 @@ export class WorkspaceNavigation {
 			await this.effects.openCapture(launch.intent, launch.token);
 		return true;
 	};
-	restoreInitialSelection = () =>
-		this.sessionRequestGeneration === 0 && this.restoreRequestGeneration === 0
-			? this.restoreSelection()
-			: Promise.resolve(false);
+	restoreInitialSelection = () => {
+		if (this.sessionRequestGeneration !== 0 || this.restoreRequestGeneration !== 0) return Promise.resolve(false);
+		// A visible shell is not yet a restored destination (especially the default Chats scope).
+		this.ready = false;
+		return this.restoreSelection();
+	};
 	chooseProject = async (
 		project: Project | null,
 		historyMode: HistoryMode = 'push',
@@ -510,6 +516,7 @@ export class WorkspaceNavigation {
 			projectId: this.selectedProject?.id ?? '',
 			sessionId: session.sessionId
 		};
+		this.loadingSessionGeneration = request.generation;
 		this.effects.saveDraft();
 		this.effects.cacheSession();
 		this.effects.stopPolling();
@@ -593,7 +600,10 @@ export class WorkspaceNavigation {
 			}
 			return false;
 		} finally {
-			if (request.generation === this.sessionRequestGeneration) this.effects.setLoading(false);
+			if (request.generation === this.sessionRequestGeneration) {
+				this.loadingSessionGeneration = null;
+				this.effects.setLoading(false);
+			}
 		}
 	};
 	addWorkflow = async (event: SubmitEvent) => {
@@ -757,6 +767,11 @@ export class WorkspaceNavigation {
 	};
 	runWorkflow = async (workflow: Workflow) => {
 		if (this.effects.guard(() => void this.runWorkflow(workflow))) return;
+		workflow = { ...workflow };
+		const generation = this.sessionRequestGeneration;
+		const projectId = this.selectedProject?.id ?? null;
+		const current = () => generation === this.sessionRequestGeneration &&
+			projectId === (this.selectedProject?.id ?? null);
 		if (workflow.profile !== this.effects.getRuntimeProfile()) {
 			this.effects.setError(
 				`Workflow requires Hermes profile ${workflow.profile}; restart HUE with HUE_HERMES_PROFILE=${workflow.profile} before running it.`
@@ -772,11 +787,13 @@ export class WorkspaceNavigation {
 			const body = await this.effects.api<{ bundles: HermesBundle[] }>('/api/hermes/bundles');
 			bundle = body.bundles.find(({ slug }) => slug === workflow.bundle);
 		} catch (cause) {
+			if (!current()) return;
 			this.effects.setError(
 				`Could not validate Hermes bundle ${workflow.bundle}: ${cause instanceof Error ? cause.message : String(cause)}`
 			);
 			return;
 		}
+		if (!current()) return;
 		if (!bundle) {
 			this.effects.setError(
 				`Hermes bundle ${workflow.bundle} is unavailable. Choose an installed bundle and try again.`
@@ -789,7 +806,9 @@ export class WorkspaceNavigation {
 		}
 		this.activeTab = 'sessions';
 		const session = await this.createSession();
-		if (!session) return;
+		if (!session || this.sessionRequestGeneration !== generation + 1 ||
+			projectId !== (this.selectedProject?.id ?? null) ||
+			this.selectedSession?.sessionId !== session.sessionId) return;
 		await this.effects.sendText(`/${bundle.slug} ${workflow.prompt}`);
 	};
 	openEditSession = (event: MouseEvent, session: Session) => {
@@ -988,35 +1007,49 @@ export class WorkspaceNavigation {
 	};
 
 	deleteSession = async () => {
-		if (!this.editingSession) return;
+		if (!this.editingSession || this.sessionSaving) return;
+		const target = { ...this.editingSession };
+		const project = this.selectedProject;
+		const projectId = project?.id ?? null;
+		const collection = this.sessionCollection;
+		const path = this.sessionApiPath(target.sessionId);
+		const current = () => projectId === (this.selectedProject?.id ?? null) &&
+			(projectId !== null || collection === this.sessionCollection) &&
+			this.editingSession?.sessionId === target.sessionId;
 		this.sessionSaving = true;
 		try {
 			const preview = await this.effects.api<{
 				impact: { messages: number; events: number; attachments: number; activeDeliveries: number };
-			}>(this.sessionApiPath(this.editingSession.sessionId), { method: 'DELETE' });
+			}>(path, { method: 'DELETE' });
+			if (!current()) return;
 			const impact = preview.impact;
 			if (
 				!window.confirm(
-					`Remove ${this.editingSession.title ?? 'Untitled Session'} from HUE?\n\n${impact.messages} messages, ${impact.events} events, ${impact.attachments} attachments. ${impact.activeDeliveries} active deliveries. The harness transcript remains available outside HUE. Archive is reversible; removal is not.`
+					`Remove ${target.title ?? 'Untitled Session'} from HUE?\n\n${impact.messages} messages, ${impact.events} events, ${impact.attachments} attachments. ${impact.activeDeliveries} active deliveries. The harness transcript remains available outside HUE. Archive is reversible; removal is not.`
 				)
 			)
 				return;
-			await this.effects.api(`${this.sessionApiPath(this.editingSession.sessionId)}?confirm=true`, {
+			await this.effects.api(`${path}?confirm=true`, {
 				method: 'DELETE'
 			});
-			const id = this.editingSession.sessionId;
-			if (!this.editingSession.archived) this.adjustSessionCount(-1);
-			this.sessions = this.sessions.filter((session) => session.sessionId !== id);
-			this.sessionLists.set(this.selectedProject?.id ?? this.sessionCollection, this.sessions);
-			if (this.selectedSession?.sessionId === id) {
+			const id = target.sessionId;
+			if (!target.archived) this.adjustSessionCount(-1, project, collection);
+			const sameProject = projectId === (this.selectedProject?.id ?? null) &&
+				(projectId !== null || collection === this.sessionCollection);
+			const key = projectId ?? collection;
+			const sessions = (sameProject ? this.sessions : (this.sessionLists.get(key) ?? []))
+				.filter((session) => session.sessionId !== id);
+			this.sessionLists.set(key, sessions);
+			if (sameProject) this.sessions = sessions;
+			if (sameProject && this.selectedSession?.sessionId === id) {
 				this.selectedSession = null;
 				this.effects.clearSession();
 				this.persistSelection();
 			}
-			this.removedSession = { projectId: this.selectedProject?.id ?? null, sessionId: id };
-			this.editSessionMenu?.hidePopover();
+			this.removedSession = { projectId, sessionId: id };
+			if (current()) this.editSessionMenu?.hidePopover();
 		} catch (cause) {
-			this.sessionEditError = cause instanceof Error ? cause.message : String(cause);
+			if (current()) this.sessionEditError = cause instanceof Error ? cause.message : String(cause);
 		} finally {
 			this.sessionSaving = false;
 		}
@@ -1059,10 +1092,10 @@ export class WorkspaceNavigation {
 		if (!session.archived) this.adjustSessionCount(1);
 	}
 
-	private adjustSessionCount(change: number) {
-		if (this.selectedProject) {
-			this.selectedProject.sessionCount = Math.max(0, this.selectedProject.sessionCount + change);
-		} else if (this.sessionCollection === 'cron') this.effects.adjustCronSessionCount(change);
+	private adjustSessionCount(change: number, project = this.selectedProject, collection = this.sessionCollection) {
+		if (project) {
+			project.sessionCount = Math.max(0, project.sessionCount + change);
+		} else if (collection === 'cron') this.effects.adjustCronSessionCount(change);
 		else this.effects.adjustChatSessionCount(change);
 	}
 
