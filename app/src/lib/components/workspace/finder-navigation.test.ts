@@ -19,6 +19,34 @@ function deferred<T>() {
 	return { promise, resolve };
 }
 
+test('initial restoration never overrides navigation made while Projects were loading', async () => {
+	const state = new WorkspaceNavigation(null, {
+		api: (async () => ({ sessions: [] })) as Api,
+		guard: () => false,
+		isMobile: () => false,
+		endVoice() {}, cacheSession() {}, saveDraft() {}, stopPolling() {}, clearSession() {},
+		setError() {}, setLoading() {}
+	} as never);
+	let restores = 0;
+	state.restoreSelection = async () => { restores++; return true; };
+	expect(await state.restoreInitialSelection()).toBe(true);
+	await state.chooseProject({ id: 'chosen', rootAvailable: true } as Project, 'none');
+	expect(await state.restoreInitialSelection()).toBe(false);
+	expect(restores).toBe(1);
+	expect(state.selectedProject?.id).toBe('chosen');
+});
+
+test('opening a drawer before Projects arrive takes precedence over initial restoration', async () => {
+	const state = new WorkspaceNavigation(null, {} as never);
+	state.persistSelection = () => {};
+	let restored = false;
+	state.restoreSelection = async () => { restored = true; return true; };
+	state.setMobileDrawer('projects');
+	expect(await state.restoreInitialSelection()).toBe(false);
+	expect(restored).toBe(false);
+	expect(state.mobileDrawer).toBe('projects');
+});
+
 test('finder navigation stops when the selected Project changes during its load', async () => {
 	const firstLoad = deferred<{ sessions: [] }>();
 	const requests: string[] = [];
@@ -185,6 +213,49 @@ test('shows cached Session titles while Hermes refreshes them', async () => {
 	refresh.resolve({ sessions: [{ sessionId: 'fresh', cwd: '/work', title: 'Fresh title' }] });
 	await loading;
 	expect(state.sessions).toEqual([{ sessionId: 'fresh', cwd: '/work', title: 'Fresh title' }]);
+});
+
+test('opening an unread Session resumes live updates before its read receipt finishes', async () => {
+	const receipt = deferred<unknown>();
+	let completed = false;
+	let polling = false;
+	let loading = false;
+	const state = new WorkspaceNavigation(null, {
+		api: (async (_path: string, init?: RequestInit) =>
+			init?.method === 'PATCH'
+				? receipt.promise
+				: { transcript: [], messages: [], events: [], cursor: 0, activeTurn: null }) as Api,
+		guard: () => false,
+		endVoice() {},
+		cacheSession() {},
+		saveDraft() {},
+		stopPolling() {},
+		clearSession() {},
+		restoreDraft() {},
+		showCachedSession() {},
+		beginTranscriptEntryStick() {},
+		scrollToLatest: async () => {},
+		applyLoadedSession() {},
+		focusNotificationTarget: async () => false,
+		refreshProjects: async () => {},
+		startPolling: () => (polling = true),
+		getDelivery: () => 'running',
+		setError() {},
+		setLoading: (value: boolean) => (loading = value)
+	} as never);
+	const opening = state
+		.openSession({ sessionId: 'unread', cwd: '/work', unreadAttention: true }, 'none', '')
+		.then(() => (completed = true));
+	try {
+		for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+		expect(completed).toBe(true);
+		expect(polling).toBe(true);
+		expect(loading).toBe(false);
+		expect(state.selectedSession?.unreadAttention).toBe(true);
+	} finally {
+		receipt.resolve({ updated: true });
+		await opening;
+	}
 });
 
 test('loads cron tasks as a distinct projectless Session collection', async () => {

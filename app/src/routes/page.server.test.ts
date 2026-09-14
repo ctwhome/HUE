@@ -15,11 +15,10 @@ mock.module('$lib/server/route-services', () => ({
 	loadProjectViews: () => reconcile()
 }));
 
-test('renders reconciled Projects when the streamed load settles', () => {
+test('keeps one Workspace mounted while streamed Projects reconcile', () => {
 	const page = readFileSync(new URL('./+page.svelte', import.meta.url), 'utf8');
-	expect(page).toContain('{#await data.projectReconciliation}');
-	expect(page).toContain('{:then reconciled}');
-	expect(page).toContain('projects={reconciled.projects}');
+	expect(page.match(/<Workspace\b/g)).toHaveLength(1);
+	expect(page).toContain('projectReconciliation={data.projectReconciliation}');
 });
 
 test('returns local counts before Project reconciliation settles', async () => {

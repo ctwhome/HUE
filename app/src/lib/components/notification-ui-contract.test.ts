@@ -24,11 +24,12 @@ test('global attention entry has accessible unread badge and center states', () 
 	expect(center).toContain('Notification settings');
 	expect(center).toContain('acknowledgeThenNavigate');
 	expect(center).toContain('groupNotifications(items)');
+	expect(center).toContain('{@const title = notificationTitle(item)}');
 	expect(center).toContain(
-		'aria-label={`Mark ${group.items.length > 1 ? `${group.items.length} notifications` : item.title} read`}'
+		'aria-label={`Mark ${group.items.length > 1 ? `${group.items.length} notifications` : title} read`}'
 	);
 	expect(center).toContain(
-		'aria-label={`Dismiss ${group.items.length > 1 ? `${group.items.length} notifications` : item.title}`}'
+		'aria-label={`Dismiss ${group.items.length > 1 ? `${group.items.length} notifications` : title}`}'
 	);
 	expect(center).toContain('title="Mark read"');
 	expect(center).toContain('title="Dismiss"');

@@ -313,7 +313,10 @@ export function timelineFromSession(
 				if (
 					deliveredMessages
 						.slice(0, count)
-						.every((message, offset) => userTurns[start + offset].message.text === message.text)
+						.every(
+							(message, offset) =>
+								userTurns[start + offset].message.text.trim() === message.text.trim()
+						)
 				) {
 					firstStoredIndex = userTurns[start].index;
 				}

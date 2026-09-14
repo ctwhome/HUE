@@ -12,6 +12,24 @@ afterEach(async () => {
 });
 
 describe('HermesServe', () => {
+	it('omits tool-only assistant rows while retaining image-only messages and raw coverage', async () => {
+		const hermes = new HermesServe();
+		const messages = [
+			{ id: 1, role: 'user', content: 'Question' },
+			{ id: 2, role: 'assistant', content: null, tool_calls: [{ id: 'tool-1' }] },
+			{ id: 3, role: 'assistant', content: '  \n' },
+			{ id: 4, role: 'assistant', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,aGk=' } }] }
+		];
+		Object.assign(hermes, {
+			json: async () => ({ session_id: 's', messages, pagination: { returned: messages.length } })
+		});
+		const result = await hermes.loadTranscriptWithCoverage('s', undefined, 4);
+		expect(result.complete).toBe(false);
+		expect(result.transcript).toEqual([
+			{ role: 'user', text: 'Question' },
+			{ role: 'assistant', text: '', images: [{ name: 'Hermes image', mimeType: 'image/png', data: 'aGk=' }] }
+		]);
+	});
 	it('reports recent completeness from raw page coverage rather than rendered message count', async () => {
 		const hermes = new HermesServe();
 		let messages = [{ id: 1, role: 'user', content: 'Question' }];
@@ -55,11 +73,12 @@ describe('HermesServe', () => {
 		Object.assign(hermes, {
 			json: async (path: string) => {
 				paths.push(path);
+				expect(new URL(path, 'http://hermes.local').searchParams.get('order')).toBe('latest');
 				return {
 					session_id: 'resolved',
 					messages: [
-						{ id: 3, role: 'assistant', content: 'Recent answer' },
-						{ id: 2, role: 'user', content: 'Recent question' }
+						{ id: 2, role: 'user', content: 'Recent question' },
+						{ id: 3, role: 'assistant', content: 'Recent answer' }
 					],
 					pagination: { returned: 2 }
 				};
@@ -70,7 +89,7 @@ describe('HermesServe', () => {
 			{ role: 'assistant', text: 'Recent answer' }
 		]);
 		expect(paths).toEqual([
-			'/api/sessions/session/messages?limit=2&offset=0&order=newest&include_compacted=true'
+			'/api/sessions/session/messages?limit=2&offset=0&order=latest&include_compacted=true'
 		]);
 	});
 	it('reports idle and ready administration health without exposing its token', () => {

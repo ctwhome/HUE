@@ -58,6 +58,12 @@ Keep exactly one long-lived HUE process per database file. Production startup st
 
 ## Delivery invariant
 
+Startup mounts the workspace once while Projects reconcile. Initial navigation restoration waits for that list and yields to any newer Session or drawer choice; late reconciliation must not reset a draft or replace the workspace. Restoring a known Project without a target Session updates its URL before Session discovery completes.
+
+Session navigation restores an in-memory cached view immediately and refreshes it from the server. OpenCode Sessions without local message history hydrate through ACP transcript replay; a successful `session/load` response completes that replay without waiting for optional usage statistics. Read receipts and Project indicator refreshes run in the background so they cannot delay navigation completion or restarting live event polling.
+
+Hermes recent history uses the authenticated messages endpoint with `order=latest`; both latest and oldest pages arrive in chronological order. Tool-only records without visible text or images are omitted from chat history, while pagination coverage still uses the raw page size. Replay-boundary matching ignores surrounding prompt whitespace because Hermes trims it; displayed local messages retain their original content. Retrieval failures retain known local/cached content with an explicit error rather than treating the Session as empty. An unknown-delivery warning is independent of transcript availability and remains until delivery is explicitly resolved.
+
 The browser submits one complete envelope with a client-generated ID. HUE persists it before dispatch, serializes turns per Session, deduplicates retries, and exposes monotonic event replay. A transport loss after dispatch becomes `unknown`; HUE does not automatically repeat a possibly side-effecting prompt.
 
 Composer prompt improvement is a one-time refinement backed by a temporary Hermes Session and durable envelope. The Session stays archived while delivery is pending and is removed from HUE once terminal, so it is not retained as a Chat. HUE preserves only the delivery state needed for safe retries; Hermes retains its own transcript. The operation returns an editable draft plus only material clarification questions, never changes or sends the active composer text automatically, and does not add scaffolding to the active Session transcript.

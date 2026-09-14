@@ -173,6 +173,13 @@ export async function restoreNavigationSelection(
 	}
 	// Shell and workbench stay usable while slower Session discovery continues.
 	navigation.ready = true;
+	if (!notificationTarget && !destination.sessionId && !unresolvedProject && !cronJob)
+		navigation.persistSelection(
+			'replace',
+			false,
+			!['capture', 'share'].includes(destination.intent ?? '')
+		);
+	isCurrent = captureCurrent();
 	await navigation.loadActiveTab(destination.sessionId);
 	if (!isCurrent()) return null;
 	if (!navigation.selectedProject && destination.collection === 'cron' && cronProfile && cronJob) {
@@ -202,6 +209,7 @@ export async function restoreNavigationSelection(
 				: null;
 	if (
 		!notificationTarget &&
+		(destination.sessionId || cronJob) &&
 		(!destination.sessionId || sessionRestored) &&
 		!unresolvedProject &&
 		(!cronJob || navigation.selectedExternalCronJob)

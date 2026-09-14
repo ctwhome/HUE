@@ -48,6 +48,36 @@ test('mobile shell can install interactions without restoring before Projects re
 	expect(restores).toBe(1);
 });
 
+test('restoring a known Project updates its URL before Session discovery finishes', async () => {
+	Object.defineProperty(globalThis, 'window', {
+		configurable: true, value: { location: { href: 'http://hue.local/' } }
+	});
+	Object.defineProperty(globalThis, 'localStorage', {
+		configurable: true,
+		value: { getItem: () => JSON.stringify({ version: 1, projectId: 'project-1', sessionId: null, pane: null }) }
+	});
+	let finish!: () => void;
+	let persisted = false;
+	const navigation = {
+		ready: false, selectedProject: null, selectedSession: null, sessions: [],
+		selectedExternalCronJob: null, externalCronJobs: [], mobileDrawer: null,
+		activeTab: 'sessions', sessionCollection: 'chats',
+		loadActiveTab: () => new Promise<void>((resolve) => (finish = resolve)),
+		persistSelection: () => { persisted = true; }
+	};
+	const restoring = restoreNavigationSelection(navigation as never, {
+		getProjects: () => [{ id: 'project-1', rootAvailable: true } as Project],
+		isMobile: () => false, endVoice() {}, stopPolling() {}, clearSession() {}
+	});
+	try {
+		expect(navigation.selectedProject).toMatchObject({ id: 'project-1' });
+		expect(persisted).toBe(true);
+	} finally {
+		finish();
+		await restoring;
+	}
+});
+
 test('failed unavailable or deleted Session restoration leaves Session list recovery open', async () => {
 	const project = { id: 'project-1', rootAvailable: true } as Project;
 	const session = {

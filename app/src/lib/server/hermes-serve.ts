@@ -247,7 +247,7 @@ export class HermesServe {
 			if (offset >= MAX_TRANSCRIPT_MESSAGES) {
 				throw new Error(`Hermes Session transcript exceeds ${MAX_TRANSCRIPT_MESSAGES} messages`);
 			}
-			const path = `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=${pageSize}&offset=${offset}&order=${recentLimit === undefined ? 'oldest' : 'newest'}&include_compacted=true${profile ? `&profile=${encodeURIComponent(profile)}` : ''}`;
+			const path = `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=${pageSize}&offset=${offset}&order=${recentLimit === undefined ? 'oldest' : 'latest'}&include_compacted=true${profile ? `&profile=${encodeURIComponent(profile)}` : ''}`;
 			const page = await this.json<{
 				session_id?: unknown;
 				messages?: unknown;
@@ -284,6 +284,7 @@ export class HermesServe {
 				if (message.role !== 'user' && message.role !== 'assistant') continue;
 				const content = transcriptContent(message.content);
 				if (message.display_kind || isCompactionSummary(content.text)) continue;
+				if (!content.text.trim() && !content.images.length) continue;
 				transcript.push({
 					role: message.role,
 					text:
@@ -295,7 +296,7 @@ export class HermesServe {
 				});
 			}
 			if (recentLimit !== undefined)
-				return { transcript: transcript.reverse(), complete: page.messages.length < pageSize };
+				return { transcript, complete: page.messages.length < pageSize };
 			if (page.messages.length < pageSize) return { transcript, complete: true };
 		}
 	}

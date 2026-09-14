@@ -277,7 +277,7 @@ async function addProject(page: import('@playwright/test').Page) {
 			(await existing.getAttribute('aria-current')) !== 'page' ||
 			(page.viewportSize()!.width <= 700 && (await page.locator('#project-drawer').isVisible()))
 		)
-			await existing.click({ position: { x: 80, y: 22 } });
+			await existing.press('Enter');
 		await expect(existing).toHaveAttribute('aria-current', 'page');
 		await expect(page).toHaveURL(/[?&]project=(?!none(?:&|$))[^&]+/);
 		return;
@@ -295,7 +295,7 @@ async function addProject(page: import('@playwright/test').Page) {
 	await openMobileProjects(page);
 	const created = page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' });
 	if ((await created.getAttribute('aria-current')) !== 'page')
-		await created.click({ position: { x: 80, y: 22 } });
+		await created.press('Enter');
 	await expect(created).toHaveAttribute('aria-current', 'page');
 	await expect(page).toHaveURL(/[?&]project=(?!none(?:&|$))[^&]+/);
 }
@@ -5660,7 +5660,42 @@ test('interaction completion stays with its captured Session across navigation',
 	finishOriginRefresh();
 });
 
+test('late streamed Projects preserve a newly selected Chat and its draft', async ({ page }) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await addProject(page);
+	await page.route('**/api/sessions', (route) => route.fulfill({
+		status: route.request().method() === 'POST' ? 201 : 200,
+		json: route.request().method() === 'POST'
+			? { session: { sessionId: 'startup-chat', cwd: '/work/topics', title: 'Startup chat' }, commands: [] }
+			: { sessions: [] }
+	}));
+	let held = false;
+	await page.route(/\/$/, async (route) => {
+		if (!route.request().isNavigationRequest()) return route.continue();
+		const response = await route.fetch();
+		const body = (await response.text()).replace(
+			/<script>(__sveltekit_\w+\.resolve\([\s\S]*?)<\/script>/g,
+			(_match, script) => {
+				held = true;
+				return `<script>window.releaseInitialProjects = () => {${script}};</script>`;
+			}
+		);
+		await route.fulfill({ response, body });
+	});
+	await page.goto('/');
+	expect(held).toBe(true);
+	await page.getByRole('button', { name: 'New chat', exact: true }).click();
+	await page.getByLabel('Message Hermes').fill('Keep this draft while Projects arrive');
+	await expect(page).toHaveURL(/project=none&session=startup-chat/);
+	await page.evaluate(() => (window as unknown as { releaseInitialProjects: () => void }).releaseInitialProjects());
+	await expect(page.locator('.project-rail nav .project-select').filter({ hasText: 'HUE' })).toBeVisible();
+	await expect(page).toHaveURL(/project=none&session=startup-chat/);
+	await expect(page.getByLabel('Message Hermes')).toHaveValue('Keep this draft while Projects arrive');
+});
+
 test('shows loading without shifting the session list action or rows', async ({ page }) => {
+	// Each viewport starts at the list, not restoration of the deliberately stalled Session.
+	await page.addInitScript(() => localStorage.removeItem('hue:navigation:v1'));
 	let finishSessionLoad = () => {};
 	let sessionLoad = Promise.resolve();
 	await page.route('**/api/projects/*/sessions', async (route) => {

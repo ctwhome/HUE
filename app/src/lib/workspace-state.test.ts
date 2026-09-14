@@ -306,6 +306,22 @@ describe('workspace async state', () => {
 		expect(timeline[7]).toMatchObject({ id: 'delegate-1', status: 'completed' });
 	});
 
+	it('matches harness-trimmed prompts to local replay without duplicating the conversation', () => {
+		const timeline = workspaceState.timelineFromSession(
+			[{ role: 'user', text: 'Question' }, { role: 'assistant', text: 'Answer' }],
+			[{ id: 'msg-1', text: 'Question\n', status: 'completed' }],
+			[
+				{ sequence: 1, type: 'message.accepted', payload: { messageId: 'msg-1' } },
+				{ sequence: 2, type: 'message.running', payload: { messageId: 'msg-1' } },
+				{ sequence: 3, type: 'agent.chunk', payload: { messageId: 'msg-1', text: 'Answer\n\n' } }
+			]
+		);
+		expect(timeline.filter((item) => item.kind === 'message')).toEqual([
+			expect.objectContaining({ role: 'user', text: 'Question\n', messageId: 'msg-1' }),
+			expect.objectContaining({ role: 'assistant', text: 'Answer\n\n' })
+		]);
+	});
+
 	it('maps work mode changes into compact timeline status items', () => {
 		const timeline = workspaceState.timelineFromSession(
 			[],

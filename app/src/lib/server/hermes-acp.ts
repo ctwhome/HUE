@@ -681,7 +681,7 @@ export class HermesACP implements PromptRuntime {
 			);
 			if (!response) throw new Error(`${this.agentLabel} Session ${sessionId} was not found`);
 			this.captureSessionResponse(sessionId, response);
-			await this.waitForSessionState(sessionId);
+			// session/load completes replay; optional usage updates must not delay reading history.
 		} finally {
 			unsubscribe();
 		}

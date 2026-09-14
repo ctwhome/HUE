@@ -118,6 +118,37 @@ it('groups replayed ACP transcript chunks by message and strips HUE cadence cont
 	]);
 });
 
+it('returns completed ACP transcript replay without waiting for optional usage updates', async () => {
+	const runtime = new OpenCodeACP();
+	const internals = runtime as any;
+	internals.agentCapabilities = { loadSession: true };
+	internals.context = async () => ({
+		request: async (method: string) => {
+			expect(method).toBe('session/load');
+			internals.dispatchUpdate('session-1', {
+				sessionUpdate: 'agent_message_chunk',
+				content: { type: 'text', text: 'Replayed answer' }
+			});
+			return { models: { currentModelId: 'model', availableModels: [] } };
+		}
+	});
+	let completed = false;
+	const replay = runtime.loadTranscript('/work', 'session-1').then((transcript) => {
+		completed = true;
+		return transcript;
+	});
+	try {
+		// Drain resolved protocol work without advancing the optional metadata timer.
+		for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+		expect(completed).toBe(true);
+		expect(await replay).toEqual([{ role: 'assistant', text: 'Replayed answer' }]);
+		expect(runtime.getSessionState('session-1').models?.currentModelId).toBe('model');
+	} finally {
+		await runtime.close();
+		await replay;
+	}
+});
+
 it('groups consecutive id-less replay chunks into one message', () => {
 	const transcript: Array<{
 		messageId: string;

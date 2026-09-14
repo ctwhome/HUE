@@ -175,6 +175,10 @@ export class WorkspaceNavigation {
 			await this.effects.openCapture(launch.intent, launch.token);
 		return true;
 	};
+	restoreInitialSelection = () =>
+		this.sessionRequestGeneration === 0 && this.restoreRequestGeneration === 0
+			? this.restoreSelection()
+			: Promise.resolve(false);
 	chooseProject = async (
 		project: Project | null,
 		historyMode: HistoryMode = 'push',
@@ -549,7 +553,7 @@ export class WorkspaceNavigation {
 			});
 			this.effects.applyLoadedSession(body);
 			if (session.unreadAttention) {
-				await this.effects
+				void this.effects
 					.api(this.sessionApiPath(session.sessionId), {
 						method: 'PATCH',
 						body: JSON.stringify({ read: true })
@@ -568,7 +572,6 @@ export class WorkspaceNavigation {
 			if (request.generation !== this.sessionRequestGeneration) return false;
 			if (session.available === false)
 				this.effects.setError(session.recovery ?? 'Hermes Session is unavailable.');
-			this.mobileDrawer = null;
 			this.effects.cacheSession();
 			this.effects.beginTranscriptEntryStick();
 			await this.effects.scrollToLatest();
@@ -1026,12 +1029,14 @@ export class WorkspaceNavigation {
 
 	setMobileDrawer(drawer: Exclude<MobilePane, null>, mode: HistoryMode = 'push') {
 		if (this.mobileDrawer === drawer) return;
+		this.restoreRequestGeneration++;
 		this.mobileDrawer = drawer;
 		if (mode !== 'none') this.persistSelection(mode, mode === 'push');
 	}
 
 	closeMobileDrawer() {
 		if (!this.mobileDrawer) return;
+		this.restoreRequestGeneration++;
 		if (isDrawerHistoryEntry()) {
 			window.history.back();
 			return;

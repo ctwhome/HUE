@@ -56,6 +56,7 @@
 	} from './workspace/types';
 	let {
 		projects: initialProjects,
+		projectReconciliation,
 		chatSessionCount: initialChatSessionCount = 0,
 		chatIndicators: initialChatIndicators = { running: 0, attention: 0, unread: 0 },
 		cronSessionCount: initialCronSessionCount = 0,
@@ -431,6 +432,7 @@
 		await messageState.submit(event);
 	}
 	onMount(() => {
+		let mounted = true;
 		const refreshChatBackground = () => (chatBackgroundRevision += 1);
 		window.addEventListener(CHAT_BACKGROUND_EVENT, refreshChatBackground);
 		applyPreferences(document.documentElement, readPreferences(localStorage));
@@ -449,8 +451,25 @@
 			onMobile: (value) => (mobile = value),
 			onVisual: (active) => (gestureActive = active)
 		});
-		mobileShell.start();
+		mobileShell.start(!projectReconciliation);
+		if (projectReconciliation) {
+			navigation.ready = true;
+			void projectReconciliation.then((loaded) => {
+				if (!mounted) return;
+				// Preserve Projects created or edited while the initial list was in flight.
+				projectManagement.projects = [
+					...new Map(
+						[...loaded.projects, ...projectManagement.projects].map((project) => [project.id, project])
+					).values()
+				];
+				projectsCapability = loaded.projectsCapability ?? 'available';
+				projectsError = loaded.projectsError ?? '';
+				reconciliationIssues = loaded.reconciliationIssues ?? [];
+				return navigation.restoreInitialSelection();
+			});
+		}
 		return () => {
+			mounted = false;
 			window.removeEventListener(CHAT_BACKGROUND_EVENT, refreshChatBackground);
 			mobileShell?.destroy();
 			mobileShell = null;
