@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { settingsStorage, watchSettings } from '$lib/settings-client';
 	import {
 		CHAT_BACKGROUND_EVENT,
 		readChatBackground,
@@ -16,14 +17,17 @@
 	let background = $state<ChatBackground | null>(null);
 	$effect(() => {
 		const sessionId = navigation.editingSession?.sessionId;
-		if (sessionId && typeof localStorage !== 'undefined')
-			background = readChatBackground(localStorage, sessionId);
+		if (sessionId) background = readChatBackground(settingsStorage, sessionId);
+	});
+	watchSettings(() => {
+		const sessionId = navigation.editingSession?.sessionId;
+		if (sessionId) background = readChatBackground(settingsStorage, sessionId);
 	});
 	function setBackground(next: ChatBackground | null) {
 		const sessionId = navigation.editingSession?.sessionId;
 		if (!sessionId) return;
 		try {
-			writeChatBackground(localStorage, sessionId, next);
+			writeChatBackground(settingsStorage, sessionId, next);
 			background = next;
 			navigation.sessionEditError = '';
 			window.dispatchEvent(new CustomEvent(CHAT_BACKGROUND_EVENT, { detail: { sessionId } }));
@@ -47,10 +51,10 @@
 		if (!sessionId) return;
 		const key = `hue:session-order:${navigation.selectedProject?.id ?? 'general'}`;
 		const order = prependNew(
-			readStringArray(localStorage, key),
+			readStringArray(settingsStorage, key),
 			navigation.sessions.map(({ sessionId }) => sessionId)
 		);
-		localStorage.setItem(key, JSON.stringify(moveBy(order, sessionId, offset)));
+		settingsStorage.setItem(key, JSON.stringify(moveBy(order, sessionId, offset)));
 		window.dispatchEvent(new Event('hue:session-order'));
 	}
 </script>

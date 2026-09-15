@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { settingsStorage, watchSettings } from '$lib/settings-client';
 	import { onMount } from 'svelte';
 	import ArrowLeft from '~icons/lucide/arrow-left';
 	import ArrowRight from '~icons/lucide/arrow-right';
@@ -95,8 +96,8 @@
 	const panel =
 		'workbench-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card';
 
-	const storageKey = () => `hue:browser:${projectId}`;
-	const activeStorageKey = () => `${storageKey()}:active`;
+	const storageKey = () => `hue:browser:projects:${projectId}:tabs`;
+	const activeStorageKey = () => `hue:browser:projects:${projectId}:active`;
 	const hiddenPortsStorageKey = 'hue:browser:hidden-ports';
 	const portNotesStorageKey = 'hue:browser:port-notes';
 	const newBrowserTab = (): BrowserTab => ({
@@ -111,7 +112,7 @@
 	});
 	function restoreBrowserTabs() {
 		try {
-			const saved = JSON.parse(localStorage.getItem(storageKey()) ?? '[]') as BrowserTab[];
+			const saved = JSON.parse(settingsStorage.getItem(storageKey()) ?? '[]') as BrowserTab[];
 			browserTabs = saved.slice(0, 50).flatMap((tab) => {
 				if (
 					typeof tab.id !== 'string' ||
@@ -140,7 +141,7 @@
 			browserTabs = [];
 		}
 		if (!browserTabs.length) browserTabs = [newBrowserTab()];
-		activeBrowserTabId = restoreBrowserTabId(browserTabs, localStorage.getItem(activeStorageKey()));
+		activeBrowserTabId = restoreBrowserTabId(browserTabs, settingsStorage.getItem(activeStorageKey()));
 		browserTabs = browserTabs.map((tab) =>
 			tab.id === activeBrowserTabId ? { ...tab, mounted: true } : tab
 		);
@@ -148,11 +149,11 @@
 	}
 	function saveBrowserTabs() {
 		try {
-			localStorage.setItem(
+			settingsStorage.setItem(
 				storageKey(),
 				JSON.stringify(browserTabs.map(({ id, title, url }) => ({ id, title, url })))
 			);
-			localStorage.setItem(activeStorageKey(), activeBrowserTabId);
+			settingsStorage.setItem(activeStorageKey(), activeBrowserTabId);
 		} catch {
 			browserError = 'Browser tabs could not be saved in this browser.';
 		}
@@ -235,7 +236,7 @@
 	}
 	function saveHiddenPorts() {
 		try {
-			localStorage.setItem(hiddenPortsStorageKey, JSON.stringify(hiddenPorts));
+			settingsStorage.setItem(hiddenPortsStorageKey, JSON.stringify(hiddenPorts));
 		} catch {
 			browserError = 'Hidden servers could not be saved in this browser.';
 		}
@@ -256,7 +257,7 @@
 			portNotes = remaining;
 		}
 		try {
-			localStorage.setItem(portNotesStorageKey, JSON.stringify(portNotes));
+			settingsStorage.setItem(portNotesStorageKey, JSON.stringify(portNotes));
 		} catch {
 			browserError = 'Port notes could not be saved in this browser.';
 		}
@@ -449,11 +450,17 @@
 		}
 	}
 
+	watchSettings(() => {
+		hiddenPorts = restoreHiddenPorts(settingsStorage.getItem(hiddenPortsStorageKey));
+		portNotes = restorePortNotes(settingsStorage.getItem(portNotesStorageKey));
+		const saved = settingsStorage.getItem(storageKey());
+		const active = settingsStorage.getItem(activeStorageKey());
+		const current = JSON.stringify(browserTabs.map(({ id, title, url }) => ({ id, title, url })));
+		if (!browserTabs.length || (saved && saved !== current)) restoreBrowserTabs();
+		else if (active) activeBrowserTabId = restoreBrowserTabId(browserTabs, active);
+	});
 	onMount(() => {
 		nativePreview = nativeBrowserPreviewAvailable(window);
-		hiddenPorts = restoreHiddenPorts(localStorage.getItem(hiddenPortsStorageKey));
-		portNotes = restorePortNotes(localStorage.getItem(portNotesStorageKey));
-		restoreBrowserTabs();
 		const receiveNavigation = (event: MessageEvent) => {
 			if (event.data?.type !== 'hue:browser:navigation') return;
 			const tabId = [...browserFrames].find(

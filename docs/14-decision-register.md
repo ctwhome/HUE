@@ -23,6 +23,7 @@
 | [ADR-0014](decisions/0014-per-session-acp-harness.md)                 | Per-Session ACP harness                                    | Keeps Hermes primary while allowing an immutable OpenCode choice for each new Session.               |
 | [ADR-0015](decisions/0015-timezone-aware-schedules.md)                | Timezone-aware HUE schedules                               | Pins five-field cron to an IANA timezone with defined daylight-saving behavior.                       |
 | [ADR-0016](decisions/0016-electrobun-desktop-previews.md)             | Electrobun desktop previews                                | Adds local native previews while retaining the web/PWA and authenticated remote boundary.             |
+| [ADR-0017](decisions/0017-json-hue-settings.md)                      | Editable JSON HUE settings                                 | One file owns HUE preferences and saved layouts; controls and external edits stay synchronized.       |
 
 ## Open boundaries
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { settingsStorage, watchSettings } from '$lib/settings-client';
 	import Button from '../ui/Button.svelte';
 	import Input from '../ui/Input.svelte';
 	import type { GlobalView } from '../GlobalNavigation.svelte';
@@ -43,7 +43,7 @@
 	let errorLogsOpen = $state(false);
 	const card = 'rounded-xl border border-border bg-card p-4';
 	const errorLogsStorageKey = 'hue:hermes:error-logs-open';
-	onMount(() => (errorLogsOpen = localStorage.getItem(errorLogsStorageKey) === 'true'));
+	watchSettings(() => (errorLogsOpen = settingsStorage.getItem(errorLogsStorageKey) === 'true'));
 	const profiles = () => (data.profiles ?? []) as Array<Record<string, any>>;
 	const servers = () => (data.servers ?? []) as Array<Record<string, any>>;
 	const providers = () => (data.options?.providers ?? []) as Array<Record<string, any>>;
@@ -178,7 +178,7 @@
 			open={errorLogsOpen}
 			ontoggle={(event) => {
 				errorLogsOpen = event.currentTarget.open;
-				localStorage.setItem(errorLogsStorageKey, String(errorLogsOpen));
+				settingsStorage.setItem(errorLogsStorageKey, String(errorLogsOpen));
 				if (errorLogsOpen && !runtimeDetails.logs.value && !runtimeDetails.logs.error)
 					void onruntimeDetail('logs');
 			}}

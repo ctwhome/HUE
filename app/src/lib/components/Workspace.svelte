@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { settingsStorage, watchSettings } from '$lib/settings-client';
+	import SettingsFileEditor from './SettingsFileEditor.svelte';
+	let settingsFileOpen = $state(false);
 	import { onMount, tick, untrack } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
@@ -115,12 +118,12 @@
 	}
 	function saveShellPaneWidth(pane: ShellPane) {
 		const width = pane === 'projects' ? projectPaneWidth : sessionPaneWidth;
-		localStorage.setItem(`hue:shell:${pane}:width`, String(Math.round(width)));
+		settingsStorage.setItem(`hue:shell:${pane}:width`, String(Math.round(width)));
 	}
 	function setShellPaneOpen(pane: ShellPane, open: boolean, persist = true) {
 		if (pane === 'projects') projectsPanelOpen = open;
 		else sessionsPanelOpen = open;
-		if (persist) localStorage.setItem(`hue:shell:${pane}:open`, String(open));
+		if (persist) settingsStorage.setItem(`hue:shell:${pane}:open`, String(open));
 	}
 	function toggleShellNavigation() {
 		const open = !projectsPanelOpen && !sessionsPanelOpen;
@@ -171,7 +174,7 @@
 		getNavigation: () => navigationRef.current!,
 		setError: (message) => (error = message),
 		setLoading: (value) => (loading = value),
-		rememberSelection: (selection) => rememberLastSessionSelection(localStorage, selection),
+		rememberSelection: (selection) => rememberLastSessionSelection(settingsStorage, selection),
 		focusNotificationTarget: (events, sourceEventId) =>
 			sessionController.transcriptFollow.focusNotificationTarget(events, sourceEventId)
 	});
@@ -204,12 +207,12 @@
 					storage: preserveWorkMode
 						? {
 								getItem: (key) => {
-									const saved = JSON.parse(localStorage.getItem(key) ?? '{}');
+									const saved = JSON.parse(settingsStorage.getItem(key) ?? '{}');
 									delete saved.workMode;
 									return JSON.stringify(saved);
 								}
 							}
-						: localStorage,
+						: settingsStorage,
 					runtime: body.runtime ?? { profile: 'default' },
 					workMode: selectedSession.workMode ?? 'autonomous',
 					changeRuntime: async (kind, value) => {
@@ -291,8 +294,8 @@
 	$effect(() => {
 		chatBackgroundRevision;
 		chatBackground =
-			selectedSession && typeof localStorage !== 'undefined'
-				? resolveChatBackground(localStorage, selectedSession.sessionId)
+			selectedSession
+				? resolveChatBackground(settingsStorage, selectedSession.sessionId)
 				: null;
 	});
 	let timeline = $derived(sessionState.timeline);
@@ -337,7 +340,7 @@
 		projectTools = false;
 		previewUrl = '';
 		fileRequest = null;
-		const panels = readProjectPanels(localStorage, panelProjectId);
+		const panels = readProjectPanels(settingsStorage, panelProjectId);
 		browserOpen = panels.browser;
 		excalidrawOpen = panels.excalidraw;
 		gitOpen = panels.git;
@@ -358,7 +361,7 @@
 						: terminalOpen;
 	}
 	function toggleProjectPanel(panel: ProjectPanel) {
-		const next = togglePanelState(localStorage, panelProjectId, panel, panelIsOpen(panel));
+		const next = togglePanelState(settingsStorage, panelProjectId, panel, panelIsOpen(panel));
 		if (panel === 'browser') browserOpen = next;
 		else if (panel === 'excalidraw') excalidrawOpen = next;
 		else if (panel === 'git') gitOpen = next;
@@ -435,18 +438,28 @@
 	let markRouterReady!: () => void;
 	const routerReady = new Promise<void>((resolve) => (markRouterReady = resolve));
 	afterNavigate(() => markRouterReady());
-	onMount(() => {
-		let mounted = true;
-		const refreshChatBackground = () => (chatBackgroundRevision += 1);
-		window.addEventListener(CHAT_BACKGROUND_EVENT, refreshChatBackground);
-		applyPreferences(document.documentElement, readPreferences(localStorage));
+	watchSettings(() => {
+		applyPreferences(document.documentElement, readPreferences(settingsStorage));
 		for (const pane of ['projects', 'sessions'] as const) {
-			const savedWidth = Number(localStorage.getItem(`hue:shell:${pane}:width`));
+			const savedWidth = Number(settingsStorage.getItem(`hue:shell:${pane}:width`));
 			if (savedWidth > 0) setShellPaneWidth(pane, savedWidth);
-			const savedOpen = localStorage.getItem(`hue:shell:${pane}:open`);
+			const savedOpen = settingsStorage.getItem(`hue:shell:${pane}:open`);
 			if (savedOpen === 'true' || savedOpen === 'false')
 				setShellPaneOpen(pane, savedOpen === 'true', false);
 		}
+		const panels = readProjectPanels(settingsStorage, panelProjectId);
+		browserOpen = panels.browser;
+		excalidrawOpen = panels.excalidraw;
+		gitOpen = panels.git;
+		filesOpen = panels.files;
+		terminalOpen = panels.terminal;
+	});
+	onMount(() => {
+		let mounted = true;
+		const openSettingsFile = () => guarded(() => (settingsFileOpen = true));
+		window.addEventListener('hue:open-settings-file', openSettingsFile);
+		const refreshChatBackground = () => (chatBackgroundRevision += 1);
+		window.addEventListener(CHAT_BACKGROUND_EVENT, refreshChatBackground);
 		elapsedTimer = setInterval(() => (now = Date.now()), 1000);
 		mobileShell = new MobileShellController({
 			drawer: (pane) => (pane === 'projects' ? projectDrawerElement : sessionDrawerElement)!,
@@ -476,6 +489,7 @@
 			});
 		return () => {
 			mounted = false;
+			window.removeEventListener('hue:open-settings-file', openSettingsFile);
 			window.removeEventListener(CHAT_BACKGROUND_EVENT, refreshChatBackground);
 			mobileShell?.destroy();
 			mobileShell = null;
@@ -491,6 +505,7 @@
 		if (dirtyGuardDirty) event.preventDefault();
 	}}
 />
+{#if settingsFileOpen}<SettingsFileEditor {dirtyGuard} onclose={() => (settingsFileOpen = false)} />{/if}
 <div
 	class="workspace grid h-dvh overflow-hidden bg-background text-foreground"
 	class:ready={navigation.ready}

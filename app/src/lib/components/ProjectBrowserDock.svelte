@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { settingsStorage, watchSettings } from '$lib/settings-client';
 	import { onMount } from 'svelte';
 	import BrowserPanel from './workbench/BrowserPanel.svelte';
 	import type { ReviewContextSeed } from '$lib/message-content';
@@ -30,7 +31,7 @@
 		width = Math.min(max, Math.max(min, next));
 	}
 	function saveWidth() {
-		localStorage.setItem(`hue:project-browser:${projectId}:width`, String(Math.round(width)));
+		settingsStorage.setItem(`hue:project-browser:${projectId}:width`, String(Math.round(width)));
 	}
 	function startResize(event: PointerEvent) {
 		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -58,13 +59,14 @@
 		saveWidth();
 	}
 
+	watchSettings(() => {
+		const savedWidth = Number(settingsStorage.getItem(`hue:project-browser:${projectId}:width`));
+		setWidth(savedWidth > 0 ? savedWidth : 440);
+	});
 	onMount(() => {
-		const savedWidth = Number(localStorage.getItem(`hue:project-browser:${projectId}:width`));
-		const frame = requestAnimationFrame(() => setWidth(savedWidth > 0 ? savedWidth : 440));
 		const observer = new ResizeObserver(() => setWidth(width));
 		observer.observe(dockElement.parentElement!);
 		return () => {
-			cancelAnimationFrame(frame);
 			observer.disconnect();
 		};
 	});

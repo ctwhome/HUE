@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { settingsStorage, watchSettings } from '$lib/settings-client';
 	import { onMount } from 'svelte';
 	import Archive from '~icons/lucide/archive';
 	import ArrowDown from '~icons/lucide/arrow-down';
@@ -196,10 +197,12 @@
 		terminalCounts = next;
 	}
 
+	watchSettings(() => {
+		collapsedGroups = new Set(readStringArray(settingsStorage, 'hue:project-groups:collapsed'));
+		projectOrder = readStringArray(settingsStorage, 'hue:project-order');
+		groupOrder = readStringArray(settingsStorage, 'hue:project-group-order');
+	});
 	onMount(() => {
-		collapsedGroups = new Set(readStringArray(localStorage, 'hue:project-groups:collapsed'));
-		projectOrder = readStringArray(localStorage, 'hue:project-order');
-		groupOrder = readStringArray(localStorage, 'hue:project-group-order');
 		window.addEventListener('touchmove', moveProjectTouch, { passive: false });
 		window.addEventListener('touchend', finishProjectTouch, { passive: false });
 		window.addEventListener('touchcancel', cancelProjectTouch);
@@ -218,7 +221,7 @@
 		if (next.has(label)) next.delete(label);
 		else next.add(label);
 		collapsedGroups = next;
-		localStorage.setItem('hue:project-groups:collapsed', JSON.stringify([...next]));
+		settingsStorage.setItem('hue:project-groups:collapsed', JSON.stringify([...next]));
 	}
 
 	function openSectionDialog() {
@@ -273,14 +276,14 @@
 			projectId,
 			before
 		);
-		localStorage.setItem('hue:project-order', JSON.stringify(projectOrder));
+		settingsStorage.setItem('hue:project-order', JSON.stringify(projectOrder));
 		if (projects.find(({ id }) => id === projectId)?.group !== group) void onmove(projectId, group);
 	}
 
 	function moveProjectBy(projectId: string, offset: -1 | 1) {
 		const order = sortByOrder(projects, projectOrder, ({ id }) => id).map(({ id }) => id);
 		projectOrder = moveBy(order, projectId, offset);
-		localStorage.setItem('hue:project-order', JSON.stringify(projectOrder));
+		settingsStorage.setItem('hue:project-order', JSON.stringify(projectOrder));
 	}
 	function projectPosition(projectId: string) {
 		return sortByOrder(projects, projectOrder, ({ id }) => id).findIndex(
@@ -317,7 +320,7 @@
 		if (!movedGroup) return dropProject(event, group);
 		event.preventDefault();
 		groupOrder = moveBefore(groupLabels, movedGroup, group);
-		localStorage.setItem('hue:project-group-order', JSON.stringify(groupOrder));
+		settingsStorage.setItem('hue:project-group-order', JSON.stringify(groupOrder));
 		draggedGroup = null;
 		dropGroup = null;
 		dropProjectId = null;

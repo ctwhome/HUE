@@ -41,7 +41,8 @@ test('restores primary panes once with the current Session metadata and clears i
 		$effect: (effect: () => void) => effects.push(effect),
 		untrack: (fn: () => unknown) => fn(),
 		queueMicrotask() {},
-		localStorage: {
+		watchSettings() {},
+		settingsStorage: {
 			getItem: (key: string) => storage.get(key),
 			setItem: (key: string, value: string) => storage.set(key, value),
 			removeItem: (key: string) => storage.delete(key)

@@ -105,6 +105,7 @@ test('notification titles use loaded Project names only in-app, preserving API f
 	const notices: string[] = [];
 	const state = handlers('../notifications/AttentionCenter.svelte', 'notificationTitle, present, enable() { foregroundEnabled = true; }',
 		{ projects: [{ id: 'p', name: 'Private Project' }] }, {
+			watchSettings() {},
 			attentionState: () => ({}), groupNotifications: () => [], shouldPresentForeground: () => true, shouldPlaySound: () => false,
 			document: { visibilityState: 'visible' }, window: { Notification: true }, Notification: class { static permission = 'granted'; constructor(title: string) { notices.push(title); } }
 		});

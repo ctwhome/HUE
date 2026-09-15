@@ -2,6 +2,23 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { defaultSettings, getSetting } from '../lib/settings';
+
+async function readSetting(page: import('@playwright/test').Page, key: string) {
+	const { settings } = await (await page.request.get('/api/settings')).json();
+	const value = getSetting(settings, key);
+	return value === undefined ? null : typeof value === 'string' ? value : JSON.stringify(value);
+}
+
+async function writeSetting(page: import('@playwright/test').Page, key: string, value: unknown) {
+	const response = await page.request.get('/api/settings');
+	const { settings } = await response.json();
+	const saved = await page.request.patch('/api/settings', {
+		headers: { origin: new URL(response.url()).origin },
+		data: { key, value, expected: getSetting(settings, key) ?? null }
+	});
+	expect(saved.ok()).toBe(true);
+}
 
 const viewports = [
 	{ width: 1440, height: 900 },
@@ -321,6 +338,10 @@ async function chooseHermesSection(
 }
 
 test.beforeEach(async ({ page }) => {
+	const settingsResponse = await page.request.get('/api/settings');
+	const { revision } = await settingsResponse.json();
+	const reset = await page.request.put('/api/settings', { headers: { origin: new URL(settingsResponse.url()).origin }, data: { settings: defaultSettings(), revision } });
+	expect(reset.ok()).toBe(true);
 	await mockTerminalRequests(page);
 	await mockDefaultSessionRequests(page);
 });
@@ -503,8 +524,8 @@ test('the navigation rail toggles both panels and Projects still toggle Sessions
 	await navigationToggle.click();
 	await expect(projects).toBeHidden();
 	await expect(sessions).toBeHidden();
-	expect(await page.evaluate(() => localStorage.getItem('hue:shell:projects:open'))).toBe('false');
-	expect(await page.evaluate(() => localStorage.getItem('hue:shell:sessions:open'))).toBe('false');
+	await expect.poll(() => readSetting(page, 'hue:shell:projects:open')).toBe('false');
+	await expect.poll(() => readSetting(page, 'hue:shell:sessions:open')).toBe('false');
 	expect(
 		await page
 			.locator('.workspace')
@@ -526,7 +547,7 @@ test('the navigation rail toggles both panels and Projects still toggle Sessions
 		await project.evaluate((button: HTMLButtonElement) => button.click());
 		await expect(project).toHaveAttribute('aria-expanded', 'false');
 		await expect(sessions).toBeHidden();
-		expect(await page.evaluate(() => localStorage.getItem('hue:shell:sessions:open'))).toBe(
+		await expect.poll(() => readSetting(page, 'hue:shell:sessions:open')).toBe(
 			'false'
 		);
 		if (viewport === viewports[0]) {
@@ -665,10 +686,7 @@ test('reorders Session rows live while dragging', async ({ page }) => {
 	);
 	await page.setViewportSize(viewports[0]);
 	await addProject(page);
-	await page.evaluate(() => {
-		for (const key of Object.keys(localStorage))
-			if (key.startsWith('hue:session-order:')) localStorage.removeItem(key);
-	});
+	await writeSetting(page, 'hue:session-order', {});
 	await page.reload();
 
 	const first = sessionButton(page, 'First row');
@@ -685,10 +703,7 @@ test('reorders Session rows live while dragging', async ({ page }) => {
 	await first.dispatchEvent('dragend', { dataTransfer });
 	await expect
 		.poll(() =>
-			page.evaluate(
-				() =>
-					localStorage.getItem(`hue:session-order:${new URL(location.href).searchParams.get('project')}`)
-			)
+			readSetting(page, `hue:session-order:${new URL(page.url()).searchParams.get('project')}`)
 		)
 		.toBe('["second-row","first-row"]');
 	await page.getByRole('button', { name: 'Edit First row' }).click();
@@ -699,10 +714,7 @@ test('reorders Session rows live while dragging', async ({ page }) => {
 	await expect(page.locator('.session-select').nth(0)).toContainText('First row');
 	await expect
 		.poll(() =>
-			page.evaluate(
-				() =>
-					localStorage.getItem(`hue:session-order:${new URL(location.href).searchParams.get('project')}`)
-			)
+			readSetting(page, `hue:session-order:${new URL(page.url()).searchParams.get('project')}`)
 		)
 		.toBe('["first-row","second-row"]');
 });
@@ -736,7 +748,7 @@ test('reorders Project rows with touch dragging', async ({ page }) => {
 			{ x: firstBox.x + firstBox.width / 2, y: firstBox.y + firstBox.height / 2 },
 			{ x: secondBox.x + secondBox.width / 2, y: secondBox.y + secondBox.height - 2 }
 		);
-		expect(await page.evaluate(() => localStorage.getItem('hue:project-order'))).toBeNull();
+		expect(await readSetting(page, 'hue:project-order')).toBe('[]');
 		await browserTouchDrag(
 			page,
 			{ x: firstBox.x + firstBox.width / 2, y: firstBox.y + firstBox.height / 2 },
@@ -744,7 +756,7 @@ test('reorders Project rows with touch dragging', async ({ page }) => {
 			undefined,
 			300
 		);
-		expect(await page.evaluate(() => localStorage.getItem('hue:project-order'))).toBeNull();
+		expect(await readSetting(page, 'hue:project-order')).toBe('[]');
 
 		await browserTouchDrag(
 			page,
@@ -759,7 +771,7 @@ test('reorders Project rows with touch dragging', async ({ page }) => {
 
 		const reversedProjectIds = [...projectIds].reverse();
 		await expect
-			.poll(() => page.evaluate(() => localStorage.getItem('hue:project-order')))
+			.poll(() => readSetting(page, 'hue:project-order'))
 			.toBe(JSON.stringify(reversedProjectIds));
 		await page.getByRole('button', { name: 'Edit Touch first' }).click();
 		await page
@@ -767,7 +779,7 @@ test('reorders Project rows with touch dragging', async ({ page }) => {
 			.getByRole('button', { name: 'Move up' })
 			.click();
 		await expect
-			.poll(() => page.evaluate(() => localStorage.getItem('hue:project-order')))
+			.poll(() => readSetting(page, 'hue:project-order'))
 			.toBe(JSON.stringify(projectIds));
 		await page.getByRole('button', { name: 'Close project options' }).click();
 
@@ -811,17 +823,12 @@ test('discards stale persisted Session panes after loading the Project Sessions'
 	await page.setViewportSize(viewports[0]);
 	await addProject(page);
 	const projectId = new URL(page.url()).searchParams.get('project')!;
-	await page.evaluate((id) => {
-		localStorage.setItem(
-			`hue:session-panes:${id}`,
-			JSON.stringify({
+	await writeSetting(page, `hue:session-panes:${projectId}`, {
 				sessions: [{ sessionId: 'pane-stale-docked', cwd: '/work/hue', title: 'Stale docked' }],
 				primary: { sessionId: 'pane-stale-primary', cwd: '/work/hue', title: 'Stale primary' },
 				column: 50,
 				row: 50
-			})
-		);
-	}, projectId);
+	});
 	holdDiscovery = true;
 	await page.reload();
 	await expect(page.locator('.workspace.ready')).toBeVisible();
@@ -838,10 +845,7 @@ test('discards stale persisted Session panes after loading the Project Sessions'
 	);
 	await expect
 		.poll(() =>
-			page.evaluate(
-				(id) => JSON.parse(localStorage.getItem(`hue:session-panes:${id}`) ?? '{}'),
-				projectId
-			)
+			readSetting(page, `hue:session-panes:${projectId}`).then((value) => JSON.parse(value ?? '{}'))
 		)
 		.toMatchObject({ sessions: [], primary: null });
 	await page.reload();
@@ -1300,12 +1304,7 @@ test('restores Git panel sizes and collapsed sections', async ({ page }) => {
 	await git.getByRole('button', { name: 'Collapse Git status' }).click();
 	await worktrees.getByRole('button', { name: 'Collapse Git worktrees' }).click();
 	const projectId = new URL(page.url()).searchParams.get('project')!;
-	expect(
-		await page.evaluate(
-			(id) => localStorage.getItem(`hue:project-tools:${id}:panel-sizes`),
-			projectId
-		)
-	).not.toBeNull();
+	await expect.poll(() => readSetting(page, `hue:project-tools:${projectId}:panel-sizes`)).not.toBeNull();
 	await page.reload();
 	await expect(git.getByRole('button', { name: 'Expand Git status' })).toHaveAttribute(
 		'aria-expanded',
@@ -1595,19 +1594,9 @@ test('Project file workspace stays usable across required viewports', async ({
 			.getByRole('button', { name: 'Browser', exact: true })
 	).toHaveAttribute('aria-expanded', 'true');
 	await expect(page.getByPlaceholder('Search files…')).toBeVisible();
-	await page.evaluate(() => {
-		const preferences = JSON.parse(localStorage.getItem('hue:preferences') ?? '{}');
-		preferences.hiddenFilePatterns = '.env';
-		localStorage.setItem('hue:preferences', JSON.stringify(preferences));
-		window.dispatchEvent(new CustomEvent('hue:preferences', { detail: preferences }));
-	});
+	await writeSetting(page, 'hue:preferences:hiddenFilePatterns', '.env');
 	await expect(page.getByRole('treeitem', { name: '.env', exact: true })).toHaveCount(0);
-	await page.evaluate(() => {
-		const preferences = JSON.parse(localStorage.getItem('hue:preferences') ?? '{}');
-		preferences.hiddenFilePatterns = '.DS_Store';
-		localStorage.setItem('hue:preferences', JSON.stringify(preferences));
-		window.dispatchEvent(new CustomEvent('hue:preferences', { detail: preferences }));
-	});
+	await writeSetting(page, 'hue:preferences:hiddenFilePatterns', '.DS_Store');
 	await expect(page.getByRole('treeitem', { name: '.env', exact: true })).toBeVisible();
 	const filesDock = page.getByRole('complementary', { name: 'Project files' });
 	const filesResizer = page.getByRole('separator', { name: 'Resize project files' });
@@ -1651,15 +1640,7 @@ test('Project file workspace stays usable across required viewports', async ({
 		'aria-expanded',
 		'true'
 	);
-	expect(
-		await page.evaluate(() =>
-			JSON.parse(
-				localStorage.getItem(
-					`hue:project-files:${new URL(location.href).searchParams.get('project')}:expanded`
-				) ?? '[]'
-			)
-		)
-	).toContain('src');
+	await expect.poll(async () => JSON.parse(await readSetting(page, `hue:project-files:${new URL(page.url()).searchParams.get('project')}:expanded`) ?? '[]')).toContain('src');
 	await page.keyboard.press('ArrowRight');
 	await expect(page.getByRole('treeitem', { name: /main.ts/ })).toBeFocused();
 	await page.keyboard.press('ArrowLeft');
@@ -2554,17 +2535,11 @@ test('personalizes one Session with template and uploaded chat backgrounds', asy
 				.evaluate((element) => getComputedStyle(element).fontSize)
 		)
 		.toBe('18px');
-	expect(
-		await page.evaluate(
-			() => JSON.parse(localStorage.getItem('hue:preferences') ?? '{}').chatFontSize
-		)
-	).toBe(18);
+	await expect.poll(() => readSetting(page, 'hue:preferences:chatFontSize')).toBe('18');
 	await appSettings.getByLabel('Hidden file patterns').fill('.DS_Store\n*.tmp');
 	await expect
 		.poll(() =>
-			page.evaluate(
-				() => JSON.parse(localStorage.getItem('hue:preferences') ?? '{}').hiddenFilePatterns
-			)
+			readSetting(page, 'hue:preferences:hiddenFilePatterns')
 		)
 		.toBe('.DS_Store\n*.tmp');
 	let generalBackground = appSettings.getByRole('group', { name: 'Default chat background' });
@@ -4462,9 +4437,7 @@ test('mod-enter sends command text while plain Enter completes selected command'
 	page
 }) => {
 	const envelopes: Array<{ text: string }> = [];
-	await page.addInitScript(() => {
-		localStorage.setItem('hue:preferences', JSON.stringify({ sendKey: 'mod-enter' }));
-	});
+	await writeSetting(page, 'hue:preferences:sendKey', 'mod-enter');
 	await page.route('**/api/projects/*/sessions', (route) =>
 		route.fulfill({
 			json: { sessions: [{ sessionId: 'command-keys', cwd: '/work/hue', title: 'Command keys' }] }
@@ -6007,12 +5980,7 @@ test('searches and manages rename pin archive duplicate export and delete impact
 	await expect(page).not.toHaveURL(/session=manage-copy/);
 	await expect
 		.poll(() =>
-			page.evaluate(
-				(projectId) =>
-					JSON.parse(localStorage.getItem(`hue:session-panes:${projectId}`) ?? '{}').primary ??
-					null,
-				managedProjectId
-			)
+			readSetting(page, `hue:session-panes:${managedProjectId}`).then((value) => JSON.parse(value ?? '{}').primary ?? null)
 		)
 		.toBeNull();
 	expect(confirmedDelete).toBe(true);
@@ -7353,10 +7321,7 @@ test('mobile Project taps do not restore the previous desktop pane Session', asy
 	const projectId = new URL(page.url()).searchParams.get('project')!;
 	await expect
 		.poll(() =>
-			page.evaluate(
-				(key) => JSON.parse(localStorage.getItem(key) ?? 'null')?.primary?.sessionId,
-				`hue:session-panes:${projectId}`
-			)
+			readSetting(page, `hue:session-panes:${projectId}`).then((value) => JSON.parse(value ?? 'null')?.primary?.sessionId)
 		)
 		.toBe('desktop-primary');
 
@@ -8576,21 +8541,10 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		await expect(github.getByText('#44 Review project work')).toBeHidden();
 		await expect
 			.poll(() =>
-				page.evaluate(
-					(id) => localStorage.getItem(`hue:project-tools:${id}:github-pulls-open`),
-					projectId
-				)
+				readSetting(page, `hue:project-tools:${projectId}:github-pulls-open`)
 			)
 			.toBe('false');
-		expect(
-			await page.evaluate(
-				(id) =>
-					JSON.parse(
-						localStorage.getItem(`hue:project-tools:${id}:github-milestones-open`) ?? '{}'
-					),
-				projectId
-			)
-		).toMatchObject({ M1: false });
+		await expect.poll(async () => JSON.parse(await readSetting(page, `hue:project-tools:${projectId}:github-milestones-open`) ?? '{}')).toMatchObject({ M1: false });
 		await expect(workbench.getByRole('link', { name: 'Pull requests' })).toHaveAttribute(
 			'href',
 			'https://github.com/curi/hue/pulls'
@@ -8609,7 +8563,7 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 			.getByRole('button', { name: 'None', exact: true })
 			.click();
 		await expect(commitReasoningTrigger).toHaveAttribute('title', /None/);
-		expect(await page.evaluate(() => localStorage.getItem('hue:commit-message-reasoning'))).toBe(
+		await expect.poll(() => readSetting(page, 'hue:commit-message-reasoning')).toBe(
 			'none'
 		);
 		await workbench.getByRole('button', { name: 'Stage app/src/routes/+page.svelte' }).click();
@@ -8667,10 +8621,7 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 		await expect(
 			browserPreview.getByRole('link', { name: 'Open preview in system browser' })
 		).toHaveAttribute('href', 'http://localhost:4001/');
-		const savedBrowserTabs = await page.evaluate((id) => {
-			const key = `hue:browser:${id}`;
-			return { key, value: localStorage.getItem(key) };
-		}, projectId);
+		const savedBrowserTabs = { key: `hue:browser:projects:${projectId}:tabs` };
 		expect(savedBrowserTabs.key).not.toBe('');
 		await openProjectTool(page, 'Excalidraw');
 		await expect(browser).toBeVisible();
@@ -8744,10 +8695,7 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 			'title',
 			'localhost'
 		);
-		const navigatedBrowserTabs = await page.evaluate(
-			(key) => localStorage.getItem(key),
-			savedBrowserTabs.key
-		);
+		const navigatedBrowserTabs = await readSetting(page, savedBrowserTabs.key);
 		await openProjectTool(page, 'Excalidraw');
 		const canvas = page.getByRole('article', { name: 'Project Excalidraw', exact: true });
 		await canvas.getByLabel('Browser address').fill('not a url');
@@ -8793,7 +8741,7 @@ test('opens project-scoped browser, terminal, Git status, and worktree panels', 
 				{ width: 768, height: 1024 },
 				{ width: 390, height: 844 }
 			]);
-		expect(await page.evaluate((key) => localStorage.getItem(key), savedBrowserTabs.key)).toBe(
+		expect(await readSetting(page, savedBrowserTabs.key)).toBe(
 			navigatedBrowserTabs
 		);
 		await projectTools.getByRole('button', { name: 'Excalidraw' }).click();
@@ -9049,14 +8997,7 @@ test('preserves project-scoped tools when switching projects', async ({ page }) 
 		});
 
 		await page.goto(`/?project=${projects[0].id}`);
-		await page.evaluate(
-			({ projectId }) =>
-				localStorage.setItem(
-					`hue:browser:${projectId}`,
-					JSON.stringify([{ id: 'bad', title: 'Bad', url: 'javascript:alert(1)' }])
-				),
-			{ projectId: projects[0].id }
-		);
+		await writeSetting(page, `hue:browser:projects:${projects[0].id}:tabs`, [{ id: 'bad', title: 'Bad', url: 'javascript:alert(1)' }]);
 		await page.reload();
 		await expect(
 			page.getByRole('article', { name: 'Project browser' }).getByLabel('Browser address')

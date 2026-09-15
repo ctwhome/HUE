@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { settingsStorage, watchSettings } from '$lib/settings-client';
 	import { onMount, type Component } from 'svelte';
 
 	let {
@@ -20,7 +21,7 @@
 		height = Math.min(max, Math.max(min, next));
 	}
 	function saveHeight() {
-		localStorage.setItem(
+		settingsStorage.setItem(
 			`hue:project-tools:${projectId}:terminal-height`,
 			String(Math.round(height))
 		);
@@ -51,12 +52,14 @@
 		saveHeight();
 	}
 
-	onMount(() => {
-		let mounted = true;
+	watchSettings(() => {
 		const savedHeight = Number(
-			localStorage.getItem(`hue:project-tools:${projectId}:terminal-height`)
+			settingsStorage.getItem(`hue:project-tools:${projectId}:terminal-height`)
 		);
 		setHeight(savedHeight > 0 ? savedHeight : element.parentElement!.clientHeight * 0.34);
+	});
+	onMount(() => {
+		let mounted = true;
 		void import('./TerminalPanel.svelte')
 			.then((module) => {
 				if (mounted) TerminalPanel = module.default;

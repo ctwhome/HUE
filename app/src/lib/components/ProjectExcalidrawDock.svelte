@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { settingsStorage, watchSettings } from '$lib/settings-client';
 	import { onMount } from 'svelte';
 	import ExcalidrawPanel from './workbench/ExcalidrawPanel.svelte';
 
@@ -27,7 +28,7 @@
 		width = Math.min(max, Math.max(min, next));
 	}
 	function saveWidth() {
-		localStorage.setItem(`hue:project-excalidraw:${projectId}:width`, String(Math.round(width)));
+		settingsStorage.setItem(`hue:project-excalidraw:${projectId}:width`, String(Math.round(width)));
 	}
 	function startResize(event: PointerEvent) {
 		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -55,13 +56,14 @@
 		saveWidth();
 	}
 
+	watchSettings(() => {
+		const savedWidth = Number(settingsStorage.getItem(`hue:project-excalidraw:${projectId}:width`));
+		setWidth(savedWidth > 0 ? savedWidth : 720);
+	});
 	onMount(() => {
-		const savedWidth = Number(localStorage.getItem(`hue:project-excalidraw:${projectId}:width`));
-		const frame = requestAnimationFrame(() => setWidth(savedWidth > 0 ? savedWidth : 720));
 		const observer = new ResizeObserver(() => setWidth(width));
 		observer.observe(dockElement.parentElement!);
 		return () => {
-			cancelAnimationFrame(frame);
 			observer.disconnect();
 		};
 	});

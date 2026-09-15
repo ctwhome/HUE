@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { settingsStorage, watchSettings } from '$lib/settings-client';
 	import { onMount } from 'svelte';
 	import FilesPanel from './workbench/FilesPanel.svelte';
 	import type { DirtyGuard } from './workspace/dirty-guard';
@@ -37,7 +38,7 @@
 		width = Math.min(max, Math.max(min, next));
 	}
 	function saveWidth() {
-		localStorage.setItem(`hue:project-files:${projectId}:width`, String(Math.round(width)));
+		settingsStorage.setItem(`hue:project-files:${projectId}:width`, String(Math.round(width)));
 	}
 	function startResize(event: PointerEvent) {
 		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -65,13 +66,14 @@
 		saveWidth();
 	}
 
+	watchSettings(() => {
+		const savedWidth = Number(settingsStorage.getItem(`hue:project-files:${projectId}:width`));
+		setWidth(savedWidth > 0 ? savedWidth : 960);
+	});
 	onMount(() => {
-		const savedWidth = Number(localStorage.getItem(`hue:project-files:${projectId}:width`));
-		const frame = requestAnimationFrame(() => setWidth(savedWidth > 0 ? savedWidth : 960));
 		const observer = new ResizeObserver(() => setWidth(width));
 		observer.observe(dockElement.parentElement!);
 		return () => {
-			cancelAnimationFrame(frame);
 			observer.disconnect();
 		};
 	});

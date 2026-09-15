@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { settingsStorage, watchSettings } from '$lib/settings-client';
 	import { onMount, untrack } from 'svelte';
 	import ChevronDown from '~icons/lucide/chevron-down';
 	import ChevronRight from '~icons/lucide/chevron-right';
@@ -260,18 +261,18 @@
 		commitOperationId = '';
 		commitMessage = repositoryMessage = commitSessionPath = '';
 		githubItems = null;
-		saveRepositorySelection(localStorage, projectId, layout.selectedRepository);
+		saveRepositorySelection(settingsStorage, projectId, layout.selectedRepository);
 		void loadRepository();
 	}
 	const toggleRepository = (panel: 'git' | 'worktrees') =>
-		toggleRepositoryPanel(localStorage, projectId, layout, panel);
+		toggleRepositoryPanel(settingsStorage, projectId, layout, panel);
 	function selectCommitModel(modelId: string) {
 		commitModel = modelId;
-		localStorage.setItem('hue:commit-message-model', modelId);
+		settingsStorage.setItem('hue:commit-message-model', modelId);
 	}
 	function selectCommitReasoning(value: string) {
 		commitReasoning = value === 'none' ? 'none' : 'default';
-		localStorage.setItem('hue:commit-message-reasoning', commitReasoning);
+		settingsStorage.setItem('hue:commit-message-reasoning', commitReasoning);
 	}
 	function refreshOnFocus() {
 		if (
@@ -288,11 +289,16 @@
 				if (mounted && !repositoryLoading) void loadRepository();
 			});
 	});
+	watchSettings(() => {
+		commitModel = settingsStorage.getItem('hue:commit-message-model') || commitModel;
+		commitReasoning = settingsStorage.getItem('hue:commit-message-reasoning') === 'none' ? 'none' : 'default';
+		const next = readRepositoryLayout(settingsStorage, projectId);
+		const changed = next.selectedRepository !== layout.selectedRepository;
+		layout = next;
+		if (mounted && changed && !repositoryBusy && !commitMessageGenerating) void loadRepository();
+	});
 	onMount(() => {
 		mounted = true;
-		commitModel = localStorage.getItem('hue:commit-message-model') || commitModel;
-		selectCommitReasoning(localStorage.getItem('hue:commit-message-reasoning') ?? 'default');
-		layout = readRepositoryLayout(localStorage, projectId);
 		void loadRepository();
 		void loadCommitModels();
 		window.addEventListener('focus', refreshOnFocus);
@@ -551,7 +557,7 @@
 		firstWeight={layout.panelSizes.git}
 		secondWeight={layout.panelSizes.worktrees}
 		onresize={(git, worktrees) =>
-			resizeRepositoryPanels(localStorage, projectId, layout, 'git', 'worktrees', git, worktrees)}
+			resizeRepositoryPanels(settingsStorage, projectId, layout, 'git', 'worktrees', git, worktrees)}
 	/>{/if}
 <article
 	class={`${panel} worktrees-panel`}
@@ -610,7 +616,7 @@
 		secondWeight={layout.panelSizes.github}
 		onresize={(worktrees, github) =>
 			resizeRepositoryPanels(
-				localStorage,
+				settingsStorage,
 				projectId,
 				layout,
 				'worktrees',

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { settingsStorage, watchSettings } from '$lib/settings-client';
 	import {
 		applyPreferences,
 		defaultPreferences,
@@ -43,13 +43,13 @@
 			showUsage,
 			hiddenFilePatterns
 		});
-		localStorage.setItem('hue:preferences', JSON.stringify(preferences));
+		settingsStorage.setItem('hue:preferences', JSON.stringify(preferences));
 		applyPreferences(document.documentElement, preferences);
 		window.dispatchEvent(new CustomEvent('hue:preferences', { detail: preferences }));
 	}
 
-	onMount(() => {
-		const preferences = readPreferences(localStorage);
+	watchSettings(() => {
+		const preferences = readPreferences(settingsStorage);
 		sendKey = preferences.sendKey;
 		theme = preferences.theme;
 		density = preferences.density;
@@ -59,19 +59,18 @@
 		voice = preferences.voice;
 		showUsage = preferences.showUsage;
 		hiddenFilePatterns = preferences.hiddenFilePatterns;
-		chatBackground = readGeneralChatBackground(localStorage);
+		chatBackground = readGeneralChatBackground(settingsStorage);
 		ready = true;
-		apply();
 	});
 
 	function setChatBackground(background: ChatBackground | null) {
 		try {
-			writeGeneralChatBackground(localStorage, background?.kind === 'none' ? null : background);
+			writeGeneralChatBackground(settingsStorage, background?.kind === 'none' ? null : background);
 			chatBackground = background?.kind === 'none' ? null : background;
 			backgroundError = '';
 			window.dispatchEvent(new CustomEvent(CHAT_BACKGROUND_EVENT));
 		} catch {
-			backgroundError = 'Could not save the background in this browser';
+			backgroundError = 'Could not save the background in settings.json';
 		}
 	}
 
@@ -93,6 +92,8 @@
 	aria-label="HUE preferences"
 >
 	<h2 class="font-semibold">Preferences</h2>
+	<p class="text-sm text-muted-foreground">Customize HUE in one place. These controls and your JSON file stay in sync.</p>
+	<button class="min-h-11 justify-self-start rounded-md border border-border px-4 text-sm" onclick={() => window.dispatchEvent(new Event('hue:open-settings-file'))}>Edit settings.json</button>
 	<div class="grid grid-cols-2 gap-3 max-[700px]:grid-cols-1">
 		<label class="grid gap-1 text-sm"
 			>Send key<select class={selectClass} bind:value={sendKey} onchange={apply}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { settingsStorage, watchSettings } from '$lib/settings-client';
 	import { onMount, tick } from 'svelte';
 	import Archive from '~icons/lucide/archive';
 	import ArchiveRestore from '~icons/lucide/archive-restore';
@@ -148,16 +149,18 @@
 	$effect(() => {
 		const key = sessionOrderKey();
 		const next = prependNew(
-			readStringArray(localStorage, key),
+			readStringArray(settingsStorage, key),
 			sessions.map(({ sessionId }) => sessionId)
 		);
 		sessionOrder = next;
-		localStorage.setItem(key, JSON.stringify(next));
+	});
+	watchSettings(() => {
+		sessionOrder = prependNew(readStringArray(settingsStorage, sessionOrderKey()), sessions.map(({ sessionId }) => sessionId));
 	});
 	onMount(() => {
 		const refreshOrder = () => {
 			sessionOrder = prependNew(
-				readStringArray(localStorage, sessionOrderKey()),
+				readStringArray(settingsStorage, sessionOrderKey()),
 				sessions.map(({ sessionId }) => sessionId)
 			);
 		};
@@ -261,7 +264,7 @@
 
 	function finishSessionDrag() {
 		if (draggedSessionId) {
-			localStorage.setItem(sessionOrderKey(), JSON.stringify(sessionOrder));
+			settingsStorage.setItem(sessionOrderKey(), JSON.stringify(sessionOrder));
 		}
 		draggedSessionId = null;
 	}

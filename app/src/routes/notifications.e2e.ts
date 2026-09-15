@@ -1,4 +1,12 @@
 import { expect, test } from '@playwright/test';
+import { defaultSettings } from '../lib/settings';
+
+test.beforeEach(async ({ request }) => {
+	const response = await request.get('/api/settings');
+	const { revision } = await response.json();
+	const reset = await request.put('/api/settings', { headers: { origin: new URL(response.url()).origin }, data: { settings: defaultSettings(), revision } });
+	expect(reset.ok()).toBe(true);
+});
 import webPush from 'web-push';
 
 const viewports = [
@@ -442,8 +450,12 @@ test('permission is requested on button gesture and exact visible context suppre
 	const items: Item[] = [];
 	await mockNotifications(page, items);
 	await mockProjectlessSession(page);
+	const response = await page.request.get('/api/settings');
+	const { settings, revision } = await response.json();
+	settings.notification.foreground = true;
+	const saved = await page.request.put('/api/settings', { headers: { origin: new URL(response.url()).origin }, data: { settings, revision } });
+	expect(saved.ok()).toBe(true);
 	await page.addInitScript(() => {
-		localStorage.setItem('hue:notification:foreground', 'true');
 		(window as Window & { __shown?: string[]; __permissionCalls?: number }).__shown = [];
 		(window as Window & { __shown?: string[]; __permissionCalls?: number }).__permissionCalls = 0;
 		class MockNotification {

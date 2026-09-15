@@ -25,7 +25,7 @@ test('commit drafts can disable reasoning independently of the selected model', 
 
 	expect(panel).toContain('ariaLabel="Commit message reasoning"');
 	expect(panel).toContain("{ value: 'none', name: 'None' }");
-	expect(panel).toContain("localStorage.setItem('hue:commit-message-reasoning'");
+	expect(panel).toContain("settingsStorage.setItem('hue:commit-message-reasoning'");
 	expect(panel).toContain('reasoning: commitReasoning');
 });
 

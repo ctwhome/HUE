@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { settingsStorage, watchSettings } from '$lib/settings-client';
 	import { onMount, tick, type Component } from 'svelte';
 	import Code2 from '~icons/lucide/code-2';
 	import Files from '~icons/lucide/files';
@@ -186,7 +187,7 @@
 		width = Math.min(max, Math.max(min, next));
 	}
 	function saveWidth() {
-		localStorage.setItem(`hue:project-tools:${projectId}:width`, String(Math.round(width)));
+		settingsStorage.setItem(`hue:project-tools:${projectId}:width`, String(Math.round(width)));
 	}
 	function startResize(event: PointerEvent) {
 		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -214,15 +215,17 @@
 		saveWidth();
 	}
 
-	onMount(() => {
-		mounted = true;
+	watchSettings(() => {
 		if (docked) {
-			const savedWidth = Number(localStorage.getItem(`hue:project-tools:${projectId}:width`));
+			const savedWidth = Number(settingsStorage.getItem(`hue:project-tools:${projectId}:width`));
 			setWidth(
 				savedWidth > 0 ? savedWidth : (dockElement.parentElement?.clientWidth ?? 960) * 0.46
 			);
-			if (gitOpen) chooseDevelopView('git');
 		}
+	});
+	onMount(() => {
+		mounted = true;
+		if (docked && gitOpen) chooseDevelopView('git');
 		const cancelRepositoryLoad = afterInitialPaint(() => {
 			void loadRepositoryPanels();
 			void loadGitChangeCount();

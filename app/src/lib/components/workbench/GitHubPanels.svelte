@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { settingsStorage, watchSettings } from '$lib/settings-client';
 	import ChevronRight from '~icons/lucide/chevron-right';
 	import GitHubMark from './GitHubMark.svelte';
 
@@ -35,24 +35,24 @@
 	const storageKey = (name: string) => `hue:project-tools:${projectId}:github-${name}`;
 	function toggle() {
 		open = !open;
-		localStorage.setItem(storageKey('open'), String(open));
+		settingsStorage.setItem(storageKey('open'), String(open));
 	}
 	function saveSection(section: 'issues' | 'pulls', value: boolean) {
 		if (section === 'issues') issuesOpen = value;
 		else pullRequestsOpen = value;
-		localStorage.setItem(storageKey(`${section}-open`), String(value));
+		settingsStorage.setItem(storageKey(`${section}-open`), String(value));
 	}
 	function saveMilestone(label: string, value: boolean) {
 		milestonesOpen = { ...milestonesOpen, [label]: value };
-		localStorage.setItem(storageKey('milestones-open'), JSON.stringify(milestonesOpen));
+		settingsStorage.setItem(storageKey('milestones-open'), JSON.stringify(milestonesOpen));
 	}
 
-	onMount(() => {
-		open = localStorage.getItem(storageKey('open')) !== 'false';
-		issuesOpen = localStorage.getItem(storageKey('issues-open')) !== 'false';
-		pullRequestsOpen = localStorage.getItem(storageKey('pulls-open')) !== 'false';
+	watchSettings(() => {
+		open = settingsStorage.getItem(storageKey('open')) !== 'false';
+		issuesOpen = settingsStorage.getItem(storageKey('issues-open')) !== 'false';
+		pullRequestsOpen = settingsStorage.getItem(storageKey('pulls-open')) !== 'false';
 		try {
-			const saved = JSON.parse(localStorage.getItem(storageKey('milestones-open')) ?? '{}');
+			const saved = JSON.parse(settingsStorage.getItem(storageKey('milestones-open')) ?? '{}');
 			if (saved && typeof saved === 'object' && !Array.isArray(saved))
 				milestonesOpen = Object.fromEntries(
 					Object.entries(saved).filter(

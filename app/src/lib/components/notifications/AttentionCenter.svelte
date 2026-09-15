@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { settingsStorage, watchSettings } from '$lib/settings-client';
 	import { onMount } from 'svelte';
 	import ArrowLeft from '~icons/lucide/arrow-left';
 	import Bell from '~icons/lucide/bell';
@@ -233,7 +234,7 @@
 
 	async function toggleSound(enabled: boolean) {
 		soundEnabled = enabled;
-		localStorage.setItem(soundKey, String(enabled));
+		settingsStorage.setItem(soundKey, String(enabled));
 		if (!enabled) return;
 		const AudioContextClass = window.AudioContext;
 		audioContext ??= new AudioContextClass();
@@ -349,7 +350,7 @@
 			});
 			localStorage.setItem(endpointKey, endpoint.id);
 			foregroundEnabled = true;
-			localStorage.setItem(foregroundKey, 'true');
+			settingsStorage.setItem(foregroundKey, 'true');
 			settingsNotice = 'System notifications enabled for this device.';
 			await loadSettings();
 			await reportPresence();
@@ -405,9 +406,11 @@
 		void reportPresence();
 	});
 
+	watchSettings(() => {
+		soundEnabled = settingsStorage.getItem(soundKey) === 'true';
+		foregroundEnabled = settingsStorage.getItem(foregroundKey) === 'true';
+	});
 	onMount(() => {
-		soundEnabled = localStorage.getItem(soundKey) === 'true';
-		foregroundEnabled = localStorage.getItem(foregroundKey) === 'true';
 		void refresh();
 		void loadSettings();
 		void reportPresence();
@@ -495,7 +498,7 @@
 								><input
 									type="checkbox"
 									bind:checked={foregroundEnabled}
-									onchange={() => localStorage.setItem(foregroundKey, String(foregroundEnabled))}
+									onchange={() => settingsStorage.setItem(foregroundKey, String(foregroundEnabled))}
 								/><span>Show browser notifications while HUE is open</span></label
 							>
 							<label class="flex min-h-11 items-center gap-3"

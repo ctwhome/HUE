@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { settingsStorage, watchSettings } from '$lib/settings-client';
 	import { untrack, type Snippet } from 'svelte';
 	import X from '~icons/lucide/x';
 	import SessionPanel from './SessionPanel.svelte';
@@ -75,7 +76,7 @@
 	}
 	function saveLayout() {
 		if (!allowDocking || !layoutReady || hydratedProjectId !== projectId) return;
-		localStorage.setItem(
+		settingsStorage.setItem(
 			storageKey(projectId),
 			JSON.stringify({
 				sessions: dockedSessions,
@@ -101,7 +102,7 @@
 		paneRatio.column = 50;
 		paneRatio.row = 50;
 		try {
-			const saved = JSON.parse(localStorage.getItem(storageKey(projectId)) ?? 'null') as {
+			const saved = JSON.parse(settingsStorage.getItem(storageKey(projectId)) ?? 'null') as {
 				sessions?: unknown;
 				primary?: unknown;
 				column?: unknown;
@@ -118,9 +119,18 @@
 				paneRatio.row = clampRatio(saved.row);
 			}
 		} catch {
-			localStorage.removeItem(storageKey(projectId));
+			settingsStorage.removeItem(storageKey(projectId));
 		}
 		layoutReady = true;
+	});
+	watchSettings(() => {
+		const saved = JSON.parse(settingsStorage.getItem(storageKey(projectId)) ?? 'null');
+		if (!saved || !allowDocking || paneResize) return;
+		paneRatio = { column: clampRatio(saved.column), row: clampRatio(saved.row) };
+		if (Array.isArray(saved.sessions) && sessionListLoaded) {
+			dockedSessions = saved.sessions.map(parsePaneSession).filter((session: PaneSession | null): session is PaneSession => session !== null && sessions.some((item) => item.sessionId === session.sessionId));
+			onpanecount(1 + dockedSessions.length);
+		}
 	});
 	$effect(() => {
 		if (!allowDocking || !layoutReady || !sessionListLoaded || reconciledProjectId === projectId)

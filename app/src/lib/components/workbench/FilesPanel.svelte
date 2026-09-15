@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { settingsStorage, watchSettings } from '$lib/settings-client';
 	import { onMount, tick, untrack } from 'svelte';
 	import ChevronDown from '~icons/lucide/chevron-down';
 	import ChevronRight from '~icons/lucide/chevron-right';
@@ -273,7 +274,7 @@
 	}
 	function setExpanded(next: Set<string>) {
 		expanded = next;
-		localStorage.setItem(expandedStorageKey(), JSON.stringify([...next]));
+		settingsStorage.setItem(expandedStorageKey(), JSON.stringify([...next]));
 	}
 	function treeKey(event: KeyboardEvent, entry: Entry) {
 		if (!['ArrowUp', 'ArrowDown', 'Home', 'End', 'ArrowLeft', 'ArrowRight'].includes(event.key))
@@ -437,13 +438,15 @@
 			requestSelect(fileRequest);
 		}
 	});
+	watchSettings(() => {
+		applyHiddenFilePatterns(readPreferences(settingsStorage).hiddenFilePatterns);
+		expanded = new Set(readStringArray(settingsStorage, expandedStorageKey()));
+	});
 	onMount(() => {
-		applyHiddenFilePatterns(readPreferences(localStorage).hiddenFilePatterns);
 		const updatePreferences = (event: Event) => {
 			applyHiddenFilePatterns((event as CustomEvent<HUEPreferences>).detail.hiddenFilePatterns);
 		};
 		window.addEventListener('hue:preferences', updatePreferences);
-		expanded = new Set(readStringArray(localStorage, expandedStorageKey()));
 		void loadTree();
 		return () => {
 			window.removeEventListener('hue:preferences', updatePreferences);
@@ -510,6 +513,7 @@
 	/>
 
 	<aside class="file-sidebar flex min-h-0 flex-col border-l border-border">
+		<button class="min-h-11 border-b border-border px-3 text-left font-mono text-xs hover:bg-accent" title="Edit global HUE settings" onclick={() => guarded(() => window.dispatchEvent(new Event('hue:open-settings-file')))}>HUE · settings.json</button>
 		<header class="border-b border-border p-2">
 			<div class="file-sidebar-tabs flex min-w-0 items-center gap-1">
 				<Button

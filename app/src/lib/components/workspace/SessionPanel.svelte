@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { settingsStorage } from '$lib/settings-client';
 	import { onMount, untrack } from 'svelte';
 	import { selectTranscriptTimeline } from '$lib';
 	import { rememberLastSessionSelection } from '$lib/session-selections';
@@ -39,7 +40,7 @@
 		getNavigation: () => navigationRef.current!,
 		setError: (message) => (error = message),
 		setLoading: (value) => (loading = value),
-		rememberSelection: (selection) => rememberLastSessionSelection(localStorage, selection),
+		rememberSelection: (selection) => rememberLastSessionSelection(settingsStorage, selection),
 		focusNotificationTarget: async () => false
 	});
 	const { sessionState, messageState } = sessionController;
@@ -81,7 +82,7 @@
 
 	onMount(() => {
 		const refreshChatBackground = () =>
-			(chatBackground = resolveChatBackground(localStorage, fixedSession.sessionId));
+			(chatBackground = resolveChatBackground(settingsStorage, fixedSession.sessionId));
 		refreshChatBackground();
 		window.addEventListener(CHAT_BACKGROUND_EVENT, refreshChatBackground);
 		messageState.restoreDraft();
