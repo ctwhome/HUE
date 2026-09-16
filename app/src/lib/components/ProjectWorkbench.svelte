@@ -120,6 +120,10 @@
 			if (mounted) repositoryError = cause instanceof Error ? cause.message : String(cause);
 		}
 	}
+	$effect(() => {
+		if (docked && gitOpen) developView = 'git';
+		if (repositoryVisible && !RepositoryPanels) void loadRepositoryPanels();
+	});
 	async function loadGitChangeCount() {
 		if (gitCountLoading || repositoryVisible) return;
 		gitCountLoading = true;
@@ -225,7 +229,6 @@
 	});
 	onMount(() => {
 		mounted = true;
-		if (docked && gitOpen) chooseDevelopView('git');
 		const cancelRepositoryLoad = afterInitialPaint(() => {
 			void loadRepositoryPanels();
 			void loadGitChangeCount();

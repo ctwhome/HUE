@@ -1,4 +1,5 @@
 .chat-background-surface {
+	background-color: var(--background);
 	background-image: var(--chat-background-light);
 	background-position: center;
 	background-size: cover;
@@ -31,9 +32,7 @@
 .session-view:has(> .transcript) > .session-header {
 	position: relative;
 	z-index: 10;
-	background: color-mix(in srgb, var(--background) 52%, transparent);
-	-webkit-backdrop-filter: blur(10px) saturate(130%);
-	backdrop-filter: blur(10px) saturate(130%);
+	background: var(--background);
 }
 .session-view:has(> .transcript) > .transcript {
 	padding-top: 0;
@@ -49,41 +48,21 @@
 	right: 0;
 	bottom: 0;
 	left: 0;
-	background: color-mix(in srgb, var(--card) 65%, transparent);
-	-webkit-backdrop-filter: blur(10px) saturate(130%);
-	backdrop-filter: blur(10px) saturate(130%);
+	background: var(--card);
 }
 .session-view.personal-background {
-	--chat-surface: color-mix(in srgb, var(--background) 82%, transparent);
 	position: relative;
 	isolation: isolate;
 	background-color: var(--background);
-}
-.session-view.personal-background::before {
-	position: absolute;
-	inset: 0;
-	z-index: 0;
-	background: rgb(0 0 0 / 8%);
-	content: '';
-	pointer-events: none;
 }
 .session-view.personal-background > * {
 	position: relative;
 	z-index: 1;
 }
-.session-view.personal-background .composer,
-.session-view.personal-background:not(.empty-session):has(> .transcript) > .composer {
-	border-color: color-mix(in srgb, var(--border) 70%, white 18%);
-	background: color-mix(in srgb, var(--card) 68%, transparent);
-	box-shadow: 0 16px 42px rgb(0 0 0 / 22%);
-	-webkit-backdrop-filter: blur(20px) saturate(135%);
-	backdrop-filter: blur(20px) saturate(135%);
-}
 .session-view.personal-background .welcome,
 .session-view.personal-background .message-identity {
 	border-radius: var(--radius-panel);
-	background: color-mix(in srgb, var(--card) 62%, transparent);
-	backdrop-filter: blur(12px) saturate(125%);
+	background: var(--card);
 }
 .session-view.personal-background .welcome {
 	padding: 20px 24px;
@@ -334,11 +313,6 @@
 	z-index: 2;
 	align-items: flex-end;
 	padding-bottom: 12px;
-	background: linear-gradient(
-		to bottom,
-		var(--chat-surface, var(--background)) calc(100% - 12px),
-		transparent
-	);
 }
 .transcript article.user .message-stack {
 	max-width: min(85%, 820px);
@@ -348,6 +322,8 @@
 }
 .transcript article.user .message-actions {
 	justify-content: flex-end;
+	background: var(--background);
+	opacity: 1;
 }
 .message-actions button {
 	display: grid;
@@ -390,7 +366,17 @@
 }
 .user-message {
 	padding: 12px 20px;
-	border-color: color-mix(in srgb, var(--primary) 5%, transparent);
+	border-color: var(--border);
+	background: var(--secondary);
+}
+.user-image-count {
+	display: none;
+}
+.composer-delivery-surface,
+.user-message-timestamp {
+	background: color-mix(in srgb, var(--background) 20%, transparent);
+	-webkit-backdrop-filter: blur(4px);
+	backdrop-filter: blur(4px);
 }
 .user-message-body {
 	max-height: 40dvh;
@@ -666,7 +652,7 @@
 
 @media (max-width: 700px) {
 	.transcript:has(article.user) {
-		--sticky-message-clearance: 168px;
+		--sticky-message-clearance: 76px;
 	}
 	.markdown-icon-toolbar button,
 	.generated-output-toolbar :is(button, a) {
@@ -899,6 +885,8 @@
 .composer {
 	z-index: 10;
 	container-type: inline-size;
+	background: var(--card);
+	backdrop-filter: none;
 }
 .composer-input {
 	position: relative;
@@ -992,9 +980,7 @@
 .composer-send {
 	margin-left: auto;
 }
-.mobile-option-label,
-.mobile-approval-option,
-.mobile-reasoning-option {
+.mobile-option-label {
 	display: none;
 }
 .composer-more {

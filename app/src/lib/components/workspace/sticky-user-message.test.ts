@@ -21,7 +21,7 @@ test('user turns stick, clamp to two lines, and expand or collapse in place', ()
 	expect(styles).toMatch(
 		/\.user-message-body\.collapsed\.has-images \.message-images\s*\{[^}]*max-height:\s*72px/s
 	);
-	expect(styles).toContain('var(--chat-surface, var(--background))');
+	expect(styles).not.toContain('background: linear-gradient(');
 	expect(styles).toMatch(
 		/\.transcript:has\(article\.user\)\s*\{[^}]*--sticky-message-clearance:\s*152px/s
 	);

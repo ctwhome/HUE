@@ -156,7 +156,7 @@
 	});
 	watchSettings(() => {
 		sessionOrder = prependNew(readStringArray(settingsStorage, sessionOrderKey()), sessions.map(({ sessionId }) => sessionId));
-	});
+	}, sessionOrderKey);
 	onMount(() => {
 		const refreshOrder = () => {
 			sessionOrder = prependNew(
@@ -470,8 +470,10 @@
 								class="session-icon grid size-8 place-items-center rounded-md text-2xl leading-none"
 								>{session.icon ?? automaticIcon(session.title)}</span
 							>{/if}
-						<span
+						{#if state.icon !== 'idle'}<span
 							class="session-state-badge pointer-events-none absolute right-0 bottom-0 grid size-[18px] place-items-center rounded-full border border-card bg-card"
+							class:text-destructive={state.icon !== 'running'}
+							class:text-sky-400={state.icon === 'running'}
 							title={state.label}
 							aria-hidden="true"
 						>
@@ -482,9 +484,8 @@
 								/>{:else if state.icon === 'waiting'}<CircleHelp width={12} height={12} />
 							{:else if state.icon === 'failed'}<CircleX width={12} height={12} />
 							{:else if state.icon === 'cancelled'}<Ban width={12} height={12} />
-							{:else if state.icon === 'unknown'}<WifiOff width={12} height={12} />
-							{:else}<CircleCheck width={12} height={12} />{/if}
-						</span>
+							{:else if state.icon === 'unknown'}<WifiOff width={12} height={12} />{/if}
+						</span>{/if}
 					</button>
 					{#if session.unreadAttention}<span
 							class="session-unread-badge"

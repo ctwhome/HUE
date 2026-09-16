@@ -12,6 +12,12 @@ const listeners = new Set<() => void>();
 let observed: Set<string> | undefined;
 export const settingsStatus = writable({ error: '', pending: false, path: snapshot.path });
 
+export function initializeSettings(initial: SettingsSnapshot | null, error: string) {
+	// Detach Svelte page-data proxies: storage reads must not subscribe layout effects to their own writes.
+	if (initial) apply(JSON.parse(JSON.stringify(initial)));
+	settingsStatus.set({ error, pending: false, path: snapshot.path });
+}
+
 function apply(next: SettingsSnapshot) {
 	snapshot = next;
 	applyPreferences(document.documentElement, next.settings.preferences);
@@ -42,10 +48,12 @@ export async function refreshSettings() {
 	} finally { refreshing = false; }
 }
 
-export function watchSettings(read: () => void) {
+export function watchSettings(read: () => void, scope: () => unknown = () => null) {
 	onMount(() => {
 		let values = new Map<string, string | undefined>();
+		let currentScope: unknown;
 		const run = () => {
+			currentScope = scope();
 			observed = new Set();
 			try { read(); }
 			finally {
@@ -54,7 +62,7 @@ export function watchSettings(read: () => void) {
 			}
 		};
 		const changed = () => {
-			if (!values.size || [...values].some(([key, value]) => JSON.stringify(getSetting(snapshot.settings, key)) !== value)) run();
+			if (scope() !== currentScope || !values.size || [...values].some(([key, value]) => JSON.stringify(getSetting(snapshot.settings, key)) !== value)) run();
 		};
 		run();
 		listeners.add(changed);

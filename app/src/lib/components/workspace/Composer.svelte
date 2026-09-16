@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { MediaQuery } from 'svelte/reactivity';
 	import ArrowDown from '~icons/lucide/arrow-down';
 	import Ban from '~icons/lucide/ban';
 	import CircleAlert from '~icons/lucide/circle-alert';
@@ -212,6 +213,7 @@
 		showContextUsage?: boolean;
 	} = $props();
 	const instanceId = $props.id();
+	const mobile = new MediaQuery('(max-width: 700px), (pointer: coarse) and (max-height: 500px)');
 	let harnessName = $derived(runtime.harness === 'opencode' ? 'OpenCode' : 'Hermes');
 	const workModeOptions = [
 		{ value: 'autonomous', name: 'Autonomous', description: 'The agent works independently.' },
@@ -264,9 +266,10 @@
 	}
 	function resizeComposer() {
 		if (!composerElement) return;
+		const maxHeight = parseFloat(getComputedStyle(composerElement).maxHeight);
 		composerElement.style.height = '0';
-		composerElement.style.height = `${Math.min(160, Math.max(44, composerElement.scrollHeight))}px`;
-		composerElement.style.overflowY = composerElement.scrollHeight > 160 ? 'auto' : 'hidden';
+		composerElement.style.height = `${Math.min(maxHeight, Math.max(44, composerElement.scrollHeight))}px`;
+		composerElement.style.overflowY = composerElement.scrollHeight > maxHeight ? 'auto' : 'hidden';
 	}
 	function reserveComposerSpace(node: HTMLFormElement) {
 		const parent = node.parentElement;
@@ -298,7 +301,7 @@
 	});
 
 	async function openPromptLibrary() {
-		optionsOpen = false;
+		closeComposerOptions();
 		promptLibraryDialog?.showModal();
 		if (promptLibraryAvailable) {
 			promptLibraryLoading = true;
@@ -307,6 +310,7 @@
 		}
 	}
 	async function reviewWorkModeBundle(value: string) {
+		closeComposerOptions();
 		promptLibraryDialog?.showModal();
 		await promptLibrary?.openBundle(value);
 	}
@@ -317,15 +321,20 @@
 		promptLibraryDialog?.close();
 		queueMicrotask(() => composerElement?.focus());
 	}
+	function closeComposerOptions() {
+		if (optionsMenu?.matches(':popover-open')) optionsMenu.hidePopover();
+		optionsOpen = false;
+	}
 	function closeOptions(event: MouseEvent) {
 		const target = event.target as Node;
-		if (!optionsButton?.contains(target) && !optionsMenu?.contains(target)) optionsOpen = false;
+		if (!mobile.current && !optionsButton?.contains(target) && !optionsMenu?.contains(target))
+			optionsOpen = false;
 		if (!deliveryButton?.contains(target) && !composerActivity?.contains(target))
 			thinkingOpen = false;
 	}
 	async function improvePrompt(answers: PromptImprovementAnswer[] = []) {
 		if (promptImproving) return;
-		optionsOpen = false;
+		closeComposerOptions();
 		if (!answers.length) {
 			improvedPrompt = '';
 			improvementQuestions = [];
@@ -373,7 +382,7 @@
 	onclick={closeOptions}
 	onkeydown={(event) => {
 		if (event.key === 'Escape') {
-			if (optionsOpen) {
+			if (optionsOpen && !mobile.current) {
 				optionsOpen = false;
 				optionsButton?.focus();
 			}
@@ -410,8 +419,78 @@
 		</button>{/if}
 {/snippet}
 
+{#snippet improveButton()}
+	<button
+		type="button"
+		class="composer-improve grid size-11 shrink-0 place-items-center rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+		aria-label="Improve prompt with AI"
+		title="Clarify and improve this prompt with AI"
+		disabled={!ready || !composer.trim() || promptImproving}
+		onclick={() => improvePrompt()}
+	>
+		<Sparkles
+			class={promptImproving ? 'animate-pulse' : undefined}
+			width={19}
+			height={19}
+			aria-hidden="true"
+		/>
+		<span class="mobile-option-label">Improve prompt</span>
+	</button>
+{/snippet}
+
+{#snippet sessionContext()}
+	<div
+		class="composer-context ml-auto flex min-w-0 items-center gap-1"
+		aria-label={`${harnessName} session context`}
+	>
+		<div class="desktop-context-option">
+			<span class="mobile-option-label">Edit approvals</span>{@render approvalPicker()}
+		</div>
+		{#if reasoning}<div class="desktop-context-option">
+				<span class="mobile-option-label">Reasoning</span>
+				<SessionOptionPicker
+					options={flattenOptions(reasoning.options)}
+					value={reasoning.currentValue}
+					ariaLabel="Reasoning"
+					kind="reasoning"
+					showLabel={true}
+					disabled={busy || runtimeChanging || !ready}
+					onselect={(value) => onconfig(reasoning!.id, value)}
+				/>
+			</div>{/if}
+		{#if runtime.models}<div class="composer-model-option">
+				<span class="mobile-option-label">Model</span>
+				<ModelPicker
+					models={runtime.models.availableModels}
+					value={runtime.models.currentModelId}
+					disabled={busy || runtimeChanging || !ready}
+					onselect={onmodel}
+				/>
+			</div>{/if}
+		<div class="composer-work-option">
+			<span class="mobile-option-label">Work mode</span>
+			<SessionOptionPicker
+				options={workModeOptions}
+				value={workMode}
+				ariaLabel="Work mode"
+				kind="work"
+				showLabel={true}
+				disabled={workModeChanging || !ready}
+				onselect={(value) => onworkmode(value as WorkMode)}
+				onedit={reviewWorkModeBundle}
+			/>
+		</div>
+		{#if showContextUsage && contextPercent() !== null}<span
+				class="desktop-context-option context-chip context-usage inline-flex min-h-8 shrink-0 items-center rounded-lg border border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_15%,transparent)] px-2 text-xs font-bold text-[var(--success)]"
+				class:warning={contextPercent()! >= 80}
+				title={`${runtime.usage!.used.toLocaleString()} of ${runtime.usage!.size.toLocaleString()} context tokens used`}
+				>{contextPercent()}%</span
+			>{/if}
+	</div>
+{/snippet}
+
 <form
-	class="composer sticky bottom-0 mx-[clamp(10px,2vw,40px)] mb-4 rounded-lg border border-border bg-card/95 px-2.5 py-2 shadow-lg backdrop-blur-xl"
+	class="composer sticky bottom-0 mx-[clamp(10px,2vw,40px)] mb-4 rounded-lg border border-border bg-card px-2.5 py-2 shadow-lg"
 	class:dragging={draggingImages}
 	class:mt-8={Boolean(activityStatus || plan.length)}
 	use:reserveComposerSpace
@@ -621,7 +700,7 @@
 	{#if activityStatus}<button
 			bind:this={deliveryButton}
 			type="button"
-			class="composer-delivery absolute bottom-[calc(100%+6px)] left-2 flex items-center gap-1.5 rounded-full bg-muted/80 px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm ring-1 ring-border/50 transition hover:bg-accent hover:text-foreground"
+			class="composer-delivery absolute bottom-[calc(100%+6px)] left-2 flex items-center rounded-md text-xs font-medium text-muted-foreground hover:text-foreground"
 			class:warning={activityStatus.includes('unknown')}
 			aria-controls={`${instanceId}-thinking`}
 			aria-expanded={thinkingOpen}
@@ -630,236 +709,199 @@
 				? `Delivery is unconfirmed; ${harnessName} may still be working · Toggle activity details`
 				: `Message ${activityStatus} · Toggle activity details`}
 			onclick={toggleThinking}
-			><DeliveryIcon
-				class={deliveryIcon === 'loader' ? 'animate-spin' : undefined}
-				data-status-icon={activityStatus}
-				width={14}
-				height={14}
-				aria-hidden="true"
-			/>{activityStatus.includes('unknown')
-				? `Delivery unconfirmed · ${harnessName} may still be working`
-				: activityStatus}</button
+			><span
+				class="composer-delivery-surface inline-flex min-h-7 items-center gap-1.5 rounded-md px-2"
+				><DeliveryIcon
+					class={deliveryIcon === 'loader' ? 'animate-spin' : undefined}
+					data-status-icon={activityStatus}
+					width={14}
+					height={14}
+					aria-hidden="true"
+				/>{activityStatus.includes('unknown')
+					? `Delivery unconfirmed · ${harnessName} may still be working`
+					: activityStatus}</span
+			></button
 		>{/if}
 	<div class="task-activity">
 		<CurrentTask {plan} bind:open={tasksOpen} onopen={() => (thinkingOpen = false)} />
 	</div>
-	<div class="composer-input">
-		<textarea
-			bind:this={composerElement}
-			rows="1"
-			value={composer}
-			oninput={handleComposerInput}
-			{onkeydown}
-			{onpaste}
-			placeholder={busy
-				? 'Type a follow-up and press Enter to queue…'
-				: `Message ${harnessName}… / for commands`}
-			aria-label={`Message ${harnessName}`}
-			role="combobox"
-			aria-autocomplete="list"
-			aria-expanded={commandMatches.length > 0}
-			aria-controls={commandMatches.length ? `${instanceId}-command-menu` : undefined}
-			aria-activedescendant={commandMatches.length
-				? `${instanceId}-command-${Math.max(0, Math.min(commandIndex, commandMatches.length - 1))}`
-				: undefined}></textarea>
-	</div>
-	<div class="composer-toolbar flex min-w-0 items-center gap-2 pt-1">
-		<button
-			bind:this={optionsButton}
-			type="button"
-			class="composer-more grid size-11 shrink-0 place-items-center rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-			aria-label="More session options"
-			aria-expanded={optionsOpen}
-			aria-controls={`${instanceId}-composer-options`}
-			title="More session options"
-			disabled={!ready}
-			onclick={() => (optionsOpen = !optionsOpen)}
-		>
-			<Ellipsis width={20} height={20} aria-hidden="true" />
-		</button>
-		<button
-			type="button"
-			class="grid size-11 shrink-0 place-items-center rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-			aria-label="Improve prompt with AI"
-			title="Clarify and improve this prompt with AI"
-			disabled={!ready || !composer.trim() || promptImproving}
-			onclick={() => improvePrompt()}
-		>
-			<Sparkles
-				class={promptImproving ? 'animate-pulse' : undefined}
-				width={19}
-				height={19}
-				aria-hidden="true"
-			/>
-		</button>
-		{#if promptImproving}<span class="sr-only" role="status">Improving prompt…</span>{/if}
-		<div bind:this={composerActivity} class="composer-activity">
-			<ThinkingDialog
-				id={`${instanceId}-thinking`}
-				items={thinkingTimeline}
-				{renderMarkdown}
-				{busy}
-				bind:open={thinkingOpen}
-			/>
+	<div class="composer-entry">
+		<div class="composer-input">
+			<textarea
+				bind:this={composerElement}
+				rows="1"
+				value={composer}
+				oninput={handleComposerInput}
+				{onkeydown}
+				{onpaste}
+				placeholder={mobile.current
+					? busy
+						? 'Queue a follow-up…'
+						: 'Message…'
+					: busy
+						? 'Type a follow-up and press Enter to queue…'
+						: `Message ${harnessName}… / for commands`}
+				aria-label={`Message ${harnessName}`}
+				role="combobox"
+				aria-autocomplete="list"
+				aria-expanded={commandMatches.length > 0}
+				aria-controls={commandMatches.length ? `${instanceId}-command-menu` : undefined}
+				aria-activedescendant={commandMatches.length
+					? `${instanceId}-command-${Math.max(0, Math.min(commandIndex, commandMatches.length - 1))}`
+					: undefined}></textarea>
 		</div>
-		<div
-			bind:this={optionsMenu}
-			id={`${instanceId}-composer-options`}
-			class="composer-options-menu"
-			class:open={optionsOpen && ready}
-			inert={!ready}
-			aria-hidden={!ready ? 'true' : undefined}
-			role="group"
-			aria-label="Secondary session options"
-		>
-			<label
-				class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-				aria-label={imagePrompts ? 'Attach images and files' : 'Attach files'}
-				title={imagePrompts
-					? 'Attach documents, audio, video, archives, text, code, or images'
-					: `Attach documents, audio, video, archives, text, or code. ${harnessName} does not support image prompts.`}
-			>
-				<Paperclip width={20} height={20} aria-hidden="true" />
-				<span class="mobile-option-label">Attach files</span>
-				<input
-					type="file"
-					accept={`${imagePrompts ? '.png,.jpg,.jpeg,.gif,.webp,' : ''}.pdf,.doc,.docx,.mp3,.wav,.ogg,.oga,.m4a,.mp4,.m4v,.webm,.mov,.zip,.gz,.tgz,.tar,.7z,.txt,.log,.md,.markdown,.csv,.json,.xml,.css,.ts,.mts,.cts,.tsx,.py,.rs,.go,.java`}
-					multiple
-					onchange={(event) => {
-						optionsOpen = false;
-						onimages(event);
-					}}
-				/>
-			</label>
-			{#if !callActive}<button
-					bind:this={voiceMessageElement}
-					type="button"
-					class="attach-button voice-start grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-					aria-label="Record voice message"
-					title="Record and send voice message"
-					onclick={() => {
-						optionsOpen = false;
-						onvoiceMessage();
-					}}
-					><Mic width={20} height={20} aria-hidden="true" /><span class="mobile-option-label"
-						>Voice message</span
-					></button
-				>
-				<button
-					bind:this={voiceStartElement}
-					type="button"
-					class="attach-button voice-start grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-					aria-label="Start voice call"
-					title="Start voice call"
-					onclick={() => {
-						optionsOpen = false;
-						onvoiceCall();
-					}}
-					><PhoneCall width={20} height={20} aria-hidden="true" /><span class="mobile-option-label"
-						>Voice call</span
-					></button
-				>{/if}
-			<span
-				class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border text-muted-foreground"
-				aria-label={`${harnessName} profile: ${runtime.profile}`}
-				title={`${harnessName} profile: ${runtime.profile}`}
-			>
-				<UserRound width={20} height={20} aria-hidden="true" />
-				<span class="mobile-option-label">Profile: {runtime.profile}</span>
-			</span>
+		<div class="composer-toolbar flex min-w-0 items-center gap-2 pt-1">
 			<button
+				bind:this={optionsButton}
 				type="button"
-				class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-				aria-label="Prompt library"
-				title="Open prompt library"
-				onclick={openPromptLibrary}
+				class="composer-more grid size-11 shrink-0 place-items-center rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+				aria-label="More session options"
+				aria-expanded={optionsOpen}
+				aria-controls={`${instanceId}-composer-options`}
+				popovertarget={mobile.current ? `${instanceId}-composer-options` : undefined}
+				title="More session options"
+				disabled={!ready}
+				onclick={() => {
+					if (!mobile.current) optionsOpen = !optionsOpen;
+				}}
 			>
-				<BookOpenText width={20} height={20} aria-hidden="true" />
-				<span class="mobile-option-label">Prompt library</span></button
-			>
-			<div class="mobile-approval-option">
-				{@render approvalPicker()}
+				<Ellipsis width={20} height={20} aria-hidden="true" />
+			</button>
+			{#if !mobile.current}{@render improveButton()}{/if}
+			{#if promptImproving}<span class="sr-only" role="status">Improving prompt…</span>{/if}
+			<div bind:this={composerActivity} class="composer-activity">
+				<ThinkingDialog
+					id={`${instanceId}-thinking`}
+					items={thinkingTimeline}
+					{renderMarkdown}
+					{busy}
+					bind:open={thinkingOpen}
+				/>
 			</div>
-			{#if reasoning}<div class="mobile-reasoning-option">
-					<SessionOptionPicker
-						options={flattenOptions(reasoning.options)}
-						value={reasoning.currentValue}
-						ariaLabel="Reasoning"
-						kind="reasoning"
-						showLabel={true}
-						disabled={busy || runtimeChanging || !ready}
-						onselect={(value) => onconfig(reasoning!.id, value)}
+			<div
+				bind:this={optionsMenu}
+				id={`${instanceId}-composer-options`}
+				class="composer-options-menu"
+				class:open={optionsOpen && ready}
+				popover={mobile.current ? 'auto' : undefined}
+				ontoggle={(event) => {
+					if (mobile.current) optionsOpen = event.newState === 'open';
+				}}
+				inert={!ready}
+				aria-hidden={!ready ? 'true' : undefined}
+				role={mobile.current ? 'dialog' : 'group'}
+				aria-label="Secondary session options"
+			>
+				{#if mobile.current}
+					<header class="composer-options-header">
+						<strong>Session options</strong>
+						<button
+							type="button"
+							aria-label="Close composer options"
+							title="Close composer options"
+							onclick={closeComposerOptions}><X width={19} height={19} aria-hidden="true" /></button
+						>
+					</header>
+					{@render sessionContext()}
+					{@render improveButton()}
+				{/if}
+				<label
+					class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+					aria-label={imagePrompts ? 'Attach images and files' : 'Attach files'}
+					title={imagePrompts
+						? 'Attach documents, audio, video, archives, text, code, or images'
+						: `Attach documents, audio, video, archives, text, or code. ${harnessName} does not support image prompts.`}
+				>
+					<Paperclip width={20} height={20} aria-hidden="true" />
+					<span class="mobile-option-label">Attach files</span>
+					<input
+						type="file"
+						accept={`${imagePrompts ? '.png,.jpg,.jpeg,.gif,.webp,' : ''}.pdf,.doc,.docx,.mp3,.wav,.ogg,.oga,.m4a,.mp4,.m4v,.webm,.mov,.zip,.gz,.tgz,.tar,.7z,.txt,.log,.md,.markdown,.csv,.json,.xml,.css,.ts,.mts,.cts,.tsx,.py,.rs,.go,.java`}
+						multiple
+						onchange={(event) => {
+							closeComposerOptions();
+							onimages(event);
+						}}
 					/>
-				</div>{/if}
-		</div>
-		<div
-			class="composer-context ml-auto flex min-w-0 items-center gap-1"
-			aria-label={`${harnessName} session context`}
-		>
-			<div class="desktop-context-option">
-				{@render approvalPicker()}
+				</label>
+				{#if !callActive}<button
+						bind:this={voiceMessageElement}
+						type="button"
+						class="attach-button voice-start grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+						aria-label="Record voice message"
+						title="Record and send voice message"
+						onclick={() => {
+							closeComposerOptions();
+							onvoiceMessage();
+						}}
+						><Mic width={20} height={20} aria-hidden="true" /><span class="mobile-option-label"
+							>Voice message</span
+						></button
+					>
+					<button
+						bind:this={voiceStartElement}
+						type="button"
+						class="attach-button voice-start grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+						aria-label="Start voice call"
+						title="Start voice call"
+						onclick={() => {
+							closeComposerOptions();
+							onvoiceCall();
+						}}
+						><PhoneCall width={20} height={20} aria-hidden="true" /><span
+							class="mobile-option-label">Voice call</span
+						></button
+					>{/if}
+				<span
+					class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border text-muted-foreground"
+					aria-label={`${harnessName} profile: ${runtime.profile}`}
+					title={`${harnessName} profile: ${runtime.profile}`}
+				>
+					<UserRound width={20} height={20} aria-hidden="true" />
+					<span class="mobile-option-label">Profile: {runtime.profile}</span>
+				</span>
+				<button
+					type="button"
+					class="attach-button grid h-(--control-height-icon) w-(--control-height-icon) shrink-0 place-items-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+					aria-label="Prompt library"
+					title="Open prompt library"
+					onclick={openPromptLibrary}
+				>
+					<BookOpenText width={20} height={20} aria-hidden="true" />
+					<span class="mobile-option-label">Prompt library</span></button
+				>
 			</div>
-			{#if reasoning}<div class="desktop-context-option">
-					<SessionOptionPicker
-						options={flattenOptions(reasoning.options)}
-						value={reasoning.currentValue}
-						ariaLabel="Reasoning"
-						kind="reasoning"
-						showLabel={true}
-						disabled={busy || runtimeChanging || !ready}
-						onselect={(value) => onconfig(reasoning!.id, value)}
-					/>
-				</div>{/if}
-			{#if runtime.models}<ModelPicker
-					models={runtime.models.availableModels}
-					value={runtime.models.currentModelId}
-					disabled={busy || runtimeChanging || !ready}
-					onselect={onmodel}
-				/>{/if}
-			<SessionOptionPicker
-				options={workModeOptions}
-				value={workMode}
-				ariaLabel="Work mode"
-				kind="work"
-				showLabel={true}
-				disabled={workModeChanging || !ready}
-				onselect={(value) => onworkmode(value as WorkMode)}
-				onedit={reviewWorkModeBundle}
-			/>
-			{#if showContextUsage && contextPercent() !== null}<span
-					class="desktop-context-option context-chip context-usage inline-flex min-h-8 shrink-0 items-center rounded-lg border border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_15%,transparent)] px-2 text-xs font-bold text-[var(--success)]"
-					class:warning={contextPercent()! >= 80}
-					title={`${runtime.usage!.used.toLocaleString()} of ${runtime.usage!.size.toLocaleString()} context tokens used`}
-					>{contextPercent()}%</span
-				>{/if}
+			{#if !mobile.current}{@render sessionContext()}{/if}
+			{#if readingAttachments}<span role="status">Reading attachments...</span>{/if}
+			{#if pendingEnvelope}<button
+					type="button"
+					class="retry-message rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+					title="Retry exact message"
+					onclick={onretry}
+					disabled={readingAttachments || !ready}>Retry exact message</button
+				>{:else}
+				{#if busy}<button
+						type="button"
+						class="composer-send stop-message grid size-9 place-items-center rounded-lg text-orange-300 hover:bg-accent"
+						aria-label={delivery === 'cancelling' ? 'Cancelling' : 'Stop'}
+						title={delivery === 'cancelling' ? 'Cancellation requested' : 'Stop current turn'}
+						onclick={onstop}
+						disabled={stopping || delivery === 'cancelling'}
+					>
+						<Square width={12} height={12} fill="currentColor" aria-hidden="true" /></button
+					>{/if}
+				{#if !busy || mobile.current}<button
+						type="submit"
+						class="composer-send grid size-9 place-items-center rounded-lg hover:bg-accent disabled:opacity-40"
+						aria-label={busy ? 'Queue follow-up' : 'Send'}
+						title={busy ? 'Queue follow-up' : 'Send message'}
+						disabled={readingAttachments ||
+							!ready ||
+							(!composer.trim() && !images.length && !attachments.length && !reviewContexts.length)}
+					>
+						<Send width={20} height={20} aria-hidden="true" /></button
+					>{/if}{/if}
 		</div>
-		{#if readingAttachments}<span role="status">Reading attachments...</span>{/if}
-		{#if pendingEnvelope}<button
-				type="button"
-				class="retry-message rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
-				title="Retry exact message"
-				onclick={onretry}
-				disabled={readingAttachments || !ready}>Retry exact message</button
-			>{:else if busy}<button
-				type="button"
-				class="composer-send stop-message grid size-9 place-items-center rounded-lg text-orange-300 hover:bg-accent"
-				aria-label={delivery === 'cancelling' ? 'Cancelling' : 'Stop'}
-				title={delivery === 'cancelling' ? 'Cancellation requested' : 'Stop current turn'}
-				onclick={onstop}
-				disabled={stopping || delivery === 'cancelling'}
-			>
-				<Square width={12} height={12} fill="currentColor" aria-hidden="true" /></button
-			>{:else}<button
-				type="submit"
-				class="composer-send grid size-9 place-items-center rounded-lg hover:bg-accent disabled:opacity-40"
-				aria-label="Send"
-				title="Send message"
-				disabled={readingAttachments ||
-					!ready ||
-					(!composer.trim() && !images.length && !attachments.length && !reviewContexts.length)}
-			>
-				<Send width={20} height={20} aria-hidden="true" /></button
-			>{/if}
 	</div>
 </form>
 <dialog

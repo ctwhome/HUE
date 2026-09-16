@@ -19,6 +19,7 @@
 	let width = $state(440);
 	let maxWidth = $state(440);
 	let resizeStart: { x: number; width: number } | null = null;
+	let widthFrame = 0;
 
 	function limits() {
 		const available = dockElement.parentElement?.clientWidth ?? innerWidth;
@@ -61,12 +62,14 @@
 
 	watchSettings(() => {
 		const savedWidth = Number(settingsStorage.getItem(`hue:project-browser:${projectId}:width`));
-		setWidth(savedWidth > 0 ? savedWidth : 440);
+		cancelAnimationFrame(widthFrame);
+		widthFrame = requestAnimationFrame(() => setWidth(savedWidth > 0 ? savedWidth : 440));
 	});
 	onMount(() => {
 		const observer = new ResizeObserver(() => setWidth(width));
 		observer.observe(dockElement.parentElement!);
 		return () => {
+			cancelAnimationFrame(widthFrame);
 			observer.disconnect();
 		};
 	});

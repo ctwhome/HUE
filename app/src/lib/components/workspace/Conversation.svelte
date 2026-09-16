@@ -18,6 +18,8 @@
 
 <script lang="ts">
 	import { mount, unmount } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
+	import Ellipsis from '~icons/lucide/ellipsis';
 	import Copy from '~icons/lucide/copy';
 	import ChevronUp from '~icons/lucide/chevron-up';
 	import Download from '~icons/lucide/download';
@@ -77,7 +79,11 @@
 		onquote,
 		element = $bindable(),
 		follow,
-		harnessName = 'Hermes', history, historyLoading = false, historyError = '', historyBlocked = false,
+		harnessName = 'Hermes',
+		history,
+		historyLoading = false,
+		historyError = '',
+		historyBlocked = false,
 		onloadhistory = () => {}
 	}: {
 		timeline: WorkspaceTimelineItem[];
@@ -111,6 +117,8 @@
 		historyBlocked?: boolean;
 		onloadhistory?: () => void;
 	} = $props();
+	const instanceId = $props.id();
+	const mobile = new MediaQuery('(max-width: 700px), (pointer: coarse) and (max-height: 500px)');
 
 	function mediaOutputs(text: string): string[] {
 		return [
@@ -195,7 +203,10 @@
 		if (getSelection()?.toString()) return;
 		if (!collapsible) return;
 		if (event instanceof KeyboardEvent) event.preventDefault();
-		if (!expandedUserMessages.includes(key)) expandedUserMessages = [...expandedUserMessages, key];
+		if (mobile.current && expandedUserMessages.includes(key))
+			expandedUserMessages = expandedUserMessages.filter((candidate) => candidate !== key);
+		else if (!expandedUserMessages.includes(key))
+			expandedUserMessages = [...expandedUserMessages, key];
 	}
 	function collapseUserMessage(event: MouseEvent, key: string) {
 		event.stopPropagation();
@@ -361,6 +372,33 @@
 	}
 </script>
 
+{#snippet userActions(message: Message)}
+	<button
+		type="button"
+		aria-label="Edit and resend message"
+		title="Edit and resend message"
+		onclick={() => onedit(message)}
+	>
+		<Pencil width={14} height={14} aria-hidden="true" />
+	</button>
+	<button
+		type="button"
+		aria-label="Copy message"
+		title="Copy message"
+		onclick={() => oncopy(message)}
+	>
+		<Copy width={14} height={14} aria-hidden="true" />
+	</button>
+	<button
+		type="button"
+		aria-label="Fork from this message unavailable"
+		title="Hermes ACP can duplicate a full Session but cannot fork from a selected message"
+		disabled
+	>
+		<GitFork width={14} height={14} aria-hidden="true" />
+	</button>
+{/snippet}
+
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <section
 	class="transcript min-h-0 flex-1 overflow-auto overflow-x-hidden px-[clamp(12px,2.5vw,40px)] pt-8"
@@ -373,13 +411,23 @@
 >
 	<div class="transcript-content min-h-full">
 		{#if historyLoading || historyError || history?.complete === false}
-			<div class="mx-auto mb-4 flex w-full max-w-3xl flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 text-sm" aria-label="Conversation history">
+			<div
+				class="mx-auto mb-4 flex w-full max-w-3xl flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 text-sm"
+				aria-label="Conversation history"
+			>
 				{#if historyError}<p class="text-destructive" role="alert">{historyError}</p>
 				{:else if historyLoading}<p role="status">Loading conversation history…</p>
-				{:else}<p class="text-muted-foreground">{historyBlocked ? 'Older history is unavailable while delivery is running or unconfirmed.' : 'More conversation history may be available.'}</p>{/if}
-				<button class="min-h-11 rounded-md border border-border px-3 disabled:opacity-50"
-					disabled={historyLoading || historyBlocked} onclick={onloadhistory}
-					>{historyError ? 'Retry history loading' : 'Load older messages'}</button>
+				{:else}<p class="text-muted-foreground">
+						{historyBlocked
+							? 'Older history is unavailable while delivery is running or unconfirmed.'
+							: 'More conversation history may be available.'}
+					</p>{/if}
+				<button
+					class="min-h-11 rounded-md border border-border px-3 disabled:opacity-50"
+					disabled={historyLoading || historyBlocked}
+					onclick={onloadhistory}
+					>{historyError ? 'Retry history loading' : 'Load older messages'}</button
+				>
 			</div>
 		{/if}
 		{#if messageNotice}<span class="copy-notice" role="status">{messageNotice}</span>{/if}
@@ -389,7 +437,9 @@
 				{@const messageKey = userMessageKey(message)}
 				{@const messageSkills = turnSkills.get(message.messageId ?? '') ?? []}
 				{@const messageCollapsible =
-					truncatedUserMessages.includes(messageKey) || Boolean(message.images?.length)}
+					mobile.current ||
+					truncatedUserMessages.includes(messageKey) ||
+					Boolean(message.images?.length)}
 				<article
 					data-timeline-sequence={item.sequence}
 					data-message-id={message.messageId}
@@ -477,10 +527,11 @@
 							</div>
 						{:else}
 							<div
-								class="message user-message relative rounded-2xl rounded-br-md border bg-accent/60"
+								id={`${instanceId}-message-${index}`}
+								class="message user-message relative rounded-2xl rounded-br-md border bg-secondary"
 								class:expanded={expandedUserMessages.includes(messageKey)}
 							>
-								{#if expandedUserMessages.includes(messageKey)}<button
+								{#if expandedUserMessages.includes(messageKey) && !mobile.current}<button
 										type="button"
 										class="collapse-user-message"
 										aria-label="Collapse message"
@@ -492,21 +543,30 @@
 									class="user-message-body"
 									class:collapsed={!expandedUserMessages.includes(messageKey)}
 									class:has-images={Boolean(message.images?.length)}
-									role={messageCollapsible && !expandedUserMessages.includes(messageKey)
+									role={messageCollapsible &&
+									(mobile.current || !expandedUserMessages.includes(messageKey))
 										? 'button'
 										: undefined}
-									tabindex={messageCollapsible && !expandedUserMessages.includes(messageKey)
+									tabindex={messageCollapsible &&
+									(mobile.current || !expandedUserMessages.includes(messageKey))
 										? 0
 										: undefined}
 									aria-expanded={messageCollapsible
 										? expandedUserMessages.includes(messageKey)
 										: undefined}
-									aria-label={messageCollapsible && !expandedUserMessages.includes(messageKey)
-										? 'Expand full message'
+									aria-label={messageCollapsible &&
+									(mobile.current || !expandedUserMessages.includes(messageKey))
+										? expandedUserMessages.includes(messageKey)
+											? 'Collapse message'
+											: 'Expand full message'
 										: undefined}
 									onclick={(event) => expandUserMessage(event, messageKey, messageCollapsible)}
 									onkeydown={(event) => expandUserMessage(event, messageKey, messageCollapsible)}
 								>
+									{#if message.images?.length}<span class="user-image-count"
+											>{message.images.length}
+											{message.images.length === 1 ? 'image' : 'images'}</span
+										>{/if}
 									{#if message.images?.length}<div
 											class="message-images mb-2 grid grid-cols-2 gap-1.5"
 										>
@@ -523,7 +583,42 @@
 											<p>{message.text}</p>
 										</div>{/if}
 								</div>
+								{#if mobile.current}
+									<button
+										type="button"
+										class="user-message-more"
+										aria-label={expandedUserMessages.includes(messageKey)
+											? 'Collapse message details'
+											: 'Expand message details'}
+										title={expandedUserMessages.includes(messageKey)
+											? 'Collapse message details'
+											: 'Expand message details'}
+										aria-expanded={expandedUserMessages.includes(messageKey)}
+										aria-controls={`${instanceId}-message-${index}`}
+										onclick={(event) => expandUserMessage(event, messageKey, true)}
+									>
+										{#if expandedUserMessages.includes(messageKey)}<ChevronUp
+												width={19}
+												height={19}
+												aria-hidden="true"
+											/>{:else}<Ellipsis width={19} height={19} aria-hidden="true" />{/if}
+									</button>
+									{#if expandedUserMessages.includes(messageKey)}<div
+											class="user-message-actions"
+											role="group"
+											aria-label="Message actions"
+										>
+											{@render userActions(message)}
+										</div>{/if}
+								{/if}
 							</div>
+							{#if mobile.current && validTimestamp(message.createdAt)}<time
+									class="user-message-timestamp"
+									datetime={message.createdAt}
+									title={timestampTitle(message.createdAt)}
+									aria-label={timestampTitle(message.createdAt)}
+									>{timestamp(message.createdAt)}</time
+								>{/if}
 						{/if}
 						{#if message.role === 'assistant' && messageSkills.length}<div
 								class="message-skills"
@@ -531,50 +626,48 @@
 							>
 								{#each messageSkills as skill}<span>Skill used: {skill}</span>{/each}
 							</div>{/if}
-						<div class="message-actions mt-1 flex gap-0.5">
-							{#if message.role === 'user'}<button
-									type="button"
-									aria-label="Edit and resend message"
-									title="Edit and resend message"
-									onclick={() => onedit(message)}
-									><Pencil width={14} height={14} aria-hidden="true" /></button
-								>{/if}
-							{#if message.role === 'assistant'}<button
-									type="button"
-									class="max-[700px]:min-h-11 max-[700px]:min-w-11"
-									aria-label="Add selected text to prompt"
-									title="Select part of this response, then add it to the next prompt"
-									onclick={quoteSelection}
-									><Quote width={14} height={14} aria-hidden="true" /></button
-								>{/if}
-							<button
-								type="button"
-								aria-label="Copy message"
-								title="Copy message"
-								onclick={() => oncopy(message)}
-								><Copy width={14} height={14} aria-hidden="true" /></button
+						{#if message.role === 'assistant' || !mobile.current}<div
+								class="message-actions mt-1 flex gap-0.5"
 							>
-							<button
-								type="button"
-								aria-label="Fork from this message unavailable"
-								title="Hermes ACP can duplicate a full Session but cannot fork from a selected message"
-								disabled><GitFork width={14} height={14} aria-hidden="true" /></button
-							>
-							{#if message.role === 'assistant' && index === transcriptTimeline.length - 1}<button
-									type="button"
-									aria-label="Retry last response"
-									title="Retry last response by resending previous user message"
-									disabled={busy}
-									onclick={onretrylast}>Retry</button
-								>{/if}
-							{#if validTimestamp(message.createdAt)}<time
-									class="ml-auto text-xs text-muted-foreground"
-									datetime={message.createdAt}
-									title={timestampTitle(message.createdAt)}
-									aria-label={timestampTitle(message.createdAt)}
-									>{timestamp(message.createdAt)}</time
-								>{/if}
-						</div>
+								{#if message.role === 'user'}
+									{#if !mobile.current}{@render userActions(message)}{/if}
+								{:else}<button
+										type="button"
+										class="max-[700px]:min-h-11 max-[700px]:min-w-11"
+										aria-label="Add selected text to prompt"
+										title="Select part of this response, then add it to the next prompt"
+										onclick={quoteSelection}
+										><Quote width={14} height={14} aria-hidden="true" /></button
+									>
+									<button
+										type="button"
+										aria-label="Copy message"
+										title="Copy message"
+										onclick={() => oncopy(message)}
+										><Copy width={14} height={14} aria-hidden="true" /></button
+									>
+									<button
+										type="button"
+										aria-label="Fork from this message unavailable"
+										title="Hermes ACP can duplicate a full Session but cannot fork from a selected message"
+										disabled><GitFork width={14} height={14} aria-hidden="true" /></button
+									>
+									{#if message.role === 'assistant' && index === transcriptTimeline.length - 1}<button
+											type="button"
+											aria-label="Retry last response"
+											title="Retry last response by resending previous user message"
+											disabled={busy}
+											onclick={onretrylast}>Retry</button
+										>{/if}
+								{/if}
+								{#if validTimestamp(message.createdAt)}<time
+										class="ml-auto text-xs text-muted-foreground"
+										datetime={message.createdAt}
+										title={timestampTitle(message.createdAt)}
+										aria-label={timestampTitle(message.createdAt)}
+										>{timestamp(message.createdAt)}</time
+									>{/if}
+							</div>{/if}
 					</div>
 				</article>
 			{:else if item.kind === 'status'}

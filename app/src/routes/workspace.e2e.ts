@@ -5,12 +5,14 @@ import { join } from 'node:path';
 import { defaultSettings, getSetting } from '../lib/settings';
 
 async function readSetting(page: import('@playwright/test').Page, key: string) {
+	await expect(page.locator('[data-settings-pending]')).toHaveCount(0);
 	const { settings } = await (await page.request.get('/api/settings')).json();
 	const value = getSetting(settings, key);
 	return value === undefined ? null : typeof value === 'string' ? value : JSON.stringify(value);
 }
 
 async function writeSetting(page: import('@playwright/test').Page, key: string, value: unknown) {
+	await expect(page.locator('[data-settings-pending]')).toHaveCount(0);
 	const response = await page.request.get('/api/settings');
 	const { settings } = await response.json();
 	const saved = await page.request.patch('/api/settings', {
@@ -923,7 +925,7 @@ test('Session header keeps search controls hidden until requested', async ({ pag
 	expect(errors).toEqual([]);
 });
 
-test('conversation scrolls behind the translucent Session header', async ({ page }) => {
+test('conversation scrolls beneath the solid theme-matched Session header', async ({ page }) => {
 	await page.route('**/api/projects/*/sessions', (route) =>
 		route.fulfill({
 			json: {
@@ -957,7 +959,7 @@ test('conversation scrolls behind the translucent Session header', async ({ page
 	await expect
 		.poll(async () => (await transcript.boundingBox())?.y)
 		.toBe((await header.boundingBox())!.y + (await header.boundingBox())!.height);
-	expect(await header.evaluate((element) => getComputedStyle(element).backdropFilter)).not.toBe(
+	expect(await header.evaluate((element) => getComputedStyle(element).backdropFilter)).toBe(
 		'none'
 	);
 	await page.setViewportSize({ width: 1024, height: 768 });
@@ -1664,6 +1666,7 @@ test('Project file workspace stays usable across required viewports', async ({
 		.getByRole('button', { name: 'Browser', exact: true });
 	if ((await browserButton.getAttribute('aria-expanded')) !== 'true') await browserButton.click();
 	await expect(page.getByRole('complementary', { name: 'Project browser' })).toBeVisible();
+	await page.getByRole('navigation', { name: 'Project tools' }).getByRole('button', { name: 'Files', exact: true }).click();
 	await expect(page.getByRole('region', { name: 'Project files' })).toBeHidden();
 	await page
 		.getByRole('navigation', { name: 'Project tools' })
@@ -2582,7 +2585,7 @@ test('personalizes one Session with template and uploaded chat backgrounds', asy
 		.poll(() =>
 			page.locator('.composer').evaluate((element) => getComputedStyle(element).backdropFilter)
 		)
-		.toContain('blur(20px)');
+		.toBe('none');
 	await sessionButton(page, 'Empty canvas').click();
 	await expect(page.locator('.session-view')).toHaveClass(/personal-background/);
 	await expect(page.locator('.session-view')).toHaveAttribute('style', /radial-gradient/);
@@ -3423,19 +3426,24 @@ test('sends one complete envelope and renders streamed completion', async ({ pag
 	await expect(surface.getByRole('button', { name: /Show activity details/ })).toBeVisible();
 	await expect(surface.getByTitle('Message running')).toBeVisible();
 	const deliveryStatus = surface.locator('.composer-delivery');
-	await expect(deliveryStatus).toHaveClass(/rounded-full/);
-	const capsuleStyle = await deliveryStatus.evaluate((element) => ({
+	const deliverySurface = deliveryStatus.locator('.composer-delivery-surface');
+	await expect(deliverySurface).toBeVisible();
+	const capsuleStyle = await deliverySurface.evaluate((element) => ({
 		background: getComputedStyle(element).backgroundColor,
 		radius: Number.parseFloat(getComputedStyle(element).borderRadius),
 		height: element.getBoundingClientRect().height
 	}));
 	expect(capsuleStyle.background).not.toBe('rgba(0, 0, 0, 0)');
-	expect(capsuleStyle.radius).toBeGreaterThanOrEqual(capsuleStyle.height / 2);
+	expect(capsuleStyle.radius).toBeLessThanOrEqual(8);
+	expect(capsuleStyle.height).toBe(28);
 	await expect(deliveryStatus.locator('[data-status-icon="running"]')).toBeVisible();
 	await expect(deliveryStatus.locator('svg')).toHaveClass(/animate-spin/);
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await expect(surface.getByRole('button', { name: /Show activity details/ })).toBeVisible();
+		expect((await deliverySurface.boundingBox())!.height).toBe(28);
+		if (viewport.width <= 700)
+			expect((await deliveryStatus.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 		const [deliveryBox, composerBox] = await Promise.all([
 			surface.locator('.composer-delivery').boundingBox(),
 			surface.locator('.composer').boundingBox()
@@ -3930,17 +3938,22 @@ test('copies and edits messages while selected-message fork stays honestly unava
 		);
 		if (viewport.width <= 390) {
 			await expectMinimumTouchTargets(userMessage.locator('button'));
+			await expect(userMessage.locator('.message-actions')).toHaveCount(0);
+			const card = userMessage.locator('.user-message');
+			const collapsedHeight = (await card.boundingBox())!.height;
+			await userMessage.getByRole('button', { name: 'Expand message details', exact: true }).click();
+			expect((await card.boundingBox())!.height).toBeGreaterThan(collapsedHeight);
+			await expect(card.getByRole('button', { name: 'Copy message' })).toBeVisible();
+			await expect(card.locator('[popover]')).toHaveCount(0);
+			await expectMinimumTouchTargets(card.locator('button'));
+			await userMessage.getByRole('button', { name: 'Collapse message details', exact: true }).click();
+		} else {
 			expect(
-				await userMessage.locator('.message-actions').evaluate((element) => ({
-					background: getComputedStyle(element).backgroundColor,
-					backdrop: getComputedStyle(element).backdropFilter
-				}))
-			).toEqual({ background: 'rgba(0, 0, 0, 0)', backdrop: 'none' });
-			expect((await userMessage.locator('.message-actions svg').first().boundingBox())!.width).toBe(
-				13
-			);
+				await userMessage.locator('.message-actions').evaluate((node) => getComputedStyle(node).backgroundColor)
+			).toMatch(/^rgb\(/);
 		}
 	}
+	await userMessage.getByRole('button', { name: 'Expand message details', exact: true }).click();
 	await userMessage.getByRole('button', { name: 'Copy message' }).click();
 	expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
 		'Please inspect this message'
@@ -4002,6 +4015,140 @@ test('shows a live timer beside each busy session', async ({ page }) => {
 		);
 	}
 	expect(browserErrors).toEqual([]);
+});
+
+test('compact mobile chat keeps timestamps, expandable messages, and tools in overflow', async ({
+	page
+}) => {
+	const text = 'Brilliant, can you translate it into a very visual excalidraw in my second brain?';
+	let running = false;
+	let envelope: Record<string, unknown> | undefined;
+	await page.route('**/api/projects/*/sessions', (route) =>
+		route.fulfill({
+			json: {
+				sessions: [{ sessionId: 'compact-mobile', cwd: '/work/hue', title: 'Compact mobile chat' }]
+			}
+		})
+	);
+	await page.route('**/sessions/compact-mobile', (route) =>
+		route.fulfill({
+			json: {
+				transcript: [
+					{ role: 'user', text, createdAt: '2026-09-15T06:27:00Z' },
+					{
+						role: 'assistant',
+						text: 'The full conversation stays readable.',
+						createdAt: '2026-09-15T06:28:00Z'
+					}
+				],
+				messages: [],
+				events: [],
+				cursor: 0,
+				activeTurn: running
+					? { messageId: 'running-turn', status: 'running', thought: '', output: '', error: null }
+					: null,
+				runtime: {
+					profile: 'default',
+					models: {
+						currentModelId: 'gpt-5.6',
+						availableModels: [{ modelId: 'gpt-5.6', name: 'GPT 5.6' }]
+					}
+				}
+			}
+		})
+	);
+	await page.route('**/sessions/compact-mobile/events*', (route) =>
+		route.fulfill({ json: { events: [] } })
+	);
+	await page.route('**/sessions/compact-mobile/messages', async (route) => {
+		envelope = route.request().postDataJSON();
+		await route.fulfill({ status: 202, json: { status: 'queued', workMode: 'autonomous' } });
+	});
+	await page.setViewportSize({ width: 390, height: 844 });
+	await addProject(page);
+	await sessionButton(page, 'Compact mobile chat').click();
+	const composer = page.locator('.composer');
+	const input = page.getByLabel('Message Hermes');
+	const more = page.getByRole('button', { name: 'More session options' });
+	const message = page.locator('article.user');
+	for (const width of [390, 320]) {
+		await page.setViewportSize({ width, height: 844 });
+		await expect(input).toBeVisible();
+		expect((await composer.boundingBox())!.height).toBeLessThanOrEqual(56);
+		expect((await message.boundingBox())!.height).toBeLessThanOrEqual(76);
+		await expect(message.locator('time')).toBeVisible();
+		await expect(message.locator('.user-message time')).toHaveCount(0);
+		const card = message.locator('.user-message');
+		const collapsedBox = (await card.boundingBox())!;
+		expect((await message.locator('time').boundingBox())!.y).toBeGreaterThanOrEqual(collapsedBox.y + collapsedBox.height);
+		await expect(page.getByLabel('Hermes model', { exact: true })).toBeHidden();
+		await expect(page.getByRole('button', { name: 'Improve prompt with AI' })).toBeHidden();
+		const preview = message.getByRole('button', { name: 'Expand full message' });
+		await preview.click();
+		await expect(message.locator('.user-message-body')).toHaveAttribute('aria-expanded', 'true');
+		await message.locator('.user-message-body').click();
+		await expect(preview).toHaveAttribute('aria-expanded', 'false');
+		await preview.press('Enter');
+		await message.locator('.user-message-body').press('Space');
+		await expect(preview).toHaveAttribute('aria-expanded', 'false');
+		await message.getByRole('button', { name: 'Expand message details', exact: true }).click();
+		await expect(card.getByRole('button', { name: 'Edit and resend message' })).toBeVisible();
+		await expect(card.getByRole('button', { name: 'Copy message' })).toBeVisible();
+		await expect(card.locator('[popover]')).toHaveCount(0);
+		expect((await card.boundingBox())!.height).toBeGreaterThan(collapsedBox.height);
+		const expandedBox = (await card.boundingBox())!;
+		expect((await message.locator('time').boundingBox())!.y).toBeGreaterThanOrEqual(expandedBox.y + expandedBox.height);
+		await message.getByRole('button', { name: 'Collapse message details', exact: true }).press('Enter');
+		await expect(message.getByRole('button', { name: 'Expand message details', exact: true })).toBeFocused();
+		await more.click();
+		const options = page.getByRole('dialog', { name: 'Secondary session options' });
+		await expect(options).toBeVisible();
+		await expect(options.getByLabel('Hermes model', { exact: true })).toBeVisible();
+		await expect(options.getByRole('button', { name: 'Work mode', exact: true })).toBeVisible();
+		await expect(options.getByRole('button', { name: 'Improve prompt with AI' })).toBeVisible();
+		expect((await composer.boundingBox())!.height).toBeLessThanOrEqual(56);
+		await expectMinimumTouchTargets(options.locator('button, label'));
+		await options.getByLabel('Hermes model', { exact: true }).click();
+		await expect(page.getByRole('dialog', { name: 'Choose Hermes model' })).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(options).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(options).toBeHidden();
+		await expect(more).toBeFocused();
+		await input.fill('One line\nTwo lines\nThree lines\nFour lines');
+		expect((await input.boundingBox())!.height).toBeLessThanOrEqual(66);
+		await expect(input).toHaveCSS('overflow-y', 'auto');
+		await input.fill('');
+		for (const theme of ['dark', 'github-light', 'nord']) {
+			await page.evaluate((theme) => (document.documentElement.dataset.theme = theme), theme);
+			await expect(message).toHaveCSS('background-image', 'none');
+			for (const surface of [composer, message.locator('.user-message')]) {
+				expect(await surface.evaluate((node) => getComputedStyle(node).backgroundColor)).toMatch(
+					/^rgb\(/
+				);
+			}
+		}
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			width
+		);
+	}
+	running = true;
+	await page.reload();
+	await openMobileSessions(page);
+	await sessionButton(page, 'Compact mobile chat').click();
+	await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
+	await input.fill('A complete follow-up');
+	await page.getByRole('button', { name: 'Queue follow-up', exact: true }).click();
+	await expect(page.getByRole('region', { name: 'Queued messages' })).toContainText(
+		'A complete follow-up'
+	);
+	expect(envelope).toMatchObject({
+		text: 'A complete follow-up',
+		images: [],
+		attachments: [],
+		reviewContexts: []
+	});
+	expect(envelope?.messageId).toEqual(expect.any(String));
 });
 
 test('discovers Hermes slash commands and leaves attached image count to Hermes', async ({
@@ -4181,6 +4328,7 @@ test('discovers Hermes slash commands and leaves attached image count to Hermes'
 			await expect(moreOptions).toBeVisible();
 			await expect(page.getByRole('button', { name: 'Prompt library' })).toBeHidden();
 		}
+		if (viewport.width <= 700) await openComposerOptions(page);
 		const context = page.getByLabel('Hermes session context');
 		await context.evaluate((element) => (element.scrollLeft = 0));
 		expect(await context.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
@@ -4242,6 +4390,7 @@ test('discovers Hermes slash commands and leaves attached image count to Hermes'
 		await page.keyboard.press('Escape');
 		await expect(approvalsMenu).toBeHidden();
 		if (viewport.width <= 390) {
+			await page.keyboard.press('Escape');
 			const composer = page.locator('.composer');
 			const attach = page.getByLabel('Attach images and files');
 			const voiceMessage = page.getByRole('button', { name: 'Record voice message' });
@@ -4252,25 +4401,21 @@ test('discovers Hermes slash commands and leaves attached image count to Hermes'
 			await expect(attach).toBeHidden();
 			await expect(voiceMessage).toBeHidden();
 			await expect(voiceCall).toBeHidden();
-			await expect(modelTrigger).toBeVisible();
-			await expect(workMode).toBeVisible();
+			await expect(modelTrigger).toBeHidden();
+			await expect(workMode).toBeHidden();
 			await expect(send).toBeVisible();
-			const [composerBox, contextBox, moreBox, modelBox, workModeBox, sendBox] = await Promise.all([
+			const [composerBox, moreBox, inputBox, sendBox] = await Promise.all([
 				composer.boundingBox(),
-				context.boundingBox(),
 				moreOptions.boundingBox(),
-				modelTrigger.boundingBox(),
-				workMode.boundingBox(),
+				page.getByLabel('Message Hermes').boundingBox(),
 				send.boundingBox()
 			]);
-			expect(composerBox!.height).toBeLessThanOrEqual(300);
-			expect((await page.getByLabel('Message Hermes').boundingBox())!.height).toBeLessThanOrEqual(
-				160
-			);
+			expect(composerBox!.height).toBeLessThanOrEqual(56);
+			expect(inputBox!.height).toBe(44);
 			expect(moreBox!.x).toBeGreaterThanOrEqual(composerBox!.x);
-			expect(moreBox!.x + moreBox!.width).toBeLessThanOrEqual(modelBox!.x);
-			expect(modelBox!.x + modelBox!.width).toBeLessThanOrEqual(workModeBox!.x);
-			expect(contextBox!.y).toBe(workModeBox!.y);
+			expect(moreBox!.x + moreBox!.width).toBeLessThanOrEqual(inputBox!.x);
+			expect(inputBox!.x + inputBox!.width).toBeLessThanOrEqual(sendBox!.x);
+			expect(inputBox!.y).toBe(moreBox!.y);
 			expect(sendBox!.x + sendBox!.width).toBeLessThanOrEqual(composerBox!.x + composerBox!.width);
 			await expectMinimumTouchTargets(
 				composer.locator('.composer-more, .context-chip, .composer-send')
@@ -4279,10 +4424,12 @@ test('discovers Hermes slash commands and leaves attached image count to Hermes'
 			await expect(attach).toBeVisible();
 			await expect(voiceMessage).toBeVisible();
 			await expect(voiceCall).toBeVisible();
+			await expect(modelTrigger).toBeVisible();
+			await expect(workMode).toBeVisible();
 			const menu = page.getByLabel('Secondary session options');
 			const menuBox = await menu.boundingBox();
-			expect(menuBox!.x).toBeGreaterThanOrEqual(composerBox!.x);
-			expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(composerBox!.x + composerBox!.width);
+			expect(menuBox!.x).toBeGreaterThanOrEqual(0);
+			expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(viewport.width);
 			await expectMinimumTouchTargets(menu.locator('button, label'));
 			await page.keyboard.press('Escape');
 		}
@@ -4305,6 +4452,7 @@ test('discovers Hermes slash commands and leaves attached image count to Hermes'
 	await expect(sessionOptions.getByLabel('Hermes profile')).toHaveCount(0);
 	await expect(sessionOptions.getByRole('button', { name: /Prompt library/ })).toHaveCount(0);
 	await page.getByRole('button', { name: 'Close session options' }).click();
+	await openComposerOptions(page);
 	await modelTrigger.click();
 	await expect(modelMenu.getByText('OpenAI', { exact: true })).toBeVisible();
 	await expect(modelMenu.getByText('2 models', { exact: true })).toBeVisible();
@@ -4322,7 +4470,7 @@ test('discovers Hermes slash commands and leaves attached image count to Hermes'
 	for (const viewport of viewports) {
 		await page.setViewportSize(viewport);
 		await expect(page.getByRole('listbox', { name: 'Hermes commands' })).toBeVisible();
-		await expect(modelTrigger).toBeVisible();
+		if (viewport.width > 700) await expect(modelTrigger).toBeVisible();
 		await page.getByRole('button', { name: 'Session settings for Rich input' }).click();
 		await expect(page.getByRole('dialog', { name: 'Session options' })).toBeVisible();
 		await page.getByRole('button', { name: 'Close session options' }).click();

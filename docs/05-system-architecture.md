@@ -56,6 +56,14 @@ Keep exactly one long-lived HUE process per database file. Production startup st
 | Notification projection and delivery attempts                           | HUE SQLite                        |
 | Project Excalidraw scene and workbench state                            | HUE SQLite                        |
 
+## Mobile conversation
+
+The mobile composer starts at one text line and grows to two before scrolling internally. Its overflow sheet contains model, work mode, edit approvals, reasoning, prompt improvement, attachments, voice, profile, and prompt-library controls when available. Send stays visible; a running turn also exposes Stop and a separate Queue follow-up action using the existing complete-envelope submission path. Unknown delivery retains its explicit warning and exact-retry action.
+
+Mobile user messages show a one-line preview and a persistent timestamp outside the box at the lower right. Tapping the text or its ellipsis expands the same message box to show the full prompt and an inline action row; tapping again collapses it. Enter and Space also toggle expansion, including short prompts; image-only messages retain an image-count preview. Message actions reuse existing edit/copy behavior and continue to label selected-message forking unavailable. Desktop keeps its two-line previews and inline actions.
+
+Conversation headers, user-message cards, and composers use opaque theme surfaces. Sticky user turns have no gradient fade, and personal backgrounds have no black wash; explicitly selected wallpapers remain behind the solid controls. Overflow sheets use native popovers for top-layer placement, outside-tap/Escape dismissal, nested pickers, and keyboard focus return.
+
 ## Delivery invariant
 
 Startup mounts the workspace once while Projects reconcile. Initial navigation restoration waits for both that list and SvelteKit router readiness, and yields to any newer Session or drawer choice; late reconciliation must not reset a draft or replace the workspace. Restoring a known Project without a target Session updates its URL before Session discovery completes. Exact cached Session lookup is independent of list pagination and archive filtering.

@@ -346,7 +346,7 @@
 		gitOpen = panels.git;
 		filesOpen = panels.files;
 		terminalOpen = panels.terminal;
-		if (sessionPaneCount > 1 && innerWidth < 1600 && browserOpen) browserOpen = false;
+		if (sessionPaneCount > 1 && innerWidth < 1600 && panels.browser) browserOpen = false;
 		terminalHeight = 300;
 	});
 	function panelIsOpen(panel: ProjectPanel) {
@@ -453,7 +453,7 @@
 		gitOpen = panels.git;
 		filesOpen = panels.files;
 		terminalOpen = panels.terminal;
-	});
+	}, () => panelProjectId);
 	onMount(() => {
 		let mounted = true;
 		const openSettingsFile = () => guarded(() => (settingsFileOpen = true));

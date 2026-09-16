@@ -13,6 +13,7 @@
 	let maxWidth = $state(720);
 	let mounted = $state(false);
 	let resizeStart: { x: number; width: number } | null = null;
+	let widthFrame = 0;
 	$effect(() => {
 		if (open) mounted = true;
 	});
@@ -58,12 +59,14 @@
 
 	watchSettings(() => {
 		const savedWidth = Number(settingsStorage.getItem(`hue:project-excalidraw:${projectId}:width`));
-		setWidth(savedWidth > 0 ? savedWidth : 720);
+		cancelAnimationFrame(widthFrame);
+		widthFrame = requestAnimationFrame(() => setWidth(savedWidth > 0 ? savedWidth : 720));
 	});
 	onMount(() => {
 		const observer = new ResizeObserver(() => setWidth(width));
 		observer.observe(dockElement.parentElement!);
 		return () => {
+			cancelAnimationFrame(widthFrame);
 			observer.disconnect();
 		};
 	});

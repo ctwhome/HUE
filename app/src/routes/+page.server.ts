@@ -1,10 +1,18 @@
 import { HermesProjectsCapabilityError } from '$lib/server/hermes-projects';
 import { loadProjectViews, services } from '$lib/server/route-services';
+import { settingsFile } from '$lib/server/settings';
+import type { SettingsSnapshot } from '$lib/settings';
 import type { PageServerLoad } from './$types';
 
 export const load = ((_event) => {
 	const store = services().store;
+	let settings: SettingsSnapshot | null = null;
+	let settingsError = '';
+	try { settings = settingsFile.read(); }
+	catch (cause) { settingsError = cause instanceof Error ? cause.message : String(cause); }
 	const initial = {
+		settings,
+		settingsError,
 		projects: [] as Awaited<ReturnType<typeof loadProjectViews>>['projects'],
 		chatSessionCount: store.countSessions(null, 'unscheduled'),
 		chatIndicators: store.getSessionIndicatorCounts(null, 'unscheduled'),

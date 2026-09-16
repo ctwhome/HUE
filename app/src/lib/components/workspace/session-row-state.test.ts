@@ -69,6 +69,8 @@ test('session row icons are larger than navigation icons', () => {
 test('session status is a compact icon badge instead of consuming title width', () => {
 	const panel = readFileSync(new URL('./ContextPanel.svelte', import.meta.url), 'utf8');
 	expect(panel).toContain('session-state-badge');
+	expect(panel).toContain("{#if state.icon !== 'idle'}");
+	expect(panel).toContain('class:text-destructive={state.icon !== \'running\'}');
 	expect(panel).toContain("aria-label={`${session.title || 'Untitled session'}, ${state.label}`}");
 	expect(panel).not.toContain('class="session-state shrink-0"');
 });

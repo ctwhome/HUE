@@ -22,7 +22,7 @@
 	watchSettings(() => {
 		const sessionId = navigation.editingSession?.sessionId;
 		if (sessionId) background = readChatBackground(settingsStorage, sessionId);
-	});
+	}, () => navigation.editingSession?.sessionId);
 	function setBackground(next: ChatBackground | null) {
 		const sessionId = navigation.editingSession?.sessionId;
 		if (!sessionId) return;
